@@ -98,9 +98,7 @@ def run_gb2_ca00_s05_ae_agent_runtime_worker(
             "migration_current": migration_current,
             **dict(evidence["checks"]),
         }
-        evidence["status"] = (
-            "PASS" if all(evidence["checks"].values()) else "FAIL"
-        )
+        evidence["status"] = "PASS" if all(evidence["checks"].values()) else "FAIL"
         if evidence["status"] == "FAIL":
             evidence["failure_code"] = "gb2_s05_protected_acceptance_failed"
         return evidence
@@ -205,24 +203,18 @@ def _verify_canonical_worker(
             "NEX_AE_AGENT_DISPATCHER_TENANT_ACTIVE_CAP": "1",
             "NEX_AE_AGENT_WORKER_POLL_INTERVAL_SECONDS": "0",
         }
-        installed = build_installed_agent_runtime_process(
-            "test", environ=runtime_env
-        )
+        installed = build_installed_agent_runtime_process("test", environ=runtime_env)
         readiness = installed.readiness()
         installed.close()
         installed = None
 
-        restarted = build_installed_agent_runtime_process(
-            "test", environ=runtime_env
-        )
+        restarted = build_installed_agent_runtime_process("test", environ=runtime_env)
         restart_readiness = restarted.readiness()
         first_run = restarted.run_once()
         restarted.close()
         restarted = None
 
-        replayed = build_installed_agent_runtime_process(
-            "test", environ=runtime_env
-        )
+        replayed = build_installed_agent_runtime_process("test", environ=runtime_env)
         restart_run = replayed.run_once()
         replayed.close()
         replayed = None
@@ -249,54 +241,24 @@ def _verify_canonical_worker(
                     {"tenant_id": tenant_id},
                 ).mappings()
             )
-        checks = {
-            "actual_database_identity": readiness["database"]["database_name"]
-            == EXPECTED_DATABASE
-            and readiness["database"]["database_user"] == EXPECTED_ROLE,
-            "readiness_truthful": readiness["readiness_status"] == "READY"
-            and restart_readiness["readiness_status"] == "READY"
-            and all(readiness["checks"].values()),
-            "normal_admitted_setup": dependency.disposition == "TERMINAL"
-            and executable_plan["steps"][1]["executor_kind"]
-            == "DETERMINISTIC_REPORT",
-            "worker_unavailable_preserved_pending_job": pending_job is not None
-            and pending_job["state"] == "QUEUED"
-            and int(pending_job["attempt_no"]) == 0
-            and pending_result_count == 0,
-            "canonical_worker_claimed_assignment": first_run["execution_count"] == 1
-            and first_run["succeeded_count"] == 1
-            and first_run["failed_count"] == 0,
-            "runtime_jobs_settled": len(jobs) == 2
-            and all(row["state"] == "DONE" for row in jobs),
-            "attempts_exactly_once": len(attempts) == 2
-            and all(row["outcome"] == "DONE" for row in attempts)
-            and len({row["runtime_job_id"] for row in attempts}) == 2,
-            "heartbeat_persisted": heartbeat is not None
-            and heartbeat["status"] == "STOPPED"
-            and heartbeat["metadata"].get("process_id") == PROCESS_ID,
-            "restart_did_not_double_execute": restart_run["execution_count"] == 0
-            and len(attempts) == 2,
-            "canonical_command_has_no_demo_dependency": (
+        return _component_evidence(
+            readiness=readiness,
+            restart_readiness=restart_readiness,
+            dependency=dependency,
+            executable_plan=executable_plan,
+            pending_job=pending_job,
+            pending_result_count=pending_result_count,
+            first_run=first_run,
+            restart_run=restart_run,
+            jobs=jobs,
+            attempts=attempts,
+            heartbeat=heartbeat,
+            worker_id=worker_id,
+            cleanup_counts=cleanup_counts,
+            processes_closed=(
                 installed is None and restarted is None and replayed is None
             ),
-            "component_scope_only": True,
-        }
-        row_counts = {
-            "runtime_job": len(jobs),
-            "runtime_job_attempt": len(attempts),
-            "heartbeat": 1 if heartbeat is not None else 0,
-        }
-        return {
-            "checks": checks,
-            "row_counts": row_counts,
-            "cleanup_counts": cleanup_counts,
-            "process": {
-                "process_id": PROCESS_ID,
-                "worker_id": worker_id,
-                "first_execution_count": first_run["execution_count"],
-                "restart_execution_count": restart_run["execution_count"],
-            },
-        }
+        )
     finally:
         if installed is not None:
             installed.close()
@@ -312,6 +274,69 @@ def _verify_canonical_worker(
                 queue_name=queue_name,
             )
         )
+
+
+def _component_evidence(
+    *,
+    readiness: Mapping[str, Any],
+    restart_readiness: Mapping[str, Any],
+    dependency: Any,
+    executable_plan: Mapping[str, Any],
+    pending_job: Mapping[str, Any] | None,
+    pending_result_count: int,
+    first_run: Mapping[str, Any],
+    restart_run: Mapping[str, Any],
+    jobs: tuple[Mapping[str, Any], ...],
+    attempts: tuple[Mapping[str, Any], ...],
+    heartbeat: Mapping[str, Any] | None,
+    worker_id: str,
+    cleanup_counts: Mapping[str, int],
+    processes_closed: bool,
+) -> dict[str, Any]:
+    checks = {
+        "actual_database_identity": readiness["database"]["database_name"]
+        == EXPECTED_DATABASE
+        and readiness["database"]["database_user"] == EXPECTED_ROLE,
+        "readiness_truthful": readiness["readiness_status"] == "READY"
+        and restart_readiness["readiness_status"] == "READY"
+        and all(readiness["checks"].values()),
+        "normal_admitted_setup": dependency.disposition == "TERMINAL"
+        and executable_plan["steps"][1]["executor_kind"] == "DETERMINISTIC_REPORT",
+        "worker_unavailable_preserved_pending_job": pending_job is not None
+        and pending_job["state"] == "QUEUED"
+        and int(pending_job["attempt_no"]) == 0
+        and pending_result_count == 0,
+        "canonical_worker_claimed_assignment": first_run["execution_count"] == 1
+        and first_run["succeeded_count"] == 1
+        and first_run["failed_count"] == 0,
+        "runtime_jobs_settled": len(jobs) == 2
+        and all(row["state"] == "DONE" for row in jobs),
+        "attempts_exactly_once": len(attempts) == 2
+        and all(row["outcome"] == "DONE" for row in attempts)
+        and len({row["runtime_job_id"] for row in attempts}) == 2,
+        "heartbeat_persisted": heartbeat is not None
+        and heartbeat["status"] == "STOPPED"
+        and heartbeat["metadata"].get("process_id") == PROCESS_ID,
+        "restart_did_not_double_execute": restart_run["execution_count"] == 0
+        and len(attempts) == 2,
+        "canonical_command_has_no_demo_dependency": processes_closed,
+        "component_scope_only": True,
+    }
+    return {
+        "checks": checks,
+        "row_counts": {
+            "runtime_job": len(jobs),
+            "runtime_job_attempt": len(attempts),
+            "heartbeat": 1 if heartbeat is not None else 0,
+        },
+        "cleanup_counts": cleanup_counts,
+        "process": {
+            "process_id": PROCESS_ID,
+            "worker_id": worker_id,
+            "first_execution_count": first_run["execution_count"],
+            "restart_execution_count": restart_run["execution_count"],
+        },
+    }
 
 
 def _install_report_binding(
@@ -333,7 +358,9 @@ def _install_report_binding(
     )
     with factory.begin() as session:
         dialect = session.get_bind().dialect.name
-        expression = "CAST(:bindings AS jsonb)" if dialect == "postgresql" else ":bindings"
+        expression = (
+            "CAST(:bindings AS jsonb)" if dialect == "postgresql" else ":bindings"
+        )
         session.execute(
             text(
                 "UPDATE ae_executable_step SET input_binding_json = "

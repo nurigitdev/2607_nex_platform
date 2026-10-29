@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import asyncio
 import json
 from copy import deepcopy
+from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
@@ -9,6 +11,7 @@ from uuid import UUID
 
 import nex_ae_api.product_controlled_skill as controlled
 import nex_ae_api.product_runtime_profile as profile
+import nex_runtime.nsl_runtime_adapter as nsl_adapter
 import pytest
 from nex_ae_api.multi_step_engine import StepExecutionContext
 from nex_ae_api.product_capabilities import load_product_capability_registry
@@ -398,7 +401,7 @@ def test_product_authority_resolves_persisted_intent_oa_and_eos(
         environ={"NEX_AE_PRODUCT_CAPABILITY_REGISTRY_PATH": str(REGISTRY)},
     )
     revision = "sha256:" + "1" * 64
-    runtime._oa = SimpleNamespace(  # noqa: SLF001 - focused boundary test
+    runtime._oa = SimpleNamespace(
         effective_authorization=lambda **_values: {
             "roles": ["employee"],
             "scopes": ["finance:voucher-draft:create"],
@@ -408,7 +411,7 @@ def test_product_authority_resolves_persisted_intent_oa_and_eos(
     eos_authority = _eos_authority()
     project = eos_authority["project"]
     accounts = eos_authority["accounts"]
-    runtime._eos = SimpleNamespace(  # noqa: SLF001 - focused boundary test
+    runtime._eos = SimpleNamespace(
         resolve=lambda **_values: {
             "project": {**project, "status": "ACTIVE"},
             "accounts": accounts,
@@ -425,7 +428,7 @@ def test_product_authority_resolves_persisted_intent_oa_and_eos(
         existing_result=None,
     )
 
-    authority = runtime._resolve_authority(context)  # noqa: SLF001
+    authority = runtime._resolve_authority(context)
 
     assert authority.project_id == project["project_id"]
     assert authority.agent_id == agent_id
@@ -612,3 +615,667 @@ def test_product_miscellaneous_fail_closed_helpers(tmp_path: Path) -> None:
     assert controlled._retryable(RuntimeError("bad input")) is False
     now = datetime.now(UTC)
     assert controlled._time(now).endswith("Z")
+
+
+def _installed_binding() -> nsl_adapter.NslExecutionBinding:
+    registration = load_product_capability_registry(
+        {"NEX_AE_PRODUCT_CAPABILITY_REGISTRY_PATH": str(REGISTRY)}
+    ).resolve(PRODUCT_CAPABILITY_ID, required=True)
+    assert registration is not None
+    product = _product_business_binding(
+        tenant_id="VO00",
+        work_intent=_work_intent("10000000-0000-4000-8000-000000000010"),
+        registration=registration,
+        principal_id="employee-1001",
+        eos=_eos_authority(),
+    )
+    authorization = {
+        "roles": ["employee"],
+        "scopes": ["finance:voucher-draft:create"],
+        "revision_hash": "sha256:" + "1" * 64,
+    }
+    return nsl_adapter.NslExecutionBinding(
+        input_document=product["nsl_input"],
+        principal_document=controlled._principal_document(
+            tenant_id="VO00",
+            principal_id="employee-1001",
+            authorization=authorization,
+        ),
+        handlers=_product_handlers(product),
+        write_tool_id=PRODUCT_CAPABILITY_ID,
+        write_tool_version="1.1.0",
+        precondition_evidence_ref="product-authority:sha256:" + "2" * 64,
+    )
+
+
+def test_installed_nsl_adapter_runs_to_durable_approval_checkpoint(
+    tmp_path: Path,
+) -> None:
+    bundle = load_nsl_runtime_bundle(BUNDLE)
+    package = nsl_adapter.InstalledNslPackage(bundle, SKILL, tmp_path / "state")
+    binding = _installed_binding()
+    values = {
+        "tenant_id": "VO00",
+        "agent_execution_id": "10000000-0000-4000-8000-000000000010",
+        "executable_step_id": "20000000-0000-4000-8000-000000000010",
+        "nsl_execution_id": "30000000-0000-4000-8000-000000000010",
+        "business_operation_id": "40000000-0000-4000-8000-000000000010",
+        "binding": binding,
+    }
+    execution = package.execution(**values)
+
+    assert execution.existing_approval_request() is None
+    session = asyncio.run(execution.start(execution.file_state_port))
+    assert session.approval_request is not None
+    assert session.checkpoint is not None
+    assert execution.checkpoint_version >= 1
+    assert execution.existing_approval_request() is not None
+
+    replay = package.execution(**values)
+    assert replay.checkpoint_path == execution.checkpoint_path
+    drifted_input = deepcopy(dict(binding.input_document))
+    drifted_input["description_text"] = "collision"
+    with pytest.raises(nsl_adapter.NslRuntimeAdapterError, match="collision"):
+        package.execution(
+            **{
+                **values,
+                "binding": replace(binding, input_document=drifted_input),
+            }
+        )
+
+
+@pytest.mark.parametrize(
+    ("changes", "message"),
+    (
+        ({"write_tool_id": ""}, "write_tool_id"),
+        ({"write_tool_version": None}, "write_tool_version"),
+        ({"precondition_evidence_ref": "  "}, "precondition_evidence_ref"),
+        ({"provider_guarantee_ref": 1}, "provider_guarantee_ref"),
+        ({"input_document": []}, "input document"),
+        ({"principal_document": []}, "principal document"),
+        ({"handlers": {}}, "unavailable"),
+        ({"handlers": {"TOOL": object()}}, "callable"),
+    ),
+)
+def test_nsl_execution_binding_rejects_malformed_authority(
+    changes: dict, message: str
+) -> None:
+    binding = _installed_binding()
+    with pytest.raises(nsl_adapter.NslRuntimeAdapterError, match=message):
+        replace(binding, **changes)
+
+
+def test_nsl_adapter_rejects_package_identity_json_and_path_drift(
+    tmp_path: Path,
+) -> None:
+    bundle = load_nsl_runtime_bundle(BUNDLE)
+    with pytest.raises(nsl_adapter.NslRuntimeAdapterError, match="identity"):
+        nsl_adapter.InstalledNslPackage(
+            replace(bundle, skill_id="FINANCE.WRONG"),
+            SKILL,
+            tmp_path / "state",
+        )
+
+    array_path = tmp_path / "array.json"
+    array_path.write_text("[]", encoding="utf-8")
+    with pytest.raises(nsl_adapter.NslRuntimeAdapterError, match="object"):
+        nsl_adapter._json_object(array_path)
+    malformed = tmp_path / "malformed.json"
+    malformed.write_text("{", encoding="utf-8")
+    with pytest.raises(nsl_adapter.NslRuntimeAdapterError, match="unavailable"):
+        nsl_adapter._json_object(malformed)
+    with pytest.raises(nsl_adapter.NslRuntimeAdapterError, match="identity"):
+        nsl_adapter._identity(" ")
+    for value in (".", "..", "tenant/escape"):
+        with pytest.raises(nsl_adapter.NslRuntimeAdapterError, match="path identity"):
+            nsl_adapter._path_segment(value)
+
+
+def test_installed_nsl_adapter_builds_controlled_write_request_and_rejects_drift(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    import nsl.audit
+    import nsl.core
+    import nsl.replay
+    import nsl.runtime
+    import nsl.runtime_models
+    import nsl.tools
+    import nsl.validation
+
+    registration = load_product_capability_registry(
+        {"NEX_AE_PRODUCT_CAPABILITY_REGISTRY_PATH": str(REGISTRY)}
+    ).resolve(PRODUCT_CAPABILITY_ID, required=True)
+    assert registration is not None
+    product = _product_business_binding(
+        tenant_id="VO00",
+        work_intent=_work_intent("10000000-0000-4000-8000-000000000010"),
+        registration=registration,
+        principal_id="employee-1001",
+        eos=_eos_authority(),
+    )
+    package = nsl_adapter.InstalledNslPackage(
+        load_nsl_runtime_bundle(BUNDLE), SKILL, tmp_path / "state"
+    )
+    execution = package.execution(
+        tenant_id="VO00",
+        agent_execution_id="10000000-0000-4000-8000-000000000010",
+        executable_step_id="20000000-0000-4000-8000-000000000010",
+        nsl_execution_id="30000000-0000-4000-8000-000000000010",
+        business_operation_id="40000000-0000-4000-8000-000000000010",
+        binding=_installed_binding(),
+    )
+    intent = SimpleNamespace(
+        payload_hash=nsl_adapter.nsl_write_payload_hash_ref(
+            product["canonical_payload"]
+        ),
+        node_id="write-1",
+        tool_id=PRODUCT_CAPABILITY_ID,
+        write_intent_hash="sha256:" + "3" * 64,
+    )
+
+    class RuntimeEngine:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        async def prepare_controlled_write_intent(self, _context, _tools):
+            return intent
+
+    class Evidence:
+        def __init__(self, **values):
+            self.values = values
+
+    monkeypatch.setattr(nsl.runtime, "RuntimeEngine", RuntimeEngine)
+    monkeypatch.setattr(nsl.audit, "InMemorySnapshotStore", lambda: object())
+    monkeypatch.setattr(nsl.replay, "RecordingToolExecutor", lambda *_a: object())
+    monkeypatch.setattr(nsl.tools, "MockToolExecutor", lambda *_a: object())
+    monkeypatch.setattr(
+        nsl.runtime_models.ValidationSummary,
+        "from_checks",
+        lambda checks: ("validated", tuple(checks)),
+    )
+    monkeypatch.setattr(nsl.validation, "WriteContractEvidence", Evidence)
+    monkeypatch.setattr(nsl.validation, "BusinessPreconditionEvidence", Evidence)
+    monkeypatch.setattr(nsl.validation, "PreWriteEvidence", Evidence)
+    monkeypatch.setattr(nsl.core, "ApprovalRequestId", lambda value: f"request:{value}")
+    invocation = SimpleNamespace(
+        outcome=SimpleNamespace(
+            context=SimpleNamespace(
+                checks=("check-1",),
+                identity=SimpleNamespace(
+                    business_operation_id=execution.business_operation_id
+                ),
+            )
+        ),
+        resume_token=SimpleNamespace(approval_evidence="approval-evidence"),
+        approval_request_id="approval-1",
+    )
+    public_api = SimpleNamespace(
+        provider_idempotency_evidence=lambda **values: Evidence(**values)
+    )
+
+    request = execution.controlled_write_request(
+        invocation=invocation,
+        public_api=public_api,
+        request_factory=lambda **values: values,
+        canonical_write_payload=product["canonical_payload"],
+        authority_hash="sha256:" + "4" * 64,
+    )
+
+    assert request["intent"] is intent
+    assert request["approval_request_id"] == "request:approval-1"
+    assert request["approval_evidence"] == "approval-evidence"
+    assert request["business_preconditions"].values["tenant_id"] == "VO00"
+    assert (
+        request["provider_idempotency_evidence"].values["provider_guarantee_ref"]
+        == "eos:idempotency:product"
+    )
+
+    with pytest.raises(nsl_adapter.NslRuntimeAdapterError, match="differs"):
+        execution.controlled_write_request(
+            invocation=invocation,
+            public_api=public_api,
+            request_factory=lambda **values: values,
+            canonical_write_payload={"tenant_id": "DRIFT"},
+            authority_hash="sha256:" + "4" * 64,
+        )
+
+
+def test_product_controlled_state_and_approval_binding_ports() -> None:
+    calls: list[tuple[str, object]] = []
+
+    class FilePort:
+        async def save(self, value):
+            calls.append(("file.save", value))
+
+        async def publish(self, value):
+            calls.append(("file.publish", value))
+
+    class Publication:
+        async def publish(self, value):
+            calls.append(("platform.publish", value))
+
+    execution = SimpleNamespace(
+        file_state_port=FilePort(),
+        tenant_id="VO00",
+        nsl_execution_id="nsl-1",
+        business_operation_id="business-1",
+        checkpoint_version=7,
+    )
+    state = controlled._PlatformControlledStatePort(
+        execution=execution, publication=Publication()
+    )
+    asyncio.run(state.save("checkpoint"))
+    asyncio.run(state.publish("request-1"))
+    asyncio.run(state.publish_platform("request-2"))
+
+    context = StepExecutionContext(
+        job={"tenant_id": "VO00"},
+        attempt={},
+        step={
+            "agent_execution_id": "agent-execution-1",
+            "executable_step_id": "step-1",
+        },
+        dependency_results=(),
+        existing_result=None,
+    )
+    binding = controlled._ApprovalBindingSource(
+        context=context,
+        execution=execution,
+        approver_role="finance-approver",
+    ).resolve({})
+
+    assert calls == [
+        ("file.save", "checkpoint"),
+        ("file.publish", "request-1"),
+        ("platform.publish", "request-1"),
+        ("platform.publish", "request-2"),
+    ]
+    assert binding["checkpoint_version"] == 7
+    assert binding["target_role_ref"] == "finance-approver"
+
+
+def test_governed_write_source_allows_fresh_authority_and_denies_drift() -> None:
+    evaluated_at = datetime.now(UTC)
+    authorization = {
+        "scopes": ["finance:voucher-draft:create"],
+        "revision_hash": "sha256:" + "1" * 64,
+        "roles": ["employee"],
+    }
+    source = controlled._GovernedWriteSource(
+        authorization_source=SimpleNamespace(
+            effective_authorization=lambda **_values: authorization
+        ),
+        platform_evidence={
+            "agent_execution_id": "execution-1",
+            "executable_step_id": "step-1",
+        },
+        evaluated_at=evaluated_at,
+        agent_id="agent-1",
+        org_scope_refs=("org-1",),
+        project_id="project-1",
+    )
+    decision = source.resolve(
+        SimpleNamespace(
+            tenant_id="VO00",
+            subject_id="employee-1001",
+            business_operation_id="business-1",
+        )
+    )
+
+    assert decision["oa_allowed"] is True
+    assert decision["operation_trust_decision"]["decision"] == "ALLOW"
+    assert decision["protected_operation"]["org_scope_refs"] == ["org-1"]
+    assert decision["oa_decision_ref"].startswith("oa-authz:sha256:")
+
+    with pytest.raises(controlled.ProductControlledSkillError, match="missing"):
+        controlled._GovernedWriteSource(
+            authorization_source=source.authorization_source,
+            platform_evidence=None,
+            evaluated_at=evaluated_at,
+            agent_id="agent-1",
+            org_scope_refs=(),
+            project_id="project-1",
+        )
+    source.authorization_source = SimpleNamespace(
+        effective_authorization=lambda **_values: {"scopes": []}
+    )
+    with pytest.raises(controlled.ProductControlledSkillError, match="denied"):
+        source.resolve(
+            SimpleNamespace(
+                tenant_id="VO00",
+                subject_id="employee-1001",
+                business_operation_id="business-1",
+            )
+        )
+
+
+def test_product_intent_authority_and_attachment_guards_cover_conflicts(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    with pytest.raises(controlled.ProductControlledSkillError, match="selector"):
+        controlled._product_business_request({"entity_selectors": None})
+    with pytest.raises(controlled.ProductControlledSkillError, match="one Project"):
+        controlled._product_business_request(
+            {
+                "entity_selectors": [
+                    {"entity_type": "PROJECT", "raw_text": "A"},
+                    {"entity_type": "PROJECT", "raw_text": "B"},
+                ],
+                "parameter_candidates": _parameters(),
+            }
+        )
+    with pytest.raises(controlled.ProductControlledSkillError, match="parameters"):
+        controlled._work_intent_parameters({"parameter_candidates": None})
+    with pytest.raises(controlled.ProductControlledSkillError, match="incomplete"):
+        controlled._work_intent_parameters(
+            {"parameter_candidates": [{"name": "amount", "value": "1"}]}
+        )
+    with pytest.raises(
+        controlled.ProductControlledSkillError, match="transaction_date"
+    ):
+        controlled._iso_date("not-a-date")
+
+    request = {
+        "project_code": "PROJECT-A-2",
+        "account_codes": ("TRAVEL", "CASH"),
+    }
+    with pytest.raises(controlled.ProductControlledSkillError, match="Project"):
+        controlled._validated_eos_authority({}, request=request)
+    invalid_accounts = _eos_authority()
+    invalid_accounts["accounts"] = [object(), object()]
+    with pytest.raises(controlled.ProductControlledSkillError, match="Account"):
+        controlled._validated_eos_authority(invalid_accounts, request=request)
+
+    binding = {
+        "attachment_batch_id": "batch-1",
+        "attachment_manifest_hash": "sha256:" + "2" * 64,
+    }
+    monkeypatch.setattr(
+        controlled, "work_intent_manifest_binding", lambda _intent: binding
+    )
+    repository = SimpleNamespace(get_batch=lambda **_values: None)
+    monkeypatch.setattr(
+        controlled,
+        "SqlAlchemyVoucherAttachmentRepository",
+        lambda _sessions: repository,
+    )
+    with pytest.raises(controlled.ProductControlledSkillError, match="approval-locked"):
+        controlled._persisted_attachment_manifest(
+            object(), tenant_id="VO00", work_intent={}
+        )
+
+    repository.get_batch = lambda **_values: {"state": "LOCKED"}
+    monkeypatch.setattr(
+        controlled,
+        "build_attachment_manifest",
+        lambda _batch: {"attachment_manifest_hash": "sha256:" + "3" * 64},
+    )
+    with pytest.raises(controlled.ProductControlledSkillError, match="differs"):
+        controlled._persisted_attachment_manifest(
+            object(), tenant_id="VO00", work_intent={}
+        )
+    expected = {"attachment_manifest_hash": binding["attachment_manifest_hash"]}
+    monkeypatch.setattr(
+        controlled, "build_attachment_manifest", lambda _batch: expected
+    )
+    assert (
+        controlled._persisted_attachment_manifest(
+            object(), tenant_id="VO00", work_intent={}
+        )
+        == expected
+    )
+
+
+def test_product_runtime_lineage_and_bundle_guards() -> None:
+    context = StepExecutionContext(
+        job={"tenant_id": "VO00"},
+        attempt={"runtime_job_attempt_id": "attempt-1"},
+        step={
+            "agent_execution_id": "execution-1",
+            "executable_step_id": "step-1",
+        },
+        dependency_results=(),
+        existing_result=None,
+    )
+    claim = controlled._claim_from_context(context)
+    assert claim.job["tenant_id"] == "VO00"
+    assert controlled._approval_wait_id(
+        context=context,
+        approval_request_id="approval-1",
+        checkpoint_version=2,
+    )
+
+    bundle = load_nsl_runtime_bundle(BUNDLE)
+    runtime = object.__new__(ProductControlledSkillRuntime)
+    runtime._bundle = bundle
+    runtime._registration = SimpleNamespace(
+        skill_artifact={
+            "bundle_id": "wrong",
+            "skill_id": bundle.skill_id,
+            "exact_skill_version": bundle.skill_version,
+            "skill_semantic_hash": bundle.skill_semantic_hash,
+        }
+    )
+    with pytest.raises(controlled.ProductControlledSkillError, match="differs"):
+        runtime._require_registration_matches_bundle()
+
+    with pytest.raises(controlled.ProductControlledSkillError, match="unavailable"):
+        controlled._resolve_admission_lock(Path("/tmp/missing/manifest.json"), bundle)
+
+
+def _runtime_context() -> StepExecutionContext:
+    return StepExecutionContext(
+        job={"tenant_id": "VO00"},
+        attempt={"runtime_job_attempt_id": "attempt-1"},
+        step={
+            "agent_execution_id": "execution-1",
+            "executable_step_id": "step-1",
+            "skill_binding": {
+                "skill_id": "FINANCE.VOUCHER_DRAFT_CREATE",
+                "exact_skill_version": "1.1.0",
+                "skill_semantic_hash": "sha256:" + "1" * 64,
+                "runtime_contract_ref": "contract://product/v1",
+                "trust_policy_id": "policy-1",
+            },
+        },
+        dependency_results=(),
+        existing_result=None,
+    )
+
+
+@pytest.mark.parametrize("existing", (False, True))
+def test_product_initial_enters_or_replays_approval_wait(
+    monkeypatch: pytest.MonkeyPatch,
+    existing: bool,
+) -> None:
+    request = SimpleNamespace(approval_request_id="approval-1")
+    publication_calls: list[object] = []
+
+    class Execution:
+        tenant_id = "VO00"
+        nsl_execution_id = "nsl-1"
+        business_operation_id = "business-1"
+        checkpoint_version = 2
+        file_state_port = SimpleNamespace()
+
+        def existing_approval_request(self):
+            return request if existing else None
+
+        async def start(self, _state_port):
+            return SimpleNamespace(approval_request=request, checkpoint=object())
+
+    class Publication:
+        def __init__(self, **_values):
+            pass
+
+        async def publish(self, value):
+            publication_calls.append(value)
+
+    monkeypatch.setattr(controlled, "P8NSLApprovalPort", Publication)
+    monkeypatch.setattr(
+        controlled, "SqlAlchemyWaitRegistrationRepository", lambda _sessions: object()
+    )
+    monkeypatch.setattr(
+        controlled, "build_default_wc_approval_work_item_client", lambda: object()
+    )
+    runtime = object.__new__(ProductControlledSkillRuntime)
+    runtime._sessions = object()
+    runtime._request_store = object()
+    runtime._config = SimpleNamespace(approver_role="finance-approver")
+    runtime._resolve_authority = lambda _context: SimpleNamespace(
+        context_projection={"context": "projection"},
+        canonical_write_payload={"tenant_id": "VO00"},
+        execution_binding=object(),
+    )
+    runtime._execution = lambda **_values: Execution()
+    dependencies = SimpleNamespace(
+        artifact_gateway=SimpleNamespace(
+            resolve_verified=lambda **_values: {"artifact_ref": "artifact-1"}
+        ),
+        binding_repository=SimpleNamespace(
+            bind_request=lambda **_values: {
+                "binding": {
+                    "nsl_execution_id": "nsl-1",
+                    "business_operation_id": "business-1",
+                }
+            }
+        ),
+    )
+
+    outcome = runtime.initial(_runtime_context(), dependencies)
+
+    assert outcome.state == "WAITING"
+    assert outcome.business_operation_id == "business-1"
+    assert outcome.wait_external_ref == "approval-1"
+    assert bool(publication_calls) is existing
+
+
+def test_product_initial_fails_closed_when_skill_does_not_suspend(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class Execution:
+        tenant_id = "VO00"
+        nsl_execution_id = "nsl-1"
+        business_operation_id = "business-1"
+        checkpoint_version = 1
+        file_state_port = SimpleNamespace()
+
+        def existing_approval_request(self):
+            return None
+
+        async def start(self, _state_port):
+            return SimpleNamespace(approval_request=None, checkpoint=None)
+
+    monkeypatch.setattr(
+        controlled,
+        "P8NSLApprovalPort",
+        lambda **_values: SimpleNamespace(publish=lambda _request: None),
+    )
+    monkeypatch.setattr(
+        controlled, "SqlAlchemyWaitRegistrationRepository", lambda _sessions: object()
+    )
+    monkeypatch.setattr(
+        controlled, "build_default_wc_approval_work_item_client", lambda: object()
+    )
+    runtime = object.__new__(ProductControlledSkillRuntime)
+    runtime._sessions = object()
+    runtime._request_store = object()
+    runtime._config = SimpleNamespace(approver_role="finance-approver")
+    runtime._resolve_authority = lambda _context: SimpleNamespace(
+        context_projection={},
+        canonical_write_payload={"tenant_id": "VO00"},
+        execution_binding=object(),
+    )
+    runtime._execution = lambda **_values: Execution()
+    dependencies = SimpleNamespace(
+        artifact_gateway=SimpleNamespace(
+            resolve_verified=lambda **_values: {"artifact_ref": "artifact-1"}
+        ),
+        binding_repository=SimpleNamespace(
+            bind_request=lambda **_values: {
+                "binding": {
+                    "nsl_execution_id": "nsl-1",
+                    "business_operation_id": "business-1",
+                }
+            }
+        ),
+    )
+
+    with pytest.raises(controlled.P5StepExecutorError) as caught:
+        runtime.initial(_runtime_context(), dependencies)
+    assert caught.value.error_code == "ae.product_controlled_skill_initial_failed"
+
+
+@pytest.mark.parametrize("approved", (False, True))
+def test_product_resume_maps_denial_and_controlled_write_outcomes(
+    monkeypatch: pytest.MonkeyPatch,
+    approved: bool,
+) -> None:
+    resume = {
+        "tenant_id": "VO00",
+        "agent_execution_id": "execution-1",
+        "executable_step_id": "step-1",
+        "nsl_execution_id": "nsl-1",
+        "business_operation_id": "business-1",
+    }
+    source = SimpleNamespace(resolve=lambda _claim: resume)
+    monkeypatch.setattr(
+        controlled, "SqlAlchemyNslApprovalResumeSource", lambda _sessions: source
+    )
+    monkeypatch.setattr(
+        controlled,
+        "PlatformApprovalEvidenceVerifier",
+        lambda **_values: object(),
+    )
+    monkeypatch.setattr(
+        controlled,
+        "PersistedApprovalEventAuthoritySource",
+        lambda _evidence: object(),
+    )
+    invocation = SimpleNamespace(
+        outcome=SimpleNamespace(
+            validation=SimpleNamespace(
+                approval_gate_passed=approved,
+                approval_status=SimpleNamespace(
+                    value="APPROVED" if approved else "DENIED"
+                ),
+                reason_code=None if approved else "REJECTED",
+            )
+        ),
+        business_operation_id="business-1",
+    )
+
+    class Integration:
+        def __init__(self, **_values):
+            pass
+
+        async def resume(self, *_args, **_values):
+            return invocation
+
+    monkeypatch.setattr(controlled, "NslApprovalResumeIntegration", Integration)
+    execution = SimpleNamespace(
+        skill=object(),
+        request=object(),
+        file_state_port=object(),
+    )
+    runtime = object.__new__(ProductControlledSkillRuntime)
+    runtime._sessions = object()
+    runtime._request_store = object()
+    runtime._evidence = object()
+    runtime.public_api = object()
+    runtime._oa = object()
+    runtime._package = SimpleNamespace(execution=lambda **_values: execution)
+    authority = SimpleNamespace(execution_binding=object())
+    runtime._resolve_authority = lambda _context: authority
+    controlled_result = SimpleNamespace(
+        outcome=SimpleNamespace(commit_state=SimpleNamespace(value="COMMITTED")),
+        verification=SimpleNamespace(status=SimpleNamespace(value="VERIFIED")),
+        write_request=SimpleNamespace(idempotency_key="idem-1"),
+    )
+    runtime._execute_controlled_write = lambda **_values: controlled_result
+
+    outcome = runtime.resume(_runtime_context(), object(), object())
+
+    assert outcome.state == ("SUCCEEDED" if approved else "FAILED")
+    assert outcome.business_operation_id == "business-1"

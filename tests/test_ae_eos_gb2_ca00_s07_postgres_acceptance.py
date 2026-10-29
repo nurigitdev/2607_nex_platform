@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import time
+from types import SimpleNamespace
 
 import pytest
 import run_gb2_ca00_s07_eos_outbox_publisher as smoke
@@ -14,9 +15,7 @@ def test_smoke_is_protected_and_opt_in() -> None:
 
 
 def test_smoke_rejects_missing_and_wrong_database_targets() -> None:
-    missing = smoke.run_gb2_ca00_s07_eos_outbox_publisher(
-        {smoke.SMOKE_ENV: "1"}
-    )
+    missing = smoke.run_gb2_ca00_s07_eos_outbox_publisher({smoke.SMOKE_ENV: "1"})
     wrong = smoke.run_gb2_ca00_s07_eos_outbox_publisher(
         {
             smoke.SMOKE_ENV: "1",
@@ -85,9 +84,7 @@ def test_smoke_fails_closed_and_redacts_password(monkeypatch) -> None:
         smoke,
         "run_service_migrations",
         lambda *_args, **_kwargs: (_ for _ in ()).throw(
-            RuntimeError(
-                "postgresql://nex_eos_user:secret@127.0.0.1/nex_eos_test"
-            )
+            RuntimeError("postgresql://nex_eos_user:secret@127.0.0.1/nex_eos_test")
         ),
     )
     result = smoke.run_gb2_ca00_s07_eos_outbox_publisher(
@@ -117,10 +114,13 @@ def test_target_summary_and_redaction_helpers() -> None:
     assert not smoke._target_url_allowed(
         "sqlite:///nex_eos_test", "nex_eos_user", "nex_eos_test"
     )
-    assert smoke._redact_detail(
-        "postgresql://u:p@host/db unavailable",
-        database_urls=("postgresql://u:p@host/db",),
-    ) == "postgresql://u:***@host/db unavailable"
+    assert (
+        smoke._redact_detail(
+            "postgresql://u:p@host/db unavailable",
+            database_urls=("postgresql://u:p@host/db",),
+        )
+        == "postgresql://u:***@host/db unavailable"
+    )
     assert smoke.summary_line({"status": "FAIL"}) == (
         "gb2_ca00_s07_eos_outbox=fail classification=none "
         "checks=0/0 outbox=0 http=0 remaining=0"
@@ -171,3 +171,114 @@ def test_bridge_raises_http_error_for_denied_response() -> None:
         bridge(request, timeout=1.0)
     assert exc.value.code == 403
     assert bridge.status_codes == [403]
+
+
+def _component_values() -> dict:
+    transaction = SimpleNamespace(
+        created=True,
+        event_payload_hash="sha256:" + "1" * 64,
+    )
+    return {
+        "eos_identity": ("nex_eos_test", "nex_eos_user"),
+        "ae_identity": ("nex_ae_test", "nex_ae_user"),
+        "denied_readiness": {"readiness_status": "READY"},
+        "readiness": {"readiness_status": "READY", "checks": {"outbox": True}},
+        "transaction": transaction,
+        "mutation_calls": 1,
+        "eos_counts": {
+            "eos_business_operation": 1,
+            "eos_idempotency": 1,
+            "eos_outbox": 1,
+        },
+        "status_codes": (403, 201, 200),
+        "denied_run": {"failed_count": 1},
+        "denied_outbox": {
+            "delivery_state": "PENDING",
+            "attempt_count": 1,
+            "published_at": None,
+        },
+        "denied_ae_count": 0,
+        "admitted_run": {"failed_count": 0, "published_count": 1},
+        "final_outbox": {
+            "delivery_state": "PUBLISHED",
+            "attempt_count": 2,
+            "published_at": "2026-10-29T00:00:00Z",
+        },
+        "replay_receipt": SimpleNamespace(
+            event_id="event-1",
+            event_payload_hash=transaction.event_payload_hash,
+        ),
+        "event_id": "event-1",
+        "ae_event_count": 1,
+        "restart_run": {"work_cycles": 0, "published_count": 0},
+        "heartbeat": {
+            "status": "STOPPED",
+            "metadata": {"process_id": smoke.PROCESS_ID},
+        },
+        "worker_id": "worker-1",
+        "cleanup": {"eos_remaining": 0, "ae_remaining": 0},
+    }
+
+
+def test_component_evidence_accepts_db_less_outbox_replay_orchestration() -> None:
+    evidence = smoke._component_evidence(**_component_values())
+
+    assert evidence["status"] == "PASS"
+    assert all(evidence["checks"].values())
+    assert evidence["row_counts"]["ae_operational_events"] == 1
+    assert evidence["process"]["restart_work_cycles"] == 0
+
+
+@pytest.mark.parametrize(
+    ("mutation", "failed_check"),
+    (
+        (
+            lambda value: value.update(eos_identity=("wrong", "wrong")),
+            "actual_database_identities",
+        ),
+        (
+            lambda value: value["readiness"]["checks"].update(outbox=False),
+            "readiness_truthful",
+        ),
+        (
+            lambda value: setattr(value["transaction"], "created", False),
+            "owner_business_operation_admission",
+        ),
+        (
+            lambda value: value.update(status_codes=()),
+            "wrong_signed_trust_failed_closed",
+        ),
+        (
+            lambda value: value["denied_outbox"].update(published_at="unexpected"),
+            "wrong_signed_trust_failed_closed",
+        ),
+        (
+            lambda value: value["final_outbox"].update(delivery_state="PENDING"),
+            "restart_resumed_pending_publication",
+        ),
+        (
+            lambda value: value.update(status_codes=(403, 500, 200)),
+            "signed_transport_accepted",
+        ),
+        (
+            lambda value: setattr(value["replay_receipt"], "event_id", "conflict"),
+            "publication_result_persisted",
+        ),
+        (lambda value: value.update(ae_event_count=2), "replay_idempotent"),
+        (
+            lambda value: value["restart_run"].update(published_count=1),
+            "restart_did_not_double_publish",
+        ),
+        (lambda value: value.update(heartbeat=None), "heartbeat_persisted"),
+    ),
+)
+def test_component_evidence_rejects_retry_replay_and_malformed_drift(
+    mutation, failed_check: str
+) -> None:
+    values = _component_values()
+    mutation(values)
+
+    evidence = smoke._component_evidence(**values)
+
+    assert evidence["status"] == "FAIL"
+    assert evidence["checks"][failed_check] is False

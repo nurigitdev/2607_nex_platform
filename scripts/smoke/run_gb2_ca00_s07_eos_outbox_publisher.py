@@ -158,8 +158,7 @@ def run_gb2_ca00_s07_eos_outbox_publisher(
                 "profile": "test",
                 "database_environments": [EOS_DATABASE_ENV, AE_DATABASE_ENV],
                 "redacted_database_urls": {
-                    name: redact_database_url(value)
-                    for name, value in urls.items()
+                    name: redact_database_url(value) for name, value in urls.items()
                 },
                 "migration": {
                     name: {
@@ -178,9 +177,7 @@ def run_gb2_ca00_s07_eos_outbox_publisher(
             "migrations_current": migration_current,
             **dict(evidence["checks"]),
         }
-        evidence["status"] = (
-            "PASS" if all(evidence["checks"].values()) else "FAIL"
-        )
+        evidence["status"] = "PASS" if all(evidence["checks"].values()) else "FAIL"
         if evidence["status"] == "FAIL":
             evidence["failure_code"] = "gb2_s07_protected_acceptance_failed"
         return evidence
@@ -367,7 +364,9 @@ def _execute_protected_component(
             eos_counts = {
                 table: int(
                     connection.execute(
-                        text(f"SELECT count(*) FROM {table} WHERE tenant_id = :tenant_id"),
+                        text(
+                            f"SELECT count(*) FROM {table} WHERE tenant_id = :tenant_id"
+                        ),
                         {"tenant_id": tenant_id},
                     ).scalar_one()
                 )
@@ -384,60 +383,28 @@ def _execute_protected_component(
                 ).one()
             )
         ae_event_count = _ae_event_count(ae_engine, event_id=event_id)
-        checks = {
-            "actual_database_identities": eos_identity
-            == ("nex_eos_test", "nex_eos_user")
-            and ae_identity == ("nex_ae_test", "nex_ae_user"),
-            "readiness_truthful": denied_readiness["readiness_status"] == "READY"
-            and readiness["readiness_status"] == "READY"
-            and all(readiness["checks"].values()),
-            "owner_business_operation_admission": transaction.created
-            and mutation_calls == 1
-            and all(value == 1 for value in eos_counts.values()),
-            "wrong_signed_trust_failed_closed": bridge.status_codes[0] == 403
-            and denied_run["failed_count"] == 1
-            and denied_outbox["delivery_state"] == "PENDING"
-            and int(denied_outbox["attempt_count"]) == 1
-            and denied_outbox["published_at"] is None
-            and denied_ae_count == 0,
-            "restart_resumed_pending_publication": admitted_run["failed_count"] == 0
-            and admitted_run["published_count"] == 1
-            and final_outbox["delivery_state"] == "PUBLISHED"
-            and int(final_outbox["attempt_count"]) == 2
-            and final_outbox["published_at"] is not None,
-            "signed_transport_accepted": bridge.status_codes == [403, 201, 200],
-            "publication_result_persisted": replay_receipt.event_id == event_id
-            and replay_receipt.event_payload_hash == transaction.event_payload_hash,
-            "replay_idempotent": ae_event_count == 1,
-            "restart_did_not_double_publish": restart_run["work_cycles"] == 0
-            and restart_run["published_count"] == 0
-            and int(final_outbox["attempt_count"]) == 2,
-            "heartbeat_persisted": heartbeat is not None
-            and heartbeat["status"] == "STOPPED"
-            and heartbeat["metadata"].get("process_id") == PROCESS_ID,
-            "canonical_command_has_no_demo_dependency": True,
-            "component_scope_only": True,
-        }
-        return {
-            "status": "PASS" if all(checks.values()) else "FAIL",
-            "actual_postgres": True,
-            "signed_service_token": True,
-            "checks": checks,
-            "row_counts": {
-                **eos_counts,
-                "ae_operational_events": ae_event_count,
-                "http_attempts": len(bridge.status_codes),
-            },
-            "cleanup_counts": cleanup,
-            "process": {
-                "process_id": PROCESS_ID,
-                "worker_id": worker_id,
-                "failed_attempts": 1,
-                "successful_attempts": 1,
-                "restart_work_cycles": restart_run["work_cycles"],
-            },
-            "secret_included": False,
-        }
+        return _component_evidence(
+            eos_identity=eos_identity,
+            ae_identity=ae_identity,
+            denied_readiness=denied_readiness,
+            readiness=readiness,
+            transaction=transaction,
+            mutation_calls=mutation_calls,
+            eos_counts=eos_counts,
+            status_codes=tuple(bridge.status_codes),
+            denied_run=denied_run,
+            denied_outbox=denied_outbox,
+            denied_ae_count=denied_ae_count,
+            admitted_run=admitted_run,
+            final_outbox=final_outbox,
+            replay_receipt=replay_receipt,
+            event_id=event_id,
+            ae_event_count=ae_event_count,
+            restart_run=restart_run,
+            heartbeat=heartbeat,
+            worker_id=worker_id,
+            cleanup=cleanup,
+        )
     finally:
         for current in (denied_process, admitted_process, restarted_process):
             if current is not None:
@@ -454,6 +421,84 @@ def _execute_protected_component(
         cleanup.update(_cleanup_ae(ae_engine, event_id=event_id))
         eos_engine.dispose()
         ae_engine.dispose()
+
+
+def _component_evidence(
+    *,
+    eos_identity: tuple[str, str],
+    ae_identity: tuple[str, str],
+    denied_readiness: Mapping[str, Any],
+    readiness: Mapping[str, Any],
+    transaction: Any,
+    mutation_calls: int,
+    eos_counts: Mapping[str, int],
+    status_codes: tuple[int, ...],
+    denied_run: Mapping[str, Any],
+    denied_outbox: Mapping[str, Any],
+    denied_ae_count: int,
+    admitted_run: Mapping[str, Any],
+    final_outbox: Mapping[str, Any],
+    replay_receipt: Any,
+    event_id: str,
+    ae_event_count: int,
+    restart_run: Mapping[str, Any],
+    heartbeat: Mapping[str, Any] | None,
+    worker_id: str,
+    cleanup: Mapping[str, int],
+) -> dict[str, Any]:
+    checks = {
+        "actual_database_identities": eos_identity == ("nex_eos_test", "nex_eos_user")
+        and ae_identity == ("nex_ae_test", "nex_ae_user"),
+        "readiness_truthful": denied_readiness["readiness_status"] == "READY"
+        and readiness["readiness_status"] == "READY"
+        and all(readiness["checks"].values()),
+        "owner_business_operation_admission": transaction.created
+        and mutation_calls == 1
+        and all(value == 1 for value in eos_counts.values()),
+        "wrong_signed_trust_failed_closed": status_codes[:1] == (403,)
+        and denied_run["failed_count"] == 1
+        and denied_outbox["delivery_state"] == "PENDING"
+        and int(denied_outbox["attempt_count"]) == 1
+        and denied_outbox["published_at"] is None
+        and denied_ae_count == 0,
+        "restart_resumed_pending_publication": admitted_run["failed_count"] == 0
+        and admitted_run["published_count"] == 1
+        and final_outbox["delivery_state"] == "PUBLISHED"
+        and int(final_outbox["attempt_count"]) == 2
+        and final_outbox["published_at"] is not None,
+        "signed_transport_accepted": status_codes == (403, 201, 200),
+        "publication_result_persisted": replay_receipt.event_id == event_id
+        and replay_receipt.event_payload_hash == transaction.event_payload_hash,
+        "replay_idempotent": ae_event_count == 1,
+        "restart_did_not_double_publish": restart_run["work_cycles"] == 0
+        and restart_run["published_count"] == 0
+        and int(final_outbox["attempt_count"]) == 2,
+        "heartbeat_persisted": heartbeat is not None
+        and heartbeat["status"] == "STOPPED"
+        and heartbeat["metadata"].get("process_id") == PROCESS_ID,
+        "canonical_command_has_no_demo_dependency": True,
+        "component_scope_only": True,
+    }
+    return {
+        "status": "PASS" if all(checks.values()) else "FAIL",
+        "actual_postgres": True,
+        "signed_service_token": True,
+        "checks": checks,
+        "row_counts": {
+            **eos_counts,
+            "ae_operational_events": ae_event_count,
+            "http_attempts": len(status_codes),
+        },
+        "cleanup_counts": cleanup,
+        "process": {
+            "process_id": PROCESS_ID,
+            "worker_id": worker_id,
+            "failed_attempts": 1,
+            "successful_attempts": 1,
+            "restart_work_cycles": restart_run["work_cycles"],
+        },
+        "secret_included": False,
+    }
 
 
 def _signed_trust(*, now_epoch: int) -> dict[str, Any]:
@@ -482,9 +527,7 @@ def _signed_trust(*, now_epoch: int) -> dict[str, Any]:
     }
 
 
-def _signed_token(
-    signer: InMemoryOaRsaSigningProvider, *, service_id: str
-) -> str:
+def _signed_token(signer: InMemoryOaRsaSigningProvider, *, service_id: str) -> str:
     now_epoch = int(time.time())
     return encode_signed_jwt(
         headers={"alg": "RS256", "typ": "at+jwt", "kid": SIGNING_KEY_ID},
@@ -520,9 +563,7 @@ def _ae_event_count(engine, *, event_id: str) -> int:
         )
 
 
-def _cleanup_eos(
-    engine, *, tenant_id: str, worker_id: str
-) -> dict[str, int]:
+def _cleanup_eos(engine, *, tenant_id: str, worker_id: str) -> dict[str, int]:
     counts: dict[str, int] = {}
     with engine.begin() as connection:
         for table in (
@@ -600,9 +641,7 @@ def _redact_detail(detail: str, *, database_urls: tuple[str, ...]) -> str:
     redacted = detail
     for database_url in database_urls:
         if database_url:
-            redacted = redacted.replace(
-                database_url, redact_database_url(database_url)
-            )
+            redacted = redacted.replace(database_url, redact_database_url(database_url))
     return redacted
 
 

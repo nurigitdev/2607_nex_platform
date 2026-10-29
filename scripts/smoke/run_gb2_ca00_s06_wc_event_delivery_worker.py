@@ -186,8 +186,7 @@ def run_gb2_ca00_s06_wc_event_delivery_worker(
                 "profile": "test",
                 "database_environments": [WC_DATABASE_ENV, AE_DATABASE_ENV],
                 "redacted_database_urls": {
-                    name: redact_database_url(value)
-                    for name, value in urls.items()
+                    name: redact_database_url(value) for name, value in urls.items()
                 },
                 "migration": {
                     name: {
@@ -206,9 +205,7 @@ def run_gb2_ca00_s06_wc_event_delivery_worker(
             "migrations_current": migration_current,
             **dict(evidence["checks"]),
         }
-        evidence["status"] = (
-            "PASS" if all(evidence["checks"].values()) else "FAIL"
-        )
+        evidence["status"] = "PASS" if all(evidence["checks"].values()) else "FAIL"
         if evidence["status"] == "FAIL":
             evidence["failure_code"] = "gb2_s06_protected_acceptance_failed"
         return evidence
@@ -278,7 +275,9 @@ def _execute_protected_component(
                 requester_id=requester_id,
                 suffix=suffix,
             )
-        )["work_item"]
+        )[
+            "work_item"
+        ]
         coordination = SqlAlchemyCoordinationRepository(wc_sessions)
         service = WorkCoordinationService(
             coordination,
@@ -331,13 +330,17 @@ def _execute_protected_component(
         )
 
         with wc_engine.begin() as connection:
-            failed_job = connection.execute(
-                text(
-                    "SELECT job_id, status, attempt_count, error "
-                    "FROM service_jobs WHERE request_id = :event_id"
-                ),
-                {"event_id": claimed["event_id"]},
-            ).mappings().one()
+            failed_job = (
+                connection.execute(
+                    text(
+                        "SELECT job_id, status, attempt_count, error "
+                        "FROM service_jobs WHERE request_id = :event_id"
+                    ),
+                    {"event_id": claimed["event_id"]},
+                )
+                .mappings()
+                .one()
+            )
             with ae_engine.connect() as ae_connection:
                 execution_count_after_denial = int(
                     ae_connection.execute(
@@ -423,13 +426,17 @@ def _execute_protected_component(
             wc_identity = tuple(
                 session.execute(text("SELECT current_database(), current_user")).one()
             )
-            final_job = session.execute(
-                text(
-                    "SELECT status, attempt_count FROM service_jobs "
-                    "WHERE job_id = :job_id"
-                ),
-                {"job_id": failed_job["job_id"]},
-            ).mappings().one()
+            final_job = (
+                session.execute(
+                    text(
+                        "SELECT status, attempt_count FROM service_jobs "
+                        "WHERE job_id = :job_id"
+                    ),
+                    {"job_id": failed_job["job_id"]},
+                )
+                .mappings()
+                .one()
+            )
             assignment_execution_id = session.execute(
                 text(
                     "SELECT agent_execution_id FROM wc_assignment "
@@ -441,67 +448,32 @@ def _execute_protected_component(
                     "assignment_id": claimed["assignment"]["assignment_id"],
                 },
             ).scalar_one()
-        checks = {
-            "actual_database_identities": wc_identity
-            == ("nex_wc_test", "nex_wc_user")
-            and ae_identity == ("nex_ae_test", "nex_ae_user"),
-            "readiness_truthful": wrong_readiness["readiness_status"] == "READY"
-            and readiness["readiness_status"] == "READY"
-            and all(readiness["checks"].values()),
-            "normal_wc_domain_admission": claimed["claim"]["state"] == "ACTIVE",
-            "worker_unavailable_preserved_pending_event": denied_event[
-                "delivery_state"
-            ]
-            == "ENQUEUED"
-            and execution_count_after_denial == 0,
-            "wrong_signed_trust_failed_closed": bridge.status_codes[0] == 403
-            and wrong_run["failed_count"] == 1
-            and failed_job["status"] == "QUEUED"
-            and int(failed_job["attempt_count"]) == 1
-            and execution_count_after_denial == 0,
-            "restart_resumed_pending_delivery": delivery_run["failed_count"] == 0
-            and delivery_run["work_cycles"] == 1
-            and final_job["status"] == "SUCCEEDED"
-            and int(final_job["attempt_count"]) == 2,
-            "delivery_result_persisted": event["delivery_state"] == "DELIVERED"
-            and str(assignment_execution_id) == replay["agent_execution_id"],
-            "signed_transport_accepted": bridge.status_codes == [403, 200, 200]
-            and signed["admission"].public_snapshot()["admission_counts"][
+        return _component_evidence(
+            wc_identity=wc_identity,
+            ae_identity=ae_identity,
+            wrong_readiness=wrong_readiness,
+            readiness=readiness,
+            claimed=claimed,
+            denied_event=denied_event,
+            execution_count_after_denial=execution_count_after_denial,
+            status_codes=tuple(bridge.status_codes),
+            wrong_run=wrong_run,
+            failed_job=failed_job,
+            delivery_run=delivery_run,
+            final_job=final_job,
+            event=event,
+            assignment_execution_id=assignment_execution_id,
+            replay=replay,
+            accepted_signed=signed["admission"].public_snapshot()["admission_counts"][
                 "accepted_signed"
-            ]
-            == 3,
-            "replay_idempotent": execution_count == 1 and inbox_count == 1,
-            "restart_did_not_double_deliver": restart_run["work_cycles"] == 0
-            and restart_run["failed_count"] == 0
-            and execution_count == 1,
-            "heartbeat_persisted": heartbeat is not None
-            and heartbeat["status"] == "STOPPED"
-            and heartbeat["metadata"].get("process_id") == PROCESS_ID,
-            "canonical_command_has_no_demo_dependency": True,
-            "component_scope_only": True,
-        }
-        row_counts = {
-            "service_jobs": 1,
-            "ae_agent_execution": execution_count,
-            "ae_claim_handoff_inbox": inbox_count,
-            "http_attempts": len(bridge.status_codes),
-        }
-        return {
-            "status": "PASS" if all(checks.values()) else "FAIL",
-            "actual_postgres": True,
-            "signed_service_token": True,
-            "checks": checks,
-            "row_counts": row_counts,
-            "cleanup_counts": cleanup,
-            "process": {
-                "process_id": PROCESS_ID,
-                "worker_id": worker_id,
-                "failed_attempts": 1,
-                "successful_attempts": 1,
-                "restart_work_cycles": restart_run["work_cycles"],
-            },
-            "secret_included": False,
-        }
+            ],
+            execution_count=execution_count,
+            inbox_count=inbox_count,
+            restart_run=restart_run,
+            heartbeat=heartbeat,
+            worker_id=worker_id,
+            cleanup=cleanup,
+        )
     finally:
         handoff_delivery.urlopen = original_urlopen
         for current in (wrong_process, installed, restarted):
@@ -515,15 +487,94 @@ def _execute_protected_component(
         ae_engine.dispose()
 
 
+def _component_evidence(
+    *,
+    wc_identity: tuple[str, str],
+    ae_identity: tuple[str, str],
+    wrong_readiness: Mapping[str, Any],
+    readiness: Mapping[str, Any],
+    claimed: Mapping[str, Any],
+    denied_event: Mapping[str, Any],
+    execution_count_after_denial: int,
+    status_codes: tuple[int, ...],
+    wrong_run: Mapping[str, Any],
+    failed_job: Mapping[str, Any],
+    delivery_run: Mapping[str, Any],
+    final_job: Mapping[str, Any],
+    event: Mapping[str, Any],
+    assignment_execution_id: object,
+    replay: Mapping[str, Any],
+    accepted_signed: int,
+    execution_count: int,
+    inbox_count: int,
+    restart_run: Mapping[str, Any],
+    heartbeat: Mapping[str, Any] | None,
+    worker_id: str,
+    cleanup: Mapping[str, int],
+) -> dict[str, Any]:
+    checks = {
+        "actual_database_identities": wc_identity == ("nex_wc_test", "nex_wc_user")
+        and ae_identity == ("nex_ae_test", "nex_ae_user"),
+        "readiness_truthful": wrong_readiness["readiness_status"] == "READY"
+        and readiness["readiness_status"] == "READY"
+        and all(readiness["checks"].values()),
+        "normal_wc_domain_admission": claimed["claim"]["state"] == "ACTIVE",
+        "worker_unavailable_preserved_pending_event": denied_event["delivery_state"]
+        == "ENQUEUED"
+        and execution_count_after_denial == 0,
+        "wrong_signed_trust_failed_closed": status_codes[:1] == (403,)
+        and wrong_run["failed_count"] == 1
+        and failed_job["status"] == "QUEUED"
+        and int(failed_job["attempt_count"]) == 1
+        and execution_count_after_denial == 0,
+        "restart_resumed_pending_delivery": delivery_run["failed_count"] == 0
+        and delivery_run["work_cycles"] == 1
+        and final_job["status"] == "SUCCEEDED"
+        and int(final_job["attempt_count"]) == 2,
+        "delivery_result_persisted": event["delivery_state"] == "DELIVERED"
+        and str(assignment_execution_id) == replay["agent_execution_id"],
+        "signed_transport_accepted": status_codes == (403, 200, 200)
+        and accepted_signed == 3,
+        "replay_idempotent": execution_count == 1 and inbox_count == 1,
+        "restart_did_not_double_deliver": restart_run["work_cycles"] == 0
+        and restart_run["failed_count"] == 0
+        and execution_count == 1,
+        "heartbeat_persisted": heartbeat is not None
+        and heartbeat["status"] == "STOPPED"
+        and heartbeat["metadata"].get("process_id") == PROCESS_ID,
+        "canonical_command_has_no_demo_dependency": True,
+        "component_scope_only": True,
+    }
+    return {
+        "status": "PASS" if all(checks.values()) else "FAIL",
+        "actual_postgres": True,
+        "signed_service_token": True,
+        "checks": checks,
+        "row_counts": {
+            "service_jobs": 1,
+            "ae_agent_execution": execution_count,
+            "ae_claim_handoff_inbox": inbox_count,
+            "http_attempts": len(status_codes),
+        },
+        "cleanup_counts": cleanup,
+        "process": {
+            "process_id": PROCESS_ID,
+            "worker_id": worker_id,
+            "failed_attempts": 1,
+            "successful_attempts": 1,
+            "restart_work_cycles": restart_run["work_cycles"],
+        },
+        "secret_included": False,
+    }
+
+
 def _signed_trust(*, now_epoch: int) -> dict[str, Any]:
     signer = InMemoryOaRsaSigningProvider()
     signer.generate_key(SIGNING_REFERENCE)
     jwks = StaticJwksSource(
         {
             "issuer": "urn:nex-platform:oa",
-            "keys": [
-                signer.public_jwk(SIGNING_REFERENCE, key_id=SIGNING_KEY_ID)
-            ],
+            "keys": [signer.public_jwk(SIGNING_REFERENCE, key_id=SIGNING_KEY_ID)],
         }
     )
     verifier = SignedServiceTokenVerifier(
@@ -538,9 +589,7 @@ def _signed_trust(*, now_epoch: int) -> dict[str, Any]:
     )
     return {
         "admission": admission,
-        "token": _signed_token(
-            signer, service_id="nex-wc", token_id=f"wc-{uuid4()}"
-        ),
+        "token": _signed_token(signer, service_id="nex-wc", token_id=f"wc-{uuid4()}"),
         "wrong_token": _signed_token(
             signer, service_id="nex-eos", token_id=f"eos-{uuid4()}"
         ),
@@ -655,8 +704,7 @@ def _cleanup_wc(engine, *, tenant_id: str, worker_id: str) -> dict[str, int]:
         counts["wc_remaining"] = int(
             connection.execute(
                 text(
-                    "SELECT count(*) FROM wc_work_item "
-                    "WHERE tenant_id = :tenant_id"
+                    "SELECT count(*) FROM wc_work_item " "WHERE tenant_id = :tenant_id"
                 ),
                 {"tenant_id": tenant_id},
             ).scalar_one()
@@ -683,8 +731,7 @@ def _cleanup_ae(engine, *, tenant_id: str) -> dict[str, int]:
             int(
                 connection.execute(
                     text(
-                        f"SELECT count(*) FROM {table} "
-                        "WHERE tenant_id = :tenant_id"
+                        f"SELECT count(*) FROM {table} " "WHERE tenant_id = :tenant_id"
                     ),
                     {"tenant_id": tenant_id},
                 ).scalar_one()
@@ -711,9 +758,7 @@ def _redact_detail(detail: str, *, database_urls: tuple[str, ...]) -> str:
     redacted = detail
     for database_url in database_urls:
         if database_url:
-            redacted = redacted.replace(
-                database_url, redact_database_url(database_url)
-            )
+            redacted = redacted.replace(database_url, redact_database_url(database_url))
     return redacted
 
 

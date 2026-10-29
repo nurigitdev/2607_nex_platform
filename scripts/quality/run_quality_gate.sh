@@ -28,6 +28,11 @@ mkdir -p "$REPORT_DIR"
   "$STATEMENT_COVERAGE_MIN" \
   "$BRANCH_COVERAGE_MIN"
 
+"$PYTHON_BIN" scripts/quality/report_coverage_hotspots.py \
+  "$REPORT_DIR/coverage.json" \
+  --output "$REPORT_DIR/coverage-hotspots.json" \
+  --summary
+
 "$PYTHON_BIN" scripts/quality/validate_contracts.py
 "$PYTHON_BIN" scripts/quality/run_golden_journey_transition_audit.py --summary
 "$PYTHON_BIN" scripts/quality/run_demo_product_dependency_audit.py --summary
