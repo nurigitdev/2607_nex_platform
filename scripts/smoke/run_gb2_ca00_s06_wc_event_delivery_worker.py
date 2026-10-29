@@ -326,6 +326,9 @@ def _execute_protected_component(
         )
         wrong_process.close()
         wrong_process = None
+        denied_event = coordination.load_handoff_event(
+            outbox_id=claimed["outbox_id"], event_id=claimed["event_id"]
+        )
 
         with wc_engine.begin() as connection:
             failed_job = connection.execute(
@@ -446,6 +449,11 @@ def _execute_protected_component(
             and readiness["readiness_status"] == "READY"
             and all(readiness["checks"].values()),
             "normal_wc_domain_admission": claimed["claim"]["state"] == "ACTIVE",
+            "worker_unavailable_preserved_pending_event": denied_event[
+                "delivery_state"
+            ]
+            == "ENQUEUED"
+            and execution_count_after_denial == 0,
             "wrong_signed_trust_failed_closed": bridge.status_codes[0] == 403
             and wrong_run["failed_count"] == 1
             and failed_job["status"] == "QUEUED"

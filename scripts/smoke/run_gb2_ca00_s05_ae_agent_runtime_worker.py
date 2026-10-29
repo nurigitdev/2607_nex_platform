@@ -137,6 +137,7 @@ def _verify_canonical_worker(
     cleanup_counts: dict[str, int] = {}
     installed = None
     restarted = None
+    replayed = None
     try:
         _install_report_binding(
             factory,
@@ -177,6 +178,21 @@ def _verify_canonical_worker(
         )
         if second_job is None:
             raise RuntimeError("deterministic component job was not scheduled")
+        pending_job = queue.get(tenant_id, str(second_job["runtime_job_id"]))
+        with factory() as session:
+            pending_result_count = int(
+                session.execute(
+                    text(
+                        "SELECT count(*) FROM ae_step_result "
+                        "WHERE tenant_id = :tenant_id "
+                        "AND executable_step_id = :step_id"
+                    ),
+                    {
+                        "tenant_id": tenant_id,
+                        "step_id": second_job["executable_step_id"],
+                    },
+                ).scalar_one()
+            )
 
         runtime_env = {
             DATABASE_ENV: database_url,
@@ -193,7 +209,6 @@ def _verify_canonical_worker(
             "test", environ=runtime_env
         )
         readiness = installed.readiness()
-        first_run = installed.run_once()
         installed.close()
         installed = None
 
@@ -201,9 +216,16 @@ def _verify_canonical_worker(
             "test", environ=runtime_env
         )
         restart_readiness = restarted.readiness()
-        restart_run = restarted.run_once()
+        first_run = restarted.run_once()
         restarted.close()
         restarted = None
+
+        replayed = build_installed_agent_runtime_process(
+            "test", environ=runtime_env
+        )
+        restart_run = replayed.run_once()
+        replayed.close()
+        replayed = None
 
         heartbeat = SqlAlchemyWorkerHeartbeatStore(factory).get_heartbeat(
             "nex-ae-api", worker_id
@@ -237,6 +259,10 @@ def _verify_canonical_worker(
             "normal_admitted_setup": dependency.disposition == "TERMINAL"
             and executable_plan["steps"][1]["executor_kind"]
             == "DETERMINISTIC_REPORT",
+            "worker_unavailable_preserved_pending_job": pending_job is not None
+            and pending_job["state"] == "QUEUED"
+            and int(pending_job["attempt_no"]) == 0
+            and pending_result_count == 0,
             "canonical_worker_claimed_assignment": first_run["execution_count"] == 1
             and first_run["succeeded_count"] == 1
             and first_run["failed_count"] == 0,
@@ -251,7 +277,7 @@ def _verify_canonical_worker(
             "restart_did_not_double_execute": restart_run["execution_count"] == 0
             and len(attempts) == 2,
             "canonical_command_has_no_demo_dependency": (
-                installed is None and restarted is None
+                installed is None and restarted is None and replayed is None
             ),
             "component_scope_only": True,
         }
@@ -276,6 +302,8 @@ def _verify_canonical_worker(
             installed.close()
         if restarted is not None:
             restarted.close()
+        if replayed is not None:
+            replayed.close()
         cleanup_counts.update(
             _cleanup_component_rows(
                 factory,
