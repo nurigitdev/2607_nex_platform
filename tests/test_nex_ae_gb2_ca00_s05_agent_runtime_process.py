@@ -33,15 +33,27 @@ def _sqlite_engine(*, current: bool = True, complete: bool = True):
 
 def _fake_process(*results: dict[str, object]):
     executions = iter(results)
+    heartbeat_statuses: list[str] = []
+    finalization_flags: list[bool] = []
+
+    def run_once(*, finalize_lifecycle: bool = True):
+        finalization_flags.append(finalize_lifecycle)
+        return next(executions)
+
     return SimpleNamespace(
         readiness=lambda: {
             "status": "PASS",
             "readiness_status": "READY",
         },
-        run_once=lambda: next(executions),
+        run_once=run_once,
         composition=SimpleNamespace(
-            worker_config=SimpleNamespace(poll_interval_seconds=0.01)
+            worker_config=SimpleNamespace(poll_interval_seconds=0.01),
+            heartbeat_emitter=SimpleNamespace(
+                safe_emit=lambda **values: heartbeat_statuses.append(values["status"])
+            ),
         ),
+        heartbeat_statuses=heartbeat_statuses,
+        finalization_flags=finalization_flags,
     )
 
 
@@ -115,7 +127,7 @@ def test_installed_process_delegates_cycle_and_disposes_engine() -> None:
         engine=SimpleNamespace(dispose=lambda: disposed.append(True)),
         sessions=SimpleNamespace(),
         composition=SimpleNamespace(
-            run_cycle=lambda: {"status": "IDLE", "execution_count": 0}
+            run_cycle=lambda **_values: {"status": "IDLE", "execution_count": 0}
         ),
     )
 
@@ -208,6 +220,8 @@ def test_installed_loop_reports_work_idle_and_bounded_stop() -> None:
     assert result["completed_cycles"] == 2
     assert result["work_cycles"] == 1
     assert sleeps == [0.01]
+    assert installed.heartbeat_statuses == [process.STOPPED]
+    assert installed.finalization_flags == [False, False]
     records = [json.loads(line) for line in output.getvalue().splitlines()]
     assert [record["state"] for record in records] == [
         "STARTED",
@@ -226,6 +240,8 @@ def test_installed_loop_honors_shutdown_and_rejects_bad_bounds() -> None:
     )
     assert stopped["stop_reason"] == "SHUTDOWN_REQUESTED"
     assert stopped["completed_cycles"] == 0
+    assert installed.heartbeat_statuses == [process.STOPPED]
+    assert installed.finalization_flags == []
 
     for value in (0, True, 100_001):
         with pytest.raises(process.AgentRuntimeProcessError, match="max_cycles"):

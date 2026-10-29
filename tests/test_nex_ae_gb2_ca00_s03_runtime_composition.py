@@ -392,6 +392,7 @@ def test_runtime_cycle_uses_canonical_claim_counter_and_closes_results(
     assert close_calls == [{"limit": 10}]
     assert captured["max_cycles"] == 1
     assert captured["stop_on_failure"] is False
+    assert captured["finalize_lifecycle"] is True
     assert captured["in_process_package_readiness"] == {"status": "PASS"}
 
 

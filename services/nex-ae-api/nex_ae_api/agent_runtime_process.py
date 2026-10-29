@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any, TextIO
 
 from nex_runtime import (
+    STOPPED,
     SqlAlchemyWorkerHeartbeatStore,
     WorkerHeartbeatEmitter,
     build_engine,
@@ -141,8 +142,8 @@ class InstalledAgentRuntimeProcess:
             "secret_included": False,
         }
 
-    def run_once(self) -> dict[str, Any]:
-        return self.composition.run_cycle()
+    def run_once(self, *, finalize_lifecycle: bool = True) -> dict[str, Any]:
+        return self.composition.run_cycle(finalize_lifecycle=finalize_lifecycle)
 
     def close(self) -> None:
         self.engine.dispose()
@@ -310,7 +311,7 @@ def run_installed_agent_runtime_process(
         file=stream,
     )
     while not stop() and (max_cycles is None or completed_cycles < max_cycles):
-        result = process.run_once()
+        result = process.run_once(finalize_lifecycle=False)
         completed_cycles += 1
         work_cycles += result.get("status") == "WORK"
         failed_count += int(result.get("failed_count") or 0)
@@ -331,6 +332,10 @@ def run_installed_agent_runtime_process(
         if not stop() and (max_cycles is None or completed_cycles < max_cycles):
             sleeper(process.composition.worker_config.poll_interval_seconds)
     stop_reason = "SHUTDOWN_REQUESTED" if stop() else "MAX_CYCLES"
+    process.composition.heartbeat_emitter.safe_emit(
+        status=STOPPED,
+        metadata={"process_id": PROCESS_ID, "stop_reason": stop_reason},
+    )
     record = {
         "schema_version": PROCESS_RUN_SCHEMA_VERSION,
         "status": "STOPPED",

@@ -10,6 +10,7 @@ from .canonical_platform_trust import (
     CANONICAL_PLATFORM_DEPLOYMENT_BOUNDARY,
     CANONICAL_PLATFORM_OWNERS,
     STARTUP_SERVICE_TOKEN_BOOTSTRAP_ENV,
+    CanonicalPlatformTrustError,
     materialize_canonical_owner_secrets,
 )
 from .demo_service_token_bootstrap import issue_demo_startup_service_tokens
@@ -166,7 +167,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         run_production_container_bootstrap(args.owner, command)
     except Exception as exc:
-        detail = f" detail={exc}" if isinstance(exc, OpenBaoSecretResolverError) else ""
+        detail = (
+            f" detail={exc}"
+            if isinstance(exc, (OpenBaoSecretResolverError, CanonicalPlatformTrustError))
+            else ""
+        )
         print(
             "production_container_bootstrap=fail "
             f"owner={args.owner} reason={type(exc).__name__}{detail}",

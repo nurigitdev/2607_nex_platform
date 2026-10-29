@@ -246,6 +246,7 @@ services:
       NEX_AE_TO_AG_SERVICE_TOKEN_REF: secret://openbao/nex-platform/staging/nex-ae-api/NEX_AE_TO_AG_SERVICE_TOKEN@${NEX_CANONICAL_PLATFORM_SECRET_VERSION:-v1}
       NEX_AE_TO_WC_SERVICE_TOKEN_REF: secret://openbao/nex-platform/staging/nex-ae-api/NEX_AE_TO_WC_SERVICE_TOKEN@${NEX_CANONICAL_PLATFORM_SECRET_VERSION:-v1}
       NEX_AE_TO_EOS_SERVICE_TOKEN_REF: secret://openbao/nex-platform/staging/nex-ae-api/NEX_AE_TO_EOS_SERVICE_TOKEN@${NEX_CANONICAL_PLATFORM_SECRET_VERSION:-v1}
+      NEX_AE_TO_WA_SERVICE_TOKEN_REF: secret://openbao/nex-platform/staging/nex-ae-api/NEX_AE_TO_WA_SERVICE_TOKEN@${NEX_CANONICAL_PLATFORM_SECRET_VERSION:-v1}
       NEX_AE_OBJECT_STORAGE_ACCESS_KEY_REF: secret://openbao/nex-platform/staging/nex-ae-api/NEX_AE_OBJECT_STORAGE_ACCESS_KEY@${NEX_CANONICAL_PLATFORM_SECRET_VERSION:-v1}
       NEX_AE_OBJECT_STORAGE_SECRET_KEY_REF: secret://openbao/nex-platform/staging/nex-ae-api/NEX_AE_OBJECT_STORAGE_SECRET_KEY@${NEX_CANONICAL_PLATFORM_SECRET_VERSION:-v1}
       NEX_AE_AGENT_WORKER_MODE: enabled

@@ -142,7 +142,7 @@ class InstalledRuntimeComposition:
     result_publisher: SqlAlchemyWorkspaceResultPublisher
     result_closer: SqlAlchemyInstalledIaResultCloser
 
-    def run_cycle(self) -> dict[str, Any]:
+    def run_cycle(self, *, finalize_lifecycle: bool = True) -> dict[str, Any]:
         lifecycle = AgentRuntimeWorkerLifecycle(
             profile=self.worker_config.profile,
             emitter=self.heartbeat_emitter,
@@ -158,6 +158,7 @@ class InstalledRuntimeComposition:
             in_process_package_readiness=self.executor_profile.package_readiness,
             max_cycles=1,
             stop_on_failure=False,
+            finalize_lifecycle=finalize_lifecycle,
         )
         closure = self.result_closer.close_ready(limit=10)
         claimed_count = int(result["claimed_count"])

@@ -626,6 +626,11 @@ def test_canonical_compose_is_final_and_has_no_active_demo_environment() -> None
     )
     assert "NEX_P8_DEMO_" not in overlay
     assert "p8_demo_" not in overlay
+    assert (
+        "NEX_AE_TO_WA_SERVICE_TOKEN_REF: "
+        "secret://openbao/nex-platform/staging/nex-ae-api/"
+        "NEX_AE_TO_WA_SERVICE_TOKEN@${NEX_CANONICAL_PLATFORM_SECRET_VERSION:-v1}"
+    ) in overlay
     source = _source_admission(
         ROOT,
         inventory=canonical_platform_trust_projection(),

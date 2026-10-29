@@ -664,6 +664,7 @@ def run_bounded_agent_runtime_worker(
     max_cycles: int,
     shutdown_token: AgentRuntimeShutdownToken | None = None,
     stop_on_failure: bool = True,
+    finalize_lifecycle: bool = True,
     clock: WorkerClock | None = None,
     sleeper: WorkerSleeper | None = None,
 ) -> dict[str, Any]:
@@ -677,6 +678,8 @@ def run_bounded_agent_runtime_worker(
     )
     if not isinstance(stop_on_failure, bool):
         raise _invalid("stop_on_failure must be a boolean.")
+    if not isinstance(finalize_lifecycle, bool):
+        raise _invalid("finalize_lifecycle must be a boolean.")
     validate_agent_runtime_worker_startup(
         config,
         available_executor_kinds=available_executor_kinds,
@@ -751,11 +754,12 @@ def run_bounded_agent_runtime_worker(
                 stop_reason = "FAILURE"
                 break
 
-    lifecycle.request_shutdown(
-        reason_code=stop_reason,
-        observed_at=observed_clock(),
-    )
-    lifecycle.stopped(observed_at=observed_clock())
+    if finalize_lifecycle:
+        lifecycle.request_shutdown(
+            reason_code=stop_reason,
+            observed_at=observed_clock(),
+        )
+        lifecycle.stopped(observed_at=observed_clock())
     completed_at = observed_clock()
     return {
         "run_schema_version": AE_AGENT_RUNTIME_WORKER_RUN_SCHEMA_VERSION,

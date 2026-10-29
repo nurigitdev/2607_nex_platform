@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 
+from nex_runtime.canonical_platform_trust import CanonicalPlatformTrustError
 from nex_runtime.production_container_bootstrap import (
     ProductionContainerBootstrapError,
     main,
@@ -168,6 +169,19 @@ def test_main_strips_separator_and_sanitizes_failure(monkeypatch, capsys) -> Non
     output = capsys.readouterr()
     assert "status=403" in output.err
     assert "reason=OpenBaoSecretResolverError" in output.err
+
+    monkeypatch.setattr(
+        "nex_runtime.production_container_bootstrap.run_production_container_bootstrap",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            CanonicalPlatformTrustError(
+                "canonical secret resolution failed: NEX_AE_TO_WA_SERVICE_TOKEN"
+            )
+        ),
+    )
+    assert main(["--owner", "nex-ae-api", "--", "python"]) == 1
+    output = capsys.readouterr()
+    assert "NEX_AE_TO_WA_SERVICE_TOKEN" in output.err
+    assert "reason=CanonicalPlatformTrustError" in output.err
 
     captured.clear()
     monkeypatch.setattr(

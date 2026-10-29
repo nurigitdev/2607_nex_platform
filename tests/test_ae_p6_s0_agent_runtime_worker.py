@@ -449,6 +449,20 @@ def test_bounded_worker_executes_then_idles_and_stops_cleanly() -> None:
     ]
     assert source.calls[0]["supported_executor_kinds"] == (LOCAL_SKILL_EXECUTOR,)
 
+    persistent_lifecycle = _lifecycle(config.profile)
+    persistent = run_bounded_agent_runtime_worker(
+        config=config,
+        assignment_source=SequenceSource((None,)),
+        handler=lambda _assignment: {},
+        lifecycle=persistent_lifecycle,
+        max_cycles=1,
+        finalize_lifecycle=False,
+        clock=IncrementingClock(),
+        **_available(),
+    )
+    assert persistent["heartbeat_statuses"] == [STARTING, IDLE, IDLE]
+    assert persistent_lifecycle.shutdown_requested is False
+
 
 def test_bounded_worker_records_handler_failure_without_settling_job_lease() -> None:
     config = _config()
@@ -512,6 +526,17 @@ def test_bounded_worker_honors_shutdown_and_rejects_invalid_composition() -> Non
             handler=lambda _assignment: {},
             lifecycle=_lifecycle(config.profile),
             max_cycles=1,
+            **_available(),
+        )
+
+    with pytest.raises(AgentRuntimeWorkerError):
+        run_bounded_agent_runtime_worker(
+            config=config,
+            assignment_source=SequenceSource(()),
+            handler=lambda _assignment: {},
+            lifecycle=_lifecycle(config.profile),
+            max_cycles=1,
+            finalize_lifecycle="yes",  # type: ignore[arg-type]
             **_available(),
         )
 
