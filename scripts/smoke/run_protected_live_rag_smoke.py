@@ -636,6 +636,7 @@ def create_grounded_generation(
             "output_contract_id": "text_answer_v1",
             "provider_capability": "generation",
             "generation_profile": "grounded-answer",
+            "reasoning_mode": "disabled",
             "retrieval_package_ref": {
                 "retrieval_package_id": retrieval_package["retrieval_package_id"],
                 "package_hash": retrieval_package["package_hash"],
