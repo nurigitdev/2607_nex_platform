@@ -5,7 +5,7 @@ from pathlib import Path
 from uuid import uuid4
 
 import pytest
-import nex_ae_api.voucher_attachments as voucher_attachments
+from nex_ae_api import voucher_attachments
 from nex_ae_api.voucher_attachments import (
     ATTACHMENT_BATCH_SCHEMA_VERSION,
     MAX_ATTACHMENT_BATCH_BYTES,
@@ -18,7 +18,6 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
-
 
 NOW = datetime(2026, 10, 23, 11, 0, tzinfo=UTC)
 TENANT = "tenant-p8-s75b"
@@ -445,7 +444,8 @@ def test_create_sqlalchemy_base_error_is_unavailable() -> None:
 def test_batch_clock_and_read_identity_validation(sqlite_repository) -> None:
     _engine, factory, _repository = sqlite_repository
     invalid_clock = SqlAlchemyVoucherAttachmentRepository(
-        factory, clock=lambda: datetime(2026, 10, 23, 11, 0)
+        factory,
+        clock=lambda: datetime(2026, 10, 23, 11, 0),  # noqa: DTZ001 - rejection case
     )
     with pytest.raises(VoucherAttachmentPersistenceError) as timestamp:
         invalid_clock.create_batch(_batch())
@@ -460,3 +460,184 @@ def test_batch_clock_and_read_identity_validation(sqlite_repository) -> None:
 
 def test_uuid_fixture_is_unique_for_parallel_smoke() -> None:
     assert uuid4() != uuid4()
+
+
+def _publication() -> dict[str, object]:
+    return {
+        "tenant_id": TENANT,
+        "attachment_batch_id": BATCH_ID,
+        "attachment_id": _item()["attachment_id"],
+        "content_sha256": "a" * 64,
+        "object_ref": "objref:ae:voucher:" + "a" * 64,
+        "object_version_ref": None,
+    }
+
+
+def test_publish_failure_branches_are_redacted_and_retry_safe(monkeypatch) -> None:
+    monkeypatch.setattr(
+        voucher_attachments, "_load_batch", lambda *_args, **_kwargs: {"state": "UPLOADING"}
+    )
+    loaded = iter(({"state": "UPLOADING"}, None))
+    monkeypatch.setattr(
+        voucher_attachments, "_load_item", lambda *_args, **_kwargs: next(loaded)
+    )
+    with pytest.raises(VoucherAttachmentPersistenceError) as missing_after_update:
+        _fake_repository(_FakeSession()).publish_item(**_publication())
+    assert missing_after_update.value.status_code == 503
+
+    monkeypatch.setattr(
+        voucher_attachments,
+        "_load_item",
+        lambda *_args, **_kwargs: {"state": "UPLOADING"},
+    )
+    with pytest.raises(VoucherAttachmentPersistenceError) as concurrent:
+        _fake_repository(_FakeSession((_FakeExecuteResult(rowcount=0),))).publish_item(
+            **_publication()
+        )
+    assert concurrent.value.status_code == 409
+
+    for error, expected_status in (
+        (IntegrityError("update", {}, RuntimeError("private")), 409),
+        (SQLAlchemyError("private"), 503),
+    ):
+        with pytest.raises(VoucherAttachmentPersistenceError) as classified:
+            _fake_repository(_FakeSession(error=error)).publish_item(**_publication())
+        assert classified.value.status_code == expected_status
+        assert "private" not in classified.value.detail
+
+
+def test_remove_finalize_and_lock_concurrency_fail_closed(monkeypatch) -> None:
+    monkeypatch.setattr(
+        voucher_attachments,
+        "_load_batch",
+        lambda *_args, **_kwargs: {
+            "state": "UPLOADING",
+            "attachment_count": 1,
+            "total_size_bytes": 1024,
+        },
+    )
+    monkeypatch.setattr(
+        voucher_attachments,
+        "_load_item",
+        lambda *_args, **_kwargs: {"state": "LOCKED", "size_bytes": 1024},
+    )
+    with pytest.raises(VoucherAttachmentPersistenceError) as immutable_item:
+        _fake_repository(_FakeSession()).remove_item(
+            tenant_id=TENANT,
+            attachment_batch_id=BATCH_ID,
+            attachment_id=str(_item()["attachment_id"]),
+        )
+    assert immutable_item.value.status_code == 409
+
+    monkeypatch.setattr(
+        voucher_attachments,
+        "_load_batch",
+        lambda *_args, **_kwargs: {
+            "state": "UPLOADING",
+            "attachment_count": 0,
+            "total_size_bytes": 0,
+        },
+    )
+    monkeypatch.setattr(voucher_attachments, "_list_items", lambda *_args, **_kwargs: [])
+    with pytest.raises(VoucherAttachmentPersistenceError) as finalize_conflict:
+        _fake_repository(_FakeSession((_FakeExecuteResult(rowcount=0),))).finalize_batch(
+            tenant_id=TENANT, attachment_batch_id=BATCH_ID
+        )
+    assert finalize_conflict.value.status_code == 409
+
+    monkeypatch.setattr(voucher_attachments, "_load_batch", lambda *_args, **_kwargs: None)
+    with pytest.raises(VoucherAttachmentPersistenceError) as missing_lock:
+        _fake_repository(_FakeSession()).lock_manifest(
+            tenant_id=TENANT, attachment_batch_id=BATCH_ID
+        )
+    assert missing_lock.value.status_code == 404
+
+    monkeypatch.setattr(
+        voucher_attachments,
+        "_load_batch",
+        lambda *_args, **_kwargs: {"state": "DRAFT", "attachment_count": 0},
+    )
+    with pytest.raises(VoucherAttachmentPersistenceError) as not_ready:
+        _fake_repository(_FakeSession()).lock_manifest(
+            tenant_id=TENANT, attachment_batch_id=BATCH_ID
+        )
+    assert not_ready.value.status_code == 409
+
+
+def test_cross_tenant_object_lookup_and_cleanup_replay(sqlite_repository) -> None:
+    _engine, _factory, repository = sqlite_repository
+    repository.create_batch(_batch())
+    repository.register_item(_item())
+    published = repository.publish_item(**_publication())
+
+    assert repository.resolve_object_ref(
+        tenant_id="tenant-other", object_ref=str(published["object_ref"])
+    ) is None
+    removed = repository.remove_item(
+        tenant_id=TENANT,
+        attachment_batch_id=BATCH_ID,
+        attachment_id=str(_item()["attachment_id"]),
+    )
+    assert repository.remove_item(
+        tenant_id=TENANT,
+        attachment_batch_id=BATCH_ID,
+        attachment_id=str(_item()["attachment_id"]),
+    ) == removed
+
+
+def test_remove_and_finalize_storage_races_are_classified(monkeypatch) -> None:
+    batch = {"state": "UPLOADING", "attachment_count": 1, "total_size_bytes": 1024}
+    item = {"state": "UPLOADING", "size_bytes": 1024}
+    monkeypatch.setattr(
+        voucher_attachments, "_load_batch", lambda *_args, **_kwargs: batch
+    )
+    monkeypatch.setattr(
+        voucher_attachments, "_load_item", lambda *_args, **_kwargs: item
+    )
+    remove_args = {
+        "tenant_id": TENANT,
+        "attachment_batch_id": BATCH_ID,
+        "attachment_id": str(_item()["attachment_id"]),
+    }
+
+    with pytest.raises(VoucherAttachmentPersistenceError) as item_race:
+        _fake_repository(_FakeSession((_FakeExecuteResult(rowcount=0),))).remove_item(
+            **remove_args
+        )
+    assert item_race.value.status_code == 409
+
+    with pytest.raises(VoucherAttachmentPersistenceError) as batch_race:
+        _fake_repository(
+            _FakeSession(
+                (_FakeExecuteResult(rowcount=1), _FakeExecuteResult(rowcount=0))
+            )
+        ).remove_item(**remove_args)
+    assert batch_race.value.status_code == 409
+
+    loaded_items = iter((item, None))
+    monkeypatch.setattr(
+        voucher_attachments, "_load_item", lambda *_args, **_kwargs: next(loaded_items)
+    )
+    with pytest.raises(VoucherAttachmentPersistenceError) as missing_after_remove:
+        _fake_repository(
+            _FakeSession(
+                (_FakeExecuteResult(rowcount=1), _FakeExecuteResult(rowcount=1))
+            )
+        ).remove_item(**remove_args)
+    assert missing_after_remove.value.status_code == 503
+
+    ready_for_finalize = {
+        "state": "UPLOADING",
+        "attachment_count": 0,
+        "total_size_bytes": 0,
+    }
+    loaded_batches = iter((ready_for_finalize, None))
+    monkeypatch.setattr(
+        voucher_attachments, "_load_batch", lambda *_args, **_kwargs: next(loaded_batches)
+    )
+    monkeypatch.setattr(voucher_attachments, "_list_items", lambda *_args, **_kwargs: [])
+    with pytest.raises(VoucherAttachmentPersistenceError) as missing_after_finalize:
+        _fake_repository(_FakeSession((_FakeExecuteResult(rowcount=1),))).finalize_batch(
+            tenant_id=TENANT, attachment_batch_id=BATCH_ID
+        )
+    assert missing_after_finalize.value.status_code == 503

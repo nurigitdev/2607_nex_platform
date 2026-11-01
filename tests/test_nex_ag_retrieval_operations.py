@@ -1,10 +1,10 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from types import SimpleNamespace
 
 from fastapi.testclient import TestClient
-from sqlalchemy import text
-
+from nex_ag import retrieval_operations
 from nex_ag.operations import (
     AG_OPERATIONS_SOURCE_MODE_ENV,
     AG_OPERATIONS_SOURCE_PROFILE_ENV,
@@ -21,11 +21,11 @@ from nex_ag.retrieval_operations import (
     InMemoryRetrievalPackageOperationsStore,
     RetrievalPackageOperationsError,
     SqlAlchemyRetrievalPackageOperationsStore,
-    build_retrieval_score_calibration_projection,
-    build_retrieval_score_calibration_rollup_projection,
     build_retrieval_package_detail_projection,
     build_retrieval_package_operation_stores,
     build_retrieval_package_operations_projection,
+    build_retrieval_score_calibration_projection,
+    build_retrieval_score_calibration_rollup_projection,
     build_retrieval_threshold_decision_projection,
     register_retrieval_package_operation_routes,
     summarize_retrieval_package_detail,
@@ -34,13 +34,13 @@ from nex_ag.retrieval_operations import (
     summarize_retrieval_threshold_decisions,
 )
 from nex_runtime import (
+    SERVICE_SPECS,
     build_engine,
     build_service_app,
     build_session_factory,
     issue_mock_service_token,
-    SERVICE_SPECS,
 )
-
+from sqlalchemy import text
 
 TRACE_ID = "4bf92f3577b34da6a3ce929d0e0e4736"
 REQUEST_ID = "0189f0ff-8f22-4f72-9b47-b481dc21bb21"
@@ -1329,3 +1329,118 @@ def _create_sqlite_retrieval_package_table(engine: object) -> None:
                 """
             )
         )
+
+
+def test_retrieval_edge_helpers_fail_closed_without_provider_calls() -> None:
+    records = [
+        retrieval_record(
+            retrieval_package_id="aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1",
+            trace_id="trace-a",
+            request_id="request-a",
+            policy_id="policy-a",
+            created_at="2026-08-09T00:00:00Z",
+        ),
+        retrieval_record(
+            retrieval_package_id="aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa2",
+            trace_id="trace-b",
+            request_id="request-b",
+            policy_id="policy-b",
+            created_at="2026-08-09T00:02:00Z",
+        ),
+        retrieval_record(
+            retrieval_package_id="aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa3",
+            trace_id="trace-c",
+            request_id="request-c",
+            policy_id="policy-c",
+            created_at="2026-08-09T00:04:00Z",
+        ),
+    ]
+    store = InMemoryRetrievalPackageOperationsStore(records=records)
+
+    assert store.list_retrieval_packages(trace_id="trace-a")[0]["request_id"] == "request-a"
+    assert store.list_retrieval_packages(request_id="request-b")[0]["trace_id"] == "trace-b"
+    assert store.list_retrieval_packages(retrieval_policy_id="policy-a")[0]["trace_id"] == "trace-a"
+    assert store.list_retrieval_packages(status="MISSING") == []
+    assert store.get_retrieval_package(retrieval_package_id="missing") is None
+
+    options = build_operation_query_options(
+        limit=10,
+        since="2026-08-09T00:01:00Z",
+        until="2026-08-09T00:03:00Z",
+    )
+    assert retrieval_operations._filter_packages_by_time(records, options) == [records[1]]
+    samples = [
+        {"score_calibration": {}},
+        {
+            "score_calibration": {
+                "calibration_action": "inspect",
+                "default_confidence_bucket": "LOW_CONFIDENCE",
+                "threshold_override_used": True,
+            }
+        },
+        {
+            "score_calibration": {
+                "calibration_action": "inspect",
+                "default_confidence_bucket": "READY",
+                "threshold_override_used": True,
+            }
+        },
+        {
+            "score_calibration": {
+                "calibration_action": "inspect",
+                "default_confidence_bucket": "LOW_CONFIDENCE",
+                "threshold_override_used": False,
+            }
+        },
+    ]
+    assert retrieval_operations._filter_retrieval_score_calibration_samples(
+        samples,
+        calibration_action="inspect",
+        default_confidence_bucket="LOW_CONFIDENCE",
+        threshold_override=True,
+    ) == [samples[1]]
+
+    error = RetrievalPackageOperationsError(
+        "ag.retrieval_package_source_unavailable", "source failed"
+    )
+    unavailable = retrieval_operations._retrieval_source_status(
+        service_id="nex-cx", store=store, package_count=0, error=error
+    )
+    assert unavailable["status"] == "UNAVAILABLE"
+    assert unavailable["error_code"] == error.error_code
+
+
+def test_retrieval_malformed_evidence_is_redacted_and_typed() -> None:
+    projected = retrieval_operations._project_retrieval_evidence_item(
+        "nex-cx",
+        {
+            **retrieval_evidence_record(),
+            "scores": "malformed",
+            "matched_terms": "malformed",
+            "permission_result": {"reason": "missing-allowed", "principal_id": "secret"},
+            "neighbor_context": None,
+            "quality_flags": "malformed",
+            "final_score": True,
+        },
+    )
+    assert projected["final_score"] is None
+    assert projected["scores"] == {}
+    assert projected["matched_term_count"] == 0
+    assert projected["permission_allowed"] is None
+    assert projected["permission_result"] == {"reason": "missing-allowed"}
+    assert projected["neighbor_count"] == 0
+    assert projected["quality_flags"] == []
+    assert "secret" not in str(projected)
+
+    assert retrieval_operations._json_loads(None, default={}) == {}
+    assert retrieval_operations._json_loads({"safe": True}, default={}) == {"safe": True}
+    assert retrieval_operations._json_loads(b'["safe"]', default=[]) == ["safe"]
+    assert retrieval_operations._json_loads(42, default={}) == {}
+    assert retrieval_operations._timestamp_to_wire(
+        datetime(2026, 11, 1, tzinfo=UTC)
+    ) == "2026-11-01T00:00:00Z"
+    assert retrieval_operations._number_or_none(False) is None
+    assert retrieval_operations._integer_or_none(False) is None
+    assert retrieval_operations._bool_value(0) is False
+    assert retrieval_operations._bool_value("YES") is True
+    assert retrieval_operations._bool_value([]) is False
