@@ -646,6 +646,18 @@ from .model_calibration import (
     evaluate_binary_score_calibration,
     select_model_calibration_profile,
 )
+from .model_calibration_dataset import (
+    DOMAIN_QUERY_QUOTAS,
+    LANGUAGE_QUERY_QUOTAS,
+    MODEL_CALIBRATION_DATASET_ID,
+    MODEL_CALIBRATION_DATASET_SCHEMA_VERSION,
+    PARTITION_QUERY_QUOTAS,
+    RELEVANCE_GRADE_DOCUMENT_IDS,
+    RELEVANCE_GRADE_EXPECTED_READY,
+    AdmittedModelCalibrationDataset,
+    ModelCalibrationDatasetError,
+    admit_model_calibration_dataset_v2,
+)
 from .recovery import (
     DEFAULT_GENERATION_RECOVERY_POLICIES,
     GenerationRecoveryPolicyError,
@@ -666,6 +678,7 @@ from .subject_resolver import (
 )
 
 __all__ = [
+    "AdmittedModelCalibrationDataset",
     "DEMO_BACKUP_SET_SCHEMA_VERSION",
     "DEMO_DATABASE_ADMISSION_SCHEMA_VERSION",
     "DEMO_DATABASE_BACKUP_CONFIRMATION",
@@ -908,14 +921,23 @@ __all__ = [
     "WorkerJobHandler",
     "WorkerRunnerConfig",
     "WorkerRunnerError",
+    "DOMAIN_QUERY_QUOTAS",
+    "LANGUAGE_QUERY_QUOTAS",
+    "MODEL_CALIBRATION_DATASET_ID",
+    "MODEL_CALIBRATION_DATASET_SCHEMA_VERSION",
+    "PARTITION_QUERY_QUOTAS",
+    "RELEVANCE_GRADE_DOCUMENT_IDS",
+    "RELEVANCE_GRADE_EXPECTED_READY",
     "attach_service_persistence_runtime",
     "admit_demo_tenant_fixture_plan",
+    "admit_model_calibration_dataset_v2",
     "artifact_provenance_digest",
     "artifact_provenance_projection",
     "build_engine",
     "build_demo_tenant_fixture_plan",
     "evaluate_platform_trust_evidence",
     "evaluate_binary_score_calibration",
+    "ModelCalibrationDatasetError",
     "platform_trust_scope_policy",
     "validate_platform_trust_scope_policy",
     "build_platform_trust_restart_plan",
