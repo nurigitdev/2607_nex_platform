@@ -136,11 +136,27 @@ Final As-Built
 GB2_CA00_Final_AsBuilt_and_Golden_B_v2_Entry_Handoff_v1.0.md
 ```
 
-마지막으로 이 문서를 읽는다.
+네 번째로 이 문서를 읽는다.
 
 이 문서는 S01~S20의 실제 실행 기준선, 9개 artifact와 20개 process,
 protected installed E2E, negative/restart acceptance, Full Gate 결과를
 동결하고 Golden B v2 구현 착수를 승인한다.
+
+---
+
+## 5) Post-S20A Coverage Hardening Execution Plan
+
+```text
+GB2_CA00_Post_S20A_Coverage_Hardening_Execution_Plan_v1.0.md
+```
+
+마지막으로 GB2-CA00 closure 이후 S20A가 생성한 ownership-aware coverage
+evidence를 기준으로, 활성 제품 경계와 canonical smoke harness의 남은 공백을
+줄이는 후속 실행 순서를 읽는다.
+
+이 문서는 Final As-Built를 다시 여는 문서가 아니다. 신뢰/승인, WC-AE
+durable 결과 흐름, OA/EOS 업무 경계, protected harness 구조, Demo 잔존 코드,
+대형 모듈 감사 순서를 고정하는 post-closure quality-hardening plan이다.
 
 ---
 
@@ -169,6 +185,14 @@ GB2-CA00 Implementation Slice Plan
 GB2-CA00 Final As-Built
         │
         │ CLOSED / PASS
+        ▼
+GB2-CA00-S20A Coverage Ownership Baseline
+        │
+        │ remaining active-risk hotspots
+        ▼
+Post-S20A Coverage Hardening Plan
+        │
+        │ S20B ~ S20J
         ▼
 Golden B v2 Implementation
 ```
