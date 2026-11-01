@@ -24,8 +24,14 @@ sys.path.insert(0, str(ROOT / "services/_shared"))
 sys.path.insert(0, str(ROOT / "services/nex-cx"))
 sys.path.insert(0, str(ROOT / "services/nex-ae-api"))
 sys.path.insert(0, str(ROOT / "scripts/db"))
+sys.path.insert(0, str(ROOT / "scripts/smoke"))
 
 import run_s143_external_staging_acceptance as s143
+from operational_recovery_harness import (
+    object_cleanup_evidence,
+    object_version_delete_batch,
+    strict_gate_exit_code,
+)
 from nex_ae_api.generated_response_storage import (
     S3GeneratedResponseStorage,
     build_generated_response_payload,
@@ -790,11 +796,7 @@ def _cleanup_buckets(client: Any, buckets: Sequence[str]) -> dict[str, Any]:
     for bucket in buckets:
         paginator = client.get_paginator("list_object_versions")
         for page in paginator.paginate(Bucket=bucket):
-            objects = [
-                {"Key": item["Key"], "VersionId": item["VersionId"]}
-                for family in ("Versions", "DeleteMarkers")
-                for item in page.get(family, [])
-            ]
+            objects = object_version_delete_batch(page)
             if objects:
                 response = client.delete_objects(
                     Bucket=bucket,
@@ -804,12 +806,9 @@ def _cleanup_buckets(client: Any, buckets: Sequence[str]) -> dict[str, Any]:
                     raise S146AcceptanceError("RustFS cleanup failed")
                 deleted += len(objects)
         client.delete_bucket(Bucket=bucket)
-    return {
-        "status": "PASS",
-        "bucket_count": len(buckets),
-        "deleted_version_count": deleted,
-        "named_volume_removed": True,
-    }
+    return object_cleanup_evidence(
+        bucket_count=len(buckets), deleted_version_count=deleted
+    )
 
 
 def _compose(
@@ -957,7 +956,7 @@ def main(argv: list[str] | None = None) -> int:
         )
     else:
         print(json.dumps(result, indent=2, sort_keys=True))
-    return 0 if result["status"] in {"PASS", "SKIPPED"} else 1
+    return strict_gate_exit_code(result, skip_statuses=("SKIPPED",))
 
 
 if __name__ == "__main__":  # pragma: no cover

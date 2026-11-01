@@ -21,8 +21,15 @@ from sqlalchemy.engine import make_url
 ROOT = Path(__file__).resolve().parents[2]
 SHARED = ROOT / "services" / "_shared"
 DB_SCRIPTS = ROOT / "scripts" / "db"
-sys.path[:0] = [str(SHARED), str(DB_SCRIPTS)]
+SMOKE_SCRIPTS = ROOT / "scripts" / "smoke"
+sys.path[:0] = [str(SHARED), str(DB_SCRIPTS), str(SMOKE_SCRIPTS)]
 
+from operational_recovery_harness import (  # noqa: E402
+    backup_catalog_verified,
+    recovery_acceptance_checks,
+    recovery_target_coverage_valid,
+    strict_gate_exit_code,
+)
 from nex_runtime.postgres_backup import (  # noqa: E402
     build_logical_backup_plan,
     execute_logical_backup,
@@ -154,7 +161,10 @@ def run_postgresql_recovery_acceptance(
     )
     resolved = resolve_postgres_test_targets(environ)
     resolved_by_service = {item.target.service_id: item for item in resolved}
-    if set(resolved_by_service) != {target.service_id for target in policy.targets}:
+    if not recovery_target_coverage_valid(
+        tuple(resolved_by_service),
+        tuple(target.service_id for target in policy.targets),
+    ):
         raise PostgresRecoveryAcceptanceError("recovery_target_coverage_invalid")
 
     with tempfile.TemporaryDirectory(prefix="nex-s145-protected-") as temp:
@@ -387,18 +397,18 @@ def run_postgresql_recovery_acceptance(
             "slice": "1451",
             "requirement": "S145",
             "status": "PASS",
-            "checks": {
-                "actual_five_test_databases": len(source_fingerprints) == 5,
-                "logical_backup_restore": source_fingerprints == restored_fingerprints,
-                "verified_catalogs": True,
-                "physical_basebackup": pitr_plan.basebackup_directory.exists(),
-                "wal_archive_replay": len(tuple(archive_root.glob("*.sha256"))) > 0,
-                "pitr_paused_without_promotion": cutover == "PAUSED_AWAITING_OPERATOR",
-                "five_database_pitr_fingerprints": source_fingerprints == pitr_fingerprints,
-                "source_remained_read_only": True,
-                "credential_values_redacted": True,
-                "temporary_cluster_stopped": not isolated_restore_cluster.running and not recovery_cluster.running,
-            },
+            "checks": recovery_acceptance_checks(
+                source_fingerprints=source_fingerprints,
+                restored_fingerprints=restored_fingerprints,
+                pitr_fingerprints=pitr_fingerprints,
+                physical_basebackup_exists=pitr_plan.basebackup_directory.exists(),
+                wal_segment_count=len(tuple(archive_root.glob("*.sha256"))),
+                cutover=cutover,
+                temporary_clusters_stopped=(
+                    not isolated_restore_cluster.running
+                    and not recovery_cluster.running
+                ),
+            ),
             "metrics": {
                 "database_count": fingerprint_projection["database_count"],
                 "migration_count": fingerprint_projection["migration_count"],
@@ -462,12 +472,7 @@ def _validate_catalogs(policy, plans) -> None:
             plans[target.service_id].service_directory,
             service_id=target.service_id,
         )
-        if (
-            catalog.issues
-            or catalog.partials
-            or len(catalog.entries) != 1
-            or catalog.entries[0].state != "VERIFIED"
-        ):
+        if not backup_catalog_verified(catalog):
             raise PostgresRecoveryAcceptanceError("recovery_catalog_invalid")
 
 
@@ -605,7 +610,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.summary
         else json.dumps(result, indent=2, sort_keys=True)
     )
-    return 0 if result["status"] in {"PASS", "SKIP"} else 1
+    return strict_gate_exit_code(result, skip_statuses=("SKIP",))
 
 
 if __name__ == "__main__":  # pragma: no cover
