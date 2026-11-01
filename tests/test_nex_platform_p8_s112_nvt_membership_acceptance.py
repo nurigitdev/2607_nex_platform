@@ -64,13 +64,17 @@ def test_protected_acceptance_is_skipped_by_default() -> None:
 
 
 def test_acceptance_composes_backend_browser_and_redacted_evidence(monkeypatch) -> None:
-    monkeypatch.setattr(MODULE, "run_service_migrations", lambda *_args, **_kwargs: Migration())
+    monkeypatch.setattr(
+        MODULE, "run_service_migrations", lambda *_args, **_kwargs: Migration()
+    )
     monkeypatch.setattr(
         MODULE.browser_smoke,
         "prepare_playwright_postgres_smoke",
         lambda *_args, **_kwargs: type("Prepared", (), {"ae_app": object()})(),
     )
-    monkeypatch.setattr(MODULE, "_register_browser_routes", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(
+        MODULE, "_register_browser_routes", lambda *_args, **_kwargs: None
+    )
 
     def browser_runner(_env, **kwargs):
         kwargs["prepare_runner"]({}, "test")
@@ -102,7 +106,9 @@ def test_invalid_database_or_backend_failure_is_fail_closed(monkeypatch) -> None
     )
     assert bad["status"] == "FAIL"
 
-    monkeypatch.setattr(MODULE, "run_service_migrations", lambda *_args, **_kwargs: Migration())
+    monkeypatch.setattr(
+        MODULE, "run_service_migrations", lambda *_args, **_kwargs: Migration()
+    )
     failed = MODULE.run_p8_s112_nvt_membership_acceptance(
         _env(),
         execute=True,
@@ -126,3 +132,33 @@ def test_summary_reports_all_execution_boundaries() -> None:
     assert "provider=true" in line
     assert "playwright=true" in line
     assert "checks=2/2" in line
+
+
+def test_acceptance_checks_fail_closed_for_malformed_collaborator_results() -> None:
+    checks = MODULE._acceptance_checks(
+        backend={"project_membership_batch_result": "malformed"},
+        browser={"status": "PASS", "source_smokes": "malformed"},
+    )
+
+    assert checks["authenticated_playwright"] is True
+    assert checks["playwright_batch_surface"] is False
+    assert all(
+        value is False
+        for key, value in checks.items()
+        if key != "authenticated_playwright"
+    )
+
+
+def test_redaction_and_exit_code_guards() -> None:
+    MODULE._assert_redacted({"status": "PASS"}, _env())
+    try:
+        MODULE._assert_redacted({"leak": _env()["NEX_AE_TEST_DATABASE_URL"]}, _env())
+    except MODULE.P8S112AcceptanceError as exc:
+        assert "NEX_AE_TEST_DATABASE_URL" in str(exc)
+    else:
+        raise AssertionError("protected database URL was not rejected")
+
+    assert MODULE._exit_code({"status": "PASS"}) == 0
+    assert MODULE._exit_code({"status": "SKIPPED"}) == 0
+    assert MODULE._exit_code({"status": "FAIL"}) == 1
+    assert MODULE._exit_code({}) == 1

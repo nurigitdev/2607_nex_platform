@@ -35,6 +35,11 @@ for path in (
 import run_p5_s5_postgres_smoke as p5_s5
 import run_p6_s5_postgres_smoke as p6_s5
 import run_p8_s06_nsl_compatibility as p8_s06
+from canonical_journey_harness import (
+    approval_resume_checks,
+    approval_scenario_matches,
+    strict_gate_exit_code,
+)
 from nex_ae_api.delegated_work import SqlAlchemyWaitRegistrationRepository
 from nex_ae_api.nsl_approval_events import SqlAlchemyNslApprovalEventService
 from nex_ae_api.nsl_approval_publication import P8NSLApprovalPort
@@ -192,45 +197,11 @@ def run_p8_s53_approval_resume_postgres(
                 approval_event_client_factory=approval_event_client_factory,
                 approval_publication_factory=approval_publication_factory,
             )
-        checks = {
-            "release_identity_exact": release["wheel_sha256"] == lock["wheel_sha256"],
-            "actual_ae_postgres": all(
-                case["database"] == EXPECTED_AE_DATABASE
-                and case["role"] == EXPECTED_AE_ROLE
-                for case in scenarios.values()
-            ),
-            "actual_wc_postgres": all(
-                case["wc_database"] == EXPECTED_WC_DATABASE
-                and case["wc_role"] == EXPECTED_WC_ROLE
-                for case in scenarios.values()
-            ),
-            "approve_resume_valid": _scenario_matches(
-                scenarios["approve"], "VALID", "APPROVED", True
-            ),
-            "reject_resume_blocked": _scenario_matches(
-                scenarios["reject"], "VALID", "REJECTED", False
-            ),
-            "expired_resume_blocked": _scenario_matches(
-                scenarios["expiry"], "EXPIRED", "EXPIRED", False
-            ),
-            "mismatch_rejected_before_job": all(
-                case["mismatch_event"]["inbox_state"] == "REJECTED"
-                and case["mismatch_event"]["resume_runtime_job_id"] is None
-                for case in scenarios.values()
-            ),
-            "exact_resume_lineage": all(
-                case["lineage_exact"] for case in scenarios.values()
-            ),
-            "zero_eos_mutation": all(
-                case["resume"]["write_execution"] == "not_started"
-                and case["resume"]["eos_mutation_count"] == 0
-                and case["prefix_audit"]["write_requested_count"] == 0
-                for case in scenarios.values()
-            ),
-            "cleanup_complete": all(
-                case["cleanup_remaining"] == 0 for case in scenarios.values()
-            ),
-        }
+        checks = _approval_resume_checks(
+            release=release,
+            lock=lock,
+            scenarios=scenarios,
+        )
         evidence = {
             "schema_version": SCHEMA_VERSION,
             "slice": "P8-S53",
@@ -257,7 +228,7 @@ def run_p8_s53_approval_resume_postgres(
                 "eos_mutation_count": 0,
             },
         }
-    except Exception as exc:  # noqa: BLE001 - protected gate records failure evidence.
+    except Exception as exc:
         evidence = {
             "schema_version": SCHEMA_VERSION,
             "slice": "P8-S53",
@@ -1107,14 +1078,23 @@ def _cleanup_case(
 def _scenario_matches(
     scenario: Mapping[str, Any], validation: str, status: str, gate_passed: bool
 ) -> bool:
-    resume = scenario["resume"]
-    return (
-        resume["approval_validation"] == validation
-        and resume["approval_status"] == status
-        and resume["approval_gate_passed"] is gate_passed
-        and resume["claim_consumed"] is True
-        and resume["checkpoint_consumed"] is True
-        and resume["runtime_job_state"] == "DONE"
+    return approval_scenario_matches(scenario, validation, status, gate_passed)
+
+
+def _approval_resume_checks(
+    *,
+    release: Mapping[str, Any],
+    lock: Mapping[str, Any],
+    scenarios: Mapping[str, Any],
+) -> dict[str, bool]:
+    return approval_resume_checks(
+        release=release,
+        lock=lock,
+        scenarios=scenarios,
+        expected_ae_database=EXPECTED_AE_DATABASE,
+        expected_ae_role=EXPECTED_AE_ROLE,
+        expected_wc_database=EXPECTED_WC_DATABASE,
+        expected_wc_role=EXPECTED_WC_ROLE,
     )
 
 
@@ -1174,6 +1154,10 @@ def summary_line(evidence: Mapping[str, Any]) -> str:
     )
 
 
+def _exit_code(evidence: Mapping[str, Any]) -> int:
+    return strict_gate_exit_code(evidence)
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="Run P8-S53 protected approval resume PostgreSQL gate"
@@ -1192,7 +1176,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         python_bin=args.python_bin,
     )
     print(summary_line(result) if args.summary else json.dumps(result, indent=2))
-    return 0 if result["status"] in {"PASS", "SKIPPED"} else 1
+    return _exit_code(result)
 
 
 if __name__ == "__main__":  # pragma: no cover

@@ -4,6 +4,7 @@ import json
 import os
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -14,12 +15,14 @@ import run_p8_s53_approval_resume_postgres as smoke
 
 
 def test_p8_s53_gate_is_explicitly_protected() -> None:
-    assert smoke.run_p8_s53_approval_resume_postgres({}, execute=False)[
-        "status"
-    ] == "SKIPPED"
-    assert smoke.run_p8_s53_approval_resume_postgres({}, execute=True)[
-        "status"
-    ] == "SKIPPED"
+    assert (
+        smoke.run_p8_s53_approval_resume_postgres({}, execute=False)["status"]
+        == "SKIPPED"
+    )
+    assert (
+        smoke.run_p8_s53_approval_resume_postgres({}, execute=True)["status"]
+        == "SKIPPED"
+    )
 
 
 @pytest.mark.parametrize(
@@ -101,6 +104,80 @@ def test_summary_is_bounded() -> None:
     assert "checks=10/10" in line
     assert "p8_4_closed=true" in line
     assert "eos_mutations=0" in line
+
+
+def _scenario(validation: str, status: str, gate_passed: bool) -> dict[str, object]:
+    return {
+        "database": smoke.EXPECTED_AE_DATABASE,
+        "role": smoke.EXPECTED_AE_ROLE,
+        "wc_database": smoke.EXPECTED_WC_DATABASE,
+        "wc_role": smoke.EXPECTED_WC_ROLE,
+        "resume": {
+            "approval_validation": validation,
+            "approval_status": status,
+            "approval_gate_passed": gate_passed,
+            "claim_consumed": True,
+            "checkpoint_consumed": True,
+            "runtime_job_state": "DONE",
+            "write_execution": "not_started",
+            "eos_mutation_count": 0,
+        },
+        "mismatch_event": {
+            "inbox_state": "REJECTED",
+            "resume_runtime_job_id": None,
+        },
+        "lineage_exact": True,
+        "prefix_audit": {"write_requested_count": 0},
+        "cleanup_remaining": 0,
+    }
+
+
+def test_approval_resume_checks_fail_closed_for_malformed_scenario() -> None:
+    scenarios = {
+        "approve": _scenario("VALID", "APPROVED", True),
+        "reject": _scenario("VALID", "REJECTED", False),
+        "expiry": _scenario("EXPIRED", "EXPIRED", False),
+    }
+    checks = smoke._approval_resume_checks(
+        release={"wheel_sha256": "digest"},
+        lock={"wheel_sha256": "digest"},
+        scenarios=scenarios,
+    )
+    assert all(checks.values())
+
+    malformed = {**scenarios, "reject": {"resume": "not-an-object"}}
+    rejected = smoke._approval_resume_checks(release={}, lock={}, scenarios=malformed)
+    assert rejected["reject_resume_blocked"] is False
+    assert rejected["actual_ae_postgres"] is False
+    assert rejected["cleanup_complete"] is False
+    assert smoke._scenario_matches({}, "VALID", "APPROVED", True) is False
+
+
+def test_run_json_rejects_command_failure_and_non_object(monkeypatch) -> None:
+    monkeypatch.setattr(
+        smoke.subprocess,
+        "run",
+        lambda *_args, **_kwargs: SimpleNamespace(
+            returncode=9, stdout="", stderr="private failure"
+        ),
+    )
+    with pytest.raises(smoke.P8S53SmokeError, match="operation failed"):
+        smoke._run_json(("command",), env={}, operation="operation")
+
+    monkeypatch.setattr(
+        smoke.subprocess,
+        "run",
+        lambda *_args, **_kwargs: SimpleNamespace(returncode=0, stdout="[]", stderr=""),
+    )
+    with pytest.raises(smoke.P8S53SmokeError, match="non-object"):
+        smoke._run_json(("command",), env={}, operation="operation")
+
+
+@pytest.mark.parametrize(
+    ("status", "expected"), (("PASS", 0), ("SKIPPED", 0), ("FAIL", 1), (None, 1))
+)
+def test_exit_code_is_fail_closed(status: str | None, expected: int) -> None:
+    assert smoke._exit_code({"status": status}) == expected
 
 
 @pytest.mark.skipif(

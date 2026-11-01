@@ -1,16 +1,16 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 import sys
+from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
-
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts/smoke"))
 
-import run_platform_authenticated_ingestion_postgres_smoke as smoke  # noqa: E402
+import run_platform_authenticated_ingestion_postgres_smoke as smoke
 
 
 def _database() -> dict[str, object]:
@@ -149,3 +149,98 @@ def test_summary_line_reports_pass_counts() -> None:
     )
 
     assert line.endswith("chunks=2 vectors=2 restart=2 residue=0 next=1351")
+
+
+def test_wait_for_index_ready_retries_malformed_http_then_succeeds(
+    monkeypatch,
+) -> None:
+    class Response:
+        def __init__(self, status_code: int, payload=None, *, malformed=False):
+            self.status_code = status_code
+            self._payload = payload
+            self._malformed = malformed
+
+        def json(self):
+            if self._malformed:
+                raise ValueError("malformed")
+            return self._payload
+
+    responses = iter(
+        (
+            Response(503, malformed=True),
+            Response(200, {"status": "RUNNING"}),
+            Response(200, {"status": "INDEX_READY"}),
+        )
+    )
+    client = SimpleNamespace(get=lambda *_args, **_kwargs: next(responses))
+    worker = SimpleNamespace(poll=lambda: None)
+    clock = iter((0.0, 0.1, 0.2, 0.3))
+    monkeypatch.setattr(smoke, "monotonic", lambda: next(clock))
+    monkeypatch.setattr(smoke, "sleep", lambda _seconds: None)
+
+    result = smoke._wait_for_index_ready(
+        client, "http://ae", "handoff", worker, run_prefix="run", timeout_seconds=1
+    )
+    assert result == {"status": "INDEX_READY"}
+
+
+@pytest.mark.parametrize("terminal", ("FAILED", "CANCELLED"))
+def test_wait_for_index_ready_rejects_terminal_failure(monkeypatch, terminal) -> None:
+    response = SimpleNamespace(
+        status_code=200,
+        json=lambda: {
+            "status": terminal,
+            "failure": {"failed_step": "CHUNK", "error_code": "invalid"},
+        },
+    )
+    client = SimpleNamespace(get=lambda *_args, **_kwargs: response)
+    worker = SimpleNamespace(poll=lambda: None)
+    clock = iter((0.0, 0.1))
+    monkeypatch.setattr(smoke, "monotonic", lambda: next(clock))
+
+    with pytest.raises(RuntimeError, match=f"terminal status={terminal}"):
+        smoke._wait_for_index_ready(
+            client,
+            "http://ae",
+            "handoff",
+            worker,
+            run_prefix="run",
+            timeout_seconds=1,
+        )
+
+
+def test_wait_for_index_ready_rejects_worker_exit(monkeypatch) -> None:
+    clock = iter((0.0, 0.1))
+    monkeypatch.setattr(smoke, "monotonic", lambda: next(clock))
+    with pytest.raises(RuntimeError, match="worker exited"):
+        smoke._wait_for_index_ready(
+            SimpleNamespace(),
+            "http://ae",
+            "handoff",
+            SimpleNamespace(poll=lambda: 3),
+            run_prefix="run",
+            timeout_seconds=1,
+        )
+
+
+def test_cleanup_evidence_and_exit_code_are_deterministic() -> None:
+    passed = smoke._finalize_cleanup_evidence(
+        {"checks": {"journey": True}, "failure_code": "old"},
+        cleanup={"ae_residue_count": 0, "cx_residue_count": 0},
+        oa_residue_count=0,
+        storage_residue_count=0,
+    )
+    assert passed["status"] == "PASS"
+    assert "failure_code" not in passed
+    assert smoke._exit_code(passed) == 0
+
+    failed = smoke._finalize_cleanup_evidence(
+        {"checks": {"journey": True}},
+        cleanup={"ae_residue_count": 1},
+        oa_residue_count=0,
+        storage_residue_count=0,
+    )
+    assert failed["status"] == "FAIL"
+    assert failed["failure_code"] == "authenticated_ingestion_check_failed"
+    assert smoke._exit_code(failed) == 1
+    assert smoke._exit_code({"status": "SKIPPED"}) == 0

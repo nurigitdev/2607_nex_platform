@@ -4,26 +4,26 @@ from __future__ import annotations
 import argparse
 import json
 import os
-from pathlib import Path
 import shutil
 import subprocess
 import sys
+from collections.abc import Mapping
+from pathlib import Path
 from tempfile import mkdtemp
 from time import monotonic, sleep
-from typing import Any, Mapping
+from typing import Any
 from uuid import uuid4
 
 import httpx
 from sqlalchemy import text
 
-
 ROOT = Path(__file__).resolve().parents[2]
 for path in (ROOT / "services/_shared", ROOT / "scripts/smoke"):
     sys.path.insert(0, str(path))
 
-from nex_runtime import build_engine, load_env_file  # noqa: E402
-import run_platform_oa_backed_trust_postgres_smoke as trust  # noqa: E402
-
+import run_platform_oa_backed_trust_postgres_smoke as trust
+from canonical_journey_harness import fail_only_exit_code, finalize_cleanup_evidence
+from nex_runtime import build_engine, load_env_file
 
 SMOKE_ENV = "NEX_PLATFORM_AUTHENTICATED_INGESTION_POSTGRES_SMOKE"
 SCHEMA_VERSION = "platform_authenticated_ingestion_postgres_smoke.v1"
@@ -178,20 +178,12 @@ def run_smoke(environ: Mapping[str, str] | None = None) -> dict[str, Any]:
         _dispose_engines(engines)
         engines = {}
         shutil.rmtree(work_root)
-        evidence["cleanup"] = {
-            **cleanup,
-            "oa_residue_count": oa_residue,
-            "storage_residue_count": int(work_root.exists()),
-        }
-        evidence["checks"]["cleanup_residue_free"] = all(
-            value == 0 for value in evidence["cleanup"].values()
+        return _finalize_cleanup_evidence(
+            evidence,
+            cleanup=cleanup,
+            oa_residue_count=oa_residue,
+            storage_residue_count=int(work_root.exists()),
         )
-        evidence["status"] = (
-            "PASS" if all(evidence["checks"].values()) else "FAIL"
-        )
-        if evidence["status"] == "FAIL":
-            evidence["failure_code"] = "authenticated_ingestion_check_failed"
-        return evidence
     except Exception as exc:  # pragma: no cover - protected integration diagnostics
         detail = (
             str(exc)
@@ -229,9 +221,7 @@ def _start_journey_apis(
     cx_process = trust._start_service("nex-cx", service_envs["nex-cx"])
     try:
         trust._wait_for_database_ready(configured["NEX_CX_BASE_URL"], cx_process)
-        ae_process = trust._start_service(
-            "nex-ae-api", service_envs["nex-ae-api"]
-        )
+        ae_process = trust._start_service("nex-ae-api", service_envs["nex-ae-api"])
         trust._wait_for_database_ready(configured["NEX_AE_API_BASE_URL"], ae_process)
     except Exception:
         if cx_process.poll() is None:
@@ -328,33 +318,41 @@ def _observe_database(
 ) -> dict[str, Any]:
     params = {**identifiers, "tenant_id": tenant_id, "subject_id": subject_id}
     with engines["ae"].connect() as connection:
-        ae = connection.execute(
-            text(
-                "SELECT count(*) AS row_count, "
-                "bool_and(tenant_id = :tenant_id AND owner_user_id = :subject_id) "
-                "AS owner_match, "
-                "bool_and(record_payload::text NOT LIKE '%content_text%') AS metadata_only "
-                "FROM ae_upload_handoffs "
-                "WHERE upload_handoff_id = :upload_handoff_id"
-            ),
-            params,
-        ).mappings().one()
+        ae = (
+            connection.execute(
+                text(
+                    "SELECT count(*) AS row_count, "
+                    "bool_and(tenant_id = :tenant_id AND owner_user_id = :subject_id) "
+                    "AS owner_match, "
+                    "bool_and(record_payload::text NOT LIKE '%content_text%') AS metadata_only "
+                    "FROM ae_upload_handoffs "
+                    "WHERE upload_handoff_id = :upload_handoff_id"
+                ),
+                params,
+            )
+            .mappings()
+            .one()
+        )
     with engines["cx"].connect() as connection:
-        cx = connection.execute(
-            text(
-                "SELECT "
-                "(SELECT count(*) FROM cx_content_objects WHERE content_object_id = CAST(:document_id AS uuid)) AS content_count, "
-                "(SELECT count(*) FROM cx_extraction_artifacts WHERE content_object_id = CAST(:document_id AS uuid)) AS extraction_count, "
-                "(SELECT count(*) FROM cx_chunks WHERE content_object_id = CAST(:document_id AS uuid)) AS chunk_count, "
-                "(SELECT count(*) FROM cx_ingest_runs WHERE document_id = CAST(:document_id AS uuid) AND status = 'SUCCEEDED') AS succeeded_run_count, "
-                "(SELECT count(*) FROM service_jobs WHERE job_id = :job_id AND status = 'SUCCEEDED') AS succeeded_job_count, "
-                "(SELECT count(*) FROM cx_vector_indexes WHERE content_object_id = CAST(:document_id AS uuid) AND status = 'READY') AS ready_index_count, "
-                "(SELECT count(*) FROM cx_vectors WHERE content_object_id = CAST(:document_id AS uuid)) AS vector_count, "
-                "(SELECT count(*) FROM cx_document_summaries WHERE content_object_id = CAST(:document_id AS uuid) AND status = 'READY') AS summary_count, "
-                "(SELECT count(*) FROM cx_document_summary_embeddings se JOIN cx_document_summaries ds ON ds.document_summary_id = se.document_summary_id WHERE ds.content_object_id = CAST(:document_id AS uuid) AND se.status = 'READY') AS summary_embedding_count"
-            ),
-            params,
-        ).mappings().one()
+        cx = (
+            connection.execute(
+                text(
+                    "SELECT "
+                    "(SELECT count(*) FROM cx_content_objects WHERE content_object_id = CAST(:document_id AS uuid)) AS content_count, "
+                    "(SELECT count(*) FROM cx_extraction_artifacts WHERE content_object_id = CAST(:document_id AS uuid)) AS extraction_count, "
+                    "(SELECT count(*) FROM cx_chunks WHERE content_object_id = CAST(:document_id AS uuid)) AS chunk_count, "
+                    "(SELECT count(*) FROM cx_ingest_runs WHERE document_id = CAST(:document_id AS uuid) AND status = 'SUCCEEDED') AS succeeded_run_count, "
+                    "(SELECT count(*) FROM service_jobs WHERE job_id = :job_id AND status = 'SUCCEEDED') AS succeeded_job_count, "
+                    "(SELECT count(*) FROM cx_vector_indexes WHERE content_object_id = CAST(:document_id AS uuid) AND status = 'READY') AS ready_index_count, "
+                    "(SELECT count(*) FROM cx_vectors WHERE content_object_id = CAST(:document_id AS uuid)) AS vector_count, "
+                    "(SELECT count(*) FROM cx_document_summaries WHERE content_object_id = CAST(:document_id AS uuid) AND status = 'READY') AS summary_count, "
+                    "(SELECT count(*) FROM cx_document_summary_embeddings se JOIN cx_document_summaries ds ON ds.document_summary_id = se.document_summary_id WHERE ds.content_object_id = CAST(:document_id AS uuid) AND se.status = 'READY') AS summary_embedding_count"
+                ),
+                params,
+            )
+            .mappings()
+            .one()
+        )
     return {
         "ae_handoff_count": int(ae["row_count"]),
         "ae_owner_match": ae["owner_match"] is True,
@@ -617,6 +615,22 @@ def _failure(code: str, detail: str) -> dict[str, Any]:
     }
 
 
+def _finalize_cleanup_evidence(
+    evidence: Mapping[str, Any],
+    *,
+    cleanup: Mapping[str, int],
+    oa_residue_count: int,
+    storage_residue_count: int,
+) -> dict[str, Any]:
+    return finalize_cleanup_evidence(
+        evidence,
+        cleanup=cleanup,
+        oa_residue_count=oa_residue_count,
+        storage_residue_count=storage_residue_count,
+        failure_code="authenticated_ingestion_check_failed",
+    )
+
+
 def summary_line(report: Mapping[str, Any]) -> str:
     if report.get("status") == "SKIPPED":
         return f"platform_authenticated_ingestion_postgres=skip reason={SMOKE_ENV}"
@@ -636,6 +650,10 @@ def summary_line(report: Mapping[str, Any]) -> str:
     )
 
 
+def _exit_code(report: Mapping[str, Any]) -> int:
+    return fail_only_exit_code(report)
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--summary", action="store_true")
@@ -643,7 +661,7 @@ def main(argv: list[str] | None = None) -> int:
     load_env_file(ROOT / ".env.local")
     report = run_smoke()
     print(summary_line(report) if args.summary else json.dumps(report, indent=2))
-    return 1 if report.get("status") == "FAIL" else 0
+    return _exit_code(report)
 
 
 if __name__ == "__main__":  # pragma: no cover

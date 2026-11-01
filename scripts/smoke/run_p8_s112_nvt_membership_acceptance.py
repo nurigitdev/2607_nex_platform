@@ -36,6 +36,7 @@ for path in (
 
 import run_ae_web_credential_login_playwright_postgres_smoke as browser_smoke
 import run_p65_s7_postgres_live_e2e as p65_s7
+from canonical_journey_harness import nvt_acceptance_checks, strict_gate_exit_code
 from nex_ae_api.intent_candidate_generation import LiveIntentCandidateService
 from nex_ae_api.mo_generation_client import build_default_ae_mo_generation_client
 from nex_ae_api.project_membership_batch import (
@@ -131,7 +132,9 @@ from run_protected_dgx_live_profile import protected_dgx_vllm_profile_defaults
 SCHEMA_VERSION = "p8_s112_nvt_membership_acceptance.v1"
 SMOKE_ENV = "NEX_P8_S112_PROTECTED_ACCEPTANCE"
 DEFAULT_REPORT = ROOT / "reports/acceptance/p8-s112-protected.json"
-NODE_SCRIPT = ROOT / "apps/nex-ae-web/scripts/runP8S112ProjectMembershipPlaywrightSmoke.mjs"
+NODE_SCRIPT = (
+    ROOT / "apps/nex-ae-web/scripts/runP8S112ProjectMembershipPlaywrightSmoke.mjs"
+)
 EXPECTED_DATABASES = {
     "NEX_OA_TEST_DATABASE_URL": ("nex_oa_user", "nex_oa_test"),
     "NEX_AE_TEST_DATABASE_URL": ("nex_ae_user", "nex_ae_test"),
@@ -228,28 +231,7 @@ def run_p8_s112_nvt_membership_acceptance(
             node_runner=_run_browser_node,
         )
         node = browser.get("source_smokes", {}).get("node_playwright", {})
-        checks = {
-            "actual_oa_ae_wc_eos_postgres": backend.get("actual_postgres") is True,
-            "live_nvt_and_membership_intent": backend.get(
-                "live_generation_stages"
-            )
-            == ["INTENT", "INTENT"],
-            "nvt_crud_verified": backend.get("nvt_crud_verified") is True,
-            "oa_batch_resolution_verified": backend.get(
-                "oa_batch_resolution_verified"
-            )
-            is True,
-            "wc_approval_verified": backend.get("wc_approval_verified") is True,
-            "eos_exact_replay_verified": backend.get(
-                "eos_exact_replay_verified"
-            )
-            is True,
-            "partial_result_projected": projection.get("overall_status")
-            == "PARTIALLY_APPLIED",
-            "authenticated_playwright": browser.get("status") == "PASS",
-            "playwright_batch_surface": node.get("status") == "PASS",
-            "backend_zero_residue": backend.get("residue_count") == 0,
-        }
+        checks = _acceptance_checks(backend=backend, browser=browser)
         evidence = {
             "schema_version": SCHEMA_VERSION,
             "slice": "P8-S112",
@@ -298,7 +280,7 @@ def run_p8_s112_nvt_membership_acceptance(
         }
         _assert_redacted(evidence, effective_env)
         return evidence
-    except Exception as exc:  # noqa: BLE001 - protected gate records safe failure.
+    except Exception as exc:
         evidence = {
             "schema_version": SCHEMA_VERSION,
             "slice": "P8-S112",
@@ -718,7 +700,10 @@ def _build_oa_app(database_url: str) -> Any:
     runtime = attach_service_persistence_runtime(
         app,
         spec,
-        environ={spec.database_env: database_url, "NEX_OA_PERSISTENCE_MODE": "postgres"},
+        environ={
+            spec.database_env: database_url,
+            "NEX_OA_PERSISTENCE_MODE": "postgres",
+        },
     )
     subjects = build_subject_registry_for_runtime(runtime)
     memberships = build_tenant_membership_registry_for_runtime(
@@ -761,9 +746,7 @@ def _seed_oa_identity(
 ) -> None:
     headers = {
         "Authorization": "Bearer "
-        + _service_token(
-            "nex-ae-api", "nex-oa", OA_IDENTITY_BOOTSTRAP_WRITE_SCOPE
-        ),
+        + _service_token("nex-ae-api", "nex-oa", OA_IDENTITY_BOOTSTRAP_WRITE_SCOPE),
         "X-Service-ID": "nex-ae-api",
         "X-Request-ID": str(uuid4()),
     }
@@ -1091,8 +1074,7 @@ def _domain_counts(
         project_members = int(
             connection.execute(
                 text(
-                    "SELECT count(*) FROM eos_project_member "
-                    "WHERE tenant_id = :tenant"
+                    "SELECT count(*) FROM eos_project_member WHERE tenant_id = :tenant"
                 ),
                 {"tenant": tenant_id},
             ).scalar_one()
@@ -1213,7 +1195,11 @@ def _residue_count(
         ):
             total += int(
                 connection.execute(
-                    text("SELECT count(*) FROM " + table.name + " WHERE tenant_id = :tenant"),
+                    text(
+                        "SELECT count(*) FROM "
+                        + table.name
+                        + " WHERE tenant_id = :tenant"
+                    ),
                     {"tenant": tenant_id},
                 ).scalar_one()
             )
@@ -1249,6 +1235,12 @@ def _assert_redacted(evidence: Mapping[str, Any], env: Mapping[str, str]) -> Non
             raise P8S112AcceptanceError(f"protected value leaked: {key}")
 
 
+def _acceptance_checks(
+    *, backend: Mapping[str, Any], browser: Mapping[str, Any]
+) -> dict[str, bool]:
+    return nvt_acceptance_checks(backend=backend, browser=browser)
+
+
 def summary_line(evidence: Mapping[str, Any]) -> str:
     checks = evidence.get("checks", {})
     return (
@@ -1258,6 +1250,10 @@ def summary_line(evidence: Mapping[str, Any]) -> str:
         f"playwright={str(bool(evidence.get('actual_playwright'))).lower()} "
         f"checks={sum(bool(value) for value in checks.values())}/{len(checks)}"
     )
+
+
+def _exit_code(evidence: Mapping[str, Any]) -> int:
+    return strict_gate_exit_code(evidence)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -1273,7 +1269,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         json.dumps(evidence, indent=2, sort_keys=True) + "\n", encoding="utf-8"
     )
     print(summary_line(evidence) if args.summary else json.dumps(evidence, indent=2))
-    return 0 if evidence["status"] in {"PASS", "SKIPPED"} else 1
+    return _exit_code(evidence)
 
 
 if __name__ == "__main__":  # pragma: no cover
