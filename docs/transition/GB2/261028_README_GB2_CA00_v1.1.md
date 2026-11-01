@@ -160,6 +160,25 @@ durable 결과 흐름, OA/EOS 업무 경계, protected harness 구조, Demo 잔�
 
 ---
 
+## 6) Post-S20J Model Calibration Corrective Execution Plan
+
+```text
+GB2_CA00_Post_S20J_Model_Calibration_Corrective_
+Execution_Plan_v1.0.md
+```
+
+S20J 이후 protected live 재검증에서 `Qwen3-Reranker-4B`의 36개 표본
+single-score calibration이 frozen false-ready/recall 제약을 만족하지 못했다.
+이 문서는 기존 v1 dataset을 보존하면서 30개 질의와 120개 labelled pair로
+v2 dataset을 확장하고, query-group 단위 calibration/holdout 분리,
+repeatability, single-signal decision gate, 필요 시 multi-signal 정책,
+deferred live acceptance 재실행 순서를 정의한다.
+
+이 문서는 provider 연결 성공을 calibration 성공으로 간주하지 않으며,
+metric 통과를 위해 기존 안전 제약을 낮추는 것을 금지한다.
+
+---
+
 # 3. Document Relationship
 
 문서 관계는 다음과 같다.
@@ -193,6 +212,10 @@ GB2-CA00-S20A Coverage Ownership Baseline
 Post-S20A Coverage Hardening Plan
         │
         │ S20B ~ S20J
+        ▼
+Post-S20J Model Calibration Corrective Plan
+        │
+        │ S20K ~ S20R
         ▼
 Golden B v2 Implementation
 ```
