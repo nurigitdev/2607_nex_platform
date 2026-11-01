@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from pathlib import Path
 
 import run_demo_product_dependency_audit as audit
@@ -14,10 +15,16 @@ def test_current_repository_has_no_product_owned_demo_dependency() -> None:
     assert evidence["status"] == "PASS"
     assert evidence["canonical_product_paths_clean"] is True
     assert evidence["current_platform_components_authoritative"] is True
-    assert evidence["explicit_demo_wrapper_count"] == 5
+    assert evidence["explicit_demo_wrapper_count"] == 6
     assert evidence["canonical_product_file_count"] > 0
     assert all(evidence["historical_p8_demo_regressions"].values())
     assert set(evidence["compatibility_edges"].values()) == {"PASS"}
+    assert {
+        item["decision"] for item in evidence["demo_candidate_decisions"].values()
+    } == {"RETAIN_COMPATIBILITY", "REBIND_CANONICAL", "RETIRE"}
+    assert {
+        item["status"] for item in evidence["demo_candidate_decisions"].values()
+    } == {"PASS"}
     assert evidence["findings"] == []
     assert evidence["content_included"] is False
     assert evidence["secret_included"] is False
@@ -73,6 +80,55 @@ def test_missing_wrapper_and_compatibility_edge_fail_closed(tmp_path: Path) -> N
         "COMPATIBILITY_SOURCE_MISSING",
     }
     assert evidence["compatibility_edges"][edge.edge_id] == "FAIL"
+
+
+def test_demo_candidate_presence_must_match_classification(tmp_path: Path) -> None:
+    _write_valid_repository(tmp_path)
+    retained = next(
+        item
+        for item in audit.DEMO_CANDIDATE_DECISIONS
+        if item.decision == "RETAIN_COMPATIBILITY"
+    )
+    (tmp_path / retained.path).unlink()
+    retired = next(
+        item
+        for item in audit.DEMO_CANDIDATE_DECISIONS
+        if item.decision == "RETIRE"
+    )
+    retired_path = tmp_path / retired.path
+    retired_path.parent.mkdir(parents=True, exist_ok=True)
+    retired_path.write_text("pass\n", encoding="utf-8")
+
+    evidence = audit.audit_repository(tmp_path)
+
+    assert evidence["status"] == "FAIL"
+    assert {item["code"] for item in evidence["findings"]} >= {
+        "RETAINED_DEMO_CANDIDATE_MISSING",
+        "RETIRED_DEMO_CANDIDATE_PRESENT",
+    }
+    assert evidence["demo_candidate_decisions"][retained.path]["status"] == "FAIL"
+    assert evidence["demo_candidate_decisions"][retired.path]["status"] == "FAIL"
+
+
+def test_unknown_demo_candidate_decision_fails_closed(
+    tmp_path: Path, monkeypatch
+) -> None:
+    _write_valid_repository(tmp_path)
+    invalid = replace(audit.DEMO_CANDIDATE_DECISIONS[0], decision="UNKNOWN")
+    monkeypatch.setattr(
+        audit,
+        "DEMO_CANDIDATE_DECISIONS",
+        (invalid, *audit.DEMO_CANDIDATE_DECISIONS[1:]),
+    )
+
+    evidence = audit.audit_repository(tmp_path)
+
+    assert evidence["status"] == "FAIL"
+    assert any(
+        item["code"] == "DEMO_CANDIDATE_DECISION_INVALID"
+        for item in evidence["findings"]
+    )
+    assert evidence["demo_candidate_decisions"][invalid.path]["status"] == "FAIL"
 
 
 def test_missing_canonical_import_and_parse_failure_are_reported(

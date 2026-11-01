@@ -15,7 +15,9 @@ AUDIT_SCHEMA_VERSION = "demo_product_dependency_audit.v1"
 
 FORBIDDEN_DEMO_DEPENDENCIES = (
     "demo_fixture",
+    "demo_nsl_runtime_adapter",
     "demo_processes",
+    "demo_runtime",
     "p8_demo_runtime_composition",
     "p8_demo_semantic_activation",
 )
@@ -24,11 +26,47 @@ FORBIDDEN_DEMO_DEPENDENCIES = (
 EXPLICIT_DEMO_WRAPPERS = frozenset(
     {
         "services/_shared/nex_runtime/demo_compose.py",
+        "services/_shared/nex_runtime/demo_nsl_runtime_adapter.py",
         "services/_shared/nex_runtime/demo_oci_release.py",
         "services/nex-ae-api/nex_ae_api/demo_runtime.py",
         "services/nex-ae-api/nex_ae_api/p8_demo_controlled_skill.py",
         "services/nex-ae-api/nex_ae_api/p8_demo_semantic_activation.py",
     }
+)
+
+DEMO_DECISIONS = frozenset(
+    {"RETAIN_COMPATIBILITY", "REBIND_CANONICAL", "RETIRE"}
+)
+
+
+@dataclass(frozen=True)
+class DemoCandidateDecision:
+    path: str
+    decision: str
+    rationale: str
+
+
+DEMO_CANDIDATE_DECISIONS = (
+    DemoCandidateDecision(
+        "services/nex-ae-api/nex_ae_api/p8_demo_controlled_skill.py",
+        "RETAIN_COMPATIBILITY",
+        "historical P8 controlled-WRITE execution compatibility",
+    ),
+    DemoCandidateDecision(
+        "services/_shared/nex_runtime/demo_nsl_runtime_adapter.py",
+        "RETAIN_COMPATIBILITY",
+        "exact admitted NSL package replay for the P8 compatibility surface",
+    ),
+    DemoCandidateDecision(
+        "services/nex-wc/nex_wc/demo_runtime.py",
+        "RETIRE",
+        "superseded by nex_wc.event_delivery_process",
+    ),
+    DemoCandidateDecision(
+        "scripts/smoke/run_p8_demo_s10b_installed_runtime.py",
+        "REBIND_CANONICAL",
+        "historical acceptance wrapper bound to canonical AE runtime composition",
+    ),
 )
 
 
@@ -127,6 +165,39 @@ def audit_repository(root: Path = ROOT) -> dict[str, Any]:
             if tree is not None:
                 findings.extend(_forbidden_import_findings(tree, relative))
 
+    demo_candidate_status: dict[str, str] = {}
+    for candidate in DEMO_CANDIDATE_DECISIONS:
+        path = root / candidate.path
+        decision_valid = candidate.decision in DEMO_DECISIONS
+        presence_valid = (
+            not path.exists() if candidate.decision == "RETIRE" else path.is_file()
+        )
+        if not decision_valid:
+            findings.append(
+                AuditFinding(
+                    "DEMO_CANDIDATE_DECISION_INVALID",
+                    candidate.path,
+                    0,
+                    f"unsupported Demo candidate decision: {candidate.decision}",
+                )
+            )
+        if not presence_valid:
+            findings.append(
+                AuditFinding(
+                    (
+                        "RETIRED_DEMO_CANDIDATE_PRESENT"
+                        if candidate.decision == "RETIRE"
+                        else "RETAINED_DEMO_CANDIDATE_MISSING"
+                    ),
+                    candidate.path,
+                    0,
+                    f"Demo candidate presence differs from {candidate.decision}",
+                )
+            )
+        demo_candidate_status[candidate.path] = (
+            "PASS" if decision_valid and presence_valid else "FAIL"
+        )
+
     for relative in sorted(EXPLICIT_DEMO_WRAPPERS):
         path = root / relative
         if not path.is_file():
@@ -187,6 +258,14 @@ def audit_repository(root: Path = ROOT) -> dict[str, Any]:
         "status": "PASS" if not findings else "FAIL",
         "canonical_product_file_count": product_file_count,
         "explicit_demo_wrapper_count": len(EXPLICIT_DEMO_WRAPPERS),
+        "demo_candidate_decisions": {
+            item.path: {
+                "decision": item.decision,
+                "rationale": item.rationale,
+                "status": demo_candidate_status[item.path],
+            }
+            for item in DEMO_CANDIDATE_DECISIONS
+        },
         "forbidden_dependency_names": list(FORBIDDEN_DEMO_DEPENDENCIES),
         "canonical_product_paths_clean": canonical_clean,
         "current_platform_components_authoritative": compatibility_ready,

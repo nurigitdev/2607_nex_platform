@@ -2664,6 +2664,35 @@ def test_summarize_operations_rollup_metrics_counts_empty() -> None:
     }
 
 
+def test_remediation_execution_issue_guidance_covers_failure_and_sync_states() -> None:
+    items = [
+        {
+            "execution_status": "FAILED",
+            "task_status": "ASSIGNED",
+            "status_sync_state": "SYNC_REQUIRED",
+        },
+        {"status_sync_state": "TERMINAL_TASK_DIVERGED"},
+        {"status_sync_state": "UNKNOWN_EXECUTION_STATUS"},
+        {"status_sync_state": "ORPHAN_EXECUTION"},
+        {"status_sync_state": "NO_EXECUTION"},
+    ]
+
+    assert ag_operations._remediation_execution_issue_runbook_ids(items) == [
+        "ag.remediation_execution.failed_execution_triage.v1",
+        "ag.remediation_execution.missing_execution_followup.v1",
+        "ag.remediation_execution.orphan_execution_review.v1",
+        "ag.remediation_execution.status_sync_review.v1",
+        "ag.remediation_execution.unknown_status_review.v1",
+    ]
+    assert ag_operations._remediation_execution_issue_operator_actions(items) == [
+        "follow_up_missing_remediation_execution",
+        "inspect_unknown_remediation_execution_status",
+        "reconcile_remediation_task_status",
+        "review_orphan_remediation_execution",
+        "triage_failed_remediation_execution",
+    ]
+
+
 def test_operations_rollup_metrics_route_requires_auth_returns_projection() -> None:
     registry = build_operations_source_registry(
         job_queues=build_job_queues(),

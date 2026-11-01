@@ -29,7 +29,6 @@ REQUIRED_REFERENCES = (
     "services/nex-ae-api/nex_ae_api/p8_demo_controlled_skill.py",
     "services/nex-ae-api/nex_ae_api/p8_demo_semantic_activation.py",
     "services/nex-ae-api/nex_ae_api/demo_runtime.py",
-    "services/nex-wc/nex_wc/demo_runtime.py",
     "services/nex-eos/nex_eos/demo_runtime.py",
     "services/_shared/nex_runtime/demo_processes.py",
     "services/_shared/nex_runtime/demo_domain_activation.py",

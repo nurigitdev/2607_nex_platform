@@ -17,7 +17,6 @@ from nex_runtime.demo_processes import (
     demo_process_manifest_projection,
     validate_demo_process_manifest,
 )
-from nex_wc import demo_runtime as wc_runtime
 
 
 class _Resource:
@@ -67,7 +66,6 @@ def test_all_installed_background_processes_have_worker_pool_and_lifecycle() -> 
     ("module", "argv", "process_id"),
     (
         (ae_runtime, ["worker", "--check"], "nex-ae-agent-runtime-worker"),
-        (wc_runtime, ["events", "--check"], "nex-wc-event-delivery-worker"),
         (eos_runtime, ["outbox", "--check"], "nex-eos-outbox-publisher"),
     ),
 )
@@ -124,7 +122,6 @@ def test_demo_runtime_commands_admit_check_but_fail_closed_execution(
     ("module", "process", "process_id"),
     (
         (ae_runtime, "worker", "nex-ae-agent-runtime-worker"),
-        (wc_runtime, "events", "nex-wc-event-delivery-worker"),
         (eos_runtime, "outbox", "nex-eos-outbox-publisher"),
     ),
 )
@@ -227,7 +224,7 @@ def test_demo_process_manifest_contains_module_finder_failures() -> None:
         )
 
 
-@pytest.mark.parametrize("module", (ae_runtime, wc_runtime, eos_runtime))
+@pytest.mark.parametrize("module", (ae_runtime, eos_runtime))
 def test_service_live_check_and_run_close_worker_resource(
     module, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -307,15 +304,6 @@ class _Session:
             ae_runtime,
             {"queued": 2, "recoverable": 1},
             {"queued_count": 2, "recoverable_lease_count": 1},
-        ),
-        (
-            wc_runtime,
-            {"active_jobs": 3, "coordination_events": 2, "approval_events": 1},
-            {
-                "active_job_count": 3,
-                "coordination_event_count": 2,
-                "approval_event_count": 1,
-            },
         ),
         (eos_runtime, 4, {"pending_outbox_count": 4}),
     ),
