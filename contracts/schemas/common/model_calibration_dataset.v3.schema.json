@@ -1,0 +1,93 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/common/model_calibration_dataset.v3.schema.json",
+  "title": "Model Calibration Package Dataset v3",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["dataset_schema_version", "dataset_id", "cases"],
+  "properties": {
+    "dataset_schema_version": {"const": "model_calibration_dataset.v3"},
+    "dataset_id": {"const": "s136-retrieval-package-confidence-public-v3"},
+    "cases": {
+      "type": "array",
+      "minItems": 60,
+      "maxItems": 60,
+      "items": {"$ref": "#/$defs/case"}
+    }
+  },
+  "$defs": {
+    "case": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "case_id",
+        "scenario_id",
+        "partition",
+        "language_profile",
+        "domain",
+        "expected_ready",
+        "query",
+        "candidates"
+      ],
+      "properties": {
+        "case_id": {"type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"},
+        "scenario_id": {"type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"},
+        "partition": {"enum": ["CALIBRATION", "HOLDOUT"]},
+        "language_profile": {
+          "enum": ["KOREAN", "KOREAN_ENGLISH_MIXED", "ENGLISH"]
+        },
+        "domain": {
+          "enum": [
+            "PROJECT",
+            "FINANCE",
+            "IDENTITY_AUTHORIZATION",
+            "GOVERNANCE_OPERATIONS",
+            "AI_RUNTIME"
+          ]
+        },
+        "expected_ready": {"type": "boolean"},
+        "query": {"type": "string", "minLength": 1},
+        "candidates": {
+          "type": "array",
+          "minItems": 4,
+          "maxItems": 4,
+          "items": {"$ref": "#/$defs/candidate"}
+        }
+      }
+    },
+    "candidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "candidate_id",
+        "evidence_role",
+        "expected_relevant",
+        "text"
+      ],
+      "properties": {
+        "candidate_id": {
+          "enum": [
+            "primary-answer",
+            "supporting-answer",
+            "hard-non-answer",
+            "related-non-answer",
+            "contradictory-non-answer",
+            "easy-non-answer"
+          ]
+        },
+        "evidence_role": {
+          "enum": [
+            "PRIMARY_ANSWER",
+            "SUPPORTING_ANSWER",
+            "HARD_NON_ANSWER",
+            "RELATED_NON_ANSWER",
+            "CONTRADICTORY_NON_ANSWER",
+            "EASY_NON_ANSWER"
+          ]
+        },
+        "expected_relevant": {"type": "boolean"},
+        "text": {"type": "string", "minLength": 1}
+      }
+    }
+  }
+}
