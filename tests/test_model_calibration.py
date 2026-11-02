@@ -10,6 +10,7 @@ from nex_runtime.model_calibration import (
     build_model_calibration_profile,
     classify_calibrated_score,
     evaluate_binary_score_calibration,
+    evaluate_binary_score_threshold,
     select_model_calibration_profile,
 )
 
@@ -117,6 +118,79 @@ def test_evaluation_rejects_distribution_without_acceptable_threshold() -> None:
     assert evaluation["status"] == "NO_ACCEPTABLE_THRESHOLD"
     assert evaluation["selected_threshold"] is None
     assert evaluation["candidate_count"] > 0
+
+
+def test_frozen_threshold_reports_confusion_overlap_and_wilson_intervals() -> None:
+    evaluation = evaluate_binary_score_threshold(
+        _samples(),
+        dataset_id="s136-public-calibration-v1:holdout",
+        threshold=0.535,
+    )
+
+    assert evaluation["status"] == "PASSED"
+    assert evaluation["metrics"] == {
+        "threshold": 0.535,
+        "true_ready": 10,
+        "false_low_confidence": 0,
+        "false_ready": 0,
+        "true_low_confidence": 10,
+        "ready_precision": 1.0,
+        "ready_recall": 1.0,
+        "false_ready_rate": 0.0,
+        "false_low_rate": 0.0,
+        "balanced_accuracy": 1.0,
+        "ready_f1": 1.0,
+        "low_specificity": 1.0,
+        "accuracy": 1.0,
+    }
+    assert evaluation["score_overlap"] == {
+        "positive_min": 0.7,
+        "negative_max": 0.37,
+        "separation_margin": 0.33,
+        "overlap_width": 0.0,
+        "overlap_detected": False,
+    }
+    intervals = evaluation["confidence_intervals"]
+    assert intervals["method"] == "WILSON_SCORE"
+    assert intervals["false_ready_rate"] == {
+        "numerator": 0,
+        "denominator": 10,
+        "estimate": 0.0,
+        "lower": 0.0,
+        "upper": 0.2775328,
+    }
+    assert intervals["ready_recall"]["estimate"] == 1.0
+    assert intervals["ready_recall"]["lower"] == 0.7224672
+
+
+def test_frozen_threshold_rejects_bad_point_metrics_and_insufficient_samples() -> None:
+    rejected = evaluate_binary_score_threshold(
+        _samples(),
+        dataset_id="rejected",
+        threshold=0.95,
+    )
+    assert rejected["status"] == "REJECTED"
+    assert rejected["metrics"]["ready_recall"] == 0.0
+    assert rejected["metrics"]["ready_f1"] == 0.0
+
+    insufficient = evaluate_binary_score_threshold(
+        _samples()[:9],
+        dataset_id="small",
+        threshold=0.5,
+    )
+    assert insufficient["status"] == "INSUFFICIENT_SAMPLES"
+    assert insufficient["metrics"] is None
+    assert insufficient["confidence_intervals"] is None
+
+
+@pytest.mark.parametrize("threshold", [True, -0.1, 1.1])
+def test_frozen_threshold_rejects_invalid_threshold(threshold: object) -> None:
+    with pytest.raises(ModelCalibrationError, match="threshold"):
+        evaluate_binary_score_threshold(
+            _samples(),
+            dataset_id="invalid",
+            threshold=threshold,  # type: ignore[arg-type]
+        )
 
 
 @pytest.mark.parametrize(

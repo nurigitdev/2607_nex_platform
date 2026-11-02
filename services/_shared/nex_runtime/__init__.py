@@ -639,11 +639,13 @@ from .signed_token_verifier import (
 from .model_calibration import (
     MODEL_CALIBRATION_EVALUATION_SCHEMA_VERSION,
     MODEL_CALIBRATION_PROFILE_SCHEMA_VERSION,
+    MODEL_CALIBRATION_THRESHOLD_EVALUATION_SCHEMA_VERSION,
     BinaryCalibrationConstraints,
     ModelCalibrationError,
     build_model_calibration_profile,
     classify_calibrated_score,
     evaluate_binary_score_calibration,
+    evaluate_binary_score_threshold,
     select_model_calibration_profile,
 )
 from .model_calibration_dataset import (
@@ -925,6 +927,7 @@ __all__ = [
     "LANGUAGE_QUERY_QUOTAS",
     "MODEL_CALIBRATION_DATASET_ID",
     "MODEL_CALIBRATION_DATASET_SCHEMA_VERSION",
+    "MODEL_CALIBRATION_THRESHOLD_EVALUATION_SCHEMA_VERSION",
     "PARTITION_QUERY_QUOTAS",
     "RELEVANCE_GRADE_DOCUMENT_IDS",
     "RELEVANCE_GRADE_EXPECTED_READY",
@@ -937,6 +940,7 @@ __all__ = [
     "build_demo_tenant_fixture_plan",
     "evaluate_platform_trust_evidence",
     "evaluate_binary_score_calibration",
+    "evaluate_binary_score_threshold",
     "ModelCalibrationDatasetError",
     "platform_trust_scope_policy",
     "validate_platform_trust_scope_policy",
