@@ -8,11 +8,14 @@ from nex_cx.retrieval_confidence_multisignal import (
     MULTISIGNAL_FEATURE_PACKAGE_SCHEMA_VERSION,
     MULTISIGNAL_FEATURE_SCHEMA_VERSION,
     MULTISIGNAL_POLICY_ID,
+    MULTISIGNAL_PROFILE_SCHEMA_VERSION,
     MultiSignalCalibrationError,
+    build_admitted_multisignal_profile,
     build_multisignal_feature_package,
     decide_multisignal_confidence,
     evaluate_multisignal_calibration,
 )
+from nex_runtime.model_calibration import evaluate_binary_score_threshold
 from nex_runtime.semantic_hashes import semantic_sha256_hash_ref
 
 RERANKER_REVISION = "hf:" + "2" * 40
@@ -497,6 +500,126 @@ def test_calibration_evaluator_selects_threshold_without_runtime_activation() ->
     assert result["evaluation"]["selected_metrics"]["false_ready_rate"] == 0.0
     assert result["evaluation"]["selected_metrics"]["ready_recall"] == 1.0
     assert result["evaluation_hash"] == replay["evaluation_hash"]
+
+
+def _admitted_profile_inputs() -> tuple[dict[str, object], dict[str, object]]:
+    calibration = evaluate_multisignal_calibration(
+        _calibration_samples(),
+        dataset_id="gb2-reranker-calibration-v2",
+        dataset_sha256="a" * 64,
+        expected_binding=_binding(),
+    )
+    threshold = calibration["evaluation"]["selected_threshold"]  # type: ignore[index]
+    threshold_samples = [
+        {
+            "sample_id": sample["sample_id"],
+            "expected_ready": sample["expected_ready"],
+            "score": sample["feature_package"]["features"][  # type: ignore[index]
+                "composite_score"
+            ],
+        }
+        for sample in _calibration_samples()
+    ]
+    holdout = evaluate_binary_score_threshold(
+        threshold_samples,
+        dataset_id="gb2-reranker-calibration-v2:holdout",
+        threshold=threshold,
+    )
+    return calibration, holdout
+
+
+def test_admitted_profile_requires_passed_calibration_and_untouched_holdout() -> None:
+    calibration, holdout = _admitted_profile_inputs()
+
+    profile = build_admitted_multisignal_profile(
+        profile_id="gb2-s20q-live-v2",
+        version="0001",
+        expected_binding=_binding(),
+        dataset_id="gb2-reranker-calibration-v2",
+        dataset_sha256="a" * 64,
+        calibration_result=calibration,
+        holdout_evaluation=holdout,
+    )
+
+    assert profile["profile_schema_version"] == MULTISIGNAL_PROFILE_SCHEMA_VERSION
+    assert profile["status"] == "ACTIVE"
+    assert profile["runtime_activation_permitted"] is True
+    assert (
+        profile["threshold"]
+        == calibration["evaluation"][  # type: ignore[index]
+            "selected_threshold"
+        ]
+    )
+    assert profile["profile_hash"] == semantic_sha256_hash_ref(
+        {key: value for key, value in profile.items() if key != "profile_hash"}
+    )
+
+
+def test_admitted_profile_rejects_calibration_holdout_and_integrity_drift() -> None:
+    calibration, holdout = _admitted_profile_inputs()
+    rejected = deepcopy(calibration)
+    rejected["status"] = "NO_ACCEPTABLE_THRESHOLD"
+    with pytest.raises(MultiSignalCalibrationError, match="passed, frozen"):
+        build_admitted_multisignal_profile(
+            profile_id="profile",
+            version="1",
+            expected_binding=_binding(),
+            dataset_id="gb2-reranker-calibration-v2",
+            dataset_sha256="a" * 64,
+            calibration_result=rejected,
+            holdout_evaluation=holdout,
+        )
+
+    tampered = deepcopy(calibration)
+    tampered["evaluation_hash"] = "sha256:" + "0" * 64
+    with pytest.raises(MultiSignalCalibrationError, match="integrity"):
+        build_admitted_multisignal_profile(
+            profile_id="profile",
+            version="1",
+            expected_binding=_binding(),
+            dataset_id="gb2-reranker-calibration-v2",
+            dataset_sha256="a" * 64,
+            calibration_result=tampered,
+            holdout_evaluation=holdout,
+        )
+
+    failed_holdout = deepcopy(holdout)
+    failed_holdout["status"] = "REJECTED"
+    with pytest.raises(MultiSignalCalibrationError, match="holdout"):
+        build_admitted_multisignal_profile(
+            profile_id="profile",
+            version="1",
+            expected_binding=_binding(),
+            dataset_id="gb2-reranker-calibration-v2",
+            dataset_sha256="a" * 64,
+            calibration_result=calibration,
+            holdout_evaluation=failed_holdout,
+        )
+
+
+@pytest.mark.parametrize(
+    "field",
+    ["evaluation_schema_version", "status", "dataset_id", "threshold"],
+)
+def test_admitted_profile_rejects_each_holdout_binding_drift(field: str) -> None:
+    calibration, holdout = _admitted_profile_inputs()
+    holdout[field] = {
+        "evaluation_schema_version": "wrong",
+        "status": "REJECTED",
+        "dataset_id": "wrong:holdout",
+        "threshold": 0.0,
+    }[field]
+
+    with pytest.raises(MultiSignalCalibrationError, match="holdout"):
+        build_admitted_multisignal_profile(
+            profile_id="profile",
+            version="1",
+            expected_binding=_binding(),
+            dataset_id="gb2-reranker-calibration-v2",
+            dataset_sha256="a" * 64,
+            calibration_result=calibration,
+            holdout_evaluation=holdout,
+        )
 
 
 def test_calibration_rejects_replay_incomplete_binding_and_mixed_weights() -> None:

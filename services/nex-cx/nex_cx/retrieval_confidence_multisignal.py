@@ -31,6 +31,7 @@ MULTISIGNAL_FEATURE_PACKAGE_SCHEMA_VERSION = (
 MULTISIGNAL_EVALUATION_SCHEMA_VERSION = (
     "cx_retrieval_confidence_multisignal_evaluation.v1"
 )
+MULTISIGNAL_PROFILE_SCHEMA_VERSION = "cx_retrieval_confidence_profile.v2"
 MULTISIGNAL_DECISION_SCHEMA_VERSION = "cx_retrieval_confidence_multisignal_decision.v1"
 MULTISIGNAL_POLICY_ID = "cx_retrieval_confidence_multisignal_v2"
 DEFAULT_MULTISIGNAL_CALIBRATION_CONSTRAINTS = BinaryCalibrationConstraints()
@@ -114,6 +115,31 @@ def build_multisignal_feature_package(
     }
     package["feature_package_hash"] = semantic_sha256_hash_ref(package)
     return package
+
+
+def reweight_multisignal_feature_package(
+    feature_package: Mapping[str, Any],
+    *,
+    weights: RetrievalConfidenceWeights,
+) -> dict[str, Any]:
+    package = _validated_package(feature_package)
+    features = dict(package["features"])
+    if features["status"] == "COMPLETE":
+        weight_values = weights.to_wire()
+        features["composite_score"] = round(
+            sum(
+                float(features[field]) * weight_values[field]
+                for field in WEIGHTED_FEATURE_FIELDS
+            ),
+            8,
+        )
+    rebuilt = {
+        key: value for key, value in package.items() if key != "feature_package_hash"
+    }
+    rebuilt["weights"] = weights.to_wire()
+    rebuilt["features"] = features
+    rebuilt["feature_package_hash"] = semantic_sha256_hash_ref(rebuilt)
+    return rebuilt
 
 
 def decide_multisignal_confidence(
@@ -253,6 +279,94 @@ def evaluate_multisignal_calibration(
     }
     result["evaluation_hash"] = semantic_sha256_hash_ref(result)
     return result
+
+
+def build_admitted_multisignal_profile(
+    *,
+    profile_id: str,
+    version: str,
+    expected_binding: Mapping[str, Any],
+    dataset_id: str,
+    dataset_sha256: str,
+    calibration_result: Mapping[str, Any],
+    holdout_evaluation: Mapping[str, Any],
+) -> dict[str, Any]:
+    binding = _binding(expected_binding)
+    canonical_dataset_id = _required_string(dataset_id, "dataset_id")
+    canonical_dataset_sha256 = _dataset_digest(dataset_sha256)
+    calibration = _mapping(calibration_result)
+    nested_evaluation = _mapping(calibration.get("evaluation"))
+    calibration_dataset = _mapping(calibration.get("dataset"))
+    if (
+        calibration.get("multisignal_evaluation_schema_version")
+        != MULTISIGNAL_EVALUATION_SCHEMA_VERSION
+        or calibration.get("policy_id") != MULTISIGNAL_POLICY_ID
+        or calibration.get("status") != "PASSED"
+        or calibration.get("reason_code") != "CALIBRATED_THRESHOLD_SELECTED"
+        or calibration.get("runtime_activation_permitted") is not False
+        or calibration.get("binding") != binding
+        or calibration_dataset.get("dataset_id") != canonical_dataset_id
+        or calibration_dataset.get("dataset_sha256") != canonical_dataset_sha256
+        or calibration_dataset.get("partition") != "CALIBRATION"
+        or nested_evaluation.get("status") != "PASSED"
+    ):
+        raise MultiSignalCalibrationError(
+            "cx.retrieval_confidence.calibration_not_admissible",
+            "A passed, frozen multi-signal calibration result is required.",
+        )
+    calibration_hash = _required_string(
+        calibration.get("evaluation_hash"), "calibration.evaluation_hash"
+    )
+    unsigned_calibration = dict(calibration)
+    unsigned_calibration.pop("evaluation_hash", None)
+    if not hmac.compare_digest(
+        calibration_hash,
+        semantic_sha256_hash_ref(unsigned_calibration),
+    ):
+        raise MultiSignalCalibrationError(
+            "cx.retrieval_confidence.calibration_integrity_invalid",
+            "Multi-signal calibration result integrity validation failed.",
+        )
+    threshold = _bounded_score(
+        nested_evaluation.get("selected_threshold"),
+        "calibration.selected_threshold",
+    )
+    holdout = _mapping(holdout_evaluation)
+    if (
+        holdout.get("evaluation_schema_version")
+        != "model_calibration_threshold_evaluation.v1"
+        or holdout.get("status") != "PASSED"
+        or holdout.get("dataset_id") != f"{canonical_dataset_id}:holdout"
+        or _bounded_score(holdout.get("threshold"), "holdout.threshold") != threshold
+    ):
+        raise MultiSignalCalibrationError(
+            "cx.retrieval_confidence.holdout_not_admissible",
+            "The untouched holdout must pass the frozen threshold.",
+        )
+    weights = _weights(_mapping(calibration.get("weights"))).to_wire()
+    profile = {
+        "profile_schema_version": MULTISIGNAL_PROFILE_SCHEMA_VERSION,
+        "profile_id": _required_string(profile_id, "profile_id"),
+        "version": _required_string(version, "version"),
+        "status": "ACTIVE",
+        "policy_id": MULTISIGNAL_POLICY_ID,
+        "feature_schema_version": MULTISIGNAL_FEATURE_SCHEMA_VERSION,
+        "binding": binding,
+        "weights": weights,
+        "threshold": threshold,
+        "threshold_inclusive": True,
+        "dataset": {
+            "dataset_id": canonical_dataset_id,
+            "dataset_sha256": canonical_dataset_sha256,
+            "calibration_sample_count": nested_evaluation.get("sample_count"),
+            "holdout_sample_count": holdout.get("sample_count"),
+        },
+        "calibration_evaluation_hash": calibration_hash,
+        "holdout_evaluation_hash": semantic_sha256_hash_ref(holdout),
+        "runtime_activation_permitted": True,
+    }
+    profile["profile_hash"] = semantic_sha256_hash_ref(profile)
+    return profile
 
 
 def _project_features(
