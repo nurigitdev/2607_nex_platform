@@ -19,6 +19,12 @@ from nex_cx.retrieval_confidence_multisignal import (
 
 FEATURE_AUDIT_SCHEMA_VERSION = "cx_retrieval_confidence_feature_audit.v1"
 FEATURE_AUDIT_POLICY_ID = "cx_multisignal_feature_discriminativeness_v1"
+MIXED_PACKAGE_DIAGNOSTIC_SCHEMA_VERSION = (
+    "cx_retrieval_confidence_mixed_package_diagnostics.v1"
+)
+MIXED_PACKAGE_DIAGNOSTIC_POLICY_ID = (
+    "cx_mixed_candidate_feature_diagnostics_v1"
+)
 PAIR_SEMANTICS = "POSITIVE_PAIR_VS_NEGATIVE_PAIR"
 NEAR_CONSTANT_TOLERANCE = 1e-9
 NEAR_PERFECT_CORRELATION = 0.95
@@ -80,6 +86,137 @@ def audit_multisignal_feature_discriminativeness(
     }
     result["audit_hash"] = semantic_sha256_hash_ref(result)
     return result
+
+
+def diagnose_mixed_candidate_feature_discriminativeness(
+    samples: Sequence[Mapping[str, Any]],
+    *,
+    dataset_id: str,
+    dataset_sha256: str,
+    expected_binding: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Describe calibration-only feature behavior without selecting a policy."""
+    _require_mixed_candidate_scope(samples)
+    normalized, groups = _normalize_samples(samples, expected_binding=expected_binding)
+    features: dict[str, dict[str, Any]] = {}
+    findings: list[str] = []
+    for field in WEIGHTED_FEATURE_FIELDS:
+        diagnostic = _diagnose_feature(normalized, groups=groups, field=field)
+        features[field] = diagnostic
+        if diagnostic["classification"] != "DIRECTIONAL":
+            findings.append(f"{field.upper()}_{diagnostic['classification']}")
+
+    correlations = _correlation_matrix(normalized)
+    for left_index, left in enumerate(WEIGHTED_FEATURE_FIELDS):
+        for right in WEIGHTED_FEATURE_FIELDS[left_index + 1 :]:
+            value = correlations[left][right]
+            if value is not None and abs(value) >= NEAR_PERFECT_CORRELATION:
+                findings.append(f"{left.upper()}_{right.upper()}_CORRELATED")
+
+    result = {
+        "feature_diagnostic_schema_version": MIXED_PACKAGE_DIAGNOSTIC_SCHEMA_VERSION,
+        "policy_id": MIXED_PACKAGE_DIAGNOSTIC_POLICY_ID,
+        "status": "DIAGNOSED",
+        "runtime_activation_permitted": False,
+        "threshold_selection_permitted": False,
+        "weight_selection_permitted": False,
+        "holdout_access_permitted": False,
+        "dataset": {
+            "dataset_id": _required_string(dataset_id, "dataset_id"),
+            "dataset_sha256": _required_string(dataset_sha256, "dataset_sha256"),
+            "partition": "CALIBRATION",
+            "sample_count": len(normalized),
+            "group_count": len(groups),
+        },
+        "package_semantics": {
+            "pair_semantics": PAIR_SEMANTICS,
+            "retrieval_unit": "ONE_FOUR_CANDIDATE_MIXED_RETRIEVAL_PER_PACKAGE",
+            "single_mixed_candidate_retrieval": True,
+            "label_filtered_retrieval": False,
+            "finding_scope": "diagnostic_only",
+        },
+        "features": features,
+        "correlations": correlations,
+        "findings": sorted(set(findings)),
+    }
+    result["diagnostic_hash"] = semantic_sha256_hash_ref(result)
+    return result
+
+
+def _require_mixed_candidate_scope(
+    samples: Sequence[Mapping[str, Any]],
+) -> None:
+    if isinstance(samples, (str, bytes)) or not isinstance(samples, Sequence):
+        raise TypeError("mixed-candidate feature diagnostic samples are invalid")
+    for sample in samples:
+        if not isinstance(sample, Mapping):
+            raise TypeError("mixed-candidate feature diagnostic sample is invalid")
+        scope = sample.get("retrieval_scope")
+        package = sample.get("feature_package")
+        features = package.get("features") if isinstance(package, Mapping) else None
+        if (
+            not isinstance(scope, Mapping)
+            or scope.get("candidate_count") != 4
+            or scope.get("single_mixed_candidate_retrieval") is not True
+            or scope.get("label_filtered_retrieval") is not False
+            or not isinstance(features, Mapping)
+            or features.get("candidate_count") != 4
+        ):
+            raise ValueError(
+                "mixed-candidate feature diagnostic requires one complete "
+                "four-candidate retrieval"
+            )
+
+
+def _diagnose_feature(
+    samples: Sequence[Mapping[str, Any]],
+    *,
+    groups: Mapping[str, Mapping[bool, Mapping[str, Any]]],
+    field: str,
+) -> dict[str, Any]:
+    positives = [
+        float(sample["features"][field])
+        for sample in samples
+        if sample["expected_ready"]
+    ]
+    negatives = [
+        float(sample["features"][field])
+        for sample in samples
+        if not sample["expected_ready"]
+    ]
+    all_values = positives + negatives
+    auc = _auc(positives, negatives)
+    near_constant = max(all_values) - min(all_values) <= NEAR_CONSTANT_TOLERANCE
+    classification = _feature_classification(auc, near_constant=near_constant)
+    deltas = [
+        float(pair[True]["features"][field]) - float(pair[False]["features"][field])
+        for pair in groups.values()
+    ]
+    return {
+        "classification": classification,
+        "higher_is_ready_auc": auc,
+        "near_constant": near_constant,
+        "unique_value_count": len(set(all_values)),
+        "population_standard_deviation": round(statistics.pstdev(all_values), 8),
+        "positive_distribution": _distribution(positives),
+        "negative_distribution": _distribution(negatives),
+        "overlap_span": round(
+            max(
+                0.0,
+                min(max(positives), max(negatives))
+                - max(min(positives), min(negatives)),
+            ),
+            8,
+        ),
+        "paired_delta": {
+            **_distribution(deltas),
+            "positive_higher_count": sum(delta > 0.0 for delta in deltas),
+            "tied_count": sum(
+                math.isclose(delta, 0.0, abs_tol=1e-12) for delta in deltas
+            ),
+            "negative_higher_count": sum(delta < 0.0 for delta in deltas),
+        },
+    }
 
 
 def _normalize_samples(
@@ -163,14 +300,7 @@ def _audit_feature(
     auc = _auc(positives, negatives)
     all_values = positives + negatives
     near_constant = max(all_values) - min(all_values) <= NEAR_CONSTANT_TOLERANCE
-    if near_constant:
-        classification = "CONSTANT"
-    elif auc < 0.45:
-        classification = "INVERTED"
-    elif auc <= 0.55:
-        classification = "NON_DISCRIMINATIVE"
-    else:
-        classification = "DIRECTIONAL"
+    classification = _feature_classification(auc, near_constant=near_constant)
     deltas = [
         float(pair[True]["features"][field]) - float(pair[False]["features"][field])
         for pair in groups.values()
@@ -225,6 +355,16 @@ def _auc(positives: Sequence[float], negatives: Sequence[float]) -> float:
         for negative in negatives
     )
     return round(wins / (len(positives) * len(negatives)), 8)
+
+
+def _feature_classification(auc: float, *, near_constant: bool) -> str:
+    if near_constant:
+        return "CONSTANT"
+    if auc < 0.45:
+        return "INVERTED"
+    if auc <= 0.55:
+        return "NON_DISCRIMINATIVE"
+    return "DIRECTIONAL"
 
 
 def _distribution(values: Sequence[float]) -> dict[str, float]:

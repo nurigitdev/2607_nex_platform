@@ -4,6 +4,7 @@ import pytest
 from nex_cx.retrieval_confidence_calibration import RetrievalConfidenceWeights
 from nex_cx.retrieval_confidence_feature_audit import (
     audit_multisignal_feature_discriminativeness,
+    diagnose_mixed_candidate_feature_discriminativeness,
 )
 from nex_cx.retrieval_confidence_multisignal import (
     MultiSignalCalibrationError,
@@ -60,6 +61,46 @@ def _samples() -> list[dict[str, object]]:
             "sample_id": f"group-{index:02d}:{label}",
             "expected_ready": ready,
             "feature_package": _package(ready=ready, index=index),
+        }
+        for index in range(20)
+        for label, ready in (("positive", True), ("negative", False))
+    ]
+
+
+def _mixed_package(*, ready: bool, index: int) -> dict[str, object]:
+    if ready:
+        top, margin, rrf, channel = 0.85 + index * 0.001, 0.08, 0.88, 1.0
+    else:
+        top, margin, rrf, channel = 0.42 + index * 0.001, 0.02, 0.46, 0.7
+    return build_multisignal_feature_package(
+        [
+            {
+                "rank": rank,
+                "scores": {
+                    "bm25_rank": rank if rank <= 3 else None,
+                    "vector_rank": rank,
+                    "rrf_normalized_score": max(0.0, rrf - (rank - 1) * 0.1),
+                    "channel_support_score": channel if rank <= 3 else 0.7,
+                    "rerank_score": max(0.0, top - (rank - 1) * margin),
+                },
+            }
+            for rank in range(1, 5)
+        ],
+        binding=_binding(),
+    )
+
+
+def _mixed_samples() -> list[dict[str, object]]:
+    return [
+        {
+            "sample_id": f"group-{index:02d}:{label}",
+            "expected_ready": ready,
+            "retrieval_scope": {
+                "candidate_count": 4,
+                "single_mixed_candidate_retrieval": True,
+                "label_filtered_retrieval": False,
+            },
+            "feature_package": _mixed_package(ready=ready, index=index),
         }
         for index in range(20)
         for label, ready in (("positive", True), ("negative", False))
@@ -208,5 +249,111 @@ def test_feature_audit_rejects_incomplete_and_mixed_weights() -> None:
             _samples(),
             dataset_id="",
             dataset_sha256="a" * 64,
+            expected_binding=_binding(),
+        )
+
+
+def test_mixed_package_diagnostics_are_calibration_only_and_select_no_policy() -> None:
+    result = diagnose_mixed_candidate_feature_discriminativeness(
+        _mixed_samples(),
+        dataset_id="calibration-v3",
+        dataset_sha256="b" * 64,
+        expected_binding=_binding(),
+    )
+
+    assert result["status"] == "DIAGNOSED"
+    assert result["runtime_activation_permitted"] is False
+    assert result["threshold_selection_permitted"] is False
+    assert result["weight_selection_permitted"] is False
+    assert result["holdout_access_permitted"] is False
+    assert result["dataset"] == {
+        "dataset_id": "calibration-v3",
+        "dataset_sha256": "b" * 64,
+        "partition": "CALIBRATION",
+        "sample_count": 40,
+        "group_count": 20,
+    }
+    assert result["package_semantics"] == {
+        "pair_semantics": "POSITIVE_PAIR_VS_NEGATIVE_PAIR",
+        "retrieval_unit": "ONE_FOUR_CANDIDATE_MIXED_RETRIEVAL_PER_PACKAGE",
+        "single_mixed_candidate_retrieval": True,
+        "label_filtered_retrieval": False,
+        "finding_scope": "diagnostic_only",
+    }
+    reranker = result["features"]["reranker_score"]
+    assert reranker["classification"] == "DIRECTIONAL"
+    assert reranker["higher_is_ready_auc"] == 1.0
+    assert reranker["unique_value_count"] == 40
+    assert "univariate_threshold" not in reranker
+    assert "selected_threshold" not in str(result)
+
+
+def test_mixed_package_diagnostics_are_deterministic_and_reject_split_scopes() -> None:
+    samples = _mixed_samples()
+    first = diagnose_mixed_candidate_feature_discriminativeness(
+        samples,
+        dataset_id="calibration-v3",
+        dataset_sha256="b" * 64,
+        expected_binding=_binding(),
+    )
+    replay = diagnose_mixed_candidate_feature_discriminativeness(
+        list(reversed(samples)),
+        dataset_id="calibration-v3",
+        dataset_sha256="b" * 64,
+        expected_binding=_binding(),
+    )
+    assert first["diagnostic_hash"] == replay["diagnostic_hash"]
+
+    samples[0]["retrieval_scope"]["label_filtered_retrieval"] = True  # type: ignore[index]
+    with pytest.raises(ValueError, match="four-candidate retrieval"):
+        diagnose_mixed_candidate_feature_discriminativeness(
+            samples,
+            dataset_id="calibration-v3",
+            dataset_sha256="b" * 64,
+            expected_binding=_binding(),
+        )
+
+    with pytest.raises(TypeError, match="samples are invalid"):
+        diagnose_mixed_candidate_feature_discriminativeness(
+            "bad",  # type: ignore[arg-type]
+            dataset_id="calibration-v3",
+            dataset_sha256="b" * 64,
+            expected_binding=_binding(),
+        )
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        lambda sample: sample.update(retrieval_scope=None),
+        lambda sample: sample["retrieval_scope"].update(candidate_count=3),
+        lambda sample: sample["retrieval_scope"].update(
+            single_mixed_candidate_retrieval=False
+        ),
+        lambda sample: sample["retrieval_scope"].update(
+            label_filtered_retrieval=True
+        ),
+        lambda sample: sample.update(feature_package=None),
+        lambda sample: sample["feature_package"]["features"].update(
+            candidate_count=3
+        ),
+    ],
+)
+def test_mixed_package_diagnostics_fail_closed_on_incomplete_scope(mutation) -> None:
+    samples = _mixed_samples()
+    mutation(samples[0])
+    with pytest.raises(ValueError, match="four-candidate retrieval"):
+        diagnose_mixed_candidate_feature_discriminativeness(
+            samples,
+            dataset_id="calibration-v3",
+            dataset_sha256="b" * 64,
+            expected_binding=_binding(),
+        )
+
+    with pytest.raises(TypeError, match="sample is invalid"):
+        diagnose_mixed_candidate_feature_discriminativeness(
+            ["bad"],  # type: ignore[list-item]
+            dataset_id="calibration-v3",
+            dataset_sha256="b" * 64,
             expected_binding=_binding(),
         )
