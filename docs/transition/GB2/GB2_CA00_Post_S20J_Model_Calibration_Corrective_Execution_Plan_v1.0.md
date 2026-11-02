@@ -291,6 +291,23 @@ Remote provider required: **Yes for confirmation replay**.
 
 S20O is required when S20N returns `MULTI_SIGNAL_REQUIRED`.
 
+### GB2-CA00-S20O-A: Immutable Reranker Revision Binding Closure
+
+- inspect the deployed checkpoint's local Hugging Face metadata under the
+  model owner's authority;
+- separate the mutable served model name from the immutable artifact
+  revision and stable deployment identity;
+- bind the current canonical reranker profile to the admitted revision;
+- fail closed on mixed revisions, missing targets, missing weights, revision
+  drift, or protected-data leakage;
+- confirm the binding with an actual protected reranker request.
+
+Remote provider required: **Yes for final binding confirmation**.
+
+S20O-A is required when S20O reports that immutable revision binding is the
+remaining runtime-profile gap. It does not activate a calibration policy or
+open the holdout partition.
+
 ### GB2-CA00-S20P: Multi-Signal Calibration Contract and Evaluator
 
 - define versioned feature extraction and missing-signal semantics;

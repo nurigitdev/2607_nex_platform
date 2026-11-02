@@ -35,6 +35,7 @@ from nex_mo.remote_provider import (
 from nex_runtime import (
     BinaryCalibrationConstraints,
     evaluate_binary_score_calibration,
+    is_immutable_model_revision,
 )
 from nex_runtime.semantic_hashes import semantic_sha256_hash_ref
 from run_protected_dgx_live_profile import (
@@ -213,8 +214,9 @@ def _source_and_runtime_audit(
         ),
         "normalization_is_structural_not_probability_transform": True,
         "normalization_rounds_score_to_six_decimals": True,
-        "immutable_model_source_revision_bound": bool(source_revision)
-        and source_revision != config.model_name
+        "immutable_model_source_revision_bound": is_immutable_model_revision(
+            source_revision
+        )
         and source_revision == config.model_revision,
         "sequence_classifier_override_confirmed": (
             runtime["sequence_classifier_override"] == "CONFIRMED"

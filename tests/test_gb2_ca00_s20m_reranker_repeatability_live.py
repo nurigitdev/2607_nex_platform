@@ -8,6 +8,8 @@ import pytest
 
 import run_gb2_s20m_reranker_repeatability_live as smoke
 
+RERANKER_REVISION = "hf:22e683669bc0f0bd69640a1354a6d0aebcfeede5"
+
 
 def _env(**overrides: str) -> dict[str, str]:
     return {
@@ -22,7 +24,7 @@ def _env(**overrides: str) -> dict[str, str]:
 def _response(
     scores: list[float] | None = None,
     *,
-    model: str = "Qwen3-Reranker-4B",
+    model: str = RERANKER_REVISION,
     deployment: str = "vllm-reranker-http",
 ) -> dict:
     values = scores or [0.9, 0.7, 0.4, 0.1]

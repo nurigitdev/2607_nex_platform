@@ -8,6 +8,8 @@ from pathlib import Path
 import pytest
 import run_gb2_s20o_provider_profile_audit as audit
 
+DEFAULT_RERANKER_REVISION = "hf:" + "22e683669bc0f0bd69640a1354a6d0aebcfeede5"
+
 
 def _env(*, runtime_confirmed: bool = False, **overrides: str) -> dict[str, str]:
     values = {
@@ -17,11 +19,12 @@ def _env(*, runtime_confirmed: bool = False, **overrides: str) -> dict[str, str]
         **audit.protected_dgx_vllm_profile_defaults(),
     }
     if runtime_confirmed:
+        immutable_revision = "hf:" + "a" * 40
         values.update(
             {
-                "NEX_MO_REMOTE_RERANKER_MODEL_REVISION": "hf:abc123",
+                "NEX_MO_REMOTE_RERANKER_MODEL_REVISION": immutable_revision,
                 audit.RUNTIME_ENV["vllm_version"]: "0.23.0",
-                audit.RUNTIME_ENV["model_source_revision"]: "hf:abc123",
+                audit.RUNTIME_ENV["model_source_revision"]: immutable_revision,
                 audit.RUNTIME_ENV["sequence_classifier_override"]: "1",
                 audit.RUNTIME_ENV["qwen3_reranker_template"]: "true",
             }
@@ -35,7 +38,7 @@ def _observations(
     dataset_key: str,
     separable: bool,
     overlap_shift: float = 0.0,
-    model_revision: str = "Qwen3-Reranker-4B",
+    model_revision: str = DEFAULT_RERANKER_REVISION,
 ) -> list[dict]:
     dataset = json.loads(
         (
@@ -76,7 +79,7 @@ def _observations(
 def _all_observations(
     *,
     explicit_separable: bool,
-    model_revision: str = "Qwen3-Reranker-4B",
+    model_revision: str = DEFAULT_RERANKER_REVISION,
 ) -> list[dict]:
     observations = []
     for profile_id, separable in (
@@ -133,7 +136,7 @@ def test_skip_and_runtime_profile_gap_decision(monkeypatch) -> None:
 def test_confirmed_runtime_identifies_request_profile_issue(monkeypatch) -> None:
     observations = _all_observations(
         explicit_separable=True,
-        model_revision="hf:abc123",
+        model_revision="hf:" + "a" * 40,
     )
     monkeypatch.setattr(
         audit,

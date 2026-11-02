@@ -196,3 +196,11 @@ runtime profile assessment   = PROVIDER_RUNTIME_PROFILE_CORRECTION_REQUIRED
 
 The protected evidence is stored under the ignored `reports/live/` tree. It
 contains no query/document text, provider endpoint, or credential.
+
+## Follow-Up Closure
+
+`GB2-CA00-S20O-A` subsequently inspected the DGX-local Hugging Face metadata
+and bound the current reranker profile to
+`hf:22e683669bc0f0bd69640a1354a6d0aebcfeede5`. The S20O score-profile
+decision remains unchanged; only its immutable runtime revision gap is now
+closed.

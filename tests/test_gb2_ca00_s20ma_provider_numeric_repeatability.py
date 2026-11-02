@@ -7,6 +7,8 @@ import pytest
 
 import run_gb2_s20ma_provider_numeric_repeatability as smoke
 
+RERANKER_REVISION = "hf:22e683669bc0f0bd69640a1354a6d0aebcfeede5"
+
 
 def _env(**overrides: str) -> dict[str, str]:
     return {
@@ -41,7 +43,7 @@ def _observations(dataset: dict, *, cross_label: bool = False) -> list[dict]:
                         "repeat_index": repeat_index,
                         "score": scores[index],
                         "rank": ranks[index],
-                        "model_revision": "Qwen3-Reranker-4B",
+                        "model_revision": RERANKER_REVISION,
                         "deployment_id": "vllm-reranker-http",
                         "observed_at": "2026-11-02T00:00:00Z",
                     }

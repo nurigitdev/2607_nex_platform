@@ -199,6 +199,15 @@ from .platform_trust_evidence import (
     TRUST_EVIDENCE_SCHEMA_VERSION,
     evaluate_platform_trust_evidence,
 )
+from .model_artifact_revision import (
+    MODEL_ARTIFACT_REVISION_SCHEMA_VERSION,
+    ModelArtifactRevisionError,
+    admit_model_artifact_revision_evidence,
+    inspect_huggingface_local_revision,
+    is_immutable_model_revision,
+    model_artifact_revision_evidence_digest,
+    normalize_immutable_model_revision,
+)
 from .release_candidate import (
     DEFAULT_MAX_EVIDENCE_AGE_HOURS,
     RELEASE_CANDIDATE_EVIDENCE_SCHEMA_VERSION,
