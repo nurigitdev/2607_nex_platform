@@ -1,0 +1,2106 @@
+{
+  "dataset_schema_version": "model_calibration_dataset.v3",
+  "dataset_id": "s136-retrieval-package-confidence-public-v3",
+  "cases": [
+    {
+      "case_id": "project-create-required-fields-ready",
+      "scenario_id": "project-create-required-fields",
+      "partition": "CALIBRATION",
+      "language_profile": "KOREAN",
+      "domain": "PROJECT",
+      "expected_ready": true,
+      "query": "새 프로젝트를 생성할 때 반드시 입력해야 하는 정보는 무엇인가?",
+      "candidates": [
+        {
+          "candidate_id": "primary-answer",
+          "evidence_role": "PRIMARY_ANSWER",
+          "expected_relevant": true,
+          "text": "프로젝트 생성에는 테넌트 내 고유 프로젝트 코드, 프로젝트명, 시작일, 책임자와 기본 상태를 입력해야 하며 코드 중복은 거부된다."
+        },
+        {
+          "candidate_id": "supporting-answer",
+          "evidence_role": "SUPPORTING_ANSWER",
+          "expected_relevant": true,
+          "text": "신규 프로젝트 요청에는 프로젝트 코드와 이름, 일정 및 담당 책임자의 식별 정보가 필요하다."
+        },
+        {
+          "candidate_id": "hard-non-answer",
+          "evidence_role": "HARD_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "기존 프로젝트의 상태를 변경할 때에는 프로젝트 식별자와 변경할 상태, 변경 사유를 제출한다."
+        },
+        {
+          "candidate_id": "easy-non-answer",
+          "evidence_role": "EASY_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "사무실 냉난방기는 계절별 권장 온도와 정기 점검 주기에 따라 관리한다."
+        }
+      ]
+    },
+    {
+      "case_id": "project-create-required-fields-low-confidence",
+      "scenario_id": "project-create-required-fields",
+      "partition": "CALIBRATION",
+      "language_profile": "KOREAN",
+      "domain": "PROJECT",
+      "expected_ready": false,
+      "query": "프로젝트 코드가 이미 사용 중일 때 자동으로 대체 코드를 정하는 규칙은 무엇인가?",
+      "candidates": [
+        {
+          "candidate_id": "hard-non-answer",
+          "evidence_role": "HARD_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "프로젝트 생성 계약은 코드 중복을 거부한다고 명시하지만, 충돌 시 대체 코드를 자동 산출하는 규칙은 정의하지 않는다."
+        },
+        {
+          "candidate_id": "related-non-answer",
+          "evidence_role": "RELATED_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "프로젝트 코드에는 테넌트 안에서 고유해야 한다는 제약이 적용되며 명명 표준은 별도 운영 정책으로 관리될 수 있다."
+        },
+        {
+          "candidate_id": "contradictory-non-answer",
+          "evidence_role": "CONTRADICTORY_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "중복 코드가 발견되면 시스템이 기존 코드 뒤에 일련번호를 붙여 항상 새 프로젝트를 생성한다."
+        },
+        {
+          "candidate_id": "easy-non-answer",
+          "evidence_role": "EASY_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "회의실 좌석 배치는 출입구와 발표 화면의 위치를 고려해 정할 수 있다."
+        }
+      ]
+    },
+    {
+      "case_id": "project-members-batch-add-ready",
+      "scenario_id": "project-members-batch-add",
+      "partition": "CALIBRATION",
+      "language_profile": "KOREAN",
+      "domain": "PROJECT",
+      "expected_ready": true,
+      "query": "프로젝트에 여러 직원을 한 번에 멤버로 추가하면 오류가 있는 직원은 어떻게 처리되는가?",
+      "candidates": [
+        {
+          "candidate_id": "primary-answer",
+          "evidence_role": "PRIMARY_ANSWER",
+          "expected_relevant": true,
+          "text": "일괄 멤버 추가는 재직 중이며 권한이 유효한 직원만 반영하고, 중복·미존재·퇴직 직원은 항목별 사유와 함께 제외 결과로 반환한다."
+        },
+        {
+          "candidate_id": "supporting-answer",
+          "evidence_role": "SUPPORTING_ANSWER",
+          "expected_relevant": true,
+          "text": "여러 멤버 중 검증에 성공한 직원은 추가하고 실패한 직원은 추가하지 않은 채 오류 목록을 응답한다."
+        },
+        {
+          "candidate_id": "hard-non-answer",
+          "evidence_role": "HARD_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "프로젝트 멤버 한 명을 삭제할 때에는 현재 멤버십과 요청자의 관리 권한을 확인한 후 삭제한다."
+        },
+        {
+          "candidate_id": "easy-non-answer",
+          "evidence_role": "EASY_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "회의실 예약은 참석 인원과 필요한 장비를 확인한 뒤 가능한 시간대를 선택한다."
+        }
+      ]
+    },
+    {
+      "case_id": "project-members-batch-add-low-confidence",
+      "scenario_id": "project-members-batch-add",
+      "partition": "CALIBRATION",
+      "language_profile": "KOREAN",
+      "domain": "PROJECT",
+      "expected_ready": false,
+      "query": "멤버 일괄 추가에서 실패한 사번을 몇 차례 자동 재시도하는가?",
+      "candidates": [
+        {
+          "candidate_id": "hard-non-answer",
+          "evidence_role": "HARD_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "일괄 멤버 추가 계약은 유효한 직원만 반영하고 실패 사유를 반환하지만, 실패 사번의 자동 재시도 횟수는 정하지 않는다."
+        },
+        {
+          "candidate_id": "related-non-answer",
+          "evidence_role": "RELATED_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "백그라운드 작업은 오류 분류에 따라 재시도 정책을 가질 수 있으나 프로젝트 멤버 검증 실패와 같은 업무 거부에는 그대로 적용되지 않는다."
+        },
+        {
+          "candidate_id": "contradictory-non-answer",
+          "evidence_role": "CONTRADICTORY_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "검증에 실패한 모든 사번은 간격 없이 정확히 세 번 다시 처리한 뒤 자동 승인된다."
+        },
+        {
+          "candidate_id": "easy-non-answer",
+          "evidence_role": "EASY_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "구내식당 식단은 영양 기준과 식재료 수급 상황에 따라 변경될 수 있다."
+        }
+      ]
+    },
+    {
+      "case_id": "project-status-update-ready",
+      "scenario_id": "project-status-update",
+      "partition": "CALIBRATION",
+      "language_profile": "KOREAN",
+      "domain": "PROJECT",
+      "expected_ready": true,
+      "query": "진행 중인 프로젝트를 완료 상태로 변경하려면 어떤 검증이 필요한가?",
+      "candidates": [
+        {
+          "candidate_id": "primary-answer",
+          "evidence_role": "PRIMARY_ANSWER",
+          "expected_relevant": true,
+          "text": "프로젝트 완료 전환은 현재 상태가 진행 중인지, 종료일과 완료 사유가 있는지, 요청자가 상태 변경 권한을 보유하는지 검증한다."
+        },
+        {
+          "candidate_id": "supporting-answer",
+          "evidence_role": "SUPPORTING_ANSWER",
+          "expected_relevant": true,
+          "text": "완료 처리는 유효한 상태 전이와 종료 정보, 담당자의 변경 권한을 확인한 뒤 수행한다."
+        },
+        {
+          "candidate_id": "hard-non-answer",
+          "evidence_role": "HARD_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "프로젝트 생성 시에는 코드 중복과 책임자 재직 여부를 확인하고 최초 상태를 준비로 설정한다."
+        },
+        {
+          "candidate_id": "easy-non-answer",
+          "evidence_role": "EASY_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "법인 차량은 주행 거리와 운행 일지를 기준으로 정비 시기를 계산한다."
+        }
+      ]
+    },
+    {
+      "case_id": "project-status-update-low-confidence",
+      "scenario_id": "project-status-update",
+      "partition": "CALIBRATION",
+      "language_profile": "KOREAN",
+      "domain": "PROJECT",
+      "expected_ready": false,
+      "query": "완료된 프로젝트를 다시 진행 중으로 되돌릴 수 있는 예외 조건은 무엇인가?",
+      "candidates": [
+        {
+          "candidate_id": "hard-non-answer",
+          "evidence_role": "HARD_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "완료 전환에 필요한 상태와 권한 검증은 정의되어 있지만 완료 프로젝트를 재개하는 역방향 전이와 예외 조건은 현재 근거에 없다."
+        },
+        {
+          "candidate_id": "related-non-answer",
+          "evidence_role": "RELATED_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "잘못 완료된 업무를 정정하려면 별도의 변경 승인이나 감사 기록이 필요할 수 있으나 프로젝트 재개 계약은 따로 확정되어야 한다."
+        },
+        {
+          "candidate_id": "contradictory-non-answer",
+          "evidence_role": "CONTRADICTORY_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "완료된 프로젝트는 일반 멤버가 사유 없이 언제든 진행 중 상태로 되돌릴 수 있다."
+        },
+        {
+          "candidate_id": "easy-non-answer",
+          "evidence_role": "EASY_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "법인 차량의 타이어 공기압은 제조사가 권장한 범위로 유지한다."
+        }
+      ]
+    },
+    {
+      "case_id": "project-profitability-view-ready",
+      "scenario_id": "project-profitability-view",
+      "partition": "CALIBRATION",
+      "language_profile": "KOREAN",
+      "domain": "PROJECT",
+      "expected_ready": true,
+      "query": "프로젝트 손익을 조회할 때 매출과 비용은 어떤 기준으로 집계되는가?",
+      "candidates": [
+        {
+          "candidate_id": "primary-answer",
+          "evidence_role": "PRIMARY_ANSWER",
+          "expected_relevant": true,
+          "text": "프로젝트 손익은 선택한 회계 기간에 해당 프로젝트로 귀속된 매출 전표와 비용 전표를 계정 분류별로 합산해 수익, 비용, 이익으로 표시한다."
+        },
+        {
+          "candidate_id": "supporting-answer",
+          "evidence_role": "SUPPORTING_ANSWER",
+          "expected_relevant": true,
+          "text": "조회 기간의 프로젝트 귀속 전표를 기준으로 매출 합계에서 비용 합계를 차감하여 손익을 계산한다."
+        },
+        {
+          "candidate_id": "hard-non-answer",
+          "evidence_role": "HARD_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "회사 전체 현금 흐름은 프로젝트 귀속 여부와 관계없이 영업·투자·재무 활동별 입출금을 집계한다."
+        },
+        {
+          "candidate_id": "easy-non-answer",
+          "evidence_role": "EASY_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "식물의 광합성 속도는 빛의 세기와 이산화탄소 농도의 영향을 받는다."
+        }
+      ]
+    },
+    {
+      "case_id": "project-profitability-view-low-confidence",
+      "scenario_id": "project-profitability-view",
+      "partition": "CALIBRATION",
+      "language_profile": "KOREAN",
+      "domain": "PROJECT",
+      "expected_ready": false,
+      "query": "프로젝트 손익 조회에 환율 차이를 어떤 시점의 환율로 반영하는가?",
+      "candidates": [
+        {
+          "candidate_id": "hard-non-answer",
+          "evidence_role": "HARD_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "프로젝트 귀속 매출과 비용의 기간별 집계 방식은 설명하지만 외화 전표에 적용할 환율 기준일은 제시하지 않는다."
+        },
+        {
+          "candidate_id": "related-non-answer",
+          "evidence_role": "RELATED_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "외화 금액을 기준 통화로 환산하려면 거래일, 결산일 또는 회사 지정 환율 중 승인된 회계 정책을 선택해야 한다."
+        },
+        {
+          "candidate_id": "contradictory-non-answer",
+          "evidence_role": "CONTRADICTORY_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "모든 프로젝트 손익은 조회 버튼을 누른 시점의 실시간 환율만 사용해 다시 계산한다."
+        },
+        {
+          "candidate_id": "easy-non-answer",
+          "evidence_role": "EASY_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "온실의 습도는 환기 장치와 급수량에 영향을 받을 수 있다."
+        }
+      ]
+    },
+    {
+      "case_id": "finance-voucher-create-ready",
+      "scenario_id": "finance-voucher-create",
+      "partition": "CALIBRATION",
+      "language_profile": "KOREAN",
+      "domain": "FINANCE",
+      "expected_ready": true,
+      "query": "교통비 전표를 등록하려면 어떤 값이 필요한가?",
+      "candidates": [
+        {
+          "candidate_id": "primary-answer",
+          "evidence_role": "PRIMARY_ANSWER",
+          "expected_relevant": true,
+          "text": "교통비 전표에는 회계일자, 프로젝트, 교통비 계정, 금액, 지급 상대, 적요와 차변·대변이 일치하는 전표 라인이 필요하다."
+        },
+        {
+          "candidate_id": "supporting-answer",
+          "evidence_role": "SUPPORTING_ANSWER",
+          "expected_relevant": true,
+          "text": "전표 등록 요청은 사용 일자와 금액, 프로젝트, 비용 계정, 적요 및 균형 잡힌 분개 정보를 포함해야 한다."
+        },
+        {
+          "candidate_id": "hard-non-answer",
+          "evidence_role": "HARD_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "등록된 교통비 전표를 조회할 때에는 전표 번호나 프로젝트, 회계 기간을 검색 조건으로 사용한다."
+        },
+        {
+          "candidate_id": "easy-non-answer",
+          "evidence_role": "EASY_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "도시 철도 노선도는 환승역과 각 역의 이동 방향을 함께 표시한다."
+        }
+      ]
+    },
+    {
+      "case_id": "finance-voucher-create-low-confidence",
+      "scenario_id": "finance-voucher-create",
+      "partition": "CALIBRATION",
+      "language_profile": "KOREAN",
+      "domain": "FINANCE",
+      "expected_ready": false,
+      "query": "교통비 전표의 적요를 자동 생성할 때 사용하는 문구 템플릿은 무엇인가?",
+      "candidates": [
+        {
+          "candidate_id": "hard-non-answer",
+          "evidence_role": "HARD_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "교통비 전표에 적요가 필요하다는 계약은 있으나 적요를 자동 작성하는 고정 문구나 템플릿은 정의하지 않는다."
+        },
+        {
+          "candidate_id": "related-non-answer",
+          "evidence_role": "RELATED_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "적요에는 비용의 목적과 사용 내용을 식별할 수 있는 설명을 기록해야 하며 조직별 작성 지침을 추가할 수 있다."
+        },
+        {
+          "candidate_id": "contradictory-non-answer",
+          "evidence_role": "CONTRADICTORY_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "교통비 적요는 예외 없이 '프로젝트명-이동구간-교통비' 문자열로 자동 확정된다."
+        },
+        {
+          "candidate_id": "easy-non-answer",
+          "evidence_role": "EASY_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "도시 철도 승강장 안내판은 열차의 진행 방향과 도착 정보를 표시한다."
+        }
+      ]
+    },
+    {
+      "case_id": "finance-voucher-evidence-ready",
+      "scenario_id": "finance-voucher-evidence",
+      "partition": "CALIBRATION",
+      "language_profile": "KOREAN",
+      "domain": "FINANCE",
+      "expected_ready": true,
+      "query": "회식비 전표 승인 요청에 영수증을 첨부하면 어떻게 연결되어야 하는가?",
+      "candidates": [
+        {
+          "candidate_id": "primary-answer",
+          "evidence_role": "PRIMARY_ANSWER",
+          "expected_relevant": true,
+          "text": "영수증은 소유자 전용 첨부 저장소에 보관하고 해시와 크기, 불투명 참조를 승인 요청 및 전표 lineage에 연결해 승인자만 검증할 수 있어야 한다."
+        },
+        {
+          "candidate_id": "supporting-answer",
+          "evidence_role": "SUPPORTING_ANSWER",
+          "expected_relevant": true,
+          "text": "첨부 영수증의 무결성 정보와 저장 참조를 회식비 승인 건에 결합하여 승인 화면과 최종 전표에서 추적할 수 있게 한다."
+        },
+        {
+          "candidate_id": "hard-non-answer",
+          "evidence_role": "HARD_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "영수증 없이 생성된 임시 전표는 금액과 계정 라인의 균형만 검증한 뒤 초안 상태로 저장한다."
+        },
+        {
+          "candidate_id": "easy-non-answer",
+          "evidence_role": "EASY_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "사진 파일의 해상도는 가로와 세로 픽셀 수로 표현할 수 있다."
+        }
+      ]
+    },
+    {
+      "case_id": "finance-voucher-evidence-low-confidence",
+      "scenario_id": "finance-voucher-evidence",
+      "partition": "CALIBRATION",
+      "language_profile": "KOREAN",
+      "domain": "FINANCE",
+      "expected_ready": false,
+      "query": "회식비 영수증 이미지의 OCR 정확도가 낮을 때 수동 보정 책임자는 누구인가?",
+      "candidates": [
+        {
+          "candidate_id": "hard-non-answer",
+          "evidence_role": "HARD_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "영수증의 저장 참조와 무결성 lineage는 정의되어 있지만 OCR 결과를 누가 수동 보정하는지는 승인 계약에 포함되지 않는다."
+        },
+        {
+          "candidate_id": "related-non-answer",
+          "evidence_role": "RELATED_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "추출 신뢰도가 낮은 문서는 사람의 검토 대상으로 보낼 수 있으나 검토 역할은 별도 운영 정책에서 배정해야 한다."
+        },
+        {
+          "candidate_id": "contradictory-non-answer",
+          "evidence_role": "CONTRADICTORY_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "OCR 점수가 기준보다 낮으면 최종 승인자가 원문 확인 없이 자동으로 모든 인식 값을 수정한다."
+        },
+        {
+          "candidate_id": "easy-non-answer",
+          "evidence_role": "EASY_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "카메라 렌즈의 초점 거리는 촬영 화각과 피사체 배율에 영향을 준다."
+        }
+      ]
+    },
+    {
+      "case_id": "finance-account-code-ready",
+      "scenario_id": "finance-account-code",
+      "partition": "CALIBRATION",
+      "language_profile": "KOREAN",
+      "domain": "FINANCE",
+      "expected_ready": true,
+      "query": "전표에 존재하지 않는 계정 코드를 입력하면 어떻게 처리해야 하는가?",
+      "candidates": [
+        {
+          "candidate_id": "primary-answer",
+          "evidence_role": "PRIMARY_ANSWER",
+          "expected_relevant": true,
+          "text": "전표 라인의 계정 코드는 유효 기간 내 활성 계정과 대조하며 미존재·비활성·사용 종료 계정이면 어떤 회계 변경도 만들지 않고 요청을 거부한다."
+        },
+        {
+          "candidate_id": "supporting-answer",
+          "evidence_role": "SUPPORTING_ANSWER",
+          "expected_relevant": true,
+          "text": "계정 마스터에서 사용할 수 없는 코드는 검증 오류로 반환하고 전표 저장을 수행하지 않는다."
+        },
+        {
+          "candidate_id": "hard-non-answer",
+          "evidence_role": "HARD_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "유효한 계정 코드의 명칭을 변경할 때에는 기존 전표 라인은 유지하고 계정 마스터의 표시 이름만 갱신한다."
+        },
+        {
+          "candidate_id": "easy-non-answer",
+          "evidence_role": "EASY_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "우편 번호는 주소 검색 범위를 좁히기 위한 지역 식별 값이다."
+        }
+      ]
+    },
+    {
+      "case_id": "finance-account-code-low-confidence",
+      "scenario_id": "finance-account-code",
+      "partition": "CALIBRATION",
+      "language_profile": "KOREAN",
+      "domain": "FINANCE",
+      "expected_ready": false,
+      "query": "신규 계정 코드를 몇 자리 숫자로 부여해야 하는가?",
+      "candidates": [
+        {
+          "candidate_id": "hard-non-answer",
+          "evidence_role": "HARD_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "전표 입력 시 활성 계정 여부를 검증하는 규칙은 있지만 신규 계정 코드의 길이나 숫자 형식은 제공하지 않는다."
+        },
+        {
+          "candidate_id": "related-non-answer",
+          "evidence_role": "RELATED_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "계정 체계는 회사의 회계 분류와 상위 계정 구조를 따라 설계되며 코드 규격은 계정 마스터 정책에 속한다."
+        },
+        {
+          "candidate_id": "contradictory-non-answer",
+          "evidence_role": "CONTRADICTORY_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "모든 신규 계정은 중복 검사 없이 반드시 여섯 자리 연속 숫자로 생성된다."
+        },
+        {
+          "candidate_id": "easy-non-answer",
+          "evidence_role": "EASY_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "우편물 분류기는 봉투의 목적지 정보를 읽어 배송 지역별로 나눈다."
+        }
+      ]
+    },
+    {
+      "case_id": "finance-expense-date-ready",
+      "scenario_id": "finance-expense-date",
+      "partition": "CALIBRATION",
+      "language_profile": "KOREAN",
+      "domain": "FINANCE",
+      "expected_ready": true,
+      "query": "마감된 회계 기간의 날짜로 비용 전표를 등록할 수 있는가?",
+      "candidates": [
+        {
+          "candidate_id": "primary-answer",
+          "evidence_role": "PRIMARY_ANSWER",
+          "expected_relevant": true,
+          "text": "마감된 회계 기간에는 일반 비용 전표를 등록할 수 없으며, 재개방 권한과 별도 승인 절차가 없는 요청은 zero-mutation으로 거부한다."
+        },
+        {
+          "candidate_id": "supporting-answer",
+          "evidence_role": "SUPPORTING_ANSWER",
+          "expected_relevant": true,
+          "text": "입력한 회계일자가 마감 기간이면 특별한 재개방 승인이 없는 한 전표 생성은 실패한다."
+        },
+        {
+          "candidate_id": "hard-non-answer",
+          "evidence_role": "HARD_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "미래 날짜 전표는 허용 범위와 회사 정책을 확인하여 예약 상태로 저장할 수 있다."
+        },
+        {
+          "candidate_id": "easy-non-answer",
+          "evidence_role": "EASY_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "윤년에는 2월이 29일까지 있어 한 해가 366일이 된다."
+        }
+      ]
+    },
+    {
+      "case_id": "finance-expense-date-low-confidence",
+      "scenario_id": "finance-expense-date",
+      "partition": "CALIBRATION",
+      "language_profile": "KOREAN",
+      "domain": "FINANCE",
+      "expected_ready": false,
+      "query": "재개방된 회계 기간이 자동으로 다시 마감되는 정확한 시각은 언제인가?",
+      "candidates": [
+        {
+          "candidate_id": "hard-non-answer",
+          "evidence_role": "HARD_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "마감 기간의 전표 거부와 재개방 승인 필요성은 설명하지만 재마감 일시나 스케줄은 정하지 않는다."
+        },
+        {
+          "candidate_id": "related-non-answer",
+          "evidence_role": "RELATED_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "기간 재개방은 제한된 권한과 감사 기록을 요구하며 종료 시점은 승인된 회계 운영 절차에 따라야 한다."
+        },
+        {
+          "candidate_id": "contradictory-non-answer",
+          "evidence_role": "CONTRADICTORY_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "재개방된 회계 기간은 승인 시각으로부터 정확히 두 시간 뒤에 항상 자동 마감된다."
+        },
+        {
+          "candidate_id": "easy-non-answer",
+          "evidence_role": "EASY_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "윤년 계산은 연도가 4로 나누어지는지와 세기 예외 규칙을 함께 확인한다."
+        }
+      ]
+    },
+    {
+      "case_id": "finance-balanced-lines-ready",
+      "scenario_id": "finance-balanced-lines",
+      "partition": "CALIBRATION",
+      "language_profile": "KOREAN",
+      "domain": "FINANCE",
+      "expected_ready": true,
+      "query": "차변과 대변 합계가 다른 전표 요청은 어떻게 처리하는가?",
+      "candidates": [
+        {
+          "candidate_id": "primary-answer",
+          "evidence_role": "PRIMARY_ANSWER",
+          "expected_relevant": true,
+          "text": "전표의 차변 합계와 대변 합계는 통화 단위까지 일치해야 하며 불균형이면 승인이나 커밋으로 진행하지 않고 검증 오류를 반환한다."
+        },
+        {
+          "candidate_id": "supporting-answer",
+          "evidence_role": "SUPPORTING_ANSWER",
+          "expected_relevant": true,
+          "text": "분개 라인의 차변과 대변이 맞지 않으면 전표를 저장하지 않고 균형 오류로 거부한다."
+        },
+        {
+          "candidate_id": "hard-non-answer",
+          "evidence_role": "HARD_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "차변과 대변이 일치한 전표라도 증빙 필수 계정이면 첨부 자료의 존재와 무결성을 추가 확인한다."
+        },
+        {
+          "candidate_id": "easy-non-answer",
+          "evidence_role": "EASY_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "양팔저울은 양쪽 접시에 놓인 물체의 질량을 비교한다."
+        }
+      ]
+    },
+    {
+      "case_id": "finance-balanced-lines-low-confidence",
+      "scenario_id": "finance-balanced-lines",
+      "partition": "CALIBRATION",
+      "language_profile": "KOREAN",
+      "domain": "FINANCE",
+      "expected_ready": false,
+      "query": "외화 전표의 반올림 차이를 어느 계정으로 자동 조정하는가?",
+      "candidates": [
+        {
+          "candidate_id": "hard-non-answer",
+          "evidence_role": "HARD_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "차변과 대변 합계 일치 원칙은 정의하지만 외화 환산 반올림 차이에 사용할 조정 계정은 명시하지 않는다."
+        },
+        {
+          "candidate_id": "related-non-answer",
+          "evidence_role": "RELATED_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "반올림 차이는 통화 정밀도와 회사의 환차손익 정책에 따라 승인된 계정으로 처리할 수 있다."
+        },
+        {
+          "candidate_id": "contradictory-non-answer",
+          "evidence_role": "CONTRADICTORY_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "모든 외화 반올림 차이는 금액과 무관하게 교통비 계정으로 자동 전기된다."
+        },
+        {
+          "candidate_id": "easy-non-answer",
+          "evidence_role": "EASY_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "양팔저울의 영점 조정은 측정 전에 양쪽 균형을 확인하는 과정이다."
+        }
+      ]
+    },
+    {
+      "case_id": "identity-employee-status-ready",
+      "scenario_id": "identity-employee-status",
+      "partition": "CALIBRATION",
+      "language_profile": "KOREAN",
+      "domain": "IDENTITY_AUTHORIZATION",
+      "expected_ready": true,
+      "query": "퇴직한 직원이 프로젝트 멤버 추가 대상에 포함되면 어떻게 해야 하는가?",
+      "candidates": [
+        {
+          "candidate_id": "primary-answer",
+          "evidence_role": "PRIMARY_ANSWER",
+          "expected_relevant": true,
+          "text": "OA에서 비활성 또는 퇴직 상태로 확인된 직원은 프로젝트 멤버로 추가하지 않으며 배치 결과에 해당 사번과 제외 사유를 기록한다."
+        },
+        {
+          "candidate_id": "supporting-answer",
+          "evidence_role": "SUPPORTING_ANSWER",
+          "expected_relevant": true,
+          "text": "재직 상태가 아닌 직원은 멤버십 생성에서 제외하고 요청자에게 검증 실패로 알려야 한다."
+        },
+        {
+          "candidate_id": "hard-non-answer",
+          "evidence_role": "HARD_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "재직 중인 직원이 부서를 이동하면 계정은 유지하고 새로운 조직 멤버십과 역할을 갱신한다."
+        },
+        {
+          "candidate_id": "easy-non-answer",
+          "evidence_role": "EASY_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "건물 출입증은 물리적 출입 게이트에서 식별 정보를 읽는 데 사용된다."
+        }
+      ]
+    },
+    {
+      "case_id": "identity-employee-status-low-confidence",
+      "scenario_id": "identity-employee-status",
+      "partition": "CALIBRATION",
+      "language_profile": "KOREAN",
+      "domain": "IDENTITY_AUTHORIZATION",
+      "expected_ready": false,
+      "query": "휴직 중인 직원의 프로젝트 역할을 며칠 동안 유지하는가?",
+      "candidates": [
+        {
+          "candidate_id": "hard-non-answer",
+          "evidence_role": "HARD_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "퇴직 또는 비활성 직원을 멤버 추가에서 제외하는 규칙은 있으나 휴직자의 역할 유지 기간은 정의하지 않는다."
+        },
+        {
+          "candidate_id": "related-non-answer",
+          "evidence_role": "RELATED_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "휴직 상태의 접근 권한은 인사 상태와 조직 보안 정책을 함께 반영해 일시 중지하거나 제한할 수 있다."
+        },
+        {
+          "candidate_id": "contradictory-non-answer",
+          "evidence_role": "CONTRADICTORY_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "휴직한 직원의 모든 프로젝트 역할은 상태 변경 후 정확히 구십 일 동안 그대로 유지된다."
+        },
+        {
+          "candidate_id": "easy-non-answer",
+          "evidence_role": "EASY_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "건물 엘리베이터의 정기 검사는 기계 안전 기준에 따라 수행된다."
+        }
+      ]
+    },
+    {
+      "case_id": "identity-project-authority-ready",
+      "scenario_id": "identity-project-authority",
+      "partition": "CALIBRATION",
+      "language_profile": "KOREAN",
+      "domain": "IDENTITY_AUTHORIZATION",
+      "expected_ready": true,
+      "query": "일반 프로젝트 멤버가 다른 멤버를 추가할 수 있는가?",
+      "candidates": [
+        {
+          "candidate_id": "primary-answer",
+          "evidence_role": "PRIMARY_ANSWER",
+          "expected_relevant": true,
+          "text": "멤버 추가는 프로젝트 책임자나 멤버 관리 권한을 부여받은 사용자만 요청할 수 있으며 일반 멤버의 요청은 권한 거부로 처리한다."
+        },
+        {
+          "candidate_id": "supporting-answer",
+          "evidence_role": "SUPPORTING_ANSWER",
+          "expected_relevant": true,
+          "text": "프로젝트 참여만 가능한 사용자는 구성원을 변경할 수 없고 관리 역할이 있어야 멤버를 추가할 수 있다."
+        },
+        {
+          "candidate_id": "hard-non-answer",
+          "evidence_role": "HARD_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "일반 프로젝트 멤버도 자신에게 공개된 프로젝트 문서와 승인 완료 결과는 조회할 수 있다."
+        },
+        {
+          "candidate_id": "easy-non-answer",
+          "evidence_role": "EASY_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "공용 프린터는 네트워크 주소와 드라이버가 설정되어야 출력할 수 있다."
+        }
+      ]
+    },
+    {
+      "case_id": "identity-project-authority-low-confidence",
+      "scenario_id": "identity-project-authority",
+      "partition": "CALIBRATION",
+      "language_profile": "KOREAN",
+      "domain": "IDENTITY_AUTHORIZATION",
+      "expected_ready": false,
+      "query": "멤버 관리 권한을 받은 사용자가 하루에 추가할 수 있는 최대 인원은 몇 명인가?",
+      "candidates": [
+        {
+          "candidate_id": "hard-non-answer",
+          "evidence_role": "HARD_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "멤버 추가에 필요한 관리 권한은 규정하지만 일별 추가 인원 제한이나 rate limit 값은 제시하지 않는다."
+        },
+        {
+          "candidate_id": "related-non-answer",
+          "evidence_role": "RELATED_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "대량 멤버 변경에는 배치 검증과 감사 기록이 필요하며 운영 한도는 별도 용량 정책으로 설정할 수 있다."
+        },
+        {
+          "candidate_id": "contradictory-non-answer",
+          "evidence_role": "CONTRADICTORY_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "관리 권한이 있는 사용자는 매일 최대 열 명까지만 멤버를 추가할 수 있도록 고정되어 있다."
+        },
+        {
+          "candidate_id": "easy-non-answer",
+          "evidence_role": "EASY_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "공용 프린터의 용지함에는 지원되는 규격의 용지를 올바른 방향으로 넣어야 한다."
+        }
+      ]
+    },
+    {
+      "case_id": "identity-approval-role-ready",
+      "scenario_id": "identity-approval-role",
+      "partition": "CALIBRATION",
+      "language_profile": "KOREAN",
+      "domain": "IDENTITY_AUTHORIZATION",
+      "expected_ready": true,
+      "query": "전표 승인 단계에서 요청된 역할과 다른 사용자가 승인하면 유효한가?",
+      "candidates": [
+        {
+          "candidate_id": "primary-answer",
+          "evidence_role": "PRIMARY_ANSWER",
+          "expected_relevant": true,
+          "text": "각 승인 단계는 최신 OA 권한으로 요청 역할과 승인자의 소속·직책을 확인하며 역할을 충족하지 못한 결정은 저장하거나 다음 단계로 진행하지 않는다."
+        },
+        {
+          "candidate_id": "supporting-answer",
+          "evidence_role": "SUPPORTING_ANSWER",
+          "expected_relevant": true,
+          "text": "승인자는 해당 단계가 요구하는 현재 역할을 보유해야 하며 그렇지 않으면 승인은 거부된다."
+        },
+        {
+          "candidate_id": "hard-non-answer",
+          "evidence_role": "HARD_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "요청자가 승인 요청을 취소하면 아직 완료되지 않은 단계는 종료되고 전표 초안은 별도 상태로 남는다."
+        },
+        {
+          "candidate_id": "easy-non-answer",
+          "evidence_role": "EASY_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "전자 서명의 글꼴 모양은 사용자 계정의 권한 수준을 결정하지 않는다."
+        }
+      ]
+    },
+    {
+      "case_id": "identity-approval-role-low-confidence",
+      "scenario_id": "identity-approval-role",
+      "partition": "CALIBRATION",
+      "language_profile": "KOREAN",
+      "domain": "IDENTITY_AUTHORIZATION",
+      "expected_ready": false,
+      "query": "승인자가 부재중일 때 자동 대결자로 선정되는 사람은 누구인가?",
+      "candidates": [
+        {
+          "candidate_id": "hard-non-answer",
+          "evidence_role": "HARD_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "승인 단계가 현재 역할을 검증한다는 근거는 있지만 부재 시 자동 대결자 선정 순서는 정의하지 않는다."
+        },
+        {
+          "candidate_id": "related-non-answer",
+          "evidence_role": "RELATED_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "대결 처리는 사전에 등록된 위임 범위와 유효 기간, 동일한 승인 권한을 확인해야 할 수 있다."
+        },
+        {
+          "candidate_id": "contradictory-non-answer",
+          "evidence_role": "CONTRADICTORY_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "승인자가 부재이면 같은 부서에서 사번이 가장 빠른 직원이 언제나 자동 대결자가 된다."
+        },
+        {
+          "candidate_id": "easy-non-answer",
+          "evidence_role": "EASY_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "전자 서명 이미지의 색상은 문서의 글꼴 테마에 맞춰 표시할 수 있다."
+        }
+      ]
+    },
+    {
+      "case_id": "governance-record-retention-mixed-ready",
+      "scenario_id": "governance-record-retention-mixed",
+      "partition": "CALIBRATION",
+      "language_profile": "KOREAN_ENGLISH_MIXED",
+      "domain": "GOVERNANCE_OPERATIONS",
+      "expected_ready": true,
+      "query": "record retention policy에서 legal hold가 설정된 자료는 언제 purge할 수 있는가?",
+      "candidates": [
+        {
+          "candidate_id": "primary-answer",
+          "evidence_role": "PRIMARY_ANSWER",
+          "expected_relevant": true,
+          "text": "legal hold가 활성화된 record는 일반 retention 기간이 지났어도 purge할 수 없고, hold가 해제된 뒤 승인된 보존 규칙을 다시 계산해야 한다."
+        },
+        {
+          "candidate_id": "supporting-answer",
+          "evidence_role": "SUPPORTING_ANSWER",
+          "expected_relevant": true,
+          "text": "법적 보존 대상은 기간 만료만으로 삭제하지 않으며 legal hold 해제 이후에만 폐기 검토가 가능하다."
+        },
+        {
+          "candidate_id": "hard-non-answer",
+          "evidence_role": "HARD_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "logical purge 표시가 된 일반 artifact는 grace period가 지나면 scheduled batch가 물리 삭제할 수 있다."
+        },
+        {
+          "candidate_id": "easy-non-answer",
+          "evidence_role": "EASY_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "browser cache는 자주 사용하는 정적 파일을 클라이언트 장치에 임시 저장한다."
+        }
+      ]
+    },
+    {
+      "case_id": "governance-record-retention-mixed-low-confidence",
+      "scenario_id": "governance-record-retention-mixed",
+      "partition": "CALIBRATION",
+      "language_profile": "KOREAN_ENGLISH_MIXED",
+      "domain": "GOVERNANCE_OPERATIONS",
+      "expected_ready": false,
+      "query": "legal hold 해제 후 physical purge batch가 실행되는 정확한 cron schedule은 무엇인가?",
+      "candidates": [
+        {
+          "candidate_id": "hard-non-answer",
+          "evidence_role": "HARD_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "legal hold 해제 뒤 retention 규칙을 다시 계산해야 한다는 원칙은 있지만 physical purge의 cron 표현식은 제공하지 않는다."
+        },
+        {
+          "candidate_id": "related-non-answer",
+          "evidence_role": "RELATED_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "논리 삭제된 자료의 물리 삭제는 grace period와 승인된 운영 창을 확인하는 scheduled batch가 수행할 수 있다."
+        },
+        {
+          "candidate_id": "contradictory-non-answer",
+          "evidence_role": "CONTRADICTORY_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "hold가 해제된 모든 자료는 매일 00시 정각에 예외 없이 즉시 physical purge된다."
+        },
+        {
+          "candidate_id": "easy-non-answer",
+          "evidence_role": "EASY_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "browser bookmark는 자주 방문하는 페이지의 주소를 사용자 프로필에 저장한다."
+        }
+      ]
+    },
+    {
+      "case_id": "governance-contract-version-mixed-ready",
+      "scenario_id": "governance-contract-version-mixed",
+      "partition": "CALIBRATION",
+      "language_profile": "KOREAN_ENGLISH_MIXED",
+      "domain": "GOVERNANCE_OPERATIONS",
+      "expected_ready": true,
+      "query": "계약 절차를 조회할 때 superseded version 대신 current policy를 선택하려면 무엇을 확인해야 하나?",
+      "candidates": [
+        {
+          "candidate_id": "primary-answer",
+          "evidence_role": "PRIMARY_ANSWER",
+          "expected_relevant": true,
+          "text": "policy의 effective date, status, supersedes lineage를 확인해 조회 시점에 ACTIVE인 최신 버전을 선택하고 폐기된 문서는 근거로 사용하지 않는다."
+        },
+        {
+          "candidate_id": "supporting-answer",
+          "evidence_role": "SUPPORTING_ANSWER",
+          "expected_relevant": true,
+          "text": "현재 시행일에 유효한 ACTIVE 계약 정책을 선택하고 이전 버전은 이력으로만 표시한다."
+        },
+        {
+          "candidate_id": "hard-non-answer",
+          "evidence_role": "HARD_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "계약 원본의 checksum 검증은 저장된 파일이 업로드 이후 변경되지 않았는지 확인하는 절차다."
+        },
+        {
+          "candidate_id": "easy-non-answer",
+          "evidence_role": "EASY_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "semantic versioning은 major, minor, patch 숫자로 소프트웨어 변경 범위를 표현한다."
+        }
+      ]
+    },
+    {
+      "case_id": "governance-contract-version-mixed-low-confidence",
+      "scenario_id": "governance-contract-version-mixed",
+      "partition": "CALIBRATION",
+      "language_profile": "KOREAN_ENGLISH_MIXED",
+      "domain": "GOVERNANCE_OPERATIONS",
+      "expected_ready": false,
+      "query": "current policy 문서를 표시하는 UI badge color는 무엇인가?",
+      "candidates": [
+        {
+          "candidate_id": "hard-non-answer",
+          "evidence_role": "HARD_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "effective date와 ACTIVE 상태로 current policy를 판별하는 규칙은 있으나 화면 badge의 색상은 계약에 없다."
+        },
+        {
+          "candidate_id": "related-non-answer",
+          "evidence_role": "RELATED_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "사용자 화면은 current와 superseded 상태를 구분해 표시해야 하지만 구체적인 시각 디자인은 design system이 결정한다."
+        },
+        {
+          "candidate_id": "contradictory-non-answer",
+          "evidence_role": "CONTRADICTORY_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "current policy badge는 모든 화면에서 반드시 보라색으로 렌더링되어야 한다."
+        },
+        {
+          "candidate_id": "easy-non-answer",
+          "evidence_role": "EASY_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "semantic version number는 software package의 호환성 변화를 요약한다."
+        }
+      ]
+    },
+    {
+      "case_id": "governance-incident-escalation-mixed-ready",
+      "scenario_id": "governance-incident-escalation-mixed",
+      "partition": "CALIBRATION",
+      "language_profile": "KOREAN_ENGLISH_MIXED",
+      "domain": "GOVERNANCE_OPERATIONS",
+      "expected_ready": true,
+      "query": "SLO breach alert가 ACK되지 않으면 incident escalation은 어떻게 진행되는가?",
+      "candidates": [
+        {
+          "candidate_id": "primary-answer",
+          "evidence_role": "PRIMARY_ANSWER",
+          "expected_relevant": true,
+          "text": "정해진 acknowledgement window 안에 ACK가 없으면 다음 escalation level의 on-call 대상에게 재전송하고 dispatch attempt와 결과를 감사 로그에 남긴다."
+        },
+        {
+          "candidate_id": "supporting-answer",
+          "evidence_role": "SUPPORTING_ANSWER",
+          "expected_relevant": true,
+          "text": "응답 시간 안에 확인되지 않은 경보는 상위 담당자에게 승격하고 알림 시도 이력을 기록한다."
+        },
+        {
+          "candidate_id": "hard-non-answer",
+          "evidence_role": "HARD_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "ACK된 incident는 suppression 기간 동안 동일 원인의 중복 알림을 줄이되 상태 변화는 계속 관측한다."
+        },
+        {
+          "candidate_id": "easy-non-answer",
+          "evidence_role": "EASY_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "휴대전화의 무음 모드는 벨소리 출력을 줄이는 사용자 설정이다."
+        }
+      ]
+    },
+    {
+      "case_id": "governance-incident-escalation-mixed-low-confidence",
+      "scenario_id": "governance-incident-escalation-mixed",
+      "partition": "CALIBRATION",
+      "language_profile": "KOREAN_ENGLISH_MIXED",
+      "domain": "GOVERNANCE_OPERATIONS",
+      "expected_ready": false,
+      "query": "third escalation 이후 external incident vendor로 전달되는 payload field는 무엇인가?",
+      "candidates": [
+        {
+          "candidate_id": "hard-non-answer",
+          "evidence_role": "HARD_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "ACK 지연에 따른 escalation과 dispatch 이력은 정의하지만 외부 vendor payload의 필드 계약은 아직 제공되지 않는다."
+        },
+        {
+          "candidate_id": "related-non-answer",
+          "evidence_role": "RELATED_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "외부 incident 연동에는 correlation, severity, summary 같은 최소 정보와 비밀 제거 규칙이 필요할 수 있다."
+        },
+        {
+          "candidate_id": "contradictory-non-answer",
+          "evidence_role": "CONTRADICTORY_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "세 번째 escalation은 전체 application log와 모든 API key를 vendor payload에 자동 첨부한다."
+        },
+        {
+          "candidate_id": "easy-non-answer",
+          "evidence_role": "EASY_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "휴대전화의 진동 세기는 사용자가 접근성 설정에서 조절할 수 있다."
+        }
+      ]
+    },
+    {
+      "case_id": "ai-reranker-role-mixed-ready",
+      "scenario_id": "ai-reranker-role-mixed",
+      "partition": "CALIBRATION",
+      "language_profile": "KOREAN_ENGLISH_MIXED",
+      "domain": "AI_RUNTIME",
+      "expected_ready": true,
+      "query": "hybrid retrieval에서 reranker가 BM25와 vector 후보에 수행하는 역할은 무엇인가?",
+      "candidates": [
+        {
+          "candidate_id": "primary-answer",
+          "evidence_role": "PRIMARY_ANSWER",
+          "expected_relevant": true,
+          "text": "reranker는 BM25와 vector 검색을 RRF로 결합한 후보들을 query-document 관련성으로 다시 채점해 최종 evidence 순서를 결정한다."
+        },
+        {
+          "candidate_id": "supporting-answer",
+          "evidence_role": "SUPPORTING_ANSWER",
+          "expected_relevant": true,
+          "text": "초기 lexical·semantic 후보를 질의 적합도 기준으로 재평가하여 최종 검색 순위를 조정한다."
+        },
+        {
+          "candidate_id": "hard-non-answer",
+          "evidence_role": "HARD_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "embedding provider는 query와 chunk를 고정 차원 vector로 변환해 근사 유사도 후보를 찾게 한다."
+        },
+        {
+          "candidate_id": "easy-non-answer",
+          "evidence_role": "EASY_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "운동 경기의 심판은 규칙 위반 여부를 판정하고 경기 진행을 관리한다."
+        }
+      ]
+    },
+    {
+      "case_id": "ai-reranker-role-mixed-low-confidence",
+      "scenario_id": "ai-reranker-role-mixed",
+      "partition": "CALIBRATION",
+      "language_profile": "KOREAN_ENGLISH_MIXED",
+      "domain": "AI_RUNTIME",
+      "expected_ready": false,
+      "query": "reranker score를 사용자 화면에 몇 decimal places로 표시하는가?",
+      "candidates": [
+        {
+          "candidate_id": "hard-non-answer",
+          "evidence_role": "HARD_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "reranker가 후보 순위를 재조정한다는 역할은 설명하지만 score의 사용자 화면 표시 자릿수는 정하지 않는다."
+        },
+        {
+          "candidate_id": "related-non-answer",
+          "evidence_role": "RELATED_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "운영 진단 화면은 모델 score를 관측용으로 표시할 수 있으며 반올림 규칙은 UI 계약에서 별도로 정해야 한다."
+        },
+        {
+          "candidate_id": "contradictory-non-answer",
+          "evidence_role": "CONTRADICTORY_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "모든 reranker score는 사용자에게 소수점 여섯 자리로 그대로 노출된다."
+        },
+        {
+          "candidate_id": "easy-non-answer",
+          "evidence_role": "EASY_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "경기 전광판은 점수와 남은 시간을 관중에게 보여준다."
+        }
+      ]
+    },
+    {
+      "case_id": "ai-embedding-index-ready",
+      "scenario_id": "ai-embedding-index",
+      "partition": "CALIBRATION",
+      "language_profile": "ENGLISH",
+      "domain": "AI_RUNTIME",
+      "expected_ready": true,
+      "query": "How does the platform keep a document vector index fresh after content changes?",
+      "candidates": [
+        {
+          "candidate_id": "primary-answer",
+          "evidence_role": "PRIMARY_ANSWER",
+          "expected_relevant": true,
+          "text": "A content revision invalidates prior chunk embeddings, queues the changed chunks for embedding, and publishes the new index generation only after all required vectors are durable."
+        },
+        {
+          "candidate_id": "supporting-answer",
+          "evidence_role": "SUPPORTING_ANSWER",
+          "expected_relevant": true,
+          "text": "Changed chunks are re-embedded and the document index version advances after the replacement vectors have been stored successfully."
+        },
+        {
+          "candidate_id": "hard-non-answer",
+          "evidence_role": "HARD_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "A reranker reorders already retrieved candidates but does not create or refresh stored document embeddings."
+        },
+        {
+          "candidate_id": "easy-non-answer",
+          "evidence_role": "EASY_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "A library shelf label helps visitors locate books by a catalog classification."
+        }
+      ]
+    },
+    {
+      "case_id": "ai-embedding-index-low-confidence",
+      "scenario_id": "ai-embedding-index",
+      "partition": "CALIBRATION",
+      "language_profile": "ENGLISH",
+      "domain": "AI_RUNTIME",
+      "expected_ready": false,
+      "query": "Which approximate-nearest-neighbor index parameter is used for every document collection?",
+      "candidates": [
+        {
+          "candidate_id": "hard-non-answer",
+          "evidence_role": "HARD_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "The freshness contract explains re-embedding and atomic publication but does not prescribe one ANN index parameter for every collection."
+        },
+        {
+          "candidate_id": "related-non-answer",
+          "evidence_role": "RELATED_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "Index parameters may vary with vector count, recall targets, latency budgets, and the admitted storage profile."
+        },
+        {
+          "candidate_id": "contradictory-non-answer",
+          "evidence_role": "CONTRADICTORY_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "Every collection always uses an HNSW ef_search value of exactly 512 regardless of its workload."
+        },
+        {
+          "candidate_id": "easy-non-answer",
+          "evidence_role": "EASY_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "A library catalog number groups books by subject and shelving location."
+        }
+      ]
+    },
+    {
+      "case_id": "ai-calibration-admission-ready",
+      "scenario_id": "ai-calibration-admission",
+      "partition": "CALIBRATION",
+      "language_profile": "ENGLISH",
+      "domain": "AI_RUNTIME",
+      "expected_ready": true,
+      "query": "When must a reranker confidence calibration profile be invalidated?",
+      "candidates": [
+        {
+          "candidate_id": "primary-answer",
+          "evidence_role": "PRIMARY_ANSWER",
+          "expected_relevant": true,
+          "text": "Calibration is invalid when the model revision, request shape, score semantics, retrieval policy, or admitted dataset hash differs from the profile binding."
+        },
+        {
+          "candidate_id": "supporting-answer",
+          "evidence_role": "SUPPORTING_ANSWER",
+          "expected_relevant": true,
+          "text": "A model or scoring-contract change requires a new calibration run before the confidence threshold can be used."
+        },
+        {
+          "candidate_id": "hard-non-answer",
+          "evidence_role": "HARD_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "Rotating an API key without changing the provider model or score contract does not by itself alter relevance calibration."
+        },
+        {
+          "candidate_id": "easy-non-answer",
+          "evidence_role": "EASY_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "A thermometer is calibrated against known temperatures to improve measurement accuracy."
+        }
+      ]
+    },
+    {
+      "case_id": "ai-calibration-admission-low-confidence",
+      "scenario_id": "ai-calibration-admission",
+      "partition": "CALIBRATION",
+      "language_profile": "ENGLISH",
+      "domain": "AI_RUNTIME",
+      "expected_ready": false,
+      "query": "How many hours may an expired calibration profile remain in grace mode?",
+      "candidates": [
+        {
+          "candidate_id": "hard-non-answer",
+          "evidence_role": "HARD_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "The admission contract invalidates a mismatched profile but defines no grace period for continuing to use an expired profile."
+        },
+        {
+          "candidate_id": "related-non-answer",
+          "evidence_role": "RELATED_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "A production route should remain fail closed until a compatible model and calibration binding are admitted."
+        },
+        {
+          "candidate_id": "contradictory-non-answer",
+          "evidence_role": "CONTRADICTORY_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "Every expired calibration profile remains active for exactly twenty-four hours before enforcement begins."
+        },
+        {
+          "candidate_id": "easy-non-answer",
+          "evidence_role": "EASY_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "A laboratory clock can be checked against a time standard to measure drift."
+        }
+      ]
+    },
+    {
+      "case_id": "ai-provider-readiness-ready",
+      "scenario_id": "ai-provider-readiness",
+      "partition": "CALIBRATION",
+      "language_profile": "ENGLISH",
+      "domain": "AI_RUNTIME",
+      "expected_ready": true,
+      "query": "What should fail closed when a remote model provider reports an unexpected model revision?",
+      "candidates": [
+        {
+          "candidate_id": "primary-answer",
+          "evidence_role": "PRIMARY_ANSWER",
+          "expected_relevant": true,
+          "text": "Provider admission and readiness must fail closed, blocking calibrated production traffic until the returned model revision is registered and its profile is admitted."
+        },
+        {
+          "candidate_id": "supporting-answer",
+          "evidence_role": "SUPPORTING_ANSWER",
+          "expected_relevant": true,
+          "text": "An unregistered model identity makes the route unready and prevents requests that depend on the previous calibration."
+        },
+        {
+          "candidate_id": "hard-non-answer",
+          "evidence_role": "HARD_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "A transient timeout may enter bounded retry and circuit-breaker handling while preserving the admitted model identity."
+        },
+        {
+          "candidate_id": "easy-non-answer",
+          "evidence_role": "EASY_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "A package delivery route changes when a road is closed for construction."
+        }
+      ]
+    },
+    {
+      "case_id": "ai-provider-readiness-low-confidence",
+      "scenario_id": "ai-provider-readiness",
+      "partition": "CALIBRATION",
+      "language_profile": "ENGLISH",
+      "domain": "AI_RUNTIME",
+      "expected_ready": false,
+      "query": "Which GPU device ordinal receives the replacement model after a revision mismatch?",
+      "candidates": [
+        {
+          "candidate_id": "hard-non-answer",
+          "evidence_role": "HARD_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "Revision mismatch blocks provider readiness, but the admission evidence does not choose a GPU device for a replacement deployment."
+        },
+        {
+          "candidate_id": "related-non-answer",
+          "evidence_role": "RELATED_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "GPU placement belongs to model-serving capacity and rollout policy rather than relevance calibration."
+        },
+        {
+          "candidate_id": "contradictory-non-answer",
+          "evidence_role": "CONTRADICTORY_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "A replacement model is always loaded on GPU device zero without checking available memory."
+        },
+        {
+          "candidate_id": "easy-non-answer",
+          "evidence_role": "EASY_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "A delivery company may reroute a parcel when a distribution center is unavailable."
+        }
+      ]
+    },
+    {
+      "case_id": "ai-generation-reasoning-ready",
+      "scenario_id": "ai-generation-reasoning",
+      "partition": "CALIBRATION",
+      "language_profile": "ENGLISH",
+      "domain": "AI_RUNTIME",
+      "expected_ready": true,
+      "query": "Why is reasoning mode disabled for the protected generation acceptance profile?",
+      "candidates": [
+        {
+          "candidate_id": "primary-answer",
+          "evidence_role": "PRIMARY_ANSWER",
+          "expected_relevant": true,
+          "text": "The protected profile disables reasoning output so the provider returns the contracted answer shape without hidden-thought fields, extra token cost, or response parsing drift."
+        },
+        {
+          "candidate_id": "supporting-answer",
+          "evidence_role": "SUPPORTING_ANSWER",
+          "expected_relevant": true,
+          "text": "Reasoning is disabled to keep generation output deterministic and compatible with the admitted response contract."
+        },
+        {
+          "candidate_id": "hard-non-answer",
+          "evidence_role": "HARD_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "Temperature controls sampling randomness in generated tokens but does not define whether reasoning fields are emitted."
+        },
+        {
+          "candidate_id": "easy-non-answer",
+          "evidence_role": "EASY_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "A power-saving mode reduces a display's brightness to conserve battery energy."
+        }
+      ]
+    },
+    {
+      "case_id": "ai-generation-reasoning-low-confidence",
+      "scenario_id": "ai-generation-reasoning",
+      "partition": "CALIBRATION",
+      "language_profile": "ENGLISH",
+      "domain": "AI_RUNTIME",
+      "expected_ready": false,
+      "query": "What exact hidden-token budget would be used if reasoning mode were enabled?",
+      "candidates": [
+        {
+          "candidate_id": "hard-non-answer",
+          "evidence_role": "HARD_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "The protected profile disables reasoning output and therefore does not define a hidden-token budget for an enabled mode."
+        },
+        {
+          "candidate_id": "related-non-answer",
+          "evidence_role": "RELATED_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "Any future reasoning profile would need a separate token, latency, response-shape, and privacy admission contract."
+        },
+        {
+          "candidate_id": "contradictory-non-answer",
+          "evidence_role": "CONTRADICTORY_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "Reasoning mode has a universal hidden budget of exactly 4096 tokens for every generation model."
+        },
+        {
+          "candidate_id": "easy-non-answer",
+          "evidence_role": "EASY_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "A display power profile may lower brightness after a period of inactivity."
+        }
+      ]
+    },
+    {
+      "case_id": "project-list-filter-ready",
+      "scenario_id": "project-list-filter",
+      "partition": "HOLDOUT",
+      "language_profile": "KOREAN",
+      "domain": "PROJECT",
+      "expected_ready": true,
+      "query": "내가 참여 중인 활성 프로젝트만 조회하려면 어떤 조건을 적용해야 하는가?",
+      "candidates": [
+        {
+          "candidate_id": "primary-answer",
+          "evidence_role": "PRIMARY_ANSWER",
+          "expected_relevant": true,
+          "text": "현재 사용자의 유효한 프로젝트 멤버십으로 owner 범위를 제한하고 프로젝트 상태가 활성인 항목만 필터링해야 한다."
+        },
+        {
+          "candidate_id": "supporting-answer",
+          "evidence_role": "SUPPORTING_ANSWER",
+          "expected_relevant": true,
+          "text": "사용자가 멤버로 등록된 프로젝트 중 종료되지 않은 활성 상태만 목록에 포함한다."
+        },
+        {
+          "candidate_id": "hard-non-answer",
+          "evidence_role": "HARD_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "관리자는 테넌트의 모든 프로젝트를 상태와 관계없이 검색하고 별도 필터를 적용할 수 있다."
+        },
+        {
+          "candidate_id": "easy-non-answer",
+          "evidence_role": "EASY_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "음악 재생 목록은 장르나 최근 재생 시간으로 정렬할 수 있다."
+        }
+      ]
+    },
+    {
+      "case_id": "project-list-filter-low-confidence",
+      "scenario_id": "project-list-filter",
+      "partition": "HOLDOUT",
+      "language_profile": "KOREAN",
+      "domain": "PROJECT",
+      "expected_ready": false,
+      "query": "활성 프로젝트 목록은 한 페이지에 최대 몇 건을 표시하는가?",
+      "candidates": [
+        {
+          "candidate_id": "hard-non-answer",
+          "evidence_role": "HARD_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "사용자의 유효 멤버십과 활성 상태 필터는 설명하지만 목록의 페이지 크기 상한은 정의하지 않는다."
+        },
+        {
+          "candidate_id": "related-non-answer",
+          "evidence_role": "RELATED_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "프로젝트 목록 API는 안정적인 정렬과 pagination 계약을 가질 수 있으며 한도는 별도 조회 정책에 속한다."
+        },
+        {
+          "candidate_id": "contradictory-non-answer",
+          "evidence_role": "CONTRADICTORY_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "활성 프로젝트 화면은 사용자와 장치에 관계없이 항상 정확히 백 건을 한 페이지에 표시한다."
+        },
+        {
+          "candidate_id": "easy-non-answer",
+          "evidence_role": "EASY_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "음악 재생 목록은 곡 제목이나 추가된 날짜 기준으로 정렬할 수 있다."
+        }
+      ]
+    },
+    {
+      "case_id": "project-member-remove-ready",
+      "scenario_id": "project-member-remove",
+      "partition": "HOLDOUT",
+      "language_profile": "KOREAN",
+      "domain": "PROJECT",
+      "expected_ready": true,
+      "query": "프로젝트 책임자를 멤버에서 바로 삭제할 수 있는가?",
+      "candidates": [
+        {
+          "candidate_id": "primary-answer",
+          "evidence_role": "PRIMARY_ANSWER",
+          "expected_relevant": true,
+          "text": "현재 프로젝트 책임자는 후임 책임자가 지정되기 전에는 멤버에서 삭제할 수 없으며 책임 이전과 멤버 제거를 통제된 순서로 처리해야 한다."
+        },
+        {
+          "candidate_id": "supporting-answer",
+          "evidence_role": "SUPPORTING_ANSWER",
+          "expected_relevant": true,
+          "text": "책임자 제거 전에 다른 유효한 멤버에게 책임 역할을 이전해야 한다."
+        },
+        {
+          "candidate_id": "hard-non-answer",
+          "evidence_role": "HARD_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "일반 멤버는 진행 중인 승인이나 미결 작업이 없고 요청자에게 관리 권한이 있으면 제거할 수 있다."
+        },
+        {
+          "candidate_id": "easy-non-answer",
+          "evidence_role": "EASY_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "파일 시스템에서 빈 디렉터리는 하위 파일이 없을 때 삭제할 수 있다."
+        }
+      ]
+    },
+    {
+      "case_id": "project-member-remove-low-confidence",
+      "scenario_id": "project-member-remove",
+      "partition": "HOLDOUT",
+      "language_profile": "KOREAN",
+      "domain": "PROJECT",
+      "expected_ready": false,
+      "query": "책임 이전 알림 메일 제목은 어떤 형식인가?",
+      "candidates": [
+        {
+          "candidate_id": "hard-non-answer",
+          "evidence_role": "HARD_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "책임자 제거 전 역할 이전이 필요하다는 규칙은 있지만 알림 메일 제목의 형식은 정의하지 않는다."
+        },
+        {
+          "candidate_id": "related-non-answer",
+          "evidence_role": "RELATED_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "책임 변경 통지는 프로젝트 식별자와 변경 일시를 포함할 수 있으나 채널별 문구는 notification 정책이 정한다."
+        },
+        {
+          "candidate_id": "contradictory-non-answer",
+          "evidence_role": "CONTRADICTORY_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "모든 책임 이전 메일 제목은 '[긴급] 프로젝트 책임자 자동 변경'으로 고정된다."
+        },
+        {
+          "candidate_id": "easy-non-answer",
+          "evidence_role": "EASY_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "빈 디렉터리 이름은 파일 시스템의 경로 규칙을 따라 변경할 수 있다."
+        }
+      ]
+    },
+    {
+      "case_id": "finance-voucher-idempotency-ready",
+      "scenario_id": "finance-voucher-idempotency",
+      "partition": "HOLDOUT",
+      "language_profile": "KOREAN",
+      "domain": "FINANCE",
+      "expected_ready": true,
+      "query": "전표 등록 응답을 받지 못해 같은 요청을 재시도하면 중복 전표가 생기는가?",
+      "candidates": [
+        {
+          "candidate_id": "primary-answer",
+          "evidence_role": "PRIMARY_ANSWER",
+          "expected_relevant": true,
+          "text": "동일 idempotency key와 canonical payload hash의 재시도는 최초 BusinessOperation 결과를 반환하며 새로운 전표나 outbox event를 만들지 않는다."
+        },
+        {
+          "candidate_id": "supporting-answer",
+          "evidence_role": "SUPPORTING_ANSWER",
+          "expected_relevant": true,
+          "text": "같은 멱등 키와 동일 내용이면 기존 커밋 결과를 재사용하여 전표 중복 생성을 막는다."
+        },
+        {
+          "candidate_id": "hard-non-answer",
+          "evidence_role": "HARD_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "같은 멱등 키로 금액이 다른 요청이 오면 기존 결과를 반환하지 않고 의미 충돌로 거부해야 한다."
+        },
+        {
+          "candidate_id": "easy-non-answer",
+          "evidence_role": "EASY_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "웹 브라우저의 새로 고침은 현재 페이지의 리소스를 다시 요청한다."
+        }
+      ]
+    },
+    {
+      "case_id": "finance-voucher-idempotency-low-confidence",
+      "scenario_id": "finance-voucher-idempotency",
+      "partition": "HOLDOUT",
+      "language_profile": "KOREAN",
+      "domain": "FINANCE",
+      "expected_ready": false,
+      "query": "전표 멱등 키를 며칠 동안 보관한 뒤 삭제하는가?",
+      "candidates": [
+        {
+          "candidate_id": "hard-non-answer",
+          "evidence_role": "HARD_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "동일 멱등 키와 payload의 재시도 동작은 정의하지만 멱등 기록의 보존 일수는 명시하지 않는다."
+        },
+        {
+          "candidate_id": "related-non-answer",
+          "evidence_role": "RELATED_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "업무 멱등 증적의 retention은 감사 기간과 replay 위험, 저장 비용을 고려해 별도 정책으로 관리해야 한다."
+        },
+        {
+          "candidate_id": "contradictory-non-answer",
+          "evidence_role": "CONTRADICTORY_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "모든 전표 멱등 키는 최초 커밋 후 정확히 칠 일째에 물리 삭제된다."
+        },
+        {
+          "candidate_id": "easy-non-answer",
+          "evidence_role": "EASY_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "웹 브라우저 기록은 사용자의 설정에 따라 일정 기간 보관되거나 지워질 수 있다."
+        }
+      ]
+    },
+    {
+      "case_id": "finance-transport-expense-ready",
+      "scenario_id": "finance-transport-expense",
+      "partition": "HOLDOUT",
+      "language_profile": "KOREAN",
+      "domain": "FINANCE",
+      "expected_ready": true,
+      "query": "택시비 3만원을 NVT 프로젝트 비용으로 등록할 때 어떤 분개가 필요한가?",
+      "candidates": [
+        {
+          "candidate_id": "primary-answer",
+          "evidence_role": "PRIMARY_ANSWER",
+          "expected_relevant": true,
+          "text": "NVT 프로젝트에 교통비 계정을 차변 30000원으로, 현금 또는 미지급금 계정을 대변 30000원으로 기록하고 일자·적요·증빙을 연결한다."
+        },
+        {
+          "candidate_id": "supporting-answer",
+          "evidence_role": "SUPPORTING_ANSWER",
+          "expected_relevant": true,
+          "text": "프로젝트 귀속 교통비 30000원과 같은 금액의 지급 계정 라인을 차변과 대변으로 구성해야 한다."
+        },
+        {
+          "candidate_id": "hard-non-answer",
+          "evidence_role": "HARD_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "택시비 영수증의 공급자명과 이용 일시는 증빙 검증에 사용되지만 그 정보만으로 균형 분개가 완성되지는 않는다."
+        },
+        {
+          "candidate_id": "easy-non-answer",
+          "evidence_role": "EASY_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "택시 호출 앱은 승객의 출발지와 목적지를 운전자에게 전달한다."
+        }
+      ]
+    },
+    {
+      "case_id": "finance-transport-expense-low-confidence",
+      "scenario_id": "finance-transport-expense",
+      "partition": "HOLDOUT",
+      "language_profile": "KOREAN",
+      "domain": "FINANCE",
+      "expected_ready": false,
+      "query": "NVT 택시비 전표의 부가세 코드는 무엇으로 선택하는가?",
+      "candidates": [
+        {
+          "candidate_id": "hard-non-answer",
+          "evidence_role": "HARD_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "택시비의 균형 분개와 증빙 연결은 설명하지만 적용할 부가세 코드나 공제 여부는 제공하지 않는다."
+        },
+        {
+          "candidate_id": "related-non-answer",
+          "evidence_role": "RELATED_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "세금 처리는 공급자 유형, 증빙 형식, 지역 세법과 회사 세무 정책을 확인해야 한다."
+        },
+        {
+          "candidate_id": "contradictory-non-answer",
+          "evidence_role": "CONTRADICTORY_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "모든 택시비는 영수증 종류와 무관하게 동일한 매입세액 공제 코드로 자동 처리된다."
+        },
+        {
+          "candidate_id": "easy-non-answer",
+          "evidence_role": "EASY_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "택시 호출 앱은 예상 이동 시간과 차량 위치를 화면에 표시할 수 있다."
+        }
+      ]
+    },
+    {
+      "case_id": "finance-project-profit-ready",
+      "scenario_id": "finance-project-profit",
+      "partition": "HOLDOUT",
+      "language_profile": "KOREAN",
+      "domain": "FINANCE",
+      "expected_ready": true,
+      "query": "NVT 프로젝트의 이번 달 이익이 감소한 원인을 확인하려면 무엇을 비교해야 하는가?",
+      "candidates": [
+        {
+          "candidate_id": "primary-answer",
+          "evidence_role": "PRIMARY_ANSWER",
+          "expected_relevant": true,
+          "text": "이번 달과 비교 기간의 NVT 귀속 매출·비용 전표를 계정별로 대조하고 매출 감소, 인건비·외주비·경비 증가 항목을 drill-down해야 한다."
+        },
+        {
+          "candidate_id": "supporting-answer",
+          "evidence_role": "SUPPORTING_ANSWER",
+          "expected_relevant": true,
+          "text": "기간별 프로젝트 매출과 비용 차이를 계정 분류별로 비교하면 이익 감소 기여 항목을 찾을 수 있다."
+        },
+        {
+          "candidate_id": "hard-non-answer",
+          "evidence_role": "HARD_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "NVT 프로젝트의 누적 예산 잔액은 승인된 예산에서 집행액을 차감해 확인하지만 실제 이익 감소 원인과 동일하지 않을 수 있다."
+        },
+        {
+          "candidate_id": "easy-non-answer",
+          "evidence_role": "EASY_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "기온이 내려가면 난방 에너지 사용량이 증가할 수 있다."
+        }
+      ]
+    },
+    {
+      "case_id": "finance-project-profit-low-confidence",
+      "scenario_id": "finance-project-profit",
+      "partition": "HOLDOUT",
+      "language_profile": "KOREAN",
+      "domain": "FINANCE",
+      "expected_ready": false,
+      "query": "프로젝트 이익 감소 경보를 몇 퍼센트 하락부터 발송하는가?",
+      "candidates": [
+        {
+          "candidate_id": "hard-non-answer",
+          "evidence_role": "HARD_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "기간별 매출과 비용을 비교하는 분석 방법은 있지만 이익 감소 경보의 수치 임계값은 정의하지 않는다."
+        },
+        {
+          "candidate_id": "related-non-answer",
+          "evidence_role": "RELATED_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "경보 기준은 프로젝트 규모, 예산 편차와 조직의 SLO 정책에 따라 별도로 보정할 수 있다."
+        },
+        {
+          "candidate_id": "contradictory-non-answer",
+          "evidence_role": "CONTRADICTORY_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "프로젝트 이익이 전월보다 정확히 오 퍼센트만 감소해도 항상 최고 등급 경보를 발송한다."
+        },
+        {
+          "candidate_id": "easy-non-answer",
+          "evidence_role": "EASY_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "기온 변화는 건물의 계절별 냉난방 부하에 영향을 줄 수 있다."
+        }
+      ]
+    },
+    {
+      "case_id": "identity-session-revocation-ready",
+      "scenario_id": "identity-session-revocation",
+      "partition": "HOLDOUT",
+      "language_profile": "KOREAN",
+      "domain": "IDENTITY_AUTHORIZATION",
+      "expected_ready": true,
+      "query": "사용자 권한이 회수된 뒤 기존 로그인 세션으로 승인을 계속할 수 있는가?",
+      "candidates": [
+        {
+          "candidate_id": "primary-answer",
+          "evidence_role": "PRIMARY_ANSWER",
+          "expected_relevant": true,
+          "text": "승인 시점에 OA의 최신 권한과 세션 철회 상태를 다시 검증하므로 권한이 회수되거나 세션이 폐기된 사용자는 기존 토큰으로 승인할 수 없다."
+        },
+        {
+          "candidate_id": "supporting-answer",
+          "evidence_role": "SUPPORTING_ANSWER",
+          "expected_relevant": true,
+          "text": "철회된 세션과 제거된 역할은 즉시 권한 거부로 처리되어 승인 결정에 사용할 수 없다."
+        },
+        {
+          "candidate_id": "hard-non-answer",
+          "evidence_role": "HARD_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "만료 전인 세션이라도 사용자의 표시 이름 변경은 인증 주체를 바꾸지 않으므로 별도 로그인이 필요하지 않을 수 있다."
+        },
+        {
+          "candidate_id": "easy-non-answer",
+          "evidence_role": "EASY_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "컴퓨터 화면 잠금은 자리를 비운 동안 로컬 화면 접근을 제한한다."
+        }
+      ]
+    },
+    {
+      "case_id": "identity-session-revocation-low-confidence",
+      "scenario_id": "identity-session-revocation",
+      "partition": "HOLDOUT",
+      "language_profile": "KOREAN",
+      "domain": "IDENTITY_AUTHORIZATION",
+      "expected_ready": false,
+      "query": "권한 회수 후 브라우저에 로그아웃 안내를 몇 초 동안 표시하는가?",
+      "candidates": [
+        {
+          "candidate_id": "hard-non-answer",
+          "evidence_role": "HARD_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "철회된 세션을 즉시 거부하는 보안 경계는 정의하지만 로그아웃 안내의 화면 표시 시간은 정하지 않는다."
+        },
+        {
+          "candidate_id": "related-non-answer",
+          "evidence_role": "RELATED_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "클라이언트는 세션 만료나 권한 거부를 받으면 로그인 화면으로 복귀하고 민감한 상태를 제거해야 한다."
+        },
+        {
+          "candidate_id": "contradictory-non-answer",
+          "evidence_role": "CONTRADICTORY_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "권한 회수 안내는 모든 브라우저에서 정확히 십 초 동안 표시된 뒤에만 로그아웃된다."
+        },
+        {
+          "candidate_id": "easy-non-answer",
+          "evidence_role": "EASY_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "컴퓨터 화면 보호기는 사용자 입력이 없을 때 지정된 그림을 표시할 수 있다."
+        }
+      ]
+    },
+    {
+      "case_id": "identity-service-principal-mixed-ready",
+      "scenario_id": "identity-service-principal-mixed",
+      "partition": "HOLDOUT",
+      "language_profile": "KOREAN_ENGLISH_MIXED",
+      "domain": "IDENTITY_AUTHORIZATION",
+      "expected_ready": true,
+      "query": "service principal의 client secret이 rotation되면 이전 secret은 계속 사용할 수 있는가?",
+      "candidates": [
+        {
+          "candidate_id": "primary-answer",
+          "evidence_role": "PRIMARY_ANSWER",
+          "expected_relevant": true,
+          "text": "rotation overlap 기간이 끝나고 이전 credential이 revoked되면 해당 secret으로 token을 발급할 수 없으며 새 credential만 허용한다."
+        },
+        {
+          "candidate_id": "supporting-answer",
+          "evidence_role": "SUPPORTING_ANSWER",
+          "expected_relevant": true,
+          "text": "정해진 교체 유예 기간 이후에는 구 client secret을 폐기하고 새 비밀 값으로만 인증해야 한다."
+        },
+        {
+          "candidate_id": "hard-non-answer",
+          "evidence_role": "HARD_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "JWKS signing key rotation은 토큰 서명 검증 키의 수명 주기를 다루며 client secret 교체와는 별도 경계다."
+        },
+        {
+          "candidate_id": "easy-non-answer",
+          "evidence_role": "EASY_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "비밀번호 관리 도구는 여러 웹사이트의 사용자 비밀번호를 암호화해 저장한다."
+        }
+      ]
+    },
+    {
+      "case_id": "identity-service-principal-mixed-low-confidence",
+      "scenario_id": "identity-service-principal-mixed",
+      "partition": "HOLDOUT",
+      "language_profile": "KOREAN_ENGLISH_MIXED",
+      "domain": "IDENTITY_AUTHORIZATION",
+      "expected_ready": false,
+      "query": "새 client secret의 minimum length는 몇 characters인가?",
+      "candidates": [
+        {
+          "candidate_id": "hard-non-answer",
+          "evidence_role": "HARD_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "rotation과 revoke 절차는 설명하지만 새 client secret의 minimum length는 해당 근거에 정의되어 있지 않다."
+        },
+        {
+          "candidate_id": "related-non-answer",
+          "evidence_role": "RELATED_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "service credential은 충분한 entropy와 안전한 secret store를 사용해야 하며 구체적인 길이는 보안 profile이 정한다."
+        },
+        {
+          "candidate_id": "contradictory-non-answer",
+          "evidence_role": "CONTRADICTORY_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "모든 client secret은 예외 없이 정확히 열두 characters의 영문 소문자로만 생성된다."
+        },
+        {
+          "candidate_id": "easy-non-answer",
+          "evidence_role": "EASY_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "password manager는 여러 계정의 credential을 암호화된 vault에 보관할 수 있다."
+        }
+      ]
+    },
+    {
+      "case_id": "governance-audit-trace-mixed-ready",
+      "scenario_id": "governance-audit-trace-mixed",
+      "partition": "HOLDOUT",
+      "language_profile": "KOREAN_ENGLISH_MIXED",
+      "domain": "GOVERNANCE_OPERATIONS",
+      "expected_ready": true,
+      "query": "cross-service audit trace에서 전표 승인과 EOS commit을 어떻게 연결하는가?",
+      "candidates": [
+        {
+          "candidate_id": "primary-answer",
+          "evidence_role": "PRIMARY_ANSWER",
+          "expected_relevant": true,
+          "text": "tenant, correlation, approval instance, BusinessOperation 식별자를 WC 결정 event와 EOS commit evidence에 함께 기록해 하나의 ordered timeline으로 투영한다."
+        },
+        {
+          "candidate_id": "supporting-answer",
+          "evidence_role": "SUPPORTING_ANSWER",
+          "expected_relevant": true,
+          "text": "공통 correlation과 승인·업무 식별자로 승인 결정부터 최종 회계 커밋까지 추적 가능하게 연결한다."
+        },
+        {
+          "candidate_id": "hard-non-answer",
+          "evidence_role": "HARD_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "서비스별 access log는 HTTP 요청 상태를 보여주지만 공통 업무 식별자가 없으면 승인과 commit의 인과관계를 증명하지 못한다."
+        },
+        {
+          "candidate_id": "easy-non-answer",
+          "evidence_role": "EASY_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "택배 운송장 번호는 물류 구간에서 소포의 현재 위치를 조회하는 데 사용된다."
+        }
+      ]
+    },
+    {
+      "case_id": "governance-audit-trace-mixed-low-confidence",
+      "scenario_id": "governance-audit-trace-mixed",
+      "partition": "HOLDOUT",
+      "language_profile": "KOREAN_ENGLISH_MIXED",
+      "domain": "GOVERNANCE_OPERATIONS",
+      "expected_ready": false,
+      "query": "audit timeline 화면에서 EOS commit row의 icon color는 무엇인가?",
+      "candidates": [
+        {
+          "candidate_id": "hard-non-answer",
+          "evidence_role": "HARD_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "공통 식별자로 승인과 EOS commit을 연결하는 계약은 있지만 timeline icon의 color는 지정하지 않는다."
+        },
+        {
+          "candidate_id": "related-non-answer",
+          "evidence_role": "RELATED_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "감사 화면은 단계와 terminal status를 구분해야 하며 표현 방식은 운영 UI design system에 속한다."
+        },
+        {
+          "candidate_id": "contradictory-non-answer",
+          "evidence_role": "CONTRADICTORY_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "EOS commit row는 성공 여부와 관계없이 항상 빨간색 icon으로 표시된다."
+        },
+        {
+          "candidate_id": "easy-non-answer",
+          "evidence_role": "EASY_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "택배 조회 화면의 아이콘은 운송 단계에 따라 다른 모양을 사용할 수 있다."
+        }
+      ]
+    },
+    {
+      "case_id": "governance-secret-rotation-ready",
+      "scenario_id": "governance-secret-rotation",
+      "partition": "HOLDOUT",
+      "language_profile": "ENGLISH",
+      "domain": "GOVERNANCE_OPERATIONS",
+      "expected_ready": true,
+      "query": "How should a service react when its required production secret cannot be resolved at startup?",
+      "candidates": [
+        {
+          "candidate_id": "primary-answer",
+          "evidence_role": "PRIMARY_ANSWER",
+          "expected_relevant": true,
+          "text": "Startup admission must fail closed before the service becomes ready, emitting only a redacted reason while leaving secret material out of logs and process arguments."
+        },
+        {
+          "candidate_id": "supporting-answer",
+          "evidence_role": "SUPPORTING_ANSWER",
+          "expected_relevant": true,
+          "text": "The service stays unready and exits safely when a mandatory secret is unavailable or invalid."
+        },
+        {
+          "candidate_id": "hard-non-answer",
+          "evidence_role": "HARD_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "An optional observability endpoint may be disabled without blocking core startup when its credential is explicitly classified as nonessential."
+        },
+        {
+          "candidate_id": "easy-non-answer",
+          "evidence_role": "EASY_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "A mechanical key opens a compatible lock when its physical cuts align the pins."
+        }
+      ]
+    },
+    {
+      "case_id": "governance-secret-rotation-low-confidence",
+      "scenario_id": "governance-secret-rotation",
+      "partition": "HOLDOUT",
+      "language_profile": "ENGLISH",
+      "domain": "GOVERNANCE_OPERATIONS",
+      "expected_ready": false,
+      "query": "What is the exact backoff interval before retrying an optional secret lookup?",
+      "candidates": [
+        {
+          "candidate_id": "hard-non-answer",
+          "evidence_role": "HARD_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "The startup contract distinguishes mandatory and optional secrets but does not specify an exact retry backoff for an optional lookup."
+        },
+        {
+          "candidate_id": "related-non-answer",
+          "evidence_role": "RELATED_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "Optional dependency retries should use a bounded policy with jitter and observability appropriate to the deployment profile."
+        },
+        {
+          "candidate_id": "contradictory-non-answer",
+          "evidence_role": "CONTRADICTORY_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "Every optional secret lookup retries at a fixed one-second interval forever without a circuit breaker."
+        },
+        {
+          "candidate_id": "easy-non-answer",
+          "evidence_role": "EASY_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "A mechanical lock may require lubrication when its key becomes difficult to turn."
+        }
+      ]
+    },
+    {
+      "case_id": "ai-retrieval-low-confidence-ready",
+      "scenario_id": "ai-retrieval-low-confidence",
+      "partition": "HOLDOUT",
+      "language_profile": "ENGLISH",
+      "domain": "AI_RUNTIME",
+      "expected_ready": true,
+      "query": "What should grounded generation do when permission-filtered retrieval has low confidence and insufficient evidence?",
+      "candidates": [
+        {
+          "candidate_id": "primary-answer",
+          "evidence_role": "PRIMARY_ANSWER",
+          "expected_relevant": true,
+          "text": "Generation must fail closed to a no-answer or clarification result, disclose insufficient evidence, and avoid presenting unsupported claims as grounded output."
+        },
+        {
+          "candidate_id": "supporting-answer",
+          "evidence_role": "SUPPORTING_ANSWER",
+          "expected_relevant": true,
+          "text": "The runtime should ask for clarification or return no answer rather than generate a confident response from weak evidence."
+        },
+        {
+          "candidate_id": "hard-non-answer",
+          "evidence_role": "HARD_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "When strong authorized evidence exists, the generator may compose an answer whose citations resolve to the admitted retrieval package."
+        },
+        {
+          "candidate_id": "easy-non-answer",
+          "evidence_role": "EASY_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "A weather forecast combines atmospheric observations with numerical prediction models."
+        }
+      ]
+    },
+    {
+      "case_id": "ai-retrieval-low-confidence-low-confidence",
+      "scenario_id": "ai-retrieval-low-confidence",
+      "partition": "HOLDOUT",
+      "language_profile": "ENGLISH",
+      "domain": "AI_RUNTIME",
+      "expected_ready": false,
+      "query": "What Korean sentence must be shown verbatim for every low-confidence answer?",
+      "candidates": [
+        {
+          "candidate_id": "hard-non-answer",
+          "evidence_role": "HARD_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "The grounded response contract requires no-answer or clarification behavior but does not mandate one verbatim Korean sentence for every case."
+        },
+        {
+          "candidate_id": "related-non-answer",
+          "evidence_role": "RELATED_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "User-facing wording may be localized while preserving the reason code, evidence limitation, and safe next action."
+        },
+        {
+          "candidate_id": "contradictory-non-answer",
+          "evidence_role": "CONTRADICTORY_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "Every low-confidence response must always display exactly '검색 결과가 없습니다' and no other explanation."
+        },
+        {
+          "candidate_id": "easy-non-answer",
+          "evidence_role": "EASY_NON_ANSWER",
+          "expected_relevant": false,
+          "text": "A weather application can display precipitation probability for the selected location."
+        }
+      ]
+    }
+  ]
+}
