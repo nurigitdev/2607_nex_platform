@@ -12,6 +12,9 @@ CANDIDATE_OBSERVATION_SCHEMA_VERSION = (
 )
 CANDIDATE_DIAGNOSTIC_SCHEMA_VERSION = "cx_retrieval_confidence_candidate_diagnostics.v1"
 CANDIDATE_DIAGNOSTIC_POLICY_ID = "cx_candidate_feature_correction_diagnostics_v1"
+CANDIDATE_FEATURE_SAMPLE_SCHEMA_VERSION = (
+    "cx_retrieval_confidence_candidate_feature_sample.v1"
+)
 PAIR_SEMANTICS = "POSITIVE_PAIR_VS_NEGATIVE_PAIR"
 NEAR_CONSTANT_TOLERANCE = 1e-9
 
@@ -196,6 +199,25 @@ def diagnose_candidate_feature_correction(
     }
     result["diagnostic_hash"] = semantic_sha256_hash_ref(result)
     return result
+
+
+def build_candidate_feature_calibration_samples(
+    observations: Sequence[Mapping[str, Any]],
+) -> list[dict[str, Any]]:
+    """Build integrity-protected numeric rows for calibration-only selection."""
+    _, packages = _normalize_observations(observations)
+    projected: list[dict[str, Any]] = []
+    for rows in packages.values():
+        package = _package_features(rows)
+        sample = {
+            "sample_schema_version": CANDIDATE_FEATURE_SAMPLE_SCHEMA_VERSION,
+            "sample_id": package["sample_id"],
+            "expected_ready": package["expected_ready"],
+            "features": package["features"],
+        }
+        sample["sample_hash"] = semantic_sha256_hash_ref(sample)
+        projected.append(sample)
+    return sorted(projected, key=lambda row: str(row["sample_id"]))
 
 
 def _normalize_observations(

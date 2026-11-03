@@ -38,6 +38,7 @@ from nex_cx.repository import SqlAlchemyCxContentRepository
 from nex_cx.retrieval import DEFAULT_RERANKER_ALIAS, register_retrieval_routes
 from nex_cx.retrieval_confidence_candidate_diagnostics import (
     build_candidate_diagnostic_observations,
+    build_candidate_feature_calibration_samples,
     diagnose_candidate_feature_correction,
 )
 from nex_cx.retrieval_confidence_feature_audit import (
@@ -223,6 +224,7 @@ def _execute_live_collection(  # pragma: no cover - PostgreSQL/DGX protected
     samples: list[dict[str, Any]] = []
     diagnostics: dict[str, Any] = {}
     candidate_diagnostics: dict[str, Any] = {}
+    candidate_feature_samples: list[dict[str, Any]] = []
     binding: dict[str, str] | None = None
     provider_observation: dict[str, Any] = {}
     request_counts: dict[str, int] = {}
@@ -305,6 +307,11 @@ def _execute_live_collection(  # pragma: no cover - PostgreSQL/DGX protected
                             dataset_id=str(admitted["v3"]["dataset_id"]),
                             dataset_sha256=str(admitted["v3"]["dataset_sha256"]),
                             expected_binding=binding,
+                        )
+                        candidate_feature_samples = (
+                            build_candidate_feature_calibration_samples(
+                                candidate_observations
+                            )
                         )
                         telemetry = read_provider_telemetry(
                             mo_test_client,
@@ -396,6 +403,16 @@ def _execute_live_collection(  # pragma: no cover - PostgreSQL/DGX protected
                             "package_count"
                         )
                         == EXPECTED_CALIBRATION_PACKAGES
+                    ),
+                    "candidate_feature_projection_complete": (
+                        len(candidate_feature_samples) == EXPECTED_CALIBRATION_PACKAGES
+                        and len(
+                            {
+                                sample["sample_id"].rpartition(":")[0]
+                                for sample in candidate_feature_samples
+                            }
+                        )
+                        == EXPECTED_CALIBRATION_SCENARIOS
                     ),
                     "candidate_diagnostics_only_no_policy_selection": (
                         candidate_diagnostics.get("runtime_activation_permitted")
@@ -498,6 +515,7 @@ def _execute_live_collection(  # pragma: no cover - PostgreSQL/DGX protected
                 sorted(str(sample["sample_hash"]) for sample in samples)
             ),
             "samples": sorted(samples, key=lambda sample: str(sample["sample_id"])),
+            "candidate_feature_samples": candidate_feature_samples,
         },
         "feature_diagnostics": diagnostics,
         "candidate_feature_diagnostics": candidate_diagnostics,

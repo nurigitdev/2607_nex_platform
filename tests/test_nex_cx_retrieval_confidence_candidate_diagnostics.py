@@ -7,6 +7,7 @@ import pytest
 from nex_cx.retrieval_confidence_candidate_diagnostics import (
     CORRECTED_PACKAGE_FEATURE_FIELDS,
     build_candidate_diagnostic_observations,
+    build_candidate_feature_calibration_samples,
     diagnose_candidate_feature_correction,
 )
 
@@ -153,6 +154,13 @@ def test_diagnoses_candidate_ranking_and_corrected_package_features_only() -> No
         result["package_features"]["top_channel_support"]["classification"]
         == "CONSTANT"
     )
+
+    samples = build_candidate_feature_calibration_samples(_observations())
+    assert len(samples) == 4
+    assert samples[0]["sample_schema_version"].endswith(".v1")
+    assert samples[0]["features"]["reranker_second_score"] > 0.0
+    assert all(str(sample["sample_hash"]).startswith("sha256:") for sample in samples)
+    assert "must never be projected" not in str(samples)
 
 
 @pytest.mark.parametrize(
