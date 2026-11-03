@@ -63,6 +63,10 @@ def test_skip_and_candidate_profile(monkeypatch) -> None:
 
     assert result["status"] == "PASS"
     assert all(result["checks"].values())
+    assert result["candidate_profile"]["profile_id"].startswith(
+        "reranking-numeric-repeatability-"
+    )
+    assert result["candidate_profile"]["profile_id"].endswith("-v1")
     assert result["candidate_profile"]["policy"]["score_delta_tolerance"] == 0.0015
     assert result["repeatability"]["same_label_near_tie_exchange_count"] == 30
     assert result["repeatability"]["cross_label_rank_exchange_count"] == 0

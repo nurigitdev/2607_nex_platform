@@ -215,6 +215,46 @@ def test_source_and_evidence_failures_are_redacted(monkeypatch, tmp_path: Path) 
     assert "secret" not in json.dumps(result)
 
 
+def test_missing_baseline_and_malformed_evidence_fail_closed(
+    monkeypatch, tmp_path: Path
+) -> None:
+    repeatability, revision = _files(tmp_path)
+    monkeypatch.setattr(
+        smoke.s20qg,
+        "_admit_provenance",
+        lambda *_args, **_kwargs: {"numeric_tolerance": 0.0005},
+    )
+    source = _source()
+    source["repeat_collection"]["runs"][0]["candidate_observations"] = None
+    missing = smoke.run_gb2_s20qi_candidate_relevance_signal_expansion(
+        {smoke.SMOKE_ENV: "1"},
+        collector=lambda *_args, **_kwargs: source,
+        analyzer=lambda *_args, **_kwargs: _pipeline(),
+        repeatability_path=repeatability,
+        revision_path=revision,
+    )
+    assert missing["failure_code"] == "baseline_candidate_observations_missing"
+
+    repeatability.write_text("{", encoding="utf-8")
+    malformed = smoke.run_gb2_s20qi_candidate_relevance_signal_expansion(
+        {smoke.SMOKE_ENV: "1"},
+        repeatability_path=repeatability,
+        revision_path=revision,
+    )
+    assert (
+        malformed["failure_code"]
+        == "candidate_relevance_signal_expansion_execution_failed"
+    )
+    assert malformed["detail"]["exception"] == "JSONDecodeError"
+
+
+def test_summary_line_reports_skipped_status() -> None:
+    result = {"status": "SKIPPED"}
+    assert smoke.summary_line(result) == (
+        f"gb2_s20qi_signal_expansion=skipped reason={smoke.SMOKE_ENV}"
+    )
+
+
 def test_failed_checks_and_main_status(monkeypatch, tmp_path: Path, capsys) -> None:
     repeatability, revision = _files(tmp_path)
     monkeypatch.setattr(
@@ -233,20 +273,46 @@ def test_failed_checks_and_main_status(monkeypatch, tmp_path: Path, capsys) -> N
     assert result["status"] == "FAIL"
     assert "pipeline_and_expanded_signals_repeatable" in result["failed_checks"]
     assert "candidate_relevance_decision_complete" in result["failed_checks"]
+    assert "signal_expansion=fail" in smoke.summary_line(result)
+
+    captured: dict[str, Path] = {}
+
+    def passing_runner(**kwargs):
+        captured.update(kwargs)
+        return {"status": "PASS", "decision": {"status": "FROZEN"}}
 
     monkeypatch.setattr(
         smoke,
         "run_gb2_s20qi_candidate_relevance_signal_expansion",
-        lambda: {"status": "PASS", "decision": {"status": "FROZEN"}},
+        passing_runner,
     )
     output = tmp_path / "evidence.json"
-    assert smoke.main(["--output", str(output), "--summary"]) == 0
+    repeatability_path = tmp_path / "repeatability.json"
+    revision_path = tmp_path / "revision.json"
+    assert (
+        smoke.main(
+            [
+                "--output",
+                str(output),
+                "--repeatability",
+                str(repeatability_path),
+                "--revision",
+                str(revision_path),
+                "--summary",
+            ]
+        )
+        == 0
+    )
+    assert captured == {
+        "repeatability_path": repeatability_path,
+        "revision_path": revision_path,
+    }
     assert json.loads(output.read_text(encoding="utf-8"))["status"] == "PASS"
     assert "signal_expansion=pass" in capsys.readouterr().out
 
     monkeypatch.setattr(
         smoke,
         "run_gb2_s20qi_candidate_relevance_signal_expansion",
-        lambda: {"status": "FAIL", "failure_code": "failed"},
+        lambda **_kwargs: {"status": "FAIL", "failure_code": "failed"},
     )
     assert smoke.main([]) == 1

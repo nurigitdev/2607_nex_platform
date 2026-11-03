@@ -24,6 +24,7 @@ from check_model_calibration_dataset import (  # noqa: E402
     admit_calibration_dataset_files,
 )
 from nex_mo.remote_provider import build_remote_reranker_execution_config  # noqa: E402
+from nex_runtime.semantic_hashes import semantic_sha256_hash_ref  # noqa: E402
 from reranker_repeatability import (  # noqa: E402
     DEFAULT_TOLERANCE_GUARD_FACTOR,
     DEFAULT_TOLERANCE_HARD_CAP,
@@ -112,9 +113,19 @@ def run_gb2_s20ma_provider_numeric_repeatability(
         }
         profile = None
         if all(checks.values()):
+            profile_identity = {
+                "model_name": config.model_name,
+                "model_revision": config.model_revision,
+                "deployment_id": config.deployment_id,
+                "request_shape": config.request_shape,
+                "dataset_sha256": admitted["v2"]["dataset_sha256"],
+            }
             profile = {
                 "profile_schema_version": PROFILE_SCHEMA_VERSION,
-                "profile_id": "reranking-qwen3-4b-numeric-repeatability-v1",
+                "profile_id": (
+                    "reranking-numeric-repeatability-"
+                    f"{semantic_sha256_hash_ref(profile_identity)[7:23]}-v1"
+                ),
                 "status": "CANDIDATE",
                 "binding": {
                     "capability": "reranking",

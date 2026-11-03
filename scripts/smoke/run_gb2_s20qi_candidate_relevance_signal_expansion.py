@@ -271,9 +271,22 @@ def summary_line(result: Mapping[str, Any]) -> str:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", type=Path)
+    parser.add_argument(
+        "--repeatability",
+        type=Path,
+        default=s20qg.DEFAULT_REPEATABILITY_PATH,
+    )
+    parser.add_argument(
+        "--revision",
+        type=Path,
+        default=s20qg.DEFAULT_REVISION_PATH,
+    )
     parser.add_argument("--summary", action="store_true")
     args = parser.parse_args(argv)
-    result = run_gb2_s20qi_candidate_relevance_signal_expansion()
+    result = run_gb2_s20qi_candidate_relevance_signal_expansion(
+        repeatability_path=args.repeatability,
+        revision_path=args.revision,
+    )
     if args.output is not None:
         args.output.parent.mkdir(parents=True, exist_ok=True)
         args.output.write_text(
