@@ -1,21 +1,19 @@
 from __future__ import annotations
 
-from copy import deepcopy
 import hashlib
 import json
+from copy import deepcopy
 from typing import Any
 
 import pytest
-
 from nex_cx.access_context import CxAccessContext
 from nex_cx.hybrid_ranking import (
-    HybridRankingError,
-    HybridRankingPolicy,
     MAX_CHUNK_TEXT_LENGTH,
     MAX_QUERY_TEXT_LENGTH,
+    HybridRankingError,
+    HybridRankingPolicy,
     rank_permission_filtered_candidates,
 )
-
 
 QUERY = "alpha query"
 DOC_ID = "document-owner-one"
@@ -300,6 +298,35 @@ def test_vector_channel_accepts_negative_similarity_rank() -> None:
     result = _rank(candidate_set=candidate_set)
 
     assert result["candidate_count"] == 3
+
+
+def test_vector_channel_stabilizes_near_tie_rank_before_rrf() -> None:
+    baseline = _candidate_set()
+    baseline["vector_candidates"]["candidates"] = [
+        _vector(CHUNK_C, score=0.9505),
+        _vector(CHUNK_B, score=0.95),
+    ]
+    repeated = deepcopy(baseline)
+    repeated["vector_candidates"]["candidates"][0]["vector_score"] = 0.9498
+    repeated["vector_candidates"]["candidates"][1]["vector_score"] = 0.9502
+
+    baseline_result = _rank(candidate_set=baseline)
+    repeated_result = _rank(candidate_set=repeated)
+
+    baseline_vector_ranks = {
+        row["chunk_id"]: row["scores"]["vector_rank"]
+        for row in baseline_result["candidates"]
+        if row["scores"]["vector_rank"] is not None
+    }
+    repeated_vector_ranks = {
+        row["chunk_id"]: row["scores"]["vector_rank"]
+        for row in repeated_result["candidates"]
+        if row["scores"]["vector_rank"] is not None
+    }
+    assert baseline_vector_ranks == repeated_vector_ranks == {
+        CHUNK_B: 1,
+        CHUNK_C: 2,
+    }
 
 
 def test_candidate_merge_rejects_conflicting_text_hash() -> None:

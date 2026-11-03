@@ -1,12 +1,11 @@
 from __future__ import annotations
 
-from copy import deepcopy
 import math
+from copy import deepcopy
 from typing import Any
 from uuid import uuid4
 
 import pytest
-
 from nex_cx.access_context import CxAccessContext
 from nex_cx.vector_candidates import (
     VectorCandidateError,
@@ -188,6 +187,44 @@ def test_collects_fresh_candidates_with_global_deterministic_ranking() -> None:
         "candidate_rank": 1,
     }
     assert all(bound.search_calls == 1 for bound in bounds.values())
+
+
+def test_global_ranking_stabilizes_near_ties_by_persistent_identity() -> None:
+    first = _parts()
+    second = _parts()
+    by_identity = sorted(
+        [first, second],
+        key=lambda part: (
+            part[1]["content_object_id"],
+            part[2]["chunk_id"],
+            part[1]["vector_index_id"],
+        ),
+    )
+    lower_identity, higher_identity = by_identity
+    matches = {
+        lower_identity[1]["vector_index_id"]: [
+            {
+                "chunk_id": lower_identity[2]["chunk_id"],
+                "score": 0.9000,
+                "distance": 0.1000,
+            }
+        ],
+        higher_identity[1]["vector_index_id"]: [
+            {
+                "chunk_id": higher_identity[2]["chunk_id"],
+                "score": 0.9005,
+                "distance": 0.0995,
+            }
+        ],
+    }
+
+    result, _bounds = _run([first, second], matches=matches)
+
+    assert [row["content_object_id"] for row in result["candidates"]] == [
+        lower_identity[1]["content_object_id"],
+        higher_identity[1]["content_object_id"],
+    ]
+    assert [row["vector_score"] for row in result["candidates"]] == [0.9, 0.9005]
 
 
 def test_excludes_unready_and_owner_hidden_indexes_without_leaking_ids() -> None:

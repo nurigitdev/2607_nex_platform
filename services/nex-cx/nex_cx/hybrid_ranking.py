@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
 import hashlib
 import math
 import re
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from typing import Any, Protocol
 
 from nex_cx.access_context import CxAccessContext
@@ -15,7 +15,7 @@ from nex_cx.retrieval_permissions import (
     PERMISSION_POLICY_ID,
     PERMISSION_SNAPSHOT_SCHEMA_VERSION,
 )
-
+from nex_cx.vector_ordering import order_vector_candidates
 
 HYBRID_RANKED_SET_SCHEMA_VERSION = "cx_hybrid_ranked_candidate_set.v1"
 HYBRID_RANKED_CANDIDATE_SCHEMA_VERSION = "cx_hybrid_ranked_candidate.v1"
@@ -252,6 +252,11 @@ def _channel_candidates(
                 "text_sha256": text_sha256,
             }
         )
+    if channel == "vector":
+        return [
+            dict(item)
+            for item in order_vector_candidates(normalized, score_field="score")
+        ]
     return sorted(
         normalized,
         key=lambda item: (-item["score"], item["content_object_id"], item["chunk_id"]),
