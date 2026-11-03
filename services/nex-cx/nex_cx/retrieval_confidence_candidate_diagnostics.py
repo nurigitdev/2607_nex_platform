@@ -8,7 +8,7 @@ from typing import Any
 from nex_runtime.semantic_hashes import semantic_sha256_hash_ref
 
 CANDIDATE_OBSERVATION_SCHEMA_VERSION = (
-    "cx_retrieval_confidence_candidate_observation.v1"
+    "cx_retrieval_confidence_candidate_observation.v2"
 )
 CANDIDATE_DIAGNOSTIC_SCHEMA_VERSION = "cx_retrieval_confidence_candidate_diagnostics.v1"
 CANDIDATE_DIAGNOSTIC_POLICY_ID = "cx_candidate_feature_correction_diagnostics_v1"
@@ -18,6 +18,9 @@ CANDIDATE_FEATURE_SAMPLE_SCHEMA_VERSION = (
 CANDIDATE_RELEVANCE_SAMPLE_SCHEMA_VERSION = (
     "cx_retrieval_confidence_candidate_relevance_sample.v1"
 )
+EXPANDED_CANDIDATE_RELEVANCE_SAMPLE_SCHEMA_VERSION = (
+    "cx_retrieval_confidence_candidate_relevance_sample.v2"
+)
 PAIR_SEMANTICS = "POSITIVE_PAIR_VS_NEGATIVE_PAIR"
 NEAR_CONSTANT_TOLERANCE = 1e-9
 
@@ -25,6 +28,11 @@ CANDIDATE_SIGNAL_FIELDS = (
     "reranker_score",
     "rrf_normalized_score",
     "channel_rank_quality",
+)
+EXPANDED_CANDIDATE_SIGNAL_FIELDS = (
+    *CANDIDATE_SIGNAL_FIELDS,
+    "bm25_score_quality",
+    "vector_similarity_quality",
 )
 CURRENT_PACKAGE_FEATURE_FIELDS = (
     "reranker_top_score",
@@ -79,6 +87,18 @@ def build_candidate_diagnostic_observations(
 
     if not _sequence(evidence_items) or len(evidence_items) != 4:
         raise ValueError("candidate diagnostic evidence requires four items")
+    bm25_scores = [
+        _optional_nonnegative_score(
+            _mapping(item.get("scores")).get("bm25_score"),
+            "bm25_score",
+        )
+        for item in evidence_items
+        if isinstance(item, Mapping)
+    ]
+    maximum_bm25_score = max(
+        (score for score in bm25_scores if score is not None),
+        default=0.0,
+    )
     observations: list[dict[str, Any]] = []
     seen: set[str] = set()
     ranks: set[int] = set()
@@ -98,8 +118,18 @@ def build_candidate_diagnostic_observations(
         ranks.add(rank)
         bm25_rank = _optional_rank(scores.get("bm25_rank"), "bm25_rank")
         vector_rank = _optional_rank(scores.get("vector_rank"), "vector_rank")
+        bm25_score = _optional_nonnegative_score(
+            scores.get("bm25_score"), "bm25_score"
+        )
+        vector_score = _optional_cosine_score(
+            scores.get("vector_score"), "vector_score"
+        )
         if bm25_rank is None and vector_rank is None:
             raise ValueError("candidate diagnostic channel ranks are missing")
+        if (bm25_rank is None) != (bm25_score is None) or (
+            vector_rank is None
+        ) != (vector_score is None):
+            raise ValueError("candidate diagnostic channel score binding is invalid")
         observation = {
             "observation_schema_version": CANDIDATE_OBSERVATION_SCHEMA_VERSION,
             "sample_id": sample_id,
@@ -116,6 +146,13 @@ def build_candidate_diagnostic_observations(
                 ),
                 "channel_support": _bounded_score(
                     scores.get("channel_support_score"), "channel_support_score"
+                ),
+                "bm25_score_quality": _normalized_bm25_score(
+                    bm25_score,
+                    maximum=maximum_bm25_score,
+                ),
+                "vector_similarity_quality": _vector_similarity_quality(
+                    vector_score
                 ),
                 "bm25_rank": bm25_rank,
                 "vector_rank": vector_rank,
@@ -248,6 +285,34 @@ def build_candidate_relevance_calibration_samples(
     )
 
 
+def build_expanded_candidate_relevance_calibration_samples(
+    observations: Sequence[Mapping[str, Any]],
+) -> list[dict[str, Any]]:
+    """Project historical and bounded raw-channel relevance signals."""
+    normalized, _ = _normalize_observations(observations)
+    projected: list[dict[str, Any]] = []
+    for row in normalized:
+        sample = {
+            "sample_schema_version": (
+                EXPANDED_CANDIDATE_RELEVANCE_SAMPLE_SCHEMA_VERSION
+            ),
+            "sample_id": row["sample_id"],
+            "candidate_id": row["candidate_id"],
+            "expected_ready": row["package_expected_ready"],
+            "expected_relevant": row["expected_relevant"],
+            "signals": {
+                field: row["signals"][field]
+                for field in EXPANDED_CANDIDATE_SIGNAL_FIELDS
+            },
+        }
+        sample["sample_hash"] = semantic_sha256_hash_ref(sample)
+        projected.append(sample)
+    return sorted(
+        projected,
+        key=lambda row: (str(row["sample_id"]), str(row["candidate_id"])),
+    )
+
+
 def _normalize_observations(
     observations: Sequence[Mapping[str, Any]],
 ) -> tuple[list[dict[str, Any]], dict[str, list[dict[str, Any]]]]:
@@ -293,6 +358,13 @@ def _normalize_observations(
             ),
             "channel_support": _bounded_score(
                 signals.get("channel_support"), "channel_support"
+            ),
+            "bm25_score_quality": _bounded_score(
+                signals.get("bm25_score_quality"), "bm25_score_quality"
+            ),
+            "vector_similarity_quality": _bounded_score(
+                signals.get("vector_similarity_quality"),
+                "vector_similarity_quality",
             ),
             "bm25_rank": _optional_rank(signals.get("bm25_rank"), "bm25_rank"),
             "vector_rank": _optional_rank(signals.get("vector_rank"), "vector_rank"),
@@ -520,6 +592,40 @@ def _bounded_score(value: object, field: str) -> float:
     return numeric
 
 
+def _optional_nonnegative_score(value: object, field: str) -> float | None:
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise TypeError(f"{field} is invalid")
+    numeric = float(value)
+    if not math.isfinite(numeric) or numeric < 0.0:
+        raise ValueError(f"{field} is invalid")
+    return numeric
+
+
+def _optional_cosine_score(value: object, field: str) -> float | None:
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise TypeError(f"{field} is invalid")
+    numeric = float(value)
+    if not math.isfinite(numeric) or not -1.0 <= numeric <= 1.0:
+        raise ValueError(f"{field} is invalid")
+    return numeric
+
+
+def _normalized_bm25_score(value: float | None, *, maximum: float) -> float:
+    if value is None or maximum <= 0.0:
+        return 0.0
+    return round(min(1.0, value / maximum), 8)
+
+
+def _vector_similarity_quality(value: float | None) -> float:
+    if value is None:
+        return 0.0
+    return round(min(1.0, max(0.0, value)), 8)
+
+
 def _positive_rank(value: object, field: str) -> int:
     if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
         raise TypeError(f"{field} is invalid")
@@ -536,6 +642,10 @@ def _sequence(value: object) -> bool:
     return isinstance(value, Sequence) and not isinstance(
         value, (str, bytes, bytearray)
     )
+
+
+def _mapping(value: object) -> Mapping[str, Any]:
+    return value if isinstance(value, Mapping) else {}
 
 
 def _required_string(value: object, field: str) -> str:

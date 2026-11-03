@@ -22,9 +22,16 @@ def analyze_retrieval_pipeline_repeatability(
     expected_candidates_per_package: int = 4,
     reranker_score_tolerance: float = 0.0005,
     rrf_score_tolerance: float = 1e-8,
+    bm25_score_tolerance: float = 1e-8,
+    vector_similarity_tolerance: float = 0.005,
 ) -> dict[str, Any]:
     """Compare repeated full-pipeline observations from one immutable corpus."""
-    _validate_tolerances(reranker_score_tolerance, rrf_score_tolerance)
+    _validate_tolerances(
+        reranker_score_tolerance,
+        rrf_score_tolerance,
+        bm25_score_tolerance,
+        vector_similarity_tolerance,
+    )
     normalized = _normalize_runs(
         runs,
         expected_repeat_count=expected_repeat_count,
@@ -37,10 +44,14 @@ def analyze_retrieval_pipeline_repeatability(
         "bm25_rank_change_count": 0,
         "vector_rank_change_count": 0,
         "rrf_score_drift_count": 0,
+        "bm25_score_quality_drift_count": 0,
+        "vector_similarity_quality_drift_count": 0,
         "reranker_score_drift_count": 0,
         "final_rank_change_count": 0,
     }
     max_rrf_delta = 0.0
+    max_bm25_score_quality_delta = 0.0
+    max_vector_similarity_quality_delta = 0.0
     max_reranker_delta = 0.0
     for current in normalized[1:]:
         baseline_packages = _package_membership(baseline)
@@ -65,10 +76,30 @@ def analyze_retrieval_pipeline_repeatability(
                 float(before_signals["reranker_score"])
                 - float(after_signals["reranker_score"])
             )
+            bm25_score_quality_delta = abs(
+                float(before_signals["bm25_score_quality"])
+                - float(after_signals["bm25_score_quality"])
+            )
+            vector_similarity_quality_delta = abs(
+                float(before_signals["vector_similarity_quality"])
+                - float(after_signals["vector_similarity_quality"])
+            )
             max_rrf_delta = max(max_rrf_delta, rrf_delta)
+            max_bm25_score_quality_delta = max(
+                max_bm25_score_quality_delta,
+                bm25_score_quality_delta,
+            )
+            max_vector_similarity_quality_delta = max(
+                max_vector_similarity_quality_delta,
+                vector_similarity_quality_delta,
+            )
             max_reranker_delta = max(max_reranker_delta, reranker_delta)
             if rrf_delta > rrf_score_tolerance:
                 stage_counts["rrf_score_drift_count"] += 1
+            if bm25_score_quality_delta > bm25_score_tolerance:
+                stage_counts["bm25_score_quality_drift_count"] += 1
+            if vector_similarity_quality_delta > vector_similarity_tolerance:
+                stage_counts["vector_similarity_quality_drift_count"] += 1
             if reranker_delta > reranker_score_tolerance:
                 stage_counts["reranker_score_drift_count"] += 1
             if before["rank"] != after["rank"]:
@@ -91,11 +122,19 @@ def analyze_retrieval_pipeline_repeatability(
         "tolerances": {
             "reranker_score": reranker_score_tolerance,
             "rrf_normalized_score": rrf_score_tolerance,
+            "bm25_score_quality": bm25_score_tolerance,
+            "vector_similarity_quality": vector_similarity_tolerance,
             "rank": 0,
         },
         "stages": {
             **stage_counts,
             "max_rrf_score_delta": round(max_rrf_delta, 12),
+            "max_bm25_score_quality_delta": round(
+                max_bm25_score_quality_delta, 12
+            ),
+            "max_vector_similarity_quality_delta": round(
+                max_vector_similarity_quality_delta, 12
+            ),
             "max_reranker_score_delta": round(max_reranker_delta, 12),
             "first_unstable_stage": _first_unstable_stage(stage_counts),
         },
@@ -176,6 +215,13 @@ def _normalize_observation(value: object) -> dict[str, Any]:
         "rrf_normalized_score": _score(
             signals.get("rrf_normalized_score"), "rrf_normalized_score"
         ),
+        "bm25_score_quality": _score(
+            signals.get("bm25_score_quality"), "bm25_score_quality"
+        ),
+        "vector_similarity_quality": _score(
+            signals.get("vector_similarity_quality"),
+            "vector_similarity_quality",
+        ),
         "bm25_rank": _optional_rank(signals.get("bm25_rank"), "bm25_rank"),
         "vector_rank": _optional_rank(signals.get("vector_rank"), "vector_rank"),
     }
@@ -206,6 +252,11 @@ def _first_unstable_stage(counts: Mapping[str, int]) -> str | None:
         ("CANDIDATE_MEMBERSHIP", "candidate_membership_change_count"),
         ("BM25_RANK", "bm25_rank_change_count"),
         ("VECTOR_RANK", "vector_rank_change_count"),
+        ("BM25_SCORE_QUALITY", "bm25_score_quality_drift_count"),
+        (
+            "VECTOR_SIMILARITY_QUALITY",
+            "vector_similarity_quality_drift_count",
+        ),
         ("RRF_SCORE", "rrf_score_drift_count"),
         ("RERANKER_SCORE", "reranker_score_drift_count"),
         ("FINAL_RANK", "final_rank_change_count"),
@@ -213,13 +264,18 @@ def _first_unstable_stage(counts: Mapping[str, int]) -> str | None:
     return next((stage for stage, field in stages if counts[field]), None)
 
 
-def _validate_tolerances(reranker: float, rrf: float) -> None:
+def _validate_tolerances(
+    reranker: float,
+    rrf: float,
+    bm25: float,
+    vector: float,
+) -> None:
     if any(
         isinstance(value, bool)
         or not isinstance(value, int | float)
         or not math.isfinite(float(value))
         or not 0.0 <= float(value) <= 0.01
-        for value in (reranker, rrf)
+        for value in (reranker, rrf, bm25, vector)
     ):
         raise ValueError("pipeline repeatability tolerances are invalid")
 

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 
+import nex_cx.retrieval_pipeline_repeatability as repeatability
 import pytest
 from nex_cx.retrieval_confidence_candidate_diagnostics import (
     build_candidate_diagnostic_observations,
@@ -34,6 +35,8 @@ def _observations(scenario: str, *, ready: bool) -> list[dict[str, object]]:
                 "rerank_score": 0.9 - index * 0.2,
                 "rrf_normalized_score": 0.8 - index * 0.1,
                 "channel_support_score": 1.0,
+                "bm25_score": 10.0 - index,
+                "vector_score": 0.9 - index * 0.2,
                 "bm25_rank": index + 1,
                 "vector_rank": index + 1,
             },
@@ -101,6 +104,16 @@ def test_stable_pipeline_repeatability_is_text_free_and_holdout_closed() -> None
             lambda row: row["signals"].update(vector_rank=4),
             "VECTOR_RANK",
             "vector_rank_change_count",
+        ),
+        (
+            lambda row: row["signals"].update(bm25_score_quality=0.7),
+            "BM25_SCORE_QUALITY",
+            "bm25_score_quality_drift_count",
+        ),
+        (
+            lambda row: row["signals"].update(vector_similarity_quality=0.7),
+            "VECTOR_SIMILARITY_QUALITY",
+            "vector_similarity_quality_drift_count",
         ),
         (
             lambda row: row["signals"].update(rrf_normalized_score=0.7),
@@ -234,6 +247,28 @@ def test_rejects_incomplete_runs_indexes_observations_and_package_coverage() -> 
         analyze_retrieval_pipeline_repeatability(
             [wrong_packages], expected_repeat_count=1, expected_package_count=2
         )
+
+    one_package = _run(0)
+    for index, row in enumerate(one_package["candidate_observations"][-4:]):
+        row["sample_id"] = "scenario-a:positive"
+        row["candidate_id"] = f"replacement-{index}"
+        _rehash_observation(row)
+    _rehash_run(one_package)
+    with pytest.raises(ValueError, match="package coverage"):
+        analyze_retrieval_pipeline_repeatability(
+            [one_package], expected_repeat_count=1, expected_package_count=2
+        )
+
+    bad_integrity = _run(0)
+    bad_integrity["candidate_observations"][0]["rank"] = 4
+    _rehash_run(bad_integrity)
+    with pytest.raises(ValueError, match="observation integrity"):
+        analyze_retrieval_pipeline_repeatability(
+            [bad_integrity], expected_repeat_count=1, expected_package_count=2
+        )
+
+    with pytest.raises(ValueError, match="hash"):
+        repeatability._hash_ref("bad", "hash")
 
 
 @pytest.mark.parametrize(

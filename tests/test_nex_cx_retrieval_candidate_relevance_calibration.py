@@ -5,11 +5,14 @@ from copy import deepcopy
 import nex_cx.retrieval_candidate_relevance_calibration as calibration
 import pytest
 from nex_cx.retrieval_candidate_relevance_calibration import (
+    EXPANDED_CANDIDATE_RELEVANCE_POLICY_ID,
     CandidateRelevanceConstraints,
     calibrate_candidate_relevance_policy,
 )
 from nex_cx.retrieval_confidence_candidate_diagnostics import (
     CANDIDATE_RELEVANCE_SAMPLE_SCHEMA_VERSION,
+    EXPANDED_CANDIDATE_RELEVANCE_SAMPLE_SCHEMA_VERSION,
+    EXPANDED_CANDIDATE_SIGNAL_FIELDS,
 )
 from nex_runtime import BinaryCalibrationConstraints
 from nex_runtime.semantic_hashes import semantic_sha256_hash_ref
@@ -59,6 +62,21 @@ def _constraints() -> CandidateRelevanceConstraints:
     )
 
 
+def _expanded_samples() -> list[dict[str, object]]:
+    rows = _samples()
+    for row in rows:
+        row["sample_schema_version"] = (
+            EXPANDED_CANDIDATE_RELEVANCE_SAMPLE_SCHEMA_VERSION
+        )
+        signals = row["signals"]
+        signals["bm25_score_quality"] = signals["reranker_score"]
+        signals["vector_similarity_quality"] = signals["reranker_score"]
+        unsigned = dict(row)
+        unsigned.pop("sample_hash")
+        row["sample_hash"] = semantic_sha256_hash_ref(unsigned)
+    return rows
+
+
 def _repeatability(status: str = "STABLE") -> dict[str, str]:
     return {
         "status": status,
@@ -96,6 +114,30 @@ def test_freezes_candidate_relevance_policy_with_two_evidence_semantics() -> Non
     assert result["selected"]["oof_metrics"]["ready_recall"] == 1.0
     assert result["frozen_policy"]["runtime_activation_permitted"] is False
     assert result["frozen_policy"]["holdout_status"] == "SEALED_NOT_OPENED"
+
+
+def test_expanded_channel_signal_policy_is_explicit_and_deterministic() -> None:
+    result = calibrate_candidate_relevance_policy(
+        _expanded_samples(),
+        dataset_id="dataset-v3",
+        dataset_sha256="c" * 64,
+        expected_binding=_binding(),
+        pipeline_repeatability=_repeatability(),
+        numeric_tolerance=0.0005,
+        constraints=_constraints(),
+        signal_fields=EXPANDED_CANDIDATE_SIGNAL_FIELDS,
+        policy_id=EXPANDED_CANDIDATE_RELEVANCE_POLICY_ID,
+    )
+
+    assert result["status"] == "FROZEN"
+    assert result["policy_id"] == EXPANDED_CANDIDATE_RELEVANCE_POLICY_ID
+    assert result["search"]["signal_fields"] == list(
+        EXPANDED_CANDIDATE_SIGNAL_FIELDS
+    )
+    assert set(result["search"]["signal_diagnostics"]) == set(
+        EXPANDED_CANDIDATE_SIGNAL_FIELDS
+    )
+    assert result["frozen_policy"]["policy_id"] == result["policy_id"]
 
 
 def test_unstable_pipeline_and_inseparable_features_fail_closed() -> None:
@@ -201,6 +243,43 @@ def test_rejects_invalid_constraints_samples_binding_and_fold_shape() -> None:
             pipeline_repeatability=_repeatability(),
             numeric_tolerance=0.0005,
             constraints=_constraints(),
+        )
+
+    with pytest.raises(TypeError, match="signal fields"):
+        calibration._signal_fields("reranker_score")
+    with pytest.raises(ValueError, match="signal fields"):
+        calibration._signal_fields(("reranker_score", "reranker_score"))
+    with pytest.raises(ValueError, match="signal fields"):
+        calibration._signal_fields(("unknown",))
+
+    assert calibration._signal_tolerances(
+        ("vector_similarity_quality",),
+        reranker_tolerance=0.0005,
+        values=None,
+    ) == {"vector_similarity_quality": 0.0}
+    with pytest.raises(TypeError, match="signal tolerances"):
+        calibration._signal_tolerances(
+            ("reranker_score",),
+            reranker_tolerance=0.0005,
+            values=[],  # type: ignore[arg-type]
+        )
+    with pytest.raises(ValueError, match="signal tolerances"):
+        calibration._signal_tolerances(
+            ("reranker_score",),
+            reranker_tolerance=0.0005,
+            values={"unknown": 0.0},
+        )
+    with pytest.raises(ValueError, match="signal tolerances"):
+        calibration._signal_tolerances(
+            ("reranker_score",),
+            reranker_tolerance=0.0005,
+            values={"reranker_score": True},
+        )
+    with pytest.raises(ValueError, match="signal tolerances"):
+        calibration._signal_tolerances(
+            ("reranker_score",),
+            reranker_tolerance=0.0005,
+            values={"reranker_score": 0.001},
         )
 
 

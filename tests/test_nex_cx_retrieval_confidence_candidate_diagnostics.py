@@ -9,6 +9,7 @@ from nex_cx.retrieval_confidence_candidate_diagnostics import (
     build_candidate_diagnostic_observations,
     build_candidate_feature_calibration_samples,
     build_candidate_relevance_calibration_samples,
+    build_expanded_candidate_relevance_calibration_samples,
     diagnose_candidate_feature_correction,
 )
 
@@ -59,6 +60,8 @@ def _evidence(
                 "rerank_score": scores[rank - 1],
                 "rrf_normalized_score": scores[rank - 1],
                 "channel_support_score": 1.0,
+                "bm25_score": scores[rank - 1] * 10.0,
+                "vector_score": scores[rank - 1],
                 "bm25_rank": rank,
                 "vector_rank": 5 - rank if reverse_vector else rank,
                 "private": "must not be projected",
@@ -121,6 +124,26 @@ def test_projects_text_free_integrity_bound_candidate_observations() -> None:
     assert "private" not in str(observations)
 
 
+def test_normalizes_channel_scores_without_label_or_permission_inputs() -> None:
+    case = _case("scenario-a", ready=True)
+    evidence = _evidence(case, scores=(0.9, 0.8, 0.2, 0.1))
+    evidence[0]["scores"].update(bm25_score=20.0, vector_score=-0.1)
+    evidence[1]["scores"].update(bm25_score=10.0, vector_score=0.75)
+    evidence[2]["scores"].update(bm25_rank=None, bm25_score=None)
+    evidence[3]["scores"].update(vector_rank=None, vector_score=None)
+
+    observations = build_candidate_diagnostic_observations(case, evidence)
+
+    assert observations[0]["signals"]["bm25_score_quality"] == 1.0
+    assert observations[1]["signals"]["bm25_score_quality"] == 0.5
+    assert observations[2]["signals"]["bm25_score_quality"] == 0.0
+    assert observations[0]["signals"]["vector_similarity_quality"] == 0.0
+    assert observations[1]["signals"]["vector_similarity_quality"] == 0.75
+    assert observations[3]["signals"]["vector_similarity_quality"] == 0.0
+    assert "tenant" not in str(observations)
+    assert "permission" not in str(observations)
+
+
 def test_diagnoses_candidate_ranking_and_corrected_package_features_only() -> None:
     result = diagnose_candidate_feature_correction(
         _observations(),
@@ -173,6 +196,23 @@ def test_diagnoses_candidate_ranking_and_corrected_package_features_only() -> No
     }
     assert "must never be projected" not in str(relevance)
 
+    expanded = build_expanded_candidate_relevance_calibration_samples(
+        _observations()
+    )
+    assert len(expanded) == 16
+    assert set(expanded[0]["signals"]) == {
+        "reranker_score",
+        "rrf_normalized_score",
+        "channel_rank_quality",
+        "bm25_score_quality",
+        "vector_similarity_quality",
+    }
+    assert all(
+        0.0 <= value <= 1.0
+        for sample in expanded
+        for value in sample["signals"].values()
+    )
+
 
 @pytest.mark.parametrize(
     "mutation,error,detail",
@@ -221,6 +261,31 @@ def test_diagnoses_candidate_ranking_and_corrected_package_features_only() -> No
             ),
             ValueError,
             "rerank_score",
+        ),
+        (
+            lambda case, evidence: evidence[0]["scores"].update(bm25_score=-1.0),
+            ValueError,
+            "bm25_score",
+        ),
+        (
+            lambda case, evidence: evidence[0]["scores"].update(bm25_score="bad"),
+            TypeError,
+            "bm25_score",
+        ),
+        (
+            lambda case, evidence: evidence[0]["scores"].update(vector_score=1.1),
+            ValueError,
+            "vector_score",
+        ),
+        (
+            lambda case, evidence: evidence[0]["scores"].update(vector_score="bad"),
+            TypeError,
+            "vector_score",
+        ),
+        (
+            lambda case, evidence: evidence[0]["scores"].update(bm25_score=None),
+            ValueError,
+            "binding",
         ),
     ],
 )
@@ -390,5 +455,6 @@ def test_low_level_classification_and_missing_rank_quality_guards() -> None:
         == "NON_DISCRIMINATIVE"
     )
     assert candidate_diagnostics._channel_rank_quality(None, None) == 0.0
+    assert candidate_diagnostics._normalized_bm25_score(1.0, maximum=0.0) == 0.0
     with pytest.raises(ValueError, match="labels"):
         candidate_diagnostics._auc([], [0.1])

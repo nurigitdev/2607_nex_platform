@@ -37,6 +37,8 @@ def _runs() -> list[dict[str, object]]:
                                 "rerank_score": 0.9 - index * 0.2,
                                 "rrf_normalized_score": 0.8 - index * 0.1,
                                 "channel_support_score": 1.0,
+                                "bm25_score": 10.0 - index,
+                                "vector_score": 0.9 - index * 0.2,
                                 "bm25_rank": index + 1,
                                 "vector_rank": index + 1,
                             },

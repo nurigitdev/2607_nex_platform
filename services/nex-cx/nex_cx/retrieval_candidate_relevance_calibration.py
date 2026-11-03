@@ -16,6 +16,8 @@ from nex_runtime.semantic_hashes import semantic_sha256_hash_ref
 from nex_cx.retrieval_confidence_candidate_diagnostics import (
     CANDIDATE_RELEVANCE_SAMPLE_SCHEMA_VERSION,
     CANDIDATE_SIGNAL_FIELDS,
+    EXPANDED_CANDIDATE_RELEVANCE_SAMPLE_SCHEMA_VERSION,
+    EXPANDED_CANDIDATE_SIGNAL_FIELDS,
 )
 
 CANDIDATE_RELEVANCE_CALIBRATION_SCHEMA_VERSION = (
@@ -23,6 +25,9 @@ CANDIDATE_RELEVANCE_CALIBRATION_SCHEMA_VERSION = (
 )
 CANDIDATE_RELEVANCE_POLICY_SCHEMA_VERSION = "cx_candidate_relevance_policy.v1"
 CANDIDATE_RELEVANCE_POLICY_ID = "cx_candidate_relevance_two_evidence_v1"
+EXPANDED_CANDIDATE_RELEVANCE_POLICY_ID = (
+    "cx_candidate_relevance_expanded_channel_scores_v1"
+)
 
 
 @dataclass(frozen=True)
@@ -43,7 +48,9 @@ class CandidateRelevanceConstraints:
             self.fold_count < 2
             or not 0.0 < self.grid_step <= 1.0
             or not math.isclose(units * self.grid_step, 1.0, abs_tol=1e-9)
-            or not 1 <= self.maximum_feature_count <= len(CANDIDATE_SIGNAL_FIELDS)
+            or not 1
+            <= self.maximum_feature_count
+            <= len(EXPANDED_CANDIDATE_SIGNAL_FIELDS)
             or not 0.5 <= self.minimum_candidate_auc <= 1.0
             or not 0.0 <= self.maximum_threshold_spread <= 1.0
             or not 0.0 <= self.minimum_fold_balanced_accuracy <= 1.0
@@ -65,12 +72,38 @@ def calibrate_candidate_relevance_policy(
     constraints: CandidateRelevanceConstraints = (
         DEFAULT_CANDIDATE_RELEVANCE_CONSTRAINTS
     ),
+    signal_fields: Sequence[str] = CANDIDATE_SIGNAL_FIELDS,
+    policy_id: str = CANDIDATE_RELEVANCE_POLICY_ID,
+    signal_tolerances: Mapping[str, float] | None = None,
 ) -> dict[str, Any]:
     """Calibrate candidate relevance before deriving package readiness."""
-    normalized, groups, packages = _normalize_samples(samples)
+    admitted_signal_fields = _signal_fields(signal_fields, constraints=constraints)
+    admitted_policy_id = _required_string(policy_id, "policy_id")
+    normalized, groups, packages = _normalize_samples(
+        samples,
+        signal_fields=admitted_signal_fields,
+    )
     tolerance = _tolerance(numeric_tolerance)
+    admitted_tolerances = _signal_tolerances(
+        admitted_signal_fields,
+        reranker_tolerance=tolerance,
+        values=signal_tolerances,
+    )
     folds = _fold_groups(groups, dataset_id=dataset_id, count=constraints.fold_count)
-    profiles = _profiles(constraints)
+    profiles = _profiles(constraints, signal_fields=admitted_signal_fields)
+    signal_diagnostics = {
+        field: {
+            "candidate_auc": _auc(
+                _score_candidates(
+                    normalized,
+                    feature_fields=(field,),
+                    weights={field: 1.0},
+                    numeric_tolerance=0.0,
+                )
+            )
+        }
+        for field in admitted_signal_fields
+    }
     candidates = [
         _evaluate_profile(
             normalized,
@@ -80,6 +113,7 @@ def calibrate_candidate_relevance_policy(
             folds=folds,
             dataset_id=dataset_id,
             numeric_tolerance=tolerance,
+            signal_tolerances=admitted_tolerances,
             constraints=constraints,
         )
         for fields, weights in profiles
@@ -100,7 +134,7 @@ def calibrate_candidate_relevance_policy(
         reason = "CANDIDATE_RELEVANCE_POLICY_FROZEN"
     result: dict[str, Any] = {
         "calibration_schema_version": CANDIDATE_RELEVANCE_CALIBRATION_SCHEMA_VERSION,
-        "policy_id": CANDIDATE_RELEVANCE_POLICY_ID,
+        "policy_id": admitted_policy_id,
         "status": status,
         "reason_code": reason,
         "runtime_activation_permitted": False,
@@ -130,9 +164,11 @@ def calibrate_candidate_relevance_policy(
                 "repeatability_hash",
             ),
             "numeric_tolerance": tolerance,
+            "signal_tolerances": admitted_tolerances,
         },
         "search": {
-            "signal_fields": list(CANDIDATE_SIGNAL_FIELDS),
+            "signal_fields": list(admitted_signal_fields),
+            "signal_diagnostics": signal_diagnostics,
             "grid_step": constraints.grid_step,
             "profile_count": len(candidates),
             "admissible_profile_count": len(admissible),
@@ -168,12 +204,14 @@ def _evaluate_profile(
     dataset_id: str,
     numeric_tolerance: float,
     constraints: CandidateRelevanceConstraints,
+    signal_tolerances: Mapping[str, float] | None = None,
 ) -> dict[str, Any]:
     candidate_scores = _score_candidates(
         samples,
         feature_fields=feature_fields,
         weights=weights,
         numeric_tolerance=numeric_tolerance,
+        signal_tolerances=signal_tolerances,
     )
     auc = _auc(candidate_scores)
     package_scores = _package_scores(packages, candidate_scores)
@@ -272,7 +310,10 @@ def _evaluate_profile(
 
 def _normalize_samples(
     samples: Sequence[Mapping[str, Any]],
+    *,
+    signal_fields: Sequence[str] = CANDIDATE_SIGNAL_FIELDS,
 ) -> tuple[list[dict[str, Any]], list[str], dict[str, list[dict[str, Any]]]]:
+    normalized_signal_fields = _signal_fields(signal_fields)
     if isinstance(samples, (str, bytes)) or not isinstance(samples, Sequence):
         raise TypeError("candidate relevance samples are invalid")
     normalized: list[dict[str, Any]] = []
@@ -287,7 +328,15 @@ def _normalize_samples(
         if sample_hash in seen or sample_hash != semantic_sha256_hash_ref(row):
             raise ValueError("candidate relevance sample integrity is invalid")
         seen.add(sample_hash)
-        if row.get("sample_schema_version") != CANDIDATE_RELEVANCE_SAMPLE_SCHEMA_VERSION:
+        expected_schema = (
+            EXPANDED_CANDIDATE_RELEVANCE_SAMPLE_SCHEMA_VERSION
+            if any(
+                field not in CANDIDATE_SIGNAL_FIELDS
+                for field in normalized_signal_fields
+            )
+            else CANDIDATE_RELEVANCE_SAMPLE_SCHEMA_VERSION
+        )
+        if row.get("sample_schema_version") != expected_schema:
             raise ValueError("candidate relevance sample schema is invalid")
         sample_id = _required_string(row.get("sample_id"), "sample_id")
         candidate_id = _required_string(row.get("candidate_id"), "candidate_id")
@@ -304,7 +353,7 @@ def _normalize_samples(
             "expected_relevant": expected_relevant,
             "signals": {
                 field: _score(signals.get(field), field)
-                for field in CANDIDATE_SIGNAL_FIELDS
+                for field in normalized_signal_fields
             },
             "sample_hash": sample_hash,
         }
@@ -336,13 +385,20 @@ def _score_candidates(
     feature_fields: Sequence[str],
     weights: Mapping[str, float],
     numeric_tolerance: float,
+    signal_tolerances: Mapping[str, float] | None = None,
 ) -> dict[tuple[str, str], dict[str, Any]]:
+    tolerances = {
+        "reranker_score": numeric_tolerance,
+        **dict(signal_tolerances or {}),
+    }
     scored: dict[tuple[str, str], dict[str, Any]] = {}
     for row in samples:
         signals = _mapping(row["signals"])
         raw = sum(float(signals[field]) * weights[field] for field in feature_fields)
-        reranker_weight = float(weights.get("reranker_score", 0.0))
-        adverse = numeric_tolerance * reranker_weight
+        adverse = sum(
+            float(weights.get(field, 0.0)) * float(tolerances.get(field, 0.0))
+            for field in feature_fields
+        )
         score = (
             max(0.0, raw - adverse)
             if row["expected_relevant"]
@@ -380,11 +436,14 @@ def _package_scores(
 
 def _profiles(
     constraints: CandidateRelevanceConstraints,
+    *,
+    signal_fields: Sequence[str] = CANDIDATE_SIGNAL_FIELDS,
 ) -> list[tuple[tuple[str, ...], dict[str, float]]]:
+    normalized_signal_fields = _signal_fields(signal_fields, constraints=constraints)
     total = round(1.0 / constraints.grid_step)
     result: list[tuple[tuple[str, ...], dict[str, float]]] = []
     for count in range(1, constraints.maximum_feature_count + 1):
-        for fields in itertools.combinations(CANDIDATE_SIGNAL_FIELDS, count):
+        for fields in itertools.combinations(normalized_signal_fields, count):
             for units in _positive_compositions(total, count):
                 result.append(
                     (
@@ -521,7 +580,7 @@ def _profile_projection(value: Mapping[str, Any] | None) -> dict[str, Any] | Non
 def _freeze_policy(selected: Mapping[str, Any], result: Mapping[str, Any]) -> dict[str, Any]:
     policy = {
         "policy_schema_version": CANDIDATE_RELEVANCE_POLICY_SCHEMA_VERSION,
-        "policy_id": CANDIDATE_RELEVANCE_POLICY_ID,
+        "policy_id": result["policy_id"],
         "version": "1",
         "status": "CANDIDATE_FROZEN",
         "runtime_activation_permitted": False,
@@ -575,6 +634,57 @@ def _group_id(sample_id: str) -> str:
 
 def _mapping(value: object) -> Mapping[str, Any]:
     return value if isinstance(value, Mapping) else {}
+
+
+def _signal_fields(
+    values: Sequence[str],
+    *,
+    constraints: CandidateRelevanceConstraints | None = None,
+) -> tuple[str, ...]:
+    if isinstance(values, (str, bytes)) or not isinstance(values, Sequence):
+        raise TypeError("candidate relevance signal fields are invalid")
+    normalized = tuple(values)
+    if (
+        not normalized
+        or len(set(normalized)) != len(normalized)
+        or any(field not in EXPANDED_CANDIDATE_SIGNAL_FIELDS for field in normalized)
+        or (
+            constraints is not None
+            and constraints.maximum_feature_count > len(normalized)
+        )
+    ):
+        raise ValueError("candidate relevance signal fields are invalid")
+    return normalized
+
+
+def _signal_tolerances(
+    signal_fields: Sequence[str],
+    *,
+    reranker_tolerance: float,
+    values: Mapping[str, float] | None,
+) -> dict[str, float]:
+    if values is not None and not isinstance(values, Mapping):
+        raise TypeError("candidate relevance signal tolerances are invalid")
+    provided = dict(values or {})
+    if any(field not in signal_fields for field in provided):
+        raise ValueError("candidate relevance signal tolerances are invalid")
+    result = {field: 0.0 for field in signal_fields}
+    if "reranker_score" in result:
+        result["reranker_score"] = reranker_tolerance
+    for signal_field, value in provided.items():
+        if (
+            isinstance(value, bool)
+            or not isinstance(value, int | float)
+            or not math.isfinite(float(value))
+            or not 0.0 <= float(value) <= 0.01
+        ):
+            raise ValueError("candidate relevance signal tolerances are invalid")
+        result[signal_field] = float(value)
+    if "reranker_score" in result and not math.isclose(
+        result["reranker_score"], reranker_tolerance, abs_tol=1e-12
+    ):
+        raise ValueError("candidate relevance signal tolerances are invalid")
+    return result
 
 
 def _required_string(value: object, field: str) -> str:
