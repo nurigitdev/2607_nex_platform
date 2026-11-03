@@ -28,6 +28,9 @@ CANDIDATE_RELEVANCE_POLICY_ID = "cx_candidate_relevance_two_evidence_v1"
 EXPANDED_CANDIDATE_RELEVANCE_POLICY_ID = (
     "cx_candidate_relevance_expanded_channel_scores_v1"
 )
+PROFILE_OUTCOME_DIAGNOSTIC_SCHEMA_VERSION = (
+    "cx_candidate_relevance_profile_outcomes.v1"
+)
 
 
 @dataclass(frozen=True)
@@ -192,6 +195,172 @@ def calibrate_candidate_relevance_policy(
         result["frozen_policy"] = _freeze_policy(selected, result)
     result["calibration_hash"] = semantic_sha256_hash_ref(result)
     return result
+
+
+def diagnose_candidate_relevance_profile_outcomes(
+    samples: Sequence[Mapping[str, Any]],
+    *,
+    dataset_id: str,
+    profile: Mapping[str, Any],
+    numeric_tolerance: float,
+    signal_fields: Sequence[str] = CANDIDATE_SIGNAL_FIELDS,
+    signal_tolerances: Mapping[str, float] | None = None,
+) -> dict[str, Any]:
+    """Reconstruct group-CV package outcomes without selecting a new policy."""
+    admitted_signals = _signal_fields(signal_fields)
+    normalized, groups, packages = _normalize_samples(
+        samples,
+        signal_fields=admitted_signals,
+    )
+    feature_fields = _signal_fields(tuple(profile.get("feature_fields") or ()))
+    if any(field not in admitted_signals for field in feature_fields):
+        raise ValueError("candidate relevance profile fields are invalid")
+    raw_weights = _mapping(profile.get("weights"))
+    weights = {
+        field: _score(raw_weights.get(field), field) for field in feature_fields
+    }
+    if set(raw_weights) != set(feature_fields) or not math.isclose(
+        sum(weights.values()), 1.0, abs_tol=1e-9
+    ):
+        raise ValueError("candidate relevance profile weights are invalid")
+    tolerance = _tolerance(numeric_tolerance)
+    admitted_tolerances = _signal_tolerances(
+        admitted_signals,
+        reranker_tolerance=tolerance,
+        values=signal_tolerances,
+    )
+    candidate_scores = _score_candidates(
+        normalized,
+        feature_fields=feature_fields,
+        weights=weights,
+        numeric_tolerance=tolerance,
+        signal_tolerances=admitted_tolerances,
+    )
+    package_scores = _package_scores(packages, candidate_scores)
+    raw_folds = profile.get("folds")
+    if not isinstance(raw_folds, Sequence) or isinstance(raw_folds, (str, bytes)):
+        raise TypeError("candidate relevance profile folds are invalid")
+    folds = _fold_groups(groups, dataset_id=dataset_id, count=len(raw_folds))
+    thresholds: dict[int, float] = {}
+    for value in raw_folds:
+        fold = _mapping(value)
+        fold_index = fold.get("fold_index")
+        if (
+            not isinstance(fold_index, int)
+            or isinstance(fold_index, bool)
+            or fold_index in thresholds
+            or not 0 <= fold_index < len(folds)
+        ):
+            raise ValueError("candidate relevance profile fold index is invalid")
+        thresholds[fold_index] = _score(fold.get("threshold"), "threshold")
+    if set(thresholds) != set(range(len(folds))):
+        raise ValueError("candidate relevance profile folds are incomplete")
+    fold_by_group = {
+        group: fold_index
+        for fold_index, fold_groups in enumerate(folds)
+        for group in fold_groups
+    }
+    outcomes: list[dict[str, Any]] = []
+    for package in package_scores:
+        sample_id = str(package["sample_id"])
+        fold_index = fold_by_group[_group_id(sample_id)]
+        threshold = thresholds[fold_index]
+        expected_ready = bool(package["expected_ready"])
+        predicted_ready = float(package["score"]) >= threshold
+        if expected_ready and predicted_ready:
+            outcome = "TRUE_READY"
+        elif expected_ready:
+            outcome = "FALSE_LOW_CONFIDENCE"
+        elif predicted_ready:
+            outcome = "FALSE_READY"
+        else:
+            outcome = "TRUE_LOW_CONFIDENCE"
+        ranked_candidates = sorted(
+            (
+                {
+                    "candidate_id": str(row["candidate_id"]),
+                    "expected_relevant": bool(row["expected_relevant"]),
+                    "score": candidate_scores[
+                        (sample_id, str(row["candidate_id"]))
+                    ]["score"],
+                }
+                for row in packages[sample_id]
+            ),
+            key=lambda row: (-float(row["score"]), str(row["candidate_id"])),
+        )
+        outcomes.append(
+            {
+                "sample_id": sample_id,
+                "scenario_id": _group_id(sample_id),
+                "fold_index": fold_index,
+                "expected_ready": expected_ready,
+                "predicted_ready": predicted_ready,
+                "package_score": package["score"],
+                "threshold": threshold,
+                "outcome": outcome,
+                "ranked_candidates": ranked_candidates,
+            }
+        )
+    reconstructed = _outcome_metrics(outcomes)
+    expected_metrics = _mapping(profile.get("oof_metrics"))
+    if any(
+        reconstructed[key] != expected_metrics.get(key)
+        for key in (
+            "true_ready",
+            "false_low_confidence",
+            "false_ready",
+            "true_low_confidence",
+            "ready_recall",
+            "false_ready_rate",
+            "balanced_accuracy",
+        )
+    ):
+        raise ValueError("candidate relevance profile outcomes do not match metrics")
+    result = {
+        "diagnostic_schema_version": PROFILE_OUTCOME_DIAGNOSTIC_SCHEMA_VERSION,
+        "status": "DIAGNOSED",
+        "dataset_id": _required_string(dataset_id, "dataset_id"),
+        "profile": {
+            "feature_fields": list(feature_fields),
+            "weights": weights,
+            "fold_count": len(folds),
+        },
+        "metrics": reconstructed,
+        "outcomes": outcomes,
+        "runtime_activation_permitted": False,
+        "holdout_access_permitted": False,
+    }
+    result["diagnostic_hash"] = semantic_sha256_hash_ref(result)
+    return result
+
+
+def _outcome_metrics(outcomes: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    counts = {
+        "true_ready": 0,
+        "false_low_confidence": 0,
+        "false_ready": 0,
+        "true_low_confidence": 0,
+    }
+    mapping = {
+        "TRUE_READY": "true_ready",
+        "FALSE_LOW_CONFIDENCE": "false_low_confidence",
+        "FALSE_READY": "false_ready",
+        "TRUE_LOW_CONFIDENCE": "true_low_confidence",
+    }
+    for row in outcomes:
+        counts[mapping[str(row["outcome"])]] += 1
+    positive = counts["true_ready"] + counts["false_low_confidence"]
+    negative = counts["false_ready"] + counts["true_low_confidence"]
+    predicted = counts["true_ready"] + counts["false_ready"]
+    recall = _ratio(counts["true_ready"], positive)
+    specificity = _ratio(counts["true_low_confidence"], negative)
+    return {
+        **counts,
+        "ready_precision": _ratio(counts["true_ready"], predicted),
+        "ready_recall": recall,
+        "false_ready_rate": _ratio(counts["false_ready"], negative),
+        "balanced_accuracy": round((recall + specificity) / 2.0, 8),
+    }
 
 
 def _evaluate_profile(

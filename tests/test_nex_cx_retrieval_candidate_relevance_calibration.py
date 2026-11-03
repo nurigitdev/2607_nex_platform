@@ -8,6 +8,7 @@ from nex_cx.retrieval_candidate_relevance_calibration import (
     EXPANDED_CANDIDATE_RELEVANCE_POLICY_ID,
     CandidateRelevanceConstraints,
     calibrate_candidate_relevance_policy,
+    diagnose_candidate_relevance_profile_outcomes,
 )
 from nex_cx.retrieval_confidence_candidate_diagnostics import (
     CANDIDATE_RELEVANCE_SAMPLE_SCHEMA_VERSION,
@@ -318,3 +319,67 @@ def test_defensive_helpers_and_unavailable_fold_threshold() -> None:
         ),
     )
     assert rejected["reason_code"] == "FOLD_TRAINING_THRESHOLD_UNAVAILABLE"
+
+
+def test_profile_outcome_diagnostic_reconstructs_exact_group_cv_metrics() -> None:
+    samples = _expanded_samples()
+    calibration_result = calibrate_candidate_relevance_policy(
+        samples,
+        dataset_id="dataset-v3",
+        dataset_sha256="c" * 64,
+        expected_binding=_binding(),
+        pipeline_repeatability=_repeatability(),
+        numeric_tolerance=0.0005,
+        constraints=_constraints(),
+        signal_fields=EXPANDED_CANDIDATE_SIGNAL_FIELDS,
+        policy_id=EXPANDED_CANDIDATE_RELEVANCE_POLICY_ID,
+    )
+    diagnostic = diagnose_candidate_relevance_profile_outcomes(
+        samples,
+        dataset_id="dataset-v3",
+        profile=calibration_result["selected"],
+        numeric_tolerance=0.0005,
+        signal_fields=EXPANDED_CANDIDATE_SIGNAL_FIELDS,
+    )
+
+    assert diagnostic["status"] == "DIAGNOSED"
+    assert diagnostic["metrics"] == calibration_result["selected"]["oof_metrics"]
+    assert len(diagnostic["outcomes"]) == 12
+    assert all(len(row["ranked_candidates"]) == 4 for row in diagnostic["outcomes"])
+    assert diagnostic["runtime_activation_permitted"] is False
+    assert diagnostic["holdout_access_permitted"] is False
+
+
+def test_profile_outcome_diagnostic_rejects_profile_drift() -> None:
+    samples = _expanded_samples()
+    result = calibrate_candidate_relevance_policy(
+        samples,
+        dataset_id="dataset-v3",
+        dataset_sha256="c" * 64,
+        expected_binding=_binding(),
+        pipeline_repeatability=_repeatability(),
+        numeric_tolerance=0.0005,
+        constraints=_constraints(),
+        signal_fields=EXPANDED_CANDIDATE_SIGNAL_FIELDS,
+    )
+    profile = deepcopy(result["selected"])
+    profile["weights"] = {profile["feature_fields"][0]: 0.5}
+    with pytest.raises(ValueError, match="weights"):
+        diagnose_candidate_relevance_profile_outcomes(
+            samples,
+            dataset_id="dataset-v3",
+            profile=profile,
+            numeric_tolerance=0.0005,
+            signal_fields=EXPANDED_CANDIDATE_SIGNAL_FIELDS,
+        )
+
+    profile = deepcopy(result["selected"])
+    profile["folds"][0]["threshold"] = 0.0
+    with pytest.raises(ValueError, match="do not match"):
+        diagnose_candidate_relevance_profile_outcomes(
+            samples,
+            dataset_id="dataset-v3",
+            profile=profile,
+            numeric_tolerance=0.0005,
+            signal_fields=EXPANDED_CANDIDATE_SIGNAL_FIELDS,
+        )
