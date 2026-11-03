@@ -6,7 +6,9 @@ Complete. Both immutable reranker revisions were collected under the exact
 same experiment binding. Neither satisfied the frozen calibration safety
 constraints, so the decision is `NO_ADMISSIBLE_REVISION`. S20Q remains sealed,
 no runtime calibration policy or model rollout is authorized, and the next
-corrective step is controlled embedding revision A/B.
+corrective step is controlled embedding revision A/B. A subsequent 8B
+replacement retest reached the same decision and is recorded below without
+overwriting the original 0.6B evidence.
 
 ## Objective
 
@@ -167,6 +169,66 @@ runtime activation = prohibited
 A/B evidence sha256 = 50f8429fffb6222e7e47b4697961bbc58d084b51c44f6f3447f9c1679a99ee46
 ```
 
+## 8B Replacement Retest
+
+Qwen3-Reranker-8B replaced only Revision B on the isolated `9114` provider.
+The dataset, embedding revision, PostgreSQL corpus, chunk policy, tokenizer
+policy, weighted-RRF policy, feature contract, cross-validation contract, and
+sealed holdout boundary remained unchanged. The immutable artifact binding
+was admitted as:
+
+```text
+served model = Qwen3-Reranker-8B
+artifact revision = hf:77d193c791ed757ca307ee72715aa132723da912
+deployment = vllm-reranker-8b-s20qj-b
+metadata files / targets = 18 / 18
+weight artifacts = 5
+metadata manifest = sha256:787827fd1fb7ba20d53c790a9218a30ba4a0c51cbb3cabf990103b0c58457e42
+```
+
+The direct repeatability run completed five repeats and 600 observations with
+maximum score range `0.0`, no cross-label rank exchange, and no non-near
+same-label exchange. The full pipeline used actual `nex_cx_test`, completed
+360 embedding calls and 200 reranking calls without provider failure, and
+completed five repeats over 800 candidate observations. Restart readback,
+cleanup, and holdout sealing all passed.
+
+| Metric | A: 4B | Prior B: 0.6B | Retest B: 8B | Required |
+| --- | ---: | ---: | ---: | ---: |
+| admissible profiles | 0 | 0 | 0 | at least 1 |
+| false-ready rate | 0.15 | 0.15 | 0.25 | <= 0.10 |
+| READY recall | 0.65 | 0.60 | 0.60 | >= 0.80 |
+| balanced accuracy | 0.75 | 0.725 | 0.675 | - |
+| minimum fold balanced accuracy | 0.625 | 0.375 | 0.50 | >= 0.50 |
+| candidate AUC | 0.82604167 | 0.80916667 | 0.86354167 | >= 0.70 |
+| reranker-only candidate AUC | 0.8375 | - | 0.87479167 | - |
+| threshold spread | 0.00309085 | 0.00142474 | 0.00106232 | <= 0.20 |
+
+The 8B model improved candidate-level discrimination but did not improve the
+package-level safety decision. Its false-ready rate was worse than both prior
+profiles and its READY recall remained below the frozen minimum. Therefore a
+larger reranker cannot be admitted solely from candidate AUC.
+
+```text
+decision = NO_ADMISSIBLE_REVISION
+selected slot = none
+reason = CALIBRATION_CONSTRAINTS_NOT_SATISFIED
+next action = CONTROLLED_EMBEDDING_REVISION_AB
+holdout access = prohibited
+runtime activation = prohibited
+```
+
+Protected local evidence hashes:
+
+```text
+artifact evidence = 11398e3a68b629425408a89a93636007fe76d1c874237a1f6f6269d4991f06d7
+live binding = 65c397bab6ab18ecaa63e8aa8ba444ec3d6670163991569594f64bb0ae4bd673
+direct repeatability = d61afa719d50656c73a05489fa73cd4839fca9407313de40fbc7b4bf79767f76
+pipeline calibration = e5965f6764f72087a4ae2288392f5c495a9afac66c8fe156fd5d67b15bf57c9d
+bounded B profile = 6ea26dc28e565b4e2ff873e2e448e0cac86907fb0c8b4b7c4b3c0ca828087710
+A/B evidence = 5ca380ae4936e04239b57f907a7fb2d236f7764de5b05c255599b500b7d8d054
+```
+
 ## Verification
 
 Focused unit and branch verification before final Slice Gate:
@@ -214,7 +276,8 @@ demo-to-product dependency audit = PASS
 ## Closure Decision
 
 S20Q-J is complete as a controlled negative A/B decision. Qwen3-Reranker-0.6B
-must not replace the current canonical Qwen3-Reranker-4B, and neither revision
-may activate the pending confidence policy. The original S20Q holdout remains
-unopened. The next Slice should preserve this corpus, reranker A revision,
-constraints, and feature contract while changing only the embedding revision.
+and Qwen3-Reranker-8B must not replace the current canonical
+Qwen3-Reranker-4B from these results, and no tested revision may activate the
+pending confidence policy. The original S20Q holdout remains unopened. The
+next Slice should preserve this corpus, reranker A revision, constraints, and
+feature contract while changing only the embedding revision.
