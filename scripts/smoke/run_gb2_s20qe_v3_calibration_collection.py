@@ -75,6 +75,7 @@ from run_protected_live_rag_smoke import (
 SCHEMA_VERSION = "gb2_s20qe_v3_calibration_collection.v1"
 SMOKE_ENV = "NEX_GB2_S20QE_V3_CALIBRATION_COLLECTION"
 PROFILE_ENV = "NEX_GB2_S20QE_PROFILE"
+REPEAT_COUNT_ENV = "NEX_GB2_S20QE_REPEAT_COUNT"
 SERVICE_ID = "nex-cx"
 EXPECTED_DATABASE = "nex_cx_test"
 EXPECTED_ROLE = "nex_cx_user"
@@ -122,6 +123,10 @@ def run_gb2_s20qe_v3_calibration_collection(
     issues = _configuration_issues(effective_env)
     if issues:
         return _failure("configuration_invalid", detail=issues)
+    try:
+        repeat_count = _repeat_count(effective_env.get(REPEAT_COUNT_ENV, "1"))
+    except (TypeError, ValueError):
+        return _failure("configuration_invalid", detail=REPEAT_COUNT_ENV)
 
     database_url = ""
     try:
@@ -152,6 +157,7 @@ def run_gb2_s20qe_v3_calibration_collection(
                     "NEX_CX_PERSISTENCE_MODE": "postgres",
                 },
                 requester=requester,
+                repeat_count=repeat_count,
             )
         except Exception as exc:  # noqa: BLE001  # pragma: no cover
             result = _failure(
@@ -205,6 +211,7 @@ def _execute_live_collection(  # pragma: no cover - PostgreSQL/DGX protected
     database_env: str,
     runtime_environ: dict[str, str],
     requester: HttpRequester | None,
+    repeat_count: int = 1,
 ) -> dict[str, Any]:
     admitted = admit_calibration_dataset_files()
     dataset = _load_dataset(DEFAULT_V3_PATH)
@@ -225,6 +232,7 @@ def _execute_live_collection(  # pragma: no cover - PostgreSQL/DGX protected
     diagnostics: dict[str, Any] = {}
     candidate_diagnostics: dict[str, Any] = {}
     candidate_feature_samples: list[dict[str, Any]] = []
+    repeat_runs: list[dict[str, Any]] = []
     binding: dict[str, str] | None = None
     provider_observation: dict[str, Any] = {}
     request_counts: dict[str, int] = {}
@@ -278,22 +286,46 @@ def _execute_live_collection(  # pragma: no cover - PostgreSQL/DGX protected
                         hybrid_runtime=composition.hybrid_retrieval_runtime,
                     )
                     with TestClient(app) as client:
-                        samples, candidate_observations, binding = (
-                            _collect_calibration_samples(
-                                cases=calibration_cases,
-                                client=client,
-                                composition=composition,
-                                store=store,
-                                storage=storage,
-                                runtime_environ=runtime_environ,
-                                probe=probe,
-                                trace_id=trace_id,
-                                document_ids=document_ids,
-                                source_file_ids=source_file_ids,
-                                vector_index_ids=vector_index_ids,
-                                retrieval_package_ids=retrieval_package_ids,
-                            )
+                        seeded_cases = _seed_calibration_corpus(
+                            cases=calibration_cases,
+                            composition=composition,
+                            store=store,
+                            storage=storage,
+                            probe=probe,
+                            trace_id=trace_id,
+                            document_ids=document_ids,
+                            source_file_ids=source_file_ids,
+                            vector_index_ids=vector_index_ids,
                         )
+                        candidate_observations: list[dict[str, Any]] = []
+                        for repeat_index in range(repeat_count):
+                            run_samples, run_observations, run_binding = (
+                                _retrieve_seeded_calibration_samples(
+                                    seeded_cases=seeded_cases,
+                                    client=client,
+                                    runtime_environ=runtime_environ,
+                                    probe=probe,
+                                    trace_id=trace_id,
+                                    repeat_index=repeat_index,
+                                    retrieval_package_ids=retrieval_package_ids,
+                                )
+                            )
+                            if binding is None:
+                                binding = run_binding
+                            elif binding != run_binding:
+                                raise ValueError(
+                                    "multi-signal feature binding drifted"
+                                )
+                            repeat_runs.append(
+                                _repeat_run_projection(
+                                    repeat_index=repeat_index,
+                                    samples=run_samples,
+                                    observations=run_observations,
+                                )
+                            )
+                            if repeat_index == 0:
+                                samples = run_samples
+                                candidate_observations = run_observations
                         diagnostics = (
                             diagnose_mixed_candidate_feature_discriminativeness(
                                 samples,
@@ -442,11 +474,11 @@ def _execute_live_collection(  # pragma: no cover - PostgreSQL/DGX protected
                             "success_count", 0
                         )
                         >= EXPECTED_CALIBRATION_CANDIDATES
-                        + EXPECTED_CALIBRATION_PACKAGES
+                        + EXPECTED_CALIBRATION_PACKAGES * repeat_count
                         and provider_observation.get("reranking", {}).get(
                             "success_count", 0
                         )
-                        >= EXPECTED_CALIBRATION_PACKAGES
+                        >= EXPECTED_CALIBRATION_PACKAGES * repeat_count
                         and all(
                             provider_observation.get(capability, {}).get(
                                 "failure_count", 0
@@ -458,7 +490,9 @@ def _execute_live_collection(  # pragma: no cover - PostgreSQL/DGX protected
                     "postgres_packages_hash_only": (
                         len(persisted)
                         == len(retrieval_package_ids)
-                        == EXPECTED_CALIBRATION_PACKAGES
+                        and EXPECTED_CALIBRATION_PACKAGES
+                        <= len(retrieval_package_ids)
+                        <= EXPECTED_CALIBRATION_PACKAGES * repeat_count
                         and all(
                             row.get("query_text_sha256")
                             and row.get("query_text_preview") is None
@@ -470,6 +504,16 @@ def _execute_live_collection(  # pragma: no cover - PostgreSQL/DGX protected
                         restart_identity
                         == {"database": EXPECTED_DATABASE, "role": EXPECTED_ROLE}
                         and restart_persisted == persisted
+                    ),
+                    "repeat_collection_complete": (
+                        len(repeat_runs) == repeat_count
+                        and all(
+                            run.get("sample_count")
+                            == EXPECTED_CALIBRATION_PACKAGES
+                            and run.get("candidate_observation_count")
+                            == EXPECTED_CALIBRATION_CANDIDATES
+                            for run in repeat_runs
+                        )
                     ),
                 }
             )
@@ -519,6 +563,16 @@ def _execute_live_collection(  # pragma: no cover - PostgreSQL/DGX protected
         },
         "feature_diagnostics": diagnostics,
         "candidate_feature_diagnostics": candidate_diagnostics,
+        "repeat_collection": {
+            "repeat_count": repeat_count,
+            "retrieval_request_count": (
+                EXPECTED_CALIBRATION_PACKAGES * repeat_count
+            ),
+            "candidate_observation_count": (
+                EXPECTED_CALIBRATION_CANDIDATES * repeat_count
+            ),
+            "runs": repeat_runs,
+        },
         "persistence": {
             "retrieval_package_count": len(retrieval_package_ids),
             "document_count": len(document_ids),
@@ -545,9 +599,41 @@ def _collect_calibration_samples(  # pragma: no cover - PostgreSQL/DGX protected
     vector_index_ids: list[str],
     retrieval_package_ids: list[str],
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], dict[str, str]]:
-    samples: list[dict[str, Any]] = []
-    candidate_observations: list[dict[str, Any]] = []
-    stable_binding: dict[str, str] | None = None
+    seeded_cases = _seed_calibration_corpus(
+        cases=cases,
+        composition=composition,
+        store=store,
+        storage=storage,
+        probe=probe,
+        trace_id=trace_id,
+        document_ids=document_ids,
+        source_file_ids=source_file_ids,
+        vector_index_ids=vector_index_ids,
+    )
+    return _retrieve_seeded_calibration_samples(
+        seeded_cases=seeded_cases,
+        client=client,
+        runtime_environ=runtime_environ,
+        probe=probe,
+        trace_id=trace_id,
+        repeat_index=0,
+        retrieval_package_ids=retrieval_package_ids,
+    )
+
+
+def _seed_calibration_corpus(  # pragma: no cover - PostgreSQL/DGX protected
+    *,
+    cases: Sequence[Mapping[str, Any]],
+    composition: Any,
+    store: ContentIngestionStore,
+    storage: Any,
+    probe: str,
+    trace_id: str,
+    document_ids: list[str],
+    source_file_ids: list[str],
+    vector_index_ids: list[str],
+) -> list[dict[str, Any]]:
+    seeded_cases: list[dict[str, Any]] = []
     for case in cases:
         document_to_candidate: dict[str, str] = {}
         for candidate in case["candidates"]:
@@ -582,12 +668,43 @@ def _collect_calibration_samples(  # pragma: no cover - PostgreSQL/DGX protected
                 }
             )
             vector_index_ids.append(index_result.output_ref.split(":", 1)[1])
+        seeded_cases.append(
+            {
+                "case": case,
+                "document_to_candidate": document_to_candidate,
+            }
+        )
+    return seeded_cases
+
+
+def _retrieve_seeded_calibration_samples(  # pragma: no cover - protected live
+    *,
+    seeded_cases: Sequence[Mapping[str, Any]],
+    client: TestClient,
+    runtime_environ: Mapping[str, str],
+    probe: str,
+    trace_id: str,
+    repeat_index: int,
+    retrieval_package_ids: list[str],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], dict[str, str]]:
+    samples: list[dict[str, Any]] = []
+    candidate_observations: list[dict[str, Any]] = []
+    stable_binding: dict[str, str] | None = None
+    for seeded in seeded_cases:
+        case = seeded["case"]
+        document_to_candidate = seeded["document_to_candidate"]
+        if not isinstance(case, Mapping) or not isinstance(
+            document_to_candidate, Mapping
+        ):
+            raise TypeError("seeded calibration case is invalid")
 
         response = _retrieve_scope(
             client,
             query=str(case["query"]),
             document_ids=list(document_to_candidate),
-            request_id=f"s20qe-calibration-{case['case_id']}-{probe}",
+            request_id=(
+                f"s20qe-calibration-r{repeat_index}-{case['case_id']}-{probe}"
+            ),
             trace_id=trace_id,
         )
         if response.status_code != 200:
@@ -596,7 +713,8 @@ def _collect_calibration_samples(  # pragma: no cover - PostgreSQL/DGX protected
         package_id = _required_string(
             package.get("retrieval_package_id"), "retrieval_package_id"
         )
-        retrieval_package_ids.append(package_id)
+        if package_id not in retrieval_package_ids:
+            retrieval_package_ids.append(package_id)
         observed_binding = _feature_binding(package, runtime_environ)
         if stable_binding is None:
             stable_binding = observed_binding
@@ -616,6 +734,43 @@ def _collect_calibration_samples(  # pragma: no cover - PostgreSQL/DGX protected
     if stable_binding is None:
         raise ValueError("multi-signal feature binding is unavailable")
     return samples, candidate_observations, stable_binding
+
+
+def _repeat_run_projection(
+    *,
+    repeat_index: int,
+    samples: Sequence[Mapping[str, Any]],
+    observations: Sequence[Mapping[str, Any]],
+) -> dict[str, Any]:
+    projected = {
+        "repeat_index": repeat_index,
+        "sample_count": len(samples),
+        "candidate_observation_count": len(observations),
+        "sample_set_hash": semantic_sha256_hash_ref(
+            sorted(str(sample["sample_hash"]) for sample in samples)
+        ),
+        "observation_set_hash": semantic_sha256_hash_ref(
+            sorted(str(row["observation_hash"]) for row in observations)
+        ),
+        "candidate_observations": sorted(
+            (dict(row) for row in observations),
+            key=lambda row: (str(row["sample_id"]), int(row["rank"])),
+        ),
+    }
+    projected["run_hash"] = semantic_sha256_hash_ref(projected)
+    return projected
+
+
+def _repeat_count(value: object) -> int:
+    if isinstance(value, bool):
+        raise TypeError("repeat count is invalid")
+    try:
+        count = int(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError) as exc:
+        raise ValueError("repeat count is invalid") from exc
+    if str(value).strip() != str(count) or not 1 <= count <= 5:
+        raise ValueError("repeat count is invalid")
+    return count
 
 
 def _load_dataset(path: Path) -> dict[str, Any]:

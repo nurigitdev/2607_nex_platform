@@ -8,6 +8,7 @@ from nex_cx.retrieval_confidence_candidate_diagnostics import (
     CORRECTED_PACKAGE_FEATURE_FIELDS,
     build_candidate_diagnostic_observations,
     build_candidate_feature_calibration_samples,
+    build_candidate_relevance_calibration_samples,
     diagnose_candidate_feature_correction,
 )
 
@@ -161,6 +162,16 @@ def test_diagnoses_candidate_ranking_and_corrected_package_features_only() -> No
     assert samples[0]["features"]["reranker_second_score"] > 0.0
     assert all(str(sample["sample_hash"]).startswith("sha256:") for sample in samples)
     assert "must never be projected" not in str(samples)
+
+    relevance = build_candidate_relevance_calibration_samples(_observations())
+    assert len(relevance) == 16
+    assert relevance[0]["sample_schema_version"].endswith(".v1")
+    assert relevance[0]["signals"] == {
+        "reranker_score": relevance[0]["signals"]["reranker_score"],
+        "rrf_normalized_score": relevance[0]["signals"]["rrf_normalized_score"],
+        "channel_rank_quality": relevance[0]["signals"]["channel_rank_quality"],
+    }
+    assert "must never be projected" not in str(relevance)
 
 
 @pytest.mark.parametrize(

@@ -15,6 +15,9 @@ CANDIDATE_DIAGNOSTIC_POLICY_ID = "cx_candidate_feature_correction_diagnostics_v1
 CANDIDATE_FEATURE_SAMPLE_SCHEMA_VERSION = (
     "cx_retrieval_confidence_candidate_feature_sample.v1"
 )
+CANDIDATE_RELEVANCE_SAMPLE_SCHEMA_VERSION = (
+    "cx_retrieval_confidence_candidate_relevance_sample.v1"
+)
 PAIR_SEMANTICS = "POSITIVE_PAIR_VS_NEGATIVE_PAIR"
 NEAR_CONSTANT_TOLERANCE = 1e-9
 
@@ -218,6 +221,31 @@ def build_candidate_feature_calibration_samples(
         sample["sample_hash"] = semantic_sha256_hash_ref(sample)
         projected.append(sample)
     return sorted(projected, key=lambda row: str(row["sample_id"]))
+
+
+def build_candidate_relevance_calibration_samples(
+    observations: Sequence[Mapping[str, Any]],
+) -> list[dict[str, Any]]:
+    """Project candidate labels and runtime signals for calibration-only use."""
+    normalized, _ = _normalize_observations(observations)
+    projected: list[dict[str, Any]] = []
+    for row in normalized:
+        sample = {
+            "sample_schema_version": CANDIDATE_RELEVANCE_SAMPLE_SCHEMA_VERSION,
+            "sample_id": row["sample_id"],
+            "candidate_id": row["candidate_id"],
+            "expected_ready": row["package_expected_ready"],
+            "expected_relevant": row["expected_relevant"],
+            "signals": {
+                field: row["signals"][field] for field in CANDIDATE_SIGNAL_FIELDS
+            },
+        }
+        sample["sample_hash"] = semantic_sha256_hash_ref(sample)
+        projected.append(sample)
+    return sorted(
+        projected,
+        key=lambda row: (str(row["sample_id"]), str(row["candidate_id"])),
+    )
 
 
 def _normalize_observations(

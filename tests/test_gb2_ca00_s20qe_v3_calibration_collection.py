@@ -156,6 +156,7 @@ def test_success_projection_failed_checks_and_redaction(
     }
     assert result["provider_path"] == "cx_production_runtime_to_mo_live_alias"
     assert calls[0]["runtime_environ"]["NEX_MO_PROVIDER_MODE"] == "live"  # type: ignore[index]
+    assert calls[0]["repeat_count"] == 1
     assert "samples=40 diagnostics=DIAGNOSED holdout=sealed" in smoke.summary_line(
         result
     )
@@ -228,6 +229,37 @@ def test_dataset_loader_and_configuration_shape_guards(tmp_path: Path) -> None:
             "field": "NEX_MO_REMOTE_EMBEDDING_REQUEST_SHAPE",
         }
     ]
+
+    invalid_repeat = smoke.run_gb2_s20qe_v3_calibration_collection(
+        _live_env(**{smoke.REPEAT_COUNT_ENV: "6"})
+    )
+    assert invalid_repeat == {
+        "evidence_schema_version": smoke.SCHEMA_VERSION,
+        "status": "FAIL",
+        "failure_code": "configuration_invalid",
+        "detail": smoke.REPEAT_COUNT_ENV,
+    }
+
+
+def test_repeat_projection_is_integrity_bound_and_count_is_bounded() -> None:
+    observation = {
+        "sample_id": "scenario:positive",
+        "rank": 1,
+        "observation_hash": "sha256:" + "a" * 64,
+    }
+    sample = {"sample_id": "scenario:positive", "sample_hash": "sha256:" + "b" * 64}
+    projected = smoke._repeat_run_projection(
+        repeat_index=0,
+        samples=[sample],
+        observations=[observation],
+    )
+    assert projected["repeat_index"] == 0
+    assert projected["candidate_observation_count"] == 1
+    assert str(projected["run_hash"]).startswith("sha256:")
+    assert smoke._repeat_count("5") == 5
+    for invalid in (True, "0", "1.0", "bad"):
+        with pytest.raises((TypeError, ValueError), match="repeat count"):
+            smoke._repeat_count(invalid)
 
 
 def test_holdout_request_guard_counts_safe_calls_and_blocks_leaks() -> None:
