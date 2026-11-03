@@ -7,6 +7,7 @@ import os
 import sys
 import tempfile
 from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -97,6 +98,38 @@ PROTECTED_ENV_KEYS = (
 
 HttpRequester = Callable[..., Any]
 CollectionExecutor = Callable[..., dict[str, Any]]
+
+
+@dataclass(frozen=True)
+class LiveCalibrationDatasetSpec:
+    dataset_path: Path
+    schema_version: str
+    case_count: int
+    calibration_scenario_count: int
+    holdout_scenario_count: int
+    request_prefix: str
+
+    @property
+    def calibration_package_count(self) -> int:
+        return self.calibration_scenario_count * 2
+
+    @property
+    def calibration_candidate_count(self) -> int:
+        return self.calibration_package_count * 4
+
+    @property
+    def holdout_protected_value_count(self) -> int:
+        return self.holdout_scenario_count * 10
+
+
+V3_DATASET_SPEC = LiveCalibrationDatasetSpec(
+    dataset_path=DEFAULT_V3_PATH,
+    schema_version="model_calibration_dataset.v3",
+    case_count=60,
+    calibration_scenario_count=EXPECTED_CALIBRATION_SCENARIOS,
+    holdout_scenario_count=10,
+    request_prefix="s20qe",
+)
 
 
 def run_gb2_s20qe_v3_calibration_collection(
@@ -212,10 +245,23 @@ def _execute_live_collection(  # pragma: no cover - PostgreSQL/DGX protected
     runtime_environ: dict[str, str],
     requester: HttpRequester | None,
     repeat_count: int = 1,
+    dataset_spec: LiveCalibrationDatasetSpec = V3_DATASET_SPEC,
+    dataset_manifest: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
-    admitted = admit_calibration_dataset_files()
-    dataset = _load_dataset(DEFAULT_V3_PATH)
-    calibration_cases, holdout_values = _calibration_cases(dataset)
+    admitted = (
+        dict(dataset_manifest)
+        if dataset_manifest is not None
+        else dict(admit_calibration_dataset_files()["v3"])
+    )
+    dataset = _load_dataset(
+        dataset_spec.dataset_path,
+        schema_version=dataset_spec.schema_version,
+        expected_case_count=dataset_spec.case_count,
+    )
+    calibration_cases, holdout_values = _calibration_cases(
+        dataset,
+        dataset_spec=dataset_spec,
+    )
     probe = uuid4().hex
     trace_id = uuid4().hex
     engine = build_engine(database_url)
@@ -237,7 +283,9 @@ def _execute_live_collection(  # pragma: no cover - PostgreSQL/DGX protected
     provider_observation: dict[str, Any] = {}
     request_counts: dict[str, int] = {}
     try:
-        with tempfile.TemporaryDirectory(prefix="nex-cx-s20qe-live-") as temp_dir:
+        with tempfile.TemporaryDirectory(
+            prefix=f"nex-cx-{dataset_spec.request_prefix}-live-"
+        ) as temp_dir:
             root = Path(temp_dir)
             storage = s136._storage_config(root)
             private_store = FileSystemCxPrivateTextStore(root / "private")
@@ -296,6 +344,7 @@ def _execute_live_collection(  # pragma: no cover - PostgreSQL/DGX protected
                             document_ids=document_ids,
                             source_file_ids=source_file_ids,
                             vector_index_ids=vector_index_ids,
+                            request_prefix=dataset_spec.request_prefix,
                         )
                         candidate_observations: list[dict[str, Any]] = []
                         for repeat_index in range(repeat_count):
@@ -308,6 +357,7 @@ def _execute_live_collection(  # pragma: no cover - PostgreSQL/DGX protected
                                     trace_id=trace_id,
                                     repeat_index=repeat_index,
                                     retrieval_package_ids=retrieval_package_ids,
+                                    request_prefix=dataset_spec.request_prefix,
                                 )
                             )
                             if binding is None:
@@ -329,15 +379,15 @@ def _execute_live_collection(  # pragma: no cover - PostgreSQL/DGX protected
                         diagnostics = (
                             diagnose_mixed_candidate_feature_discriminativeness(
                                 samples,
-                                dataset_id=str(admitted["v3"]["dataset_id"]),
-                                dataset_sha256=str(admitted["v3"]["dataset_sha256"]),
+                                dataset_id=str(admitted["dataset_id"]),
+                                dataset_sha256=str(admitted["dataset_sha256"]),
                                 expected_binding=binding,
                             )
                         )
                         candidate_diagnostics = diagnose_candidate_feature_correction(
                             candidate_observations,
-                            dataset_id=str(admitted["v3"]["dataset_id"]),
-                            dataset_sha256=str(admitted["v3"]["dataset_sha256"]),
+                            dataset_id=str(admitted["dataset_id"]),
+                            dataset_sha256=str(admitted["dataset_sha256"]),
                             expected_binding=binding,
                         )
                         candidate_feature_samples = (
@@ -348,7 +398,7 @@ def _execute_live_collection(  # pragma: no cover - PostgreSQL/DGX protected
                         telemetry = read_provider_telemetry(
                             mo_test_client,
                             trace_id,
-                            f"s20qe-telemetry-{probe}",
+                            f"{dataset_spec.request_prefix}-telemetry-{probe}",
                         )
             provider_observation = s136._provider_observation(telemetry)
             persisted = [
@@ -374,15 +424,17 @@ def _execute_live_collection(  # pragma: no cover - PostgreSQL/DGX protected
                     "test_database_identity": s136._database_identity(engine)
                     == {"database": EXPECTED_DATABASE, "role": EXPECTED_ROLE},
                     "calibration_partition_only": (
-                        len(calibration_cases) == EXPECTED_CALIBRATION_PACKAGES
+                        len(calibration_cases)
+                        == dataset_spec.calibration_package_count
                         and all(
                             case["partition"] == CALIBRATION_PARTITION
                             for case in calibration_cases
                         )
                     ),
                     "mixed_package_collection_complete": (
-                        len(samples) == EXPECTED_CALIBRATION_PACKAGES
-                        and len(document_ids) == EXPECTED_CALIBRATION_CANDIDATES
+                        len(samples) == dataset_spec.calibration_package_count
+                        and len(document_ids)
+                        == dataset_spec.calibration_candidate_count
                         and all(
                             sample.get("retrieval_scope", {}).get(
                                 "single_mixed_candidate_retrieval"
@@ -406,9 +458,9 @@ def _execute_live_collection(  # pragma: no cover - PostgreSQL/DGX protected
                                 for sample in samples
                             }
                         )
-                        == EXPECTED_CALIBRATION_SCENARIOS
+                        == dataset_spec.calibration_scenario_count
                         and sum(bool(sample["expected_ready"]) for sample in samples)
-                        == EXPECTED_CALIBRATION_SCENARIOS
+                        == dataset_spec.calibration_scenario_count
                     ),
                     "holdout_provider_guard_active": (
                         request_counts.get("total", 0) > 0
@@ -430,21 +482,22 @@ def _execute_live_collection(  # pragma: no cover - PostgreSQL/DGX protected
                         and candidate_diagnostics.get("dataset", {}).get(
                             "candidate_observation_count"
                         )
-                        == EXPECTED_CALIBRATION_CANDIDATES
+                        == dataset_spec.calibration_candidate_count
                         and candidate_diagnostics.get("dataset", {}).get(
                             "package_count"
                         )
-                        == EXPECTED_CALIBRATION_PACKAGES
+                        == dataset_spec.calibration_package_count
                     ),
                     "candidate_feature_projection_complete": (
-                        len(candidate_feature_samples) == EXPECTED_CALIBRATION_PACKAGES
+                        len(candidate_feature_samples)
+                        == dataset_spec.calibration_package_count
                         and len(
                             {
                                 sample["sample_id"].rpartition(":")[0]
                                 for sample in candidate_feature_samples
                             }
                         )
-                        == EXPECTED_CALIBRATION_SCENARIOS
+                        == dataset_spec.calibration_scenario_count
                     ),
                     "candidate_diagnostics_only_no_policy_selection": (
                         candidate_diagnostics.get("runtime_activation_permitted")
@@ -473,12 +526,12 @@ def _execute_live_collection(  # pragma: no cover - PostgreSQL/DGX protected
                         provider_observation.get("embedding", {}).get(
                             "success_count", 0
                         )
-                        >= EXPECTED_CALIBRATION_CANDIDATES
-                        + EXPECTED_CALIBRATION_PACKAGES * repeat_count
+                        >= dataset_spec.calibration_candidate_count
+                        + dataset_spec.calibration_package_count * repeat_count
                         and provider_observation.get("reranking", {}).get(
                             "success_count", 0
                         )
-                        >= EXPECTED_CALIBRATION_PACKAGES * repeat_count
+                        >= dataset_spec.calibration_package_count * repeat_count
                         and all(
                             provider_observation.get(capability, {}).get(
                                 "failure_count", 0
@@ -490,9 +543,9 @@ def _execute_live_collection(  # pragma: no cover - PostgreSQL/DGX protected
                     "postgres_packages_hash_only": (
                         len(persisted)
                         == len(retrieval_package_ids)
-                        and EXPECTED_CALIBRATION_PACKAGES
+                        and dataset_spec.calibration_package_count
                         <= len(retrieval_package_ids)
-                        <= EXPECTED_CALIBRATION_PACKAGES * repeat_count
+                        <= dataset_spec.calibration_package_count * repeat_count
                         and all(
                             row.get("query_text_sha256")
                             and row.get("query_text_preview") is None
@@ -509,9 +562,9 @@ def _execute_live_collection(  # pragma: no cover - PostgreSQL/DGX protected
                         len(repeat_runs) == repeat_count
                         and all(
                             run.get("sample_count")
-                            == EXPECTED_CALIBRATION_PACKAGES
+                            == dataset_spec.calibration_package_count
                             and run.get("candidate_observation_count")
-                            == EXPECTED_CALIBRATION_CANDIDATES
+                            == dataset_spec.calibration_candidate_count
                             for run in repeat_runs
                         )
                     ),
@@ -538,12 +591,12 @@ def _execute_live_collection(  # pragma: no cover - PostgreSQL/DGX protected
     return {
         "database_identity": {"database": EXPECTED_DATABASE, "role": EXPECTED_ROLE},
         "dataset": {
-            "dataset_id": admitted["v3"]["dataset_id"],
-            "dataset_sha256": admitted["v3"]["dataset_sha256"],
+            "dataset_id": admitted["dataset_id"],
+            "dataset_sha256": admitted["dataset_sha256"],
             "partition": CALIBRATION_PARTITION,
-            "scenario_count": EXPECTED_CALIBRATION_SCENARIOS,
-            "package_count": EXPECTED_CALIBRATION_PACKAGES,
-            "candidate_count": EXPECTED_CALIBRATION_CANDIDATES,
+            "scenario_count": dataset_spec.calibration_scenario_count,
+            "package_count": dataset_spec.calibration_package_count,
+            "candidate_count": dataset_spec.calibration_candidate_count,
             "holdout_status": "SEALED_NOT_COLLECTED",
         },
         "binding": binding,
@@ -566,10 +619,10 @@ def _execute_live_collection(  # pragma: no cover - PostgreSQL/DGX protected
         "repeat_collection": {
             "repeat_count": repeat_count,
             "retrieval_request_count": (
-                EXPECTED_CALIBRATION_PACKAGES * repeat_count
+                dataset_spec.calibration_package_count * repeat_count
             ),
             "candidate_observation_count": (
-                EXPECTED_CALIBRATION_CANDIDATES * repeat_count
+                dataset_spec.calibration_candidate_count * repeat_count
             ),
             "runs": repeat_runs,
         },
@@ -632,6 +685,7 @@ def _seed_calibration_corpus(  # pragma: no cover - PostgreSQL/DGX protected
     document_ids: list[str],
     source_file_ids: list[str],
     vector_index_ids: list[str],
+    request_prefix: str = "s20qe",
 ) -> list[dict[str, Any]]:
     seeded_cases: list[dict[str, Any]] = []
     for case in cases:
@@ -639,10 +693,14 @@ def _seed_calibration_corpus(  # pragma: no cover - PostgreSQL/DGX protected
         for candidate in case["candidates"]:
             indexed = s136._ingest_document(
                 probe=probe,
-                label=f"s20qe-{case['case_id']}-{candidate['candidate_id']}",
+                label=(
+                    f"{request_prefix}-{case['case_id']}-"
+                    f"{candidate['candidate_id']}"
+                ),
                 source_text=str(candidate["text"]),
                 request_id=(
-                    f"s20qe-index-{case['case_id']}-{candidate['candidate_id']}"
+                    f"{request_prefix}-index-{case['case_id']}-"
+                    f"{candidate['candidate_id']}"
                 ),
                 trace_id=trace_id,
                 store=store,
@@ -660,7 +718,8 @@ def _seed_calibration_corpus(  # pragma: no cover - PostgreSQL/DGX protected
                     "tenant_ref": {"type": "oa.tenant", "id": TENANT_ID},
                     "owner_subject_ref": {"type": "oa.user", "id": OWNER_ID},
                     "request_id": (
-                        f"s20qe-index-{case['case_id']}-{candidate['candidate_id']}"
+                        f"{request_prefix}-index-{case['case_id']}-"
+                        f"{candidate['candidate_id']}"
                     ),
                     "trace_id": trace_id,
                     "created_at": indexed["created_at"],
@@ -686,6 +745,7 @@ def _retrieve_seeded_calibration_samples(  # pragma: no cover - protected live
     trace_id: str,
     repeat_index: int,
     retrieval_package_ids: list[str],
+    request_prefix: str = "s20qe",
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], dict[str, str]]:
     samples: list[dict[str, Any]] = []
     candidate_observations: list[dict[str, Any]] = []
@@ -703,7 +763,8 @@ def _retrieve_seeded_calibration_samples(  # pragma: no cover - protected live
             query=str(case["query"]),
             document_ids=list(document_to_candidate),
             request_id=(
-                f"s20qe-calibration-r{repeat_index}-{case['case_id']}-{probe}"
+                f"{request_prefix}-calibration-r{repeat_index}-"
+                f"{case['case_id']}-{probe}"
             ),
             trace_id=trace_id,
         )
@@ -773,21 +834,28 @@ def _repeat_count(value: object) -> int:
     return count
 
 
-def _load_dataset(path: Path) -> dict[str, Any]:
+def _load_dataset(
+    path: Path,
+    *,
+    schema_version: str = V3_DATASET_SPEC.schema_version,
+    expected_case_count: int = V3_DATASET_SPEC.case_count,
+) -> dict[str, Any]:
     payload = json.loads(path.read_text(encoding="utf-8"))
     if (
         not isinstance(payload, dict)
-        or payload.get("dataset_schema_version") != "model_calibration_dataset.v3"
+        or payload.get("dataset_schema_version") != schema_version
         or not isinstance(payload.get("dataset_id"), str)
         or not isinstance(payload.get("cases"), list)
-        or len(payload["cases"]) != 60
+        or len(payload["cases"]) != expected_case_count
     ):
-        raise ValueError("v3 calibration dataset is invalid")
+        raise ValueError("calibration dataset is invalid")
     return payload
 
 
 def _calibration_cases(
     dataset: Mapping[str, Any],
+    *,
+    dataset_spec: LiveCalibrationDatasetSpec = V3_DATASET_SPEC,
 ) -> tuple[list[dict[str, Any]], tuple[str, ...]]:
     calibration: list[dict[str, Any]] = []
     holdout_values: list[str] = []
@@ -823,12 +891,12 @@ def _calibration_cases(
         if partition == HOLDOUT_PARTITION
     }
     if (
-        len(calibration) != EXPECTED_CALIBRATION_PACKAGES
-        or len(calibration_scenarios) != EXPECTED_CALIBRATION_SCENARIOS
-        or len(holdout_scenarios) != 10
-        or len(holdout_values) != 100
+        len(calibration) != dataset_spec.calibration_package_count
+        or len(calibration_scenarios) != dataset_spec.calibration_scenario_count
+        or len(holdout_scenarios) != dataset_spec.holdout_scenario_count
+        or len(holdout_values) != dataset_spec.holdout_protected_value_count
     ):
-        raise ValueError("v3 calibration partitions are invalid")
+        raise ValueError("calibration dataset partitions are invalid")
     return sorted(calibration, key=lambda case: str(case["case_id"])), tuple(
         holdout_values
     )
