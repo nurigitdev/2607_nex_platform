@@ -1,0 +1,190 @@
+{
+  "design_schema_version": "cx_retrieval_calibration_design.v1",
+  "design_id": "s136-retrieval-package-confidence-v4-design",
+  "status": "FROZEN_NOT_AUTHORED",
+  "predecessor": {
+    "dataset_schema_version": "model_calibration_dataset.v3",
+    "dataset_id": "s136-retrieval-package-confidence-public-v3",
+    "file_sha256": "5f79912782bb4f7c672894d1b5be445b958f93a5fb044730dc72b643a8bcb8c4",
+    "dataset_sha256": "edde3040ef27adf2ae450cc3c2193a0900620e2e514dc372a31ebe57085b34fb",
+    "policy_audit_hash": "sha256:9690c64496e4d2755649a7fe27e363b972d24f7f6df2204477c2f3d8373ca4f6"
+  },
+  "dataset": {
+    "target_schema_version": "model_calibration_dataset.v4",
+    "target_dataset_id": "s136-retrieval-package-confidence-public-v4",
+    "independent_unit": "SCENARIO_PAIR",
+    "scenario_count": 100,
+    "partition_scenario_counts": {
+      "CALIBRATION": 80,
+      "HOLDOUT": 20
+    },
+    "packages_per_scenario": 2,
+    "candidates_per_package": 4,
+    "package_count": 200,
+    "candidate_count": 800,
+    "partition_language_scenario_counts": {
+      "CALIBRATION": {
+        "KOREAN": 48,
+        "KOREAN_ENGLISH_MIXED": 16,
+        "ENGLISH": 16
+      },
+      "HOLDOUT": {
+        "KOREAN": 12,
+        "KOREAN_ENGLISH_MIXED": 4,
+        "ENGLISH": 4
+      }
+    },
+    "partition_domain_scenario_counts": {
+      "CALIBRATION": {
+        "PROJECT": 16,
+        "FINANCE": 20,
+        "IDENTITY_AUTHORIZATION": 12,
+        "GOVERNANCE_OPERATIONS": 12,
+        "AI_RUNTIME": 20
+      },
+      "HOLDOUT": {
+        "PROJECT": 4,
+        "FINANCE": 5,
+        "IDENTITY_AUTHORIZATION": 3,
+        "GOVERNANCE_OPERATIONS": 3,
+        "AI_RUNTIME": 5
+      }
+    },
+    "package_semantics": {
+      "ready_meaning": "AT_LEAST_TWO_RELEVANT_CANDIDATES",
+      "package_score": "SECOND_HIGHEST_CANDIDATE_SCORE",
+      "candidate_truth_used_at_runtime": false,
+      "positive_roles": [
+        "PRIMARY_ANSWER",
+        "SUPPORTING_ANSWER",
+        "HARD_NON_ANSWER",
+        "EASY_NON_ANSWER"
+      ],
+      "negative_roles": [
+        "HARD_NON_ANSWER",
+        "RELATED_NON_ANSWER",
+        "CONTRADICTORY_NON_ANSWER",
+        "EASY_NON_ANSWER"
+      ]
+    },
+    "authoring": {
+      "review_mode": "AUTHOR_PLUS_INDEPENDENT_REVIEWER",
+      "minimum_distinct_reviewers": 2,
+      "model_score_guided_authoring_permitted": false,
+      "mechanical_paraphrase_permitted": false,
+      "normalized_text_uniqueness_required": true,
+      "semantic_near_duplicate_review_required": true,
+      "holdout_labels_visible_to_calibration_executor": false
+    }
+  },
+  "selection_protocol": {
+    "mode": "NESTED_STRATIFIED_GROUP_CV_WITH_PREFROZEN_SHORTLIST",
+    "group_key": "scenario_id",
+    "stratification_fields": [
+      "domain",
+      "language_profile"
+    ],
+    "assignment_algorithm": "SHA256_STRATIFIED_ROUND_ROBIN_V1",
+    "assignment_seed": "s136-v4-nested-cv-v1",
+    "outer_fold_count": 5,
+    "inner_fold_count": 4,
+    "outer_validation_scenarios_per_fold": 16,
+    "inner_validation_scenarios_per_fold": 16,
+    "maximum_profile_count": 5,
+    "profile_shortlist": [
+      {
+        "profile_id": "reranker-only-v1",
+        "evidence_source": "S20Q-I_SINGLE_SIGNAL_DIAGNOSTIC",
+        "feature_fields": [
+          "reranker_score"
+        ],
+        "weights": {
+          "reranker_score": 1.0
+        }
+      },
+      {
+        "profile_id": "s20qh-three-signal-balanced-v1",
+        "evidence_source": "S20Q-H_LIVE_BEST_EFFORT",
+        "feature_fields": [
+          "reranker_score",
+          "rrf_normalized_score",
+          "channel_rank_quality"
+        ],
+        "weights": {
+          "reranker_score": 0.3,
+          "rrf_normalized_score": 0.4,
+          "channel_rank_quality": 0.3
+        }
+      },
+      {
+        "profile_id": "s20qk-three-signal-channel-v1",
+        "evidence_source": "S20Q-K_4B_BASELINE_BEST_EFFORT",
+        "feature_fields": [
+          "reranker_score",
+          "rrf_normalized_score",
+          "channel_rank_quality"
+        ],
+        "weights": {
+          "reranker_score": 0.3,
+          "rrf_normalized_score": 0.3,
+          "channel_rank_quality": 0.4
+        }
+      },
+      {
+        "profile_id": "s20qi-expanded-channel-v1",
+        "evidence_source": "S20Q-I_LIVE_BEST_EFFORT",
+        "feature_fields": [
+          "reranker_score",
+          "channel_rank_quality",
+          "bm25_score_quality"
+        ],
+        "weights": {
+          "reranker_score": 0.6,
+          "channel_rank_quality": 0.3,
+          "bm25_score_quality": 0.1
+        }
+      }
+    ],
+    "selection_objective": "CONSTRAINT_FIRST_BALANCED_ACCURACY",
+    "selection_tie_break": [
+      "HIGHER_BALANCED_ACCURACY",
+      "HIGHER_READY_RECALL",
+      "LOWER_FALSE_READY_RATE",
+      "HIGHER_CANDIDATE_AUC",
+      "PROFILE_SHORTLIST_ORDER"
+    ],
+    "inner_loop_selects": [
+      "PROFILE_ID",
+      "THRESHOLD"
+    ],
+    "outer_loop_evaluates_only": true,
+    "outer_validation_reselection_permitted": false,
+    "final_threshold_fit_partition": "CALIBRATION_ONLY",
+    "holdout_threshold_reselection_permitted": false
+  },
+  "admission": {
+    "pipeline_repeat_count": 5,
+    "maximum_false_ready_rate": 0.1,
+    "minimum_ready_recall": 0.8,
+    "minimum_candidate_auc": 0.7,
+    "minimum_outer_fold_balanced_accuracy": 0.5,
+    "maximum_outer_threshold_spread": 0.2,
+    "minimum_profile_selection_fold_count": 4,
+    "confidence_interval_method": "WILSON_95_TWO_SIDED_REPORT_ONLY",
+    "point_constraints_remain_authoritative": true,
+    "calibration_oof_pass_required": true,
+    "holdout_single_execution_required": true,
+    "holdout_pass_required": true,
+    "runtime_activation_requires_separate_approval": true
+  },
+  "boundaries": {
+    "dataset_v3_mutation_permitted": false,
+    "dataset_v4_authoring_in_this_slice": false,
+    "provider_execution_in_this_slice": false,
+    "holdout_access_in_this_slice": false,
+    "runtime_activation_in_this_slice": false,
+    "model_revision_selection_in_this_slice": false,
+    "threshold_relaxation_permitted": false,
+    "incumbent_disposition": "KEEP_4B_4B_AS_NON_ADMITTED_BASELINE"
+  }
+}
