@@ -36,6 +36,10 @@ from nex_cx.pgvector_store import build_pgvector_cx_vector_store
 from nex_cx.private_text_store import FileSystemCxPrivateTextStore
 from nex_cx.repository import SqlAlchemyCxContentRepository
 from nex_cx.retrieval import DEFAULT_RERANKER_ALIAS, register_retrieval_routes
+from nex_cx.retrieval_confidence_candidate_diagnostics import (
+    build_candidate_diagnostic_observations,
+    diagnose_candidate_feature_correction,
+)
 from nex_cx.retrieval_confidence_feature_audit import (
     diagnose_mixed_candidate_feature_discriminativeness,
 )
@@ -218,6 +222,7 @@ def _execute_live_collection(  # pragma: no cover - PostgreSQL/DGX protected
     checks: dict[str, bool] = {}
     samples: list[dict[str, Any]] = []
     diagnostics: dict[str, Any] = {}
+    candidate_diagnostics: dict[str, Any] = {}
     binding: dict[str, str] | None = None
     provider_observation: dict[str, Any] = {}
     request_counts: dict[str, int] = {}
@@ -271,29 +276,35 @@ def _execute_live_collection(  # pragma: no cover - PostgreSQL/DGX protected
                         hybrid_runtime=composition.hybrid_retrieval_runtime,
                     )
                     with TestClient(app) as client:
-                        samples, binding = _collect_calibration_samples(
-                            cases=calibration_cases,
-                            client=client,
-                            composition=composition,
-                            store=store,
-                            storage=storage,
-                            runtime_environ=runtime_environ,
-                            probe=probe,
-                            trace_id=trace_id,
-                            document_ids=document_ids,
-                            source_file_ids=source_file_ids,
-                            vector_index_ids=vector_index_ids,
-                            retrieval_package_ids=retrieval_package_ids,
+                        samples, candidate_observations, binding = (
+                            _collect_calibration_samples(
+                                cases=calibration_cases,
+                                client=client,
+                                composition=composition,
+                                store=store,
+                                storage=storage,
+                                runtime_environ=runtime_environ,
+                                probe=probe,
+                                trace_id=trace_id,
+                                document_ids=document_ids,
+                                source_file_ids=source_file_ids,
+                                vector_index_ids=vector_index_ids,
+                                retrieval_package_ids=retrieval_package_ids,
+                            )
                         )
                         diagnostics = (
                             diagnose_mixed_candidate_feature_discriminativeness(
                                 samples,
                                 dataset_id=str(admitted["v3"]["dataset_id"]),
-                                dataset_sha256=str(
-                                    admitted["v3"]["dataset_sha256"]
-                                ),
+                                dataset_sha256=str(admitted["v3"]["dataset_sha256"]),
                                 expected_binding=binding,
                             )
+                        )
+                        candidate_diagnostics = diagnose_candidate_feature_correction(
+                            candidate_observations,
+                            dataset_id=str(admitted["v3"]["dataset_id"]),
+                            dataset_sha256=str(admitted["v3"]["dataset_sha256"]),
+                            expected_binding=binding,
                         )
                         telemetry = read_provider_telemetry(
                             mo_test_client,
@@ -316,12 +327,8 @@ def _execute_live_collection(  # pragma: no cover - PostgreSQL/DGX protected
                 restart_engine.dispose()
 
             expected_models = {
-                "embedding": runtime_environ[
-                    "NEX_MO_REMOTE_EMBEDDING_MODEL_REVISION"
-                ],
-                "reranking": runtime_environ[
-                    "NEX_MO_REMOTE_RERANKER_MODEL_REVISION"
-                ],
+                "embedding": runtime_environ["NEX_MO_REMOTE_EMBEDDING_MODEL_REVISION"],
+                "reranking": runtime_environ["NEX_MO_REMOTE_RERANKER_MODEL_REVISION"],
             }
             checks.update(
                 {
@@ -354,7 +361,12 @@ def _execute_live_collection(  # pragma: no cover - PostgreSQL/DGX protected
                         )
                     ),
                     "calibration_pairing_complete": (
-                        len({sample["sample_id"].rpartition(":")[0] for sample in samples})
+                        len(
+                            {
+                                sample["sample_id"].rpartition(":")[0]
+                                for sample in samples
+                            }
+                        )
                         == EXPECTED_CALIBRATION_SCENARIOS
                         and sum(bool(sample["expected_ready"]) for sample in samples)
                         == EXPECTED_CALIBRATION_SCENARIOS
@@ -374,6 +386,29 @@ def _execute_live_collection(  # pragma: no cover - PostgreSQL/DGX protected
                         and diagnostics.get("threshold_selection_permitted") is False
                         and diagnostics.get("weight_selection_permitted") is False
                     ),
+                    "candidate_diagnostics_complete": (
+                        candidate_diagnostics.get("status") == "DIAGNOSED"
+                        and candidate_diagnostics.get("dataset", {}).get(
+                            "candidate_observation_count"
+                        )
+                        == EXPECTED_CALIBRATION_CANDIDATES
+                        and candidate_diagnostics.get("dataset", {}).get(
+                            "package_count"
+                        )
+                        == EXPECTED_CALIBRATION_PACKAGES
+                    ),
+                    "candidate_diagnostics_only_no_policy_selection": (
+                        candidate_diagnostics.get("runtime_activation_permitted")
+                        is False
+                        and candidate_diagnostics.get("feature_selection_permitted")
+                        is False
+                        and candidate_diagnostics.get("weight_selection_permitted")
+                        is False
+                        and candidate_diagnostics.get("threshold_selection_permitted")
+                        is False
+                        and candidate_diagnostics.get("holdout_access_permitted")
+                        is False
+                    ),
                     "immutable_provider_binding": (
                         binding is not None
                         and binding.get("embedding_model_revision")
@@ -382,8 +417,7 @@ def _execute_live_collection(  # pragma: no cover - PostgreSQL/DGX protected
                         == expected_models["reranking"]
                     ),
                     "provider_models_exact": all(
-                        provider_observation.get(capability, {}).get("model")
-                        == model
+                        provider_observation.get(capability, {}).get("model") == model
                         for capability, model in expected_models.items()
                     ),
                     "provider_calls_complete": (
@@ -466,6 +500,7 @@ def _execute_live_collection(  # pragma: no cover - PostgreSQL/DGX protected
             "samples": sorted(samples, key=lambda sample: str(sample["sample_id"])),
         },
         "feature_diagnostics": diagnostics,
+        "candidate_feature_diagnostics": candidate_diagnostics,
         "persistence": {
             "retrieval_package_count": len(retrieval_package_ids),
             "document_count": len(document_ids),
@@ -491,8 +526,9 @@ def _collect_calibration_samples(  # pragma: no cover - PostgreSQL/DGX protected
     source_file_ids: list[str],
     vector_index_ids: list[str],
     retrieval_package_ids: list[str],
-) -> tuple[list[dict[str, Any]], dict[str, str]]:
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], dict[str, str]]:
     samples: list[dict[str, Any]] = []
+    candidate_observations: list[dict[str, Any]] = []
     stable_binding: dict[str, str] | None = None
     for case in cases:
         document_to_candidate: dict[str, str] = {}
@@ -548,16 +584,20 @@ def _collect_calibration_samples(  # pragma: no cover - PostgreSQL/DGX protected
             stable_binding = observed_binding
         elif observed_binding != stable_binding:
             raise ValueError("multi-signal feature binding drifted")
+        numeric_evidence = _numeric_mixed_evidence(package, document_to_candidate)
         samples.append(
             build_mixed_candidate_calibration_sample(
                 case,
-                _numeric_mixed_evidence(package, document_to_candidate),
+                numeric_evidence,
                 binding=stable_binding,
             )
         )
+        candidate_observations.extend(
+            build_candidate_diagnostic_observations(case, numeric_evidence)
+        )
     if stable_binding is None:
         raise ValueError("multi-signal feature binding is unavailable")
-    return samples, stable_binding
+    return samples, candidate_observations, stable_binding
 
 
 def _load_dataset(path: Path) -> dict[str, Any]:
