@@ -101,11 +101,6 @@ def test_stable_pipeline_repeatability_is_text_free_and_holdout_closed() -> None
             "bm25_rank_change_count",
         ),
         (
-            lambda row: row["signals"].update(vector_rank=4),
-            "VECTOR_RANK",
-            "vector_rank_change_count",
-        ),
-        (
             lambda row: row["signals"].update(bm25_score_quality=0.7),
             "BM25_SCORE_QUALITY",
             "bm25_score_quality_drift_count",
@@ -166,6 +161,54 @@ def test_score_delta_within_admitted_tolerance_remains_stable() -> None:
     )
     assert result["status"] == "STABLE"
     assert result["stages"]["max_reranker_score_delta"] == 0.0004
+
+
+def test_bounded_vector_and_rrf_exchange_preserves_raw_observation() -> None:
+    baseline = _run(0)
+    changed = _run(1)
+    row = changed["candidate_observations"][1]
+    row["signals"]["vector_rank"] = 1
+    row["signals"]["vector_similarity_quality"] += 0.003
+    row["signals"]["rrf_normalized_score"] += 0.005
+    _rehash_observation(row)
+    _rehash_run(changed)
+
+    result = analyze_retrieval_pipeline_repeatability(
+        [baseline, changed],
+        expected_repeat_count=2,
+        expected_package_count=2,
+    )
+
+    assert result["status"] == "STABLE"
+    assert result["stages"]["vector_rank_change_count"] == 1
+    assert result["stages"]["rrf_score_drift_count"] == 1
+    assert result["stages"]["bounded_vector_rank_exchange_count"] == 1
+    assert result["stages"]["bounded_rrf_score_drift_count"] == 1
+    assert result["stages"]["unbounded_vector_rank_change_count"] == 0
+    assert result["stages"]["unbounded_rrf_score_drift_count"] == 0
+    assert result["stages"]["first_observed_change_stage"] == "VECTOR_RANK"
+    assert result["stages"]["first_unstable_stage"] is None
+    assert result["uncertainty_contract"]["raw_changes_preserved"] is True
+
+
+def test_vector_exchange_outside_numeric_equivalence_is_unstable() -> None:
+    baseline = _run(0)
+    changed = _run(1)
+    row = changed["candidate_observations"][0]
+    row["signals"]["vector_rank"] = 4
+    row["signals"]["vector_similarity_quality"] = 0.7
+    _rehash_observation(row)
+    _rehash_run(changed)
+
+    result = analyze_retrieval_pipeline_repeatability(
+        [baseline, changed],
+        expected_repeat_count=2,
+        expected_package_count=2,
+    )
+
+    assert result["status"] == "UNSTABLE"
+    assert result["stages"]["unbounded_vector_rank_change_count"] == 1
+    assert result["stages"]["first_unstable_stage"] == "VECTOR_RANK"
 
 
 def test_rejects_membership_drift_tamper_replay_and_invalid_configuration() -> None:

@@ -9,9 +9,14 @@ from nex_runtime.semantic_hashes import semantic_sha256_hash_ref
 from nex_cx.retrieval_confidence_candidate_diagnostics import (
     CANDIDATE_OBSERVATION_SCHEMA_VERSION,
 )
+from nex_cx.vector_score_policy import (
+    VECTOR_SIMILARITY_NUMERIC_EQUIVALENCE_DELTA,
+)
 
-PIPELINE_REPEATABILITY_SCHEMA_VERSION = "cx_retrieval_pipeline_repeatability.v1"
-PIPELINE_REPEATABILITY_POLICY_ID = "cx_full_retrieval_pipeline_repeatability_v1"
+PIPELINE_REPEATABILITY_SCHEMA_VERSION = "cx_retrieval_pipeline_repeatability.v2"
+PIPELINE_REPEATABILITY_POLICY_ID = (
+    "cx_uncertainty_aware_full_retrieval_pipeline_repeatability_v2"
+)
 
 
 def analyze_retrieval_pipeline_repeatability(
@@ -23,7 +28,9 @@ def analyze_retrieval_pipeline_repeatability(
     reranker_score_tolerance: float = 0.0005,
     rrf_score_tolerance: float = 1e-8,
     bm25_score_tolerance: float = 1e-8,
-    vector_similarity_tolerance: float = 0.005,
+    vector_similarity_tolerance: float = (
+        VECTOR_SIMILARITY_NUMERIC_EQUIVALENCE_DELTA
+    ),
 ) -> dict[str, Any]:
     """Compare repeated full-pipeline observations from one immutable corpus."""
     _validate_tolerances(
@@ -49,6 +56,12 @@ def analyze_retrieval_pipeline_repeatability(
         "reranker_score_drift_count": 0,
         "final_rank_change_count": 0,
     }
+    uncertainty_counts = {
+        "bounded_vector_rank_exchange_count": 0,
+        "unbounded_vector_rank_change_count": 0,
+        "bounded_rrf_score_drift_count": 0,
+        "unbounded_rrf_score_drift_count": 0,
+    }
     max_rrf_delta = 0.0
     max_bm25_score_quality_delta = 0.0
     max_vector_similarity_quality_delta = 0.0
@@ -56,6 +69,7 @@ def analyze_retrieval_pipeline_repeatability(
     for current in normalized[1:]:
         baseline_packages = _package_membership(baseline)
         current_packages = _package_membership(current)
+        membership_stable = baseline_packages == current_packages
         for sample_id in sorted(set(baseline_packages) | set(current_packages)):
             if baseline_packages.get(sample_id) != current_packages.get(sample_id):
                 stage_counts["candidate_membership_change_count"] += 1
@@ -66,7 +80,15 @@ def analyze_retrieval_pipeline_repeatability(
             after_signals = _mapping(after["signals"])
             if before_signals.get("bm25_rank") != after_signals.get("bm25_rank"):
                 stage_counts["bm25_rank_change_count"] += 1
-            if before_signals.get("vector_rank") != after_signals.get("vector_rank"):
+            vector_rank_changed = (
+                before_signals.get("vector_rank")
+                != after_signals.get("vector_rank")
+            )
+            bm25_rank_changed = (
+                before_signals.get("bm25_rank") != after_signals.get("bm25_rank")
+            )
+            final_rank_changed = before["rank"] != after["rank"]
+            if vector_rank_changed:
                 stage_counts["vector_rank_change_count"] += 1
             rrf_delta = abs(
                 float(before_signals["rrf_normalized_score"])
@@ -94,18 +116,50 @@ def analyze_retrieval_pipeline_repeatability(
                 vector_similarity_quality_delta,
             )
             max_reranker_delta = max(max_reranker_delta, reranker_delta)
+            bounded_numeric_exchange = (
+                membership_stable
+                and vector_rank_changed
+                and not bm25_rank_changed
+                and not final_rank_changed
+                and bm25_score_quality_delta <= bm25_score_tolerance
+                and vector_similarity_quality_delta
+                <= vector_similarity_tolerance
+                and reranker_delta <= reranker_score_tolerance
+            )
+            if vector_rank_changed:
+                field = (
+                    "bounded_vector_rank_exchange_count"
+                    if bounded_numeric_exchange
+                    else "unbounded_vector_rank_change_count"
+                )
+                uncertainty_counts[field] += 1
             if rrf_delta > rrf_score_tolerance:
                 stage_counts["rrf_score_drift_count"] += 1
+                field = (
+                    "bounded_rrf_score_drift_count"
+                    if bounded_numeric_exchange
+                    else "unbounded_rrf_score_drift_count"
+                )
+                uncertainty_counts[field] += 1
             if bm25_score_quality_delta > bm25_score_tolerance:
                 stage_counts["bm25_score_quality_drift_count"] += 1
             if vector_similarity_quality_delta > vector_similarity_tolerance:
                 stage_counts["vector_similarity_quality_drift_count"] += 1
             if reranker_delta > reranker_score_tolerance:
                 stage_counts["reranker_score_drift_count"] += 1
-            if before["rank"] != after["rank"]:
+            if final_rank_changed:
                 stage_counts["final_rank_change_count"] += 1
 
-    stable = all(count == 0 for count in stage_counts.values())
+    effective_counts = {
+        **stage_counts,
+        "vector_rank_change_count": uncertainty_counts[
+            "unbounded_vector_rank_change_count"
+        ],
+        "rrf_score_drift_count": uncertainty_counts[
+            "unbounded_rrf_score_drift_count"
+        ],
+    }
+    stable = all(count == 0 for count in effective_counts.values())
     result = {
         "repeatability_schema_version": PIPELINE_REPEATABILITY_SCHEMA_VERSION,
         "policy_id": PIPELINE_REPEATABILITY_POLICY_ID,
@@ -126,8 +180,21 @@ def analyze_retrieval_pipeline_repeatability(
             "vector_similarity_quality": vector_similarity_tolerance,
             "rank": 0,
         },
+        "uncertainty_contract": {
+            "policy_id": "cx_bounded_vector_numeric_equivalence_v1",
+            "classification": (
+                "BOUNDED_NUMERIC_EQUIVALENT_EXCHANGE_OBSERVED"
+                if uncertainty_counts["bounded_vector_rank_exchange_count"]
+                else "NO_BOUNDED_EXCHANGE_OBSERVED"
+            ),
+            "raw_changes_preserved": True,
+            "candidate_membership_must_match": True,
+            "bm25_rank_must_match": True,
+            "final_reranker_rank_must_match": True,
+        },
         "stages": {
             **stage_counts,
+            **uncertainty_counts,
             "max_rrf_score_delta": round(max_rrf_delta, 12),
             "max_bm25_score_quality_delta": round(
                 max_bm25_score_quality_delta, 12
@@ -136,7 +203,8 @@ def analyze_retrieval_pipeline_repeatability(
                 max_vector_similarity_quality_delta, 12
             ),
             "max_reranker_score_delta": round(max_reranker_delta, 12),
-            "first_unstable_stage": _first_unstable_stage(stage_counts),
+            "first_observed_change_stage": _first_unstable_stage(stage_counts),
+            "first_unstable_stage": _first_unstable_stage(effective_counts),
         },
         "run_set_hash": semantic_sha256_hash_ref(
             [run["run_hash"] for run in runs]
