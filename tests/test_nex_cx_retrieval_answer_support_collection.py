@@ -183,6 +183,46 @@ def test_collection_is_deterministic_text_free_and_validated() -> None:
     )
 
 
+def test_collection_supports_slice_specific_request_namespace() -> None:
+    observed = []
+
+    def evaluator(payload, request_id, trace_id):
+        observed.append((request_id, trace_id))
+        return _generation_result(request_id)
+
+    collection = collect_answer_support_calibration(
+        [_case()],
+        dataset_id="dataset-v4",
+        dataset_sha256="dataset-sha",
+        design=_design(),
+        profile=_profile(),
+        artifact_revision=REVISION,
+        artifact_evidence_hash=HASH,
+        source_retrieval_evidence_hash="sha256:" + "c" * 64,
+        evaluator=evaluator,
+        request_namespace="s20qpn",
+    )
+
+    assert observed == [("s20qpn-case-1", "s20qpn-trace-case-1")]
+    assert collection["package_evidence"][0]["request_id"] == "s20qpn-case-1"
+
+
+def test_collection_rejects_empty_request_namespace() -> None:
+    with pytest.raises(ValueError, match="request_namespace"):
+        collect_answer_support_calibration(
+            [_case()],
+            dataset_id="dataset-v4",
+            dataset_sha256="dataset-sha",
+            design=_design(),
+            profile=_profile(),
+            artifact_revision=REVISION,
+            artifact_evidence_hash=HASH,
+            source_retrieval_evidence_hash="sha256:" + "c" * 64,
+            evaluator=_evaluator,
+            request_namespace=" ",
+        )
+
+
 @pytest.mark.parametrize(
     ("field", "value", "message"),
     [

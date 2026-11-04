@@ -213,6 +213,7 @@ def collect_answer_support_calibration(
     source_retrieval_evidence_hash: str,
     evaluator: GenerationEvaluator,
     maximum_concurrency: int = 1,
+    request_namespace: str = "s20qpi",
 ) -> dict[str, Any]:
     """Collect CALIBRATION-only provider evidence without persisting source text."""
     if isinstance(cases, (str, bytes)) or not isinstance(cases, Sequence):
@@ -227,6 +228,7 @@ def collect_answer_support_calibration(
         raise ValueError("answer support calibration concurrency is invalid")
     normalized_design = validate_answer_support_signal_design(design)
     normalized_profile = validate_answer_support_request_profile(profile)
+    namespace = _required_text(request_namespace, "request_namespace")
     revision = normalize_immutable_model_revision(artifact_revision)
     artifact_hash = validate_hash_ref(artifact_evidence_hash)
     source_hash = validate_hash_ref(source_retrieval_evidence_hash)
@@ -247,7 +249,7 @@ def collect_answer_support_calibration(
     ) -> tuple[dict[str, str], dict[str, Any]]:
         package_id, row = item
         candidates = _provider_candidates(row.get("candidates"))
-        request_id = f"s20qpi-{package_id}"
+        request_id = f"{namespace}-{package_id}"
         request = build_answer_support_request(
             request_id=request_id,
             query_text=_required_text(row.get("query"), "query"),
@@ -263,7 +265,7 @@ def collect_answer_support_calibration(
         result = evaluator(
             generation_payload,
             request_id,
-            f"s20qpi-trace-{package_id}",
+            f"{namespace}-trace-{package_id}",
         )
         evidence = normalize_answer_support_generation_result(
             request=request,
