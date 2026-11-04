@@ -1,0 +1,58 @@
+{
+  "authoring": {
+    "generator_id": "cx-answer-support-policy-fact-matrix-v1",
+    "mode": "CONTROLLED_SYNTHETIC_POLICY_FACT_MATRIX",
+    "review_boundary": "CONTRACT_AND_GENERATOR_REVIEWED_HOLDOUT_REMAINS_AUTHORITY",
+    "source_model_scores_used": false
+  },
+  "dataset": {
+    "candidate_count": 800,
+    "candidates_per_package": 4,
+    "dataset_id": "s136-answer-support-fresh-calibration-v1",
+    "domain_scenario_counts": {
+      "AI_RUNTIME": 20,
+      "FINANCE": 20,
+      "GOVERNANCE_OPERATIONS": 20,
+      "IDENTITY_AUTHORIZATION": 20,
+      "PROJECT": 20
+    },
+    "language_scenario_counts": {
+      "ENGLISH": 20,
+      "KOREAN": 60,
+      "KOREAN_ENGLISH_MIXED": 20
+    },
+    "package_count": 200,
+    "packages_per_scenario": 2,
+    "partition": "CALIBRATION",
+    "scenario_count": 100
+  },
+  "design_id": "s136-answer-support-fresh-calibration-extension-v1",
+  "design_schema_version": "cx_answer_support_fresh_calibration_design.v1",
+  "package_semantics": {
+    "low_confidence_roles": [
+      "HARD_NON_ANSWER",
+      "RELATED_NON_ANSWER",
+      "CONTRADICTORY_NON_ANSWER",
+      "EASY_NON_ANSWER"
+    ],
+    "ready_roles": [
+      "PRIMARY_ANSWER",
+      "SUPPORTING_ANSWER",
+      "HARD_NON_ANSWER",
+      "EASY_NON_ANSWER"
+    ]
+  },
+  "safety": {
+    "existing_dataset_mutation_permitted": false,
+    "holdout_content_permitted": false,
+    "provider_execution_permitted": false,
+    "runtime_activation_permitted": false,
+    "threshold_selection_permitted": false
+  },
+  "source_binding": {
+    "canonical_profile_hash": "sha256:495bbc63c50affddd70e90c97fc27655c94c5eeabf890a5f13f5c2df5f90a31e",
+    "p_l_design_hash": "sha256:6547ab401826a8095882f693e40a1feb1e3a1efbc2c7daba0cbf84546491f197",
+    "p_l_freeze_hash": "sha256:922d647c7ec37eef18dfa2c0384edd8411c52b491af324b1e8db4aaaef08ed9a"
+  },
+  "status": "FROZEN_CALIBRATION_ONLY"
+}
