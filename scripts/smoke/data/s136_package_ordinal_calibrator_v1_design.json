@@ -1,0 +1,71 @@
+{
+  "design_schema_version": "cx_retrieval_package_ordinal_calibrator_design.v1",
+  "design_id": "s136-package-ordinal-calibrator-public-v1",
+  "policy_id": "cx_dependence_robust_package_ordinal_score_v1",
+  "status": "FROZEN_CALIBRATION_ONLY",
+  "source_audit": "GB2-CA00-S20Q-P-D",
+  "feature_fields": [
+    "expected_relevant_fraction",
+    "second_candidate_probability",
+    "top_two_probability_mean",
+    "probability_at_least_half_fraction"
+  ],
+  "profile_shortlist": [
+    {
+      "profile_id": "ordinal-expected-count-v1",
+      "evidence_source": "S20Q-P-D_EXPECTED_COUNT_DIAGNOSTIC",
+      "weights": {
+        "expected_relevant_fraction": 1.0,
+        "second_candidate_probability": 0.0,
+        "top_two_probability_mean": 0.0,
+        "probability_at_least_half_fraction": 0.0
+      }
+    },
+    {
+      "profile_id": "ordinal-top-two-support-v1",
+      "evidence_source": "S20Q-P-D_ORDER_STATISTIC_DIAGNOSTIC",
+      "weights": {
+        "expected_relevant_fraction": 0.0,
+        "second_candidate_probability": 0.5,
+        "top_two_probability_mean": 0.5,
+        "probability_at_least_half_fraction": 0.0
+      }
+    },
+    {
+      "profile_id": "ordinal-balanced-support-v1",
+      "evidence_source": "S20Q-P-E_FROZEN_EXPLAINABLE_SHORTLIST",
+      "weights": {
+        "expected_relevant_fraction": 0.4,
+        "second_candidate_probability": 0.2,
+        "top_two_probability_mean": 0.3,
+        "probability_at_least_half_fraction": 0.1
+      }
+    },
+    {
+      "profile_id": "ordinal-conservative-support-v1",
+      "evidence_source": "S20Q-P-E_FROZEN_EXPLAINABLE_SHORTLIST",
+      "weights": {
+        "expected_relevant_fraction": 0.25,
+        "second_candidate_probability": 0.4,
+        "top_two_probability_mean": 0.25,
+        "probability_at_least_half_fraction": 0.1
+      }
+    }
+  ],
+  "selection": {
+    "protocol": "DATASET_V4_NESTED_SCENARIO_GROUPED_SELECTION",
+    "profile_or_threshold_fit_from_holdout_permitted": false,
+    "profile_or_threshold_fit_from_outer_validation_permitted": false,
+    "candidate_probability_fit_scope": "EACH_INNER_TRAINING_FOLD"
+  },
+  "semantics": {
+    "output_kind": "ORDINAL_SCORE_NOT_PROBABILITY",
+    "conditional_independence_assumption": false,
+    "higher_is_more_package_support": true
+  },
+  "safety": {
+    "candidate_truth_runtime_input_permitted": false,
+    "holdout_access_permitted": false,
+    "runtime_activation_permitted": false
+  }
+}
