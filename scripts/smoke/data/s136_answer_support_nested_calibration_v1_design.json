@@ -1,0 +1,114 @@
+{
+  "admission": {
+    "maximum_false_ready_rate": 0.1,
+    "maximum_outer_threshold_spread": 0.2,
+    "minimum_outer_fold_balanced_accuracy": 0.5,
+    "minimum_package_auc": 0.8,
+    "minimum_profile_selection_fold_count": 4,
+    "minimum_ready_recall": 0.8,
+    "point_constraints_remain_authoritative": true
+  },
+  "design_id": "s136-answer-support-nested-package-calibration-v1",
+  "design_schema_version": "cx_answer_support_nested_calibration_design.v1",
+  "feature_transforms": {
+    "available_fields": [
+      "direct_or_support_fraction",
+      "second_answer_support_score",
+      "top_two_answer_support_mean",
+      "inverse_maximum_contradiction_score",
+      "inverse_mean_contradiction_score",
+      "normalized_support_contradiction_margin"
+    ],
+    "inverse_maximum_contradiction_score": "1 - maximum_contradiction_score",
+    "inverse_mean_contradiction_score": "1 - mean_contradiction_score",
+    "normalized_support_contradiction_margin": "(support_contradiction_margin + 1) / 2",
+    "source_fields": [
+      "direct_or_support_fraction",
+      "second_answer_support_score",
+      "top_two_answer_support_mean",
+      "maximum_contradiction_score",
+      "mean_contradiction_score",
+      "support_contradiction_margin"
+    ]
+  },
+  "profile_shortlist": [
+    {
+      "feature_fields": [
+        "second_answer_support_score"
+      ],
+      "profile_id": "answer-support-second-v1",
+      "weights": {
+        "second_answer_support_score": 1.0
+      }
+    },
+    {
+      "feature_fields": [
+        "second_answer_support_score",
+        "top_two_answer_support_mean"
+      ],
+      "profile_id": "answer-support-top-two-v1",
+      "weights": {
+        "second_answer_support_score": 0.5,
+        "top_two_answer_support_mean": 0.5
+      }
+    },
+    {
+      "feature_fields": [
+        "direct_or_support_fraction",
+        "second_answer_support_score",
+        "top_two_answer_support_mean"
+      ],
+      "profile_id": "answer-support-class-aware-v1",
+      "weights": {
+        "direct_or_support_fraction": 0.5,
+        "second_answer_support_score": 0.25,
+        "top_two_answer_support_mean": 0.25
+      }
+    },
+    {
+      "feature_fields": [
+        "direct_or_support_fraction",
+        "second_answer_support_score",
+        "top_two_answer_support_mean",
+        "inverse_maximum_contradiction_score",
+        "normalized_support_contradiction_margin"
+      ],
+      "profile_id": "answer-support-contradiction-aware-v1",
+      "weights": {
+        "direct_or_support_fraction": 0.3,
+        "inverse_maximum_contradiction_score": 0.1,
+        "normalized_support_contradiction_margin": 0.15,
+        "second_answer_support_score": 0.25,
+        "top_two_answer_support_mean": 0.2
+      }
+    }
+  ],
+  "safety": {
+    "candidate_truth_runtime_input_permitted": false,
+    "holdout_access_permitted": false,
+    "outer_validation_reselection_permitted": false,
+    "runtime_activation_permitted": false,
+    "threshold_relaxation_permitted": false
+  },
+  "selection_protocol": {
+    "group_key": "scenario_id",
+    "inner_fold_count": 4,
+    "mode": "NESTED_STRATIFIED_GROUP_CV_WITH_PREFROZEN_ANSWER_SUPPORT_SHORTLIST",
+    "outer_fold_count": 5,
+    "selection_objective": "CONSTRAINT_FIRST_BALANCED_ACCURACY",
+    "selection_tie_break": [
+      "HIGHER_BALANCED_ACCURACY",
+      "HIGHER_READY_RECALL",
+      "LOWER_FALSE_READY_RATE",
+      "HIGHER_PACKAGE_AUC",
+      "PROFILE_SHORTLIST_ORDER"
+    ]
+  },
+  "source_contract": {
+    "collection_policy_id": "cx_answer_support_calibration_collection_v1",
+    "collection_schema_version": "cx_answer_support_calibration_collection.v1",
+    "feature_schema_version": "cx_answer_support_package_features.v1",
+    "signal_policy_id": "cx_provider_neutral_answer_support_signal_v1"
+  },
+  "status": "FROZEN_CALIBRATION_ONLY"
+}
