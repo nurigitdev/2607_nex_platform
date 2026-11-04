@@ -1,0 +1,70 @@
+{
+  "admission": {
+    "maximum_false_ready_rate": 0.1,
+    "maximum_outer_threshold_spread": 0.2,
+    "minimum_outer_fold_balanced_accuracy": 0.5,
+    "minimum_package_auc": 0.8,
+    "minimum_ready_recall": 0.8,
+    "outer_fold_count": 5,
+    "point_constraints_remain_authoritative": true
+  },
+  "canonical_profile": {
+    "feature_fields": [
+      "direct_or_support_fraction",
+      "second_answer_support_score",
+      "top_two_answer_support_mean",
+      "inverse_maximum_contradiction_score",
+      "normalized_support_contradiction_margin"
+    ],
+    "lineage_profile_id": "answer-support-contradiction-aware-v1",
+    "missing_feature_behavior": "FAIL_CLOSED_NOT_READY",
+    "profile_id": "answer-support-contradiction-aware-v2",
+    "threshold": null,
+    "weights": {
+      "direct_or_support_fraction": 0.3,
+      "inverse_maximum_contradiction_score": 0.1,
+      "normalized_support_contradiction_margin": 0.15,
+      "second_answer_support_score": 0.25,
+      "top_two_answer_support_mean": 0.2
+    }
+  },
+  "design_id": "s136-answer-support-canonical-package-ready-v2",
+  "design_schema_version": "cx_answer_support_canonical_profile_design.v1",
+  "evidence_plan": {
+    "existing_evidence_role": "DIAGNOSTIC_ONLY_NOT_THRESHOLD_ADMISSIBLE",
+    "fresh_calibration_package_count": 200,
+    "fresh_calibration_scenario_count": 100,
+    "profile_selection_mode": "SINGLE_CANONICAL_PROFILE_THRESHOLD_ONLY"
+  },
+  "feature_transforms": {
+    "inverse_maximum_contradiction_score": "1 - maximum_contradiction_score",
+    "normalized_support_contradiction_margin": "(support_contradiction_margin + 1) / 2"
+  },
+  "policy_id": "cx_answer_support_contradiction_aware_ready_v2",
+  "ready_semantics": {
+    "decision_unit": "RETRIEVAL_PACKAGE",
+    "meaning": "ANSWER_SUPPORT_SUFFICIENT_AND_CONTRADICTION_BOUNDED",
+    "required_signals": [
+      "DIRECT_OR_SUPPORT_COVERAGE",
+      "SECOND_CANDIDATE_SUPPORT_STRENGTH",
+      "TOP_TWO_SUPPORT_STRENGTH",
+      "MAXIMUM_CONTRADICTION_BOUND",
+      "POSITIVE_SUPPORT_CONTRADICTION_MARGIN"
+    ],
+    "score_semantics": "WEIGHTED_BOUNDED_ORDINAL_NOT_CALIBRATED_PROBABILITY"
+  },
+  "safety": {
+    "equivalence_family_authorized": false,
+    "existing_evidence_threshold_fit_permitted": false,
+    "holdout_access_permitted": false,
+    "profile_search_permitted": false,
+    "runtime_activation_permitted": false,
+    "threshold_selection_permitted": false
+  },
+  "source_binding": {
+    "p_k_audit_hash": "sha256:3f1df25d117b26e7a3d133d56960ccd04118f3a5ff5e881e262072893b0fcaa8",
+    "p_k_decision": "DISTINCT_PROFILES_FRESH_DESIGN_REQUIRED",
+    "p_k_source_selection_hash": "sha256:3dad4bc80aad642d7628fe27ec5f06db4016143cfa66d1344f4b1c8332c4cc57"
+  },
+  "status": "FROZEN_PRE_EVIDENCE"
+}
