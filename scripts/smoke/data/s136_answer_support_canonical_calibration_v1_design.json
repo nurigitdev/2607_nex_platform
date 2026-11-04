@@ -1,0 +1,40 @@
+{
+  "admission": {
+    "maximum_false_ready_rate": 0.1,
+    "maximum_outer_threshold_spread": 0.2,
+    "minimum_outer_fold_balanced_accuracy": 0.5,
+    "minimum_package_auc": 0.8,
+    "minimum_ready_recall": 0.8,
+    "outer_fold_count": 5,
+    "point_constraints_remain_authoritative": true
+  },
+  "design_id": "s136-answer-support-canonical-calibration-v1",
+  "design_schema_version": "cx_answer_support_canonical_calibration_design.v1",
+  "protocol": {
+    "final_refit_scope": "ALL_FRESH_CALIBRATION_PACKAGES",
+    "fold_assignment": "DOMAIN_LANGUAGE_STRATIFIED_ROUND_ROBIN_V1",
+    "group_key": "scenario_id",
+    "mode": "SINGLE_CANONICAL_PROFILE_THRESHOLD_ONLY",
+    "outer_fold_count": 5,
+    "outer_training_scope": "FRESH_CALIBRATION_OUTER_TRAINING_ONLY",
+    "outer_validation_reselection_permitted": false,
+    "profile_search_permitted": false
+  },
+  "safety": {
+    "candidate_truth_runtime_input_permitted": false,
+    "holdout_access_permitted": false,
+    "profile_search_permitted": false,
+    "runtime_activation_permitted": false,
+    "threshold_relaxation_permitted": false
+  },
+  "source_binding": {
+    "artifact_evidence_hash": "sha256:50135139c4271768dde60328dd46ddceab663b8e66928746e21affe82ff7955e",
+    "artifact_revision": "hf:c202236235762e1c871ad0ccb60c8ee5ba337b9a",
+    "canonical_profile_hash": "sha256:495bbc63c50affddd70e90c97fc27655c94c5eeabf890a5f13f5c2df5f90a31e",
+    "p_l_design_hash": "sha256:6547ab401826a8095882f693e40a1feb1e3a1efbc2c7daba0cbf84546491f197",
+    "p_l_freeze_hash": "sha256:922d647c7ec37eef18dfa2c0384edd8411c52b491af324b1e8db4aaaef08ed9a",
+    "p_m_dataset_hash": "sha256:dab6ef0d8ba09ea8b22fdd0f7a1f8bd937748c80e2a3f170c0caabfcbf44148b",
+    "p_n_collection_hash": "sha256:9ed7ed8c3a699d48c7090223749d60fe40574bae6e2520822cd0fc9d52749d4b"
+  },
+  "status": "FROZEN_SINGLE_PROFILE_CALIBRATION_ONLY"
+}
