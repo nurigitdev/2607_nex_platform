@@ -1,0 +1,50 @@
+{
+  "candidate_count": {
+    "maximum": 20,
+    "minimum": 1
+  },
+  "classes": [
+    "DIRECT_ANSWER",
+    "SUPPORTING_EVIDENCE",
+    "TOPICAL_NON_ANSWER",
+    "CONTRADICTORY_EVIDENCE",
+    "INSUFFICIENT_CONTEXT"
+  ],
+  "design_id": "s136-answer-support-signal-public-v1",
+  "design_schema_version": "cx_answer_support_signal_design.v1",
+  "package_feature_fields": [
+    "direct_or_support_fraction",
+    "second_answer_support_score",
+    "top_two_answer_support_mean",
+    "maximum_contradiction_score",
+    "mean_contradiction_score",
+    "support_contradiction_margin"
+  ],
+  "policy_id": "cx_provider_neutral_answer_support_signal_v1",
+  "provider_binding_fields": [
+    "provider_alias",
+    "provider_type",
+    "model_revision",
+    "deployment_id",
+    "request_profile_id",
+    "score_semantics_id"
+  ],
+  "raw_text_transport": "EPHEMERAL_PRIVATE_NOT_PERSISTED",
+  "safety": {
+    "candidate_truth_runtime_input_permitted": false,
+    "holdout_access_permitted": false,
+    "ownership_signals_as_features_permitted": false,
+    "permission_signals_as_features_permitted": false,
+    "profile_selection_permitted": false,
+    "provider_selection_permitted": false,
+    "runtime_activation_permitted": false,
+    "threshold_selection_permitted": false
+  },
+  "score_fields": [
+    "answer_support_score",
+    "contradiction_score"
+  ],
+  "score_semantics": "BOUNDED_ORDINAL_NOT_CALIBRATED_PROBABILITY",
+  "source_audit": "GB2-CA00-S20Q-P-G",
+  "status": "FROZEN_CONTRACT_ONLY"
+}
