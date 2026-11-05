@@ -1,0 +1,307 @@
+{
+  "case_schema_version": "cx_answer_support_shadow_canary_cases.v1",
+  "case_set_id": "s136-extended-shadow-public-synthetic-v1",
+  "status": "FROZEN_PUBLIC_SYNTHETIC",
+  "cases": [
+    {
+      "case_id": "approval-boundary-ready",
+      "primary_status": "READY",
+      "purpose": "grounded_answer",
+      "query": "shadow 결과를 실제 정책으로 전환하기 전에 필요한 승인 경계는 무엇인가?",
+      "candidates": [
+        "shadow 결과는 별도 운영자 결정과 정확한 evidence binding을 거쳐야 실제 정책 전환 후보가 된다.",
+        "shadow 성공만으로 runtime activation이나 production cutover가 승인되지는 않는다."
+      ]
+    },
+    {
+      "case_id": "approval-identity-low-confidence",
+      "primary_status": "LOW_CONFIDENCE",
+      "purpose": "grounded_answer",
+      "query": "이번 전환을 최종 승인한 운영자의 실명은 무엇인가?",
+      "candidates": [
+        "운영 승인에는 operator identity가 필요하지만 공개 synthetic 자료에는 특정 개인의 실명이 없다.",
+        "승인 주체의 상세 인적 정보는 운영 증적에 평문으로 노출하지 않는다."
+      ]
+    },
+    {
+      "case_id": "latency-timeout-ready",
+      "primary_status": "READY",
+      "purpose": "grounded_answer",
+      "query": "provider timeout과 latency SLO를 왜 구분해야 하는가?",
+      "candidates": [
+        "timeout은 요청을 강제로 종료하는 상한이고 latency SLO는 정상 요청의 목표 응답시간이므로 의미가 다르다.",
+        "timeout 이내에 끝났다는 사실만으로 사용자 latency 목표를 만족한 것은 아니다."
+      ]
+    },
+    {
+      "case_id": "latency-exact-target-low-confidence",
+      "primary_status": "LOW_CONFIDENCE",
+      "purpose": "grounded_answer",
+      "query": "모든 모델과 모든 업무에 공통인 latency SLO는 정확히 몇 초인가?",
+      "candidates": [
+        "latency 목표는 interactive path와 background completion을 분리해 capability별로 고정한다.",
+        "자료는 모든 모델과 업무에 공통인 단일 latency 값을 정의하지 않는다."
+      ]
+    },
+    {
+      "case_id": "async-isolation-ready",
+      "primary_status": "READY",
+      "purpose": "grounded_answer",
+      "query": "느린 shadow provider가 primary retrieval 응답에 영향을 주지 않게 하려면 어떻게 해야 하는가?",
+      "candidates": [
+        "shadow provider 호출을 primary 응답 경로와 비동기적으로 격리하고 실패 시 현재 정책을 그대로 반환해야 한다.",
+        "shadow 작업의 queue와 worker 상태는 별도 운영 지표로 관측해야 한다."
+      ]
+    },
+    {
+      "case_id": "async-implementation-low-confidence",
+      "primary_status": "LOW_CONFIDENCE",
+      "purpose": "grounded_answer",
+      "query": "현재 설치된 shadow worker의 정확한 queue 이름은 무엇인가?",
+      "candidates": [
+        "현재 경계는 비동기 격리가 필요하다는 원칙만 고정하며 설치된 worker queue 이름은 제시하지 않는다.",
+        "구체적인 비동기 runtime 구성은 후속 경계에서 결정해야 한다."
+      ]
+    },
+    {
+      "case_id": "sample-size-ready",
+      "primary_status": "READY",
+      "purpose": "document_generation",
+      "query": "확장 shadow 관측에서 최소 표본을 두는 이유를 요약해줘.",
+      "candidates": [
+        "소수 표본의 우연한 성공과 latency 변동을 전환 근거로 오인하지 않기 위해 최소 관측 수를 둔다.",
+        "표본 수 충족은 운영 screening 조건이며 통계적 production 보증 자체는 아니다."
+      ]
+    },
+    {
+      "case_id": "sample-production-proof-low-confidence",
+      "primary_status": "LOW_CONFIDENCE",
+      "purpose": "grounded_answer",
+      "query": "30건을 통과하면 production 품질이 영구적으로 보장되는가?",
+      "candidates": [
+        "30건은 초기 운영 screening 표본이며 장기 품질이나 모든 입력 분포를 영구 보장하지 않는다.",
+        "production 전환 이후에도 drift와 latency를 계속 관측해야 한다."
+      ]
+    },
+    {
+      "case_id": "binding-drift-ready",
+      "primary_status": "READY",
+      "purpose": "grounded_answer",
+      "query": "확장 관측 중 model revision이나 deployment가 달라지면 어떻게 처리하는가?",
+      "candidates": [
+        "고정된 model revision, deployment, request profile과 다르면 관측을 즉시 중단하고 증적을 거부한다.",
+        "서로 다른 provider binding의 측정값을 하나의 latency 분포로 합치지 않는다."
+      ]
+    },
+    {
+      "case_id": "binding-future-model-low-confidence",
+      "primary_status": "LOW_CONFIDENCE",
+      "purpose": "grounded_answer",
+      "query": "다음 분기에 교체될 generation 모델의 immutable revision은 무엇인가?",
+      "candidates": [
+        "현재 관측은 현재 admitted revision에만 결합되며 미래 모델 revision은 정해져 있지 않다.",
+        "모델 변경 시 새 readiness와 calibration을 수행해야 한다."
+      ]
+    },
+    {
+      "case_id": "fallback-ready",
+      "primary_status": "READY",
+      "purpose": "grounded_answer",
+      "query": "shadow 평가가 실패할 때 사용자에게 적용되는 정책은 무엇인가?",
+      "candidates": [
+        "shadow 실패는 격리하고 현재 활성 retrieval confidence 정책을 fallback으로 유지한다.",
+        "실패한 shadow 판단은 사용자 응답이나 primary package를 변경하지 않는다."
+      ]
+    },
+    {
+      "case_id": "fallback-version-low-confidence",
+      "primary_status": "LOW_CONFIDENCE",
+      "purpose": "grounded_answer",
+      "query": "현재 fallback 정책의 다음 배포 버전 번호는 무엇인가?",
+      "candidates": [
+        "현재 활성 정책을 fallback으로 유지한다는 원칙은 정의되어 있지만 다음 배포 버전 번호는 없다.",
+        "버전 변경은 별도 release evidence에 결합해야 한다."
+      ]
+    },
+    {
+      "case_id": "privacy-ready",
+      "primary_status": "READY",
+      "purpose": "document_generation",
+      "query": "shadow 관측 증적에 남길 수 있는 정보와 남기면 안 되는 정보를 구분해줘.",
+      "candidates": [
+        "latency, token usage, 상태, binding hash 같은 비식별 metadata는 저장할 수 있다.",
+        "원문 query, candidate text, API key와 provider response 원문은 증적에 저장하지 않는다."
+      ]
+    },
+    {
+      "case_id": "privacy-secret-low-confidence",
+      "primary_status": "LOW_CONFIDENCE",
+      "purpose": "grounded_answer",
+      "query": "현재 generation provider의 API key 값을 알려줘.",
+      "candidates": [
+        "API key는 보호 정보이며 관측 결과나 사용자 응답에 노출하지 않는다.",
+        "설정 여부만 안전한 metadata로 표시할 수 있다."
+      ]
+    },
+    {
+      "case_id": "disagreement-ready",
+      "primary_status": "READY",
+      "purpose": "grounded_answer",
+      "query": "primary와 shadow 판단이 다르면 현재 단계에서 어떻게 사용하는가?",
+      "candidates": [
+        "disagreement는 관측 지표로 기록하고 원인을 검토하지만 primary 결정을 자동 변경하지 않는다.",
+        "소수 disagreement만으로 threshold를 다시 선택하거나 HOLDOUT을 재실행하지 않는다."
+      ]
+    },
+    {
+      "case_id": "disagreement-limit-low-confidence",
+      "primary_status": "LOW_CONFIDENCE",
+      "purpose": "grounded_answer",
+      "query": "모든 업무에 허용되는 disagreement 비율은 정확히 몇 퍼센트인가?",
+      "candidates": [
+        "disagreement 허용 기준은 업무 위험과 표본 분포를 검토해 별도로 정해야 한다.",
+        "현재 자료에는 모든 업무에 공통인 단일 비율이 없다."
+      ]
+    },
+    {
+      "case_id": "holdout-ready",
+      "primary_status": "READY",
+      "purpose": "grounded_answer",
+      "query": "운영 shadow 관측 때문에 기존 one-shot HOLDOUT을 다시 열어도 되는가?",
+      "candidates": [
+        "운영 관측은 이미 종료된 one-shot HOLDOUT을 다시 열지 않고 별도 public synthetic 표본을 사용한다.",
+        "HOLDOUT 재실행 없이 runtime 운영 증적을 추가해야 한다."
+      ]
+    },
+    {
+      "case_id": "holdout-content-low-confidence",
+      "primary_status": "LOW_CONFIDENCE",
+      "purpose": "grounded_answer",
+      "query": "비공개 HOLDOUT의 첫 번째 원문 query를 알려줘.",
+      "candidates": [
+        "HOLDOUT 원문은 runtime 관측과 운영 증적에서 접근하거나 노출하지 않는다.",
+        "운영 관측은 별도 공개 synthetic case만 사용한다."
+      ]
+    },
+    {
+      "case_id": "telemetry-ready",
+      "primary_status": "READY",
+      "purpose": "document_generation",
+      "query": "latency telemetry가 완전한지 검증하는 기준을 정리해줘.",
+      "candidates": [
+        "provider call마다 유효한 non-negative latency sample이 정확히 하나 있어야 한다.",
+        "provider call 수와 latency sample 수가 다르면 해당 receipt를 전환 판단에 사용할 수 없다."
+      ]
+    },
+    {
+      "case_id": "telemetry-zero-low-confidence",
+      "primary_status": "LOW_CONFIDENCE",
+      "purpose": "grounded_answer",
+      "query": "latency sample이 하나도 없는데 p95가 0이면 매우 빠른 실행으로 인정해도 되는가?",
+      "candidates": [
+        "sample이 없는 0ms 값은 빠른 실행이 아니라 telemetry 결함으로 처리해야 한다.",
+        "완전한 sample count 없이 계산된 p95는 cutover 증적으로 인정하지 않는다."
+      ]
+    },
+    {
+      "case_id": "error-budget-ready",
+      "primary_status": "READY",
+      "purpose": "grounded_answer",
+      "query": "제한된 확장 shadow 관측에서 provider failure가 발생하면 어떻게 하는가?",
+      "candidates": [
+        "현재 제한 관측은 provider failure 허용치를 0으로 두고 첫 실패에서 fallback을 보존한다.",
+        "실패 원인을 숨기기 위해 성공 표본만 골라 다시 계산해서는 안 된다."
+      ]
+    },
+    {
+      "case_id": "error-retry-count-low-confidence",
+      "primary_status": "LOW_CONFIDENCE",
+      "purpose": "grounded_answer",
+      "query": "모든 provider 오류에서 재시도 횟수는 반드시 몇 회인가?",
+      "candidates": [
+        "재시도 정책은 오류 분류와 capability별 정책에 따라 다르다.",
+        "제한 관측은 측정 왜곡을 피하기 위해 별도 고정 실행 정책을 사용할 수 있다."
+      ]
+    },
+    {
+      "case_id": "token-budget-ready",
+      "primary_status": "READY",
+      "purpose": "grounded_answer",
+      "query": "확장 shadow 실행에 token budget을 두는 이유는 무엇인가?",
+      "candidates": [
+        "예상하지 못한 장문 출력과 capacity 소비를 제한하고 bounded execution을 보장하기 위해 token budget을 둔다.",
+        "budget 초과 시 관측을 중단하고 현재 활성 정책을 유지한다."
+      ]
+    },
+    {
+      "case_id": "token-price-low-confidence",
+      "primary_status": "LOW_CONFIDENCE",
+      "purpose": "grounded_answer",
+      "query": "현재 synthetic case 한 건의 정확한 원화 token 비용은 얼마인가?",
+      "candidates": [
+        "token usage는 계측하지만 공개 자료에는 원화 단가나 과금 계약이 없다.",
+        "비용 평가는 provider 계약과 실제 usage를 별도로 결합해야 한다."
+      ]
+    },
+    {
+      "case_id": "slo-source-ready",
+      "primary_status": "READY",
+      "purpose": "document_generation",
+      "query": "answer-support latency 목표를 어떤 기존 운영 기준과 연결해야 하는지 정리해줘.",
+      "candidates": [
+        "interactive E2E 목표와 background provider completion 목표를 분리해 각각의 canonical 운영 기준에 연결한다.",
+        "shadow stop budget과 provider timeout을 production SLO로 오인하지 않는다."
+      ]
+    },
+    {
+      "case_id": "slo-timeout-equivalence-low-confidence",
+      "primary_status": "LOW_CONFIDENCE",
+      "purpose": "grounded_answer",
+      "query": "요청이 60초 timeout 전에 끝나면 interactive SLO를 통과한 것인가?",
+      "candidates": [
+        "60초 전에 끝났다는 사실은 timeout을 피했다는 뜻일 뿐 interactive SLO 통과를 의미하지 않는다.",
+        "interactive p95는 별도 사용자 경로 budget으로 평가해야 한다."
+      ]
+    },
+    {
+      "case_id": "rollback-ready",
+      "primary_status": "READY",
+      "purpose": "grounded_answer",
+      "query": "후보 정책 전환 전 rollback 경계를 어떻게 유지해야 하는가?",
+      "candidates": [
+        "현재 활성 retrieval confidence 정책을 명시적인 rollback target으로 유지해야 한다.",
+        "candidate activation 실패나 drift 발생 시 사용자 경로는 기존 정책으로 남아야 한다."
+      ]
+    },
+    {
+      "case_id": "rollback-duration-low-confidence",
+      "primary_status": "LOW_CONFIDENCE",
+      "purpose": "grounded_answer",
+      "query": "rollback 완료에 정확히 몇 밀리초가 걸린다고 보장되는가?",
+      "candidates": [
+        "rollback target은 정의되어 있지만 실제 완료 시간은 배포 환경에서 별도 측정해야 한다.",
+        "현재 자료에는 정확한 rollback 밀리초 보장이 없다."
+      ]
+    },
+    {
+      "case_id": "operator-review-ready",
+      "primary_status": "READY",
+      "purpose": "grounded_answer",
+      "query": "확장 관측이 끝난 후 운영자가 검토해야 할 핵심 지표는 무엇인가?",
+      "candidates": [
+        "표본 수, failure rate, p95와 최대 latency, token usage, disagreement, provider binding을 함께 검토한다.",
+        "단일 PASS 표지만 보고 production cutover를 승인하지 않는다."
+      ]
+    },
+    {
+      "case_id": "operator-auto-approval-low-confidence",
+      "primary_status": "LOW_CONFIDENCE",
+      "purpose": "grounded_answer",
+      "query": "모든 체크가 PASS면 운영자 서명 없이 자동 cutover해도 되는가?",
+      "candidates": [
+        "자동 cutover는 금지되며 exact evidence에 결합된 별도 운영자 결정이 필요하다.",
+        "PASS 결과는 검토 입력이지 운영 승인 자체가 아니다."
+      ]
+    }
+  ]
+}
