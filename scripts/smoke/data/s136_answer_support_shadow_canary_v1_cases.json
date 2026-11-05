@@ -1,0 +1,67 @@
+{
+  "case_schema_version": "cx_answer_support_shadow_canary_cases.v1",
+  "case_set_id": "s136-shadow-canary-public-synthetic-v1",
+  "status": "FROZEN_PUBLIC_SYNTHETIC",
+  "cases": [
+    {
+      "case_id": "approval-principle-ready",
+      "primary_status": "READY",
+      "purpose": "grounded_answer",
+      "query": "제한된 canary 실행 후 운영 전환에 필요한 원칙은 무엇인가?",
+      "candidates": [
+        "새 정책은 제한된 canary에서 관측한 뒤 별도 운영자 승인을 받아야 기본 정책으로 전환할 수 있다.",
+        "canary 실패 시 현재 활성 정책을 fallback으로 유지한다."
+      ]
+    },
+    {
+      "case_id": "fixed-percentage-low-confidence",
+      "primary_status": "LOW_CONFIDENCE",
+      "purpose": "grounded_answer",
+      "query": "모든 모델에 공통으로 적용되는 canary 트래픽 비율은 정확히 몇 퍼센트인가?",
+      "candidates": [
+        "canary 예산은 모델과 운영 환경의 위험에 맞추어 별도로 고정한다.",
+        "현재 자료에는 모든 모델에 공통인 단일 비율이 정의되어 있지 않다."
+      ]
+    },
+    {
+      "case_id": "binding-drift-ready",
+      "primary_status": "READY",
+      "purpose": "grounded_answer",
+      "query": "provider binding이 달라지면 shadow canary는 어떻게 처리해야 하는가?",
+      "candidates": [
+        "model revision, deployment, request profile 중 하나라도 달라지면 canary 호출을 즉시 중지한다.",
+        "binding drift는 사용자 요청의 기존 결과를 변경하지 않는다."
+      ]
+    },
+    {
+      "case_id": "private-text-ready",
+      "primary_status": "READY",
+      "purpose": "document_generation",
+      "query": "shadow 관측 증적에 저장하면 안 되는 정보는 무엇인가?",
+      "candidates": [
+        "원문 query, candidate text, API key, provider response 원문은 운영 증적에 저장하지 않는다.",
+        "증적에는 latency, usage, decision, binding hash와 같은 비식별 메타데이터만 기록한다."
+      ]
+    },
+    {
+      "case_id": "fallback-ready",
+      "primary_status": "READY",
+      "purpose": "grounded_answer",
+      "query": "shadow evaluator 장애가 발생할 때 사용자 결과는 어떻게 되는가?",
+      "candidates": [
+        "shadow 실패는 격리하며 현재 활성 retrieval confidence 정책의 결과를 그대로 반환한다.",
+        "telemetry 기록 실패도 primary retrieval 결과를 중단시키지 않는다."
+      ]
+    },
+    {
+      "case_id": "cutover-low-confidence",
+      "primary_status": "LOW_CONFIDENCE",
+      "purpose": "grounded_answer",
+      "query": "이번 shadow canary가 성공하면 즉시 production cutover가 자동 승인되는가?",
+      "candidates": [
+        "shadow canary 성공은 운영 검토 자료일 뿐 runtime activation이나 production cutover를 자동 승인하지 않는다.",
+        "사용자 노출 전환에는 별도의 명시적 운영자 승인이 필요하다."
+      ]
+    }
+  ]
+}

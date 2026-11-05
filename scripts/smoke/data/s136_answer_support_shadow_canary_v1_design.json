@@ -1,0 +1,36 @@
+{
+  "design_schema_version": "cx_answer_support_shadow_canary_design.v1",
+  "design_id": "s136-answer-support-shadow-canary-v1",
+  "status": "FROZEN_LIMITED_LIVE_CANARY",
+  "source_binding": {
+    "shadow_runtime_design_hash": "sha256:dbcb4bb42a3c4517774c11d56dcac3eae5fb98f558112411495ed7050361d0b3",
+    "readiness_manifest_hash": "sha256:77fb8be58e0c06cc91e9397a2f7d0d32787de1e9b7d844dc45942035e635bf8b",
+    "runtime_profile_hash": "sha256:ffaa4cac784d4b2e22a37e6f590655f7908cfeca518cc5cf65d32149e075daa6",
+    "request_profile_hash": "sha256:220bdc921d545a4d24a0db9a2dc4e99cefb23c73418f9f790063c665cb2126da",
+    "signal_design_hash": "sha256:ff37680fed7d1964c0d674fbcca7796fe6954f6dbe4970bc84f80e1d7761ea10"
+  },
+  "execution_boundary": {
+    "operator_approval_required_before_provider_call": true,
+    "approval_scope": "SHADOW_CANARY_EXECUTION_ONLY",
+    "one_shot_receipt_required": true,
+    "public_synthetic_cases_only": true,
+    "holdout_access_permitted": false,
+    "maximum_concurrency": 1,
+    "fallback_policy": "CURRENT_ACTIVE_RETRIEVAL_CONFIDENCE_POLICY"
+  },
+  "stop_conditions": {
+    "provider_binding_drift": "IMMEDIATE",
+    "permission_or_contract_drift": "IMMEDIATE",
+    "provider_failure_budget_exceeded": "IMMEDIATE",
+    "latency_budget_exceeded": "HALT",
+    "token_budget_exceeded": "HALT",
+    "disagreement": "OBSERVE_ONLY"
+  },
+  "safety": {
+    "raw_query_or_candidate_persistence_permitted": false,
+    "shadow_decision_user_visible": false,
+    "runtime_activation_permitted": false,
+    "production_cutover_permitted": false,
+    "post_canary_operator_review_required": true
+  }
+}
