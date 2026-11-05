@@ -1,0 +1,42 @@
+{
+  "decision_policy": {
+    "automatic_cutover_permitted": false,
+    "complete_latency_samples_required": true,
+    "disagreement_policy_status": "EXTENDED_OBSERVATION_REQUIRED",
+    "maximum_provider_failures": 0,
+    "minimum_completed_shadow_samples": 30,
+    "production_p95_latency_ms": null,
+    "production_p95_slo_status": "NOT_FROZEN"
+  },
+  "design_id": "cx-answer-support-runtime-cutover-decision-v1",
+  "design_schema_version": "cx_answer_support_runtime_cutover_decision_design.v1",
+  "invalid_evidence_policy": {
+    "exact_receipt_binding_required": true,
+    "latency_sample_count_required": true,
+    "latency_samples_complete_check_required": true,
+    "zero_latency_without_samples_rejected": true
+  },
+  "rollout_boundary": {
+    "candidate_mode": "SHADOW_ONLY",
+    "current_runtime_policy": "CURRENT_ACTIVE_RETRIEVAL_CONFIDENCE_POLICY",
+    "fallback_policy_preserved": true,
+    "next_boundary": "EXTENDED_SHADOW_OBSERVATION_AND_LATENCY_SLO_FREEZE",
+    "operator_decision_required": true
+  },
+  "safety": {
+    "database_call_permitted": false,
+    "holdout_reexecution_permitted": false,
+    "production_cutover_permitted": false,
+    "provider_call_permitted": false,
+    "runtime_activation_permitted": false
+  },
+  "source_binding": {
+    "provider_binding_hash": "sha256:e16f1c5a52d8a423383a82b6afab80561a4de376b574f3a1b91b9d139dde3012",
+    "readiness_manifest_hash": "sha256:77fb8be58e0c06cc91e9397a2f7d0d32787de1e9b7d844dc45942035e635bf8b",
+    "runtime_profile_hash": "sha256:ffaa4cac784d4b2e22a37e6f590655f7908cfeca518cc5cf65d32149e075daa6",
+    "shadow_canary_policy_hash": "sha256:d7e567f9b762d626fb4705c3623aad82b2e35c9394229d5ebb1a52c486b43305",
+    "shadow_canary_receipt_document_hash": "sha256:9e3bbd2bb2d82bf51fc594d6227dd7b77efb4a71ebabf8660474b5025ce48535",
+    "shadow_canary_receipt_hash": "sha256:14dd0a0d052e58cb8fc6644d5e3db2200bd1febab7969bffa36c7633c4a8f180"
+  },
+  "status": "FROZEN_OPERATOR_DECISION"
+}
