@@ -12,7 +12,10 @@ from nex_cx.hybrid_candidate_orchestration import (
     orchestrate_permission_filtered_candidates,
 )
 from nex_cx.hybrid_ranking import PermissionAwareRerankClient
-from nex_cx.hybrid_retrieval_package import PermissionFilteredHybridPackageRuntime
+from nex_cx.hybrid_retrieval_package import (
+    HybridRetrievalShadowObserver,
+    PermissionFilteredHybridPackageRuntime,
+)
 from nex_cx.private_content import sha256_private_vector
 from nex_cx.retrieval_permissions import filter_retrieval_document_scope
 from nex_cx.vector_index_repository import VectorIndexRepository
@@ -146,6 +149,7 @@ def build_permission_hardened_hybrid_runtime(
     reranker_alias: str = "mock-reranker-default",
     confidence_profiles: Sequence[Mapping[str, Any]] = (),
     require_calibrated_confidence: bool = False,
+    shadow_observer: HybridRetrievalShadowObserver | None = None,
 ) -> PermissionFilteredHybridPackageRuntime:
     return PermissionFilteredHybridPackageRuntime(
         candidate_provider=ProductionHybridCandidateProvider(
@@ -161,6 +165,7 @@ def build_permission_hardened_hybrid_runtime(
         reranker_alias=reranker_alias,
         confidence_profiles=tuple(confidence_profiles),
         require_calibrated_confidence=require_calibrated_confidence,
+        shadow_observer=shadow_observer,
     )
 
 

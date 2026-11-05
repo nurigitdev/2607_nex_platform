@@ -220,6 +220,35 @@ def test_runtime_builds_owner_scoped_persistence_compatible_package() -> None:
     assert preview["header"]["permission_snapshot_hash"]
 
 
+def test_shadow_observer_cannot_mutate_or_interrupt_primary_package() -> None:
+    class RecordingObserver:
+        def __init__(self, error: Exception | None = None) -> None:
+            self.error = error
+            self.calls: list[dict[str, Any]] = []
+
+        def observe(self, **kwargs: Any) -> dict[str, str]:
+            self.calls.append(kwargs)
+            if self.error is not None:
+                raise self.error
+            kwargs["primary_package"]["shadow_injected"] = True
+            return {"status": "OBSERVED"}
+
+    baseline = _runtime().build_package(_payload(), access_context=_context())
+    observer = RecordingObserver()
+    observed = _runtime(shadow_observer=observer).build_package(
+        _payload(), access_context=_context()
+    )
+
+    assert observer.calls[0]["query_text"] == QUERY
+    assert observer.calls[0]["evidence_items"] == observed["evidence_items"]
+    assert observer.calls[0]["primary_package"]["shadow_injected"] is True
+    assert "shadow_injected" not in observed
+    assert observed == baseline
+
+    failing = _runtime(shadow_observer=RecordingObserver(RuntimeError("shadow")))
+    assert failing.build_package(_payload(), access_context=_context()) == baseline
+
+
 def test_runtime_preserves_fail_closed_permission_denial() -> None:
     class DeniedCandidateProvider:
         def build_candidate_set(self, **_kwargs):
@@ -743,6 +772,7 @@ def _runtime(
     materializer: FakeMaterializer | None = None,
     reranker: FakeReranker | None | object = ...,
     policy: HybridRankingPolicy = HybridRankingPolicy(),
+    shadow_observer=None,
 ) -> PermissionFilteredHybridPackageRuntime:
     actual_reranker = FakeReranker() if reranker is ... else reranker
     return PermissionFilteredHybridPackageRuntime(
@@ -751,6 +781,7 @@ def _runtime(
         rerank_client=actual_reranker,  # type: ignore[arg-type]
         ranking_policy=policy,
         now_factory=lambda: "2026-09-22T08:00:00+00:00",
+        shadow_observer=shadow_observer,
     )
 
 

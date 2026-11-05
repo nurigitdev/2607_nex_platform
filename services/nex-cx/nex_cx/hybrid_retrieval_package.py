@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
+from copy import deepcopy
 from dataclasses import dataclass
 from datetime import UTC, datetime
 import hashlib
@@ -78,6 +79,17 @@ class HybridRetrievalPackageRuntime(Protocol):
     ) -> dict[str, Any]: ...
 
 
+class HybridRetrievalShadowObserver(Protocol):
+    def observe(
+        self,
+        *,
+        query_text: str,
+        evidence_items: Sequence[Mapping[str, Any]],
+        primary_package: Mapping[str, Any],
+        access_context: CxAccessContext,
+    ) -> Mapping[str, Any]: ...
+
+
 class HybridRetrievalPackageError(RuntimeError):
     def __init__(
         self,
@@ -104,6 +116,7 @@ class PermissionFilteredHybridPackageRuntime:
     confidence_profiles: tuple[Mapping[str, Any], ...] = ()
     require_calibrated_confidence: bool = False
     now_factory: Callable[[], str] | None = None
+    shadow_observer: HybridRetrievalShadowObserver | None = None
 
     def build_package(
         self,
@@ -154,7 +167,7 @@ class PermissionFilteredHybridPackageRuntime:
             materializer=self.evidence_materializer,
             include_neighbors=request["include_neighbors"],
         )
-        return _build_package(
+        package = _build_package(
             access_context=access_context,
             request=request,
             candidate_set=candidate_set,
@@ -164,6 +177,18 @@ class PermissionFilteredHybridPackageRuntime:
             require_calibrated_confidence=self.require_calibrated_confidence,
             now=(self.now_factory or _utc_now)(),
         )
+        if self.shadow_observer is not None:
+            try:
+                self.shadow_observer.observe(
+                    query_text=request["query_text"],
+                    evidence_items=deepcopy(evidence_items),
+                    primary_package=deepcopy(package),
+                    access_context=access_context,
+                )
+            except Exception:
+                # A shadow-only stage cannot alter the primary retrieval contract.
+                pass
+        return package
 
 
 def _request(payload: object) -> dict[str, Any]:

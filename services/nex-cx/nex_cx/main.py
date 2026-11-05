@@ -63,6 +63,7 @@ from nex_cx.ingestion_worker import (
     CX_INGESTION_JOB_TYPE,
     recover_expired_ingestion_job,
 )
+from nex_cx.hybrid_retrieval_package import HybridRetrievalShadowObserver
 from nex_cx.lexical_index import register_lexical_index_routes
 from nex_cx.mvp_runtime import CxMvpRuntimeComposition, build_cx_mvp_runtime
 from nex_cx.processing import register_processing_routes
@@ -264,6 +265,7 @@ def build_cx_mvp_runtime_composition(
     embedding_alias: str,
     rerank_client: MoRerankClient | None,
     reranker_alias: str,
+    shadow_observer: HybridRetrievalShadowObserver | None = None,
 ) -> CxMvpRuntimeComposition | None:
     if (
         runtime.mode != PERSISTENCE_MODE_POSTGRES
@@ -291,6 +293,7 @@ def build_cx_mvp_runtime_composition(
         rerank_client=rerank_client,
         reranker_alias=reranker_alias,
         prompt_store=CX_PROMPT_STORE,
+        shadow_observer=shadow_observer,
     )
 
 

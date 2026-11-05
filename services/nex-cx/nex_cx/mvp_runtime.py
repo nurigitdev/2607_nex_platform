@@ -12,7 +12,10 @@ from nex_runtime.prompts import PromptRegistryStore
 from nex_cx.access_context import CxAccessContext
 from nex_cx.embedding_index import MoEmbeddingClient
 from nex_cx.hybrid_ranking import PermissionAwareRerankClient
-from nex_cx.hybrid_retrieval_package import PermissionFilteredHybridPackageRuntime
+from nex_cx.hybrid_retrieval_package import (
+    HybridRetrievalShadowObserver,
+    PermissionFilteredHybridPackageRuntime,
+)
 from nex_cx.hybrid_retrieval_runtime import (
     HybridRetrievalSource,
     build_permission_hardened_hybrid_runtime,
@@ -295,6 +298,7 @@ def build_cx_mvp_runtime(
     prompt_store: PromptRegistryStore | None = None,
     confidence_profiles: Sequence[Mapping[str, Any]] = (),
     require_calibrated_confidence: bool = False,
+    shadow_observer: HybridRetrievalShadowObserver | None = None,
 ) -> CxMvpRuntimeComposition:
     source = PostgresHybridRetrievalSource(
         session_factory=session_factory,
@@ -313,6 +317,7 @@ def build_cx_mvp_runtime(
         reranker_alias=reranker_alias,
         confidence_profiles=confidence_profiles,
         require_calibrated_confidence=require_calibrated_confidence,
+        shadow_observer=shadow_observer,
     )
     runtime_hydrator = lambda run: hydrate_ingestion_runtime(
         run,
