@@ -1,0 +1,18 @@
+{
+  "policy_schema_version": "cx_answer_support_limited_operations_policy.v1",
+  "policy_id": "cx-answer-support-limited-shadow-operations-v1",
+  "status": "APPROVED_FOR_LIMITED_SHADOW_OPERATIONS",
+  "activation_bundle_hash": "sha256:6d5c631c9e18418ae2787d4053d06cdf87cc49a3cbc67aea6258b11f29893a06",
+  "window_id": "s20qpab-limited-shadow-window-v1",
+  "minimum_operator_review_samples": 12,
+  "maximum_provider_samples": 12,
+  "maximum_event_scan": 500,
+  "safety": {
+    "holdout_access_permitted": false,
+    "primary_decision_mutation_permitted": false,
+    "production_cutover_permitted": false,
+    "raw_text_projection_permitted": false,
+    "user_visible_decision_change_permitted": false
+  },
+  "policy_hash": "sha256:f47aef621065761e4b04b082e61f95e750f9647e26fd0b3bf175d8ef40db5d82"
+}

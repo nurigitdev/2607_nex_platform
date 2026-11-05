@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 
 from nex_runtime import (
     PERSISTENCE_MODE_POSTGRES,
@@ -85,6 +86,14 @@ from nex_cx.retrieval_answer_support_controlled_activation import (
     OperationalAnswerSupportProgressSink,
     OperationalRuntimeActivationStateStore,
     build_installed_controlled_answer_support_runtime,
+)
+from nex_cx.retrieval_answer_support_limited_operations import (
+    DEFAULT_POLICY_PATH,
+    LIMITED_OPERATIONS_POLICY_PATH_ENV,
+    OperationalLimitedShadowSource,
+    build_installed_limited_shadow_operations_runtime,
+    load_limited_operations_policy,
+    register_limited_shadow_operations_routes,
 )
 from nex_cx.retrieval_observability import OperationalAnswerSupportShadowSink
 from nex_cx.summary_embeddings import register_summary_embedding_routes
@@ -371,12 +380,41 @@ CX_ANSWER_SUPPORT_ACTIVATION_STATE_STORE = OperationalRuntimeActivationStateStor
     emitter=CX_RETRIEVAL_EVENT_EMITTER,
     store=SERVICE_PERSISTENCE.operational_event_store,
 )
+CX_ANSWER_SUPPORT_OUTCOME_SINK = OperationalAnswerSupportShadowSink(
+    CX_RETRIEVAL_EVENT_EMITTER
+)
 CX_ANSWER_SUPPORT_SHADOW_OBSERVER = build_installed_controlled_answer_support_runtime(
     environ=os.environ,
     generation_client=CX_MO_GENERATION_CLIENT,
     progress_sink=OperationalAnswerSupportProgressSink(CX_RETRIEVAL_EVENT_EMITTER),
-    outcome_sink=OperationalAnswerSupportShadowSink(CX_RETRIEVAL_EVENT_EMITTER),
+    outcome_sink=CX_ANSWER_SUPPORT_OUTCOME_SINK,
     state_store=CX_ANSWER_SUPPORT_ACTIVATION_STATE_STORE,
+)
+CX_ANSWER_SUPPORT_LIMITED_RUNTIME = build_installed_limited_shadow_operations_runtime(
+    environ=os.environ,
+    controlled_runtime=CX_ANSWER_SUPPORT_SHADOW_OBSERVER,
+    store=SERVICE_PERSISTENCE.operational_event_store,
+    outcome_sink=CX_ANSWER_SUPPORT_OUTCOME_SINK,
+)
+CX_ANSWER_SUPPORT_OPERATIONS_SOURCE = (
+    CX_ANSWER_SUPPORT_LIMITED_RUNTIME.source
+    if CX_ANSWER_SUPPORT_LIMITED_RUNTIME is not None
+    else OperationalLimitedShadowSource(
+        store=SERVICE_PERSISTENCE.operational_event_store,
+        policy=load_limited_operations_policy(
+            Path(
+                os.environ.get(
+                    LIMITED_OPERATIONS_POLICY_PATH_ENV,
+                    str(DEFAULT_POLICY_PATH),
+                )
+            )
+        ),
+        runtime_snapshot=lambda: (
+            CX_ANSWER_SUPPORT_SHADOW_OBSERVER.snapshot()
+            if CX_ANSWER_SUPPORT_SHADOW_OBSERVER is not None
+            else None
+        ),
+    )
 )
 CX_MVP_RUNTIME = build_cx_mvp_runtime_composition(
     SERVICE_PERSISTENCE,
@@ -389,13 +427,16 @@ CX_MVP_RUNTIME = build_cx_mvp_runtime_composition(
     embedding_alias=CX_EMBEDDING_ALIAS,
     rerank_client=CX_MO_RERANK_CLIENT,
     reranker_alias=CX_RERANKER_ALIAS,
-    shadow_observer=CX_ANSWER_SUPPORT_SHADOW_OBSERVER,
+    shadow_observer=(
+        CX_ANSWER_SUPPORT_LIMITED_RUNTIME or CX_ANSWER_SUPPORT_SHADOW_OBSERVER
+    ),
 )
 CX_GENERATION_RETRIEVAL_STORE = select_cx_generation_retrieval_store(
     CX_MVP_RUNTIME
 )
 app.state.cx_mvp_runtime = CX_MVP_RUNTIME
 app.state.cx_answer_support_shadow_observer = CX_ANSWER_SUPPORT_SHADOW_OBSERVER
+app.state.cx_answer_support_limited_runtime = CX_ANSWER_SUPPORT_LIMITED_RUNTIME
 app.state.cx_generation_retrieval_store = CX_GENERATION_RETRIEVAL_STORE
 app.state.cx_ingestion_step_handlers = (
     CX_MVP_RUNTIME.ingestion_step_handlers if CX_MVP_RUNTIME is not None else None
@@ -484,6 +525,10 @@ register_worker_operations_routes(
     },
 )
 register_cx_trace_projection_routes(app, source=CX_TRACE_PROJECTION_SOURCE)
+register_limited_shadow_operations_routes(
+    app,
+    source=CX_ANSWER_SUPPORT_OPERATIONS_SOURCE,
+)
 register_vector_index_operations_routes(
     app,
     repository=CX_VECTOR_INDEX_REPOSITORY,
