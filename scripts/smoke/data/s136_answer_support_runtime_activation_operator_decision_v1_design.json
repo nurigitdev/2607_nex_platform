@@ -1,0 +1,54 @@
+{
+  "activation_boundary": {
+    "activation_status": "APPROVED_NOT_ACTIVATED",
+    "approved_scope": "BOUNDED_SYNCHRONOUS_ANSWER_SUPPORT_SHADOW_OBSERVER",
+    "current_policy": "CURRENT_ACTIVE_RETRIEVAL_CONFIDENCE_POLICY",
+    "fallback_policy": "CURRENT_ACTIVE_RETRIEVAL_CONFIDENCE_POLICY",
+    "installed_composition_required": true,
+    "next_boundary": "CONTROLLED_RUNTIME_ACTIVATION_AND_ROLLBACK_ACCEPTANCE",
+    "rollback_target": "CURRENT_ACTIVE_RETRIEVAL_CONFIDENCE_POLICY",
+    "user_visible_decision_change_permitted": false
+  },
+  "activation_policy": {
+    "automatic_activation_permitted": false,
+    "maximum_admission_rejections": 0,
+    "maximum_progress_failures": 0,
+    "maximum_provider_errors": 0,
+    "operator_decision_required": true,
+    "required_e2e_decision": "SYNCHRONOUS_RUNTIME_E2E_ACCEPTED_PENDING_OPERATOR_ACTIVATION",
+    "required_maximum_concurrency": 4,
+    "required_sample_count": 30,
+    "retryable_overload_required": true
+  },
+  "design_id": "cx-answer-support-runtime-activation-operator-decision-v1",
+  "design_schema_version": "cx_answer_support_runtime_activation_decision_design.v1",
+  "rollback_policy": {
+    "feedback_p95_slo_breach": "ROLLBACK_PENDING_OPERATOR_REVIEW",
+    "interactive_e2e_p95_slo_breach": "ROLLBACK_PENDING_OPERATOR_REVIEW",
+    "non_retryable_overload": "IMMEDIATE_ROLLBACK",
+    "progress_sink_failure": "IMMEDIATE_ROLLBACK",
+    "provider_error": "IMMEDIATE_ROLLBACK",
+    "provider_p95_slo_breach": "ROLLBACK_PENDING_OPERATOR_REVIEW",
+    "source_binding_drift": "IMMEDIATE_ROLLBACK"
+  },
+  "safety": {
+    "database_call_permitted": false,
+    "holdout_access_permitted": false,
+    "production_cutover_permitted": false,
+    "provider_call_permitted": false,
+    "runtime_activation_decision_permitted": true,
+    "runtime_activation_execution_permitted": false
+  },
+  "source_binding": {
+    "e2e_design_hash": "sha256:4e99897710d2de8076159dce62eb24380a66f5583e927b23d900d9a9a9f5f758",
+    "e2e_manifest_hash": "sha256:89eaf18d0ff92b16ba1ff9691ce4e781e0a5be9bb1a0f08fba0330e12c7381c6",
+    "e2e_receipt_document_hash": "sha256:d53ccb278419fd3ddc2758b7fad7237f0cf7574c2d695b0ad4aeabab1705d3a5",
+    "e2e_receipt_hash": "sha256:d78adfaf26a67263a7f22ed8037e6cae6236158ae90b0f1ca93b1cb7c18b864a",
+    "e2e_report_document_hash": "sha256:ff9afbd7abc7ef632483b98c694a1b1b55233d9bacadc990700dfb129afa3048",
+    "provider_binding_hash": "sha256:e16f1c5a52d8a423383a82b6afab80561a4de376b574f3a1b91b9d139dde3012",
+    "readiness_manifest_hash": "sha256:77fb8be58e0c06cc91e9397a2f7d0d32787de1e9b7d844dc45942035e635bf8b",
+    "runtime_profile_hash": "sha256:ffaa4cac784d4b2e22a37e6f590655f7908cfeca518cc5cf65d32149e075daa6",
+    "selected_policy_hash": "sha256:c81f7a0bf3d3d72d7bbc5de1f564ada3b415f2206689c1939fcb925f172168cb"
+  },
+  "status": "FROZEN_OPERATOR_DECISION"
+}
