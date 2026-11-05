@@ -1,0 +1,48 @@
+{
+  "decision_policy": {
+    "automatic_runtime_activation_permitted": false,
+    "maximum_provider_errors": 0,
+    "required_capacity_profiles": [
+      1,
+      2,
+      4
+    ],
+    "required_control_observation": "ORIGINAL_C1_TEMPORAL_CONFOUND_LIKELY",
+    "selected_concurrency_rule": "HIGHEST_THROUGHPUT_ZERO_ERROR_PROVIDER_SLO_PROFILE"
+  },
+  "design_id": "cx-answer-support-interactive-slo-policy-v1",
+  "design_schema_version": "cx_answer_support_interactive_slo_policy_design.v1",
+  "runtime_policy": {
+    "admission_strategy": "BOUNDED_SEMAPHORE",
+    "execution_mode": "SYNCHRONOUS",
+    "generation_request_timeout_ms": 60000,
+    "maximum_in_flight_provider_requests": 4,
+    "overload_behavior": "DEFER_OR_REJECT_RETRYABLE",
+    "reasoning_mode": "DISABLED",
+    "selection_status": "SELECTED_PENDING_E2E_ACCEPTANCE"
+  },
+  "safety": {
+    "database_call_permitted": false,
+    "holdout_access_permitted": false,
+    "production_cutover_permitted": false,
+    "provider_call_permitted": false,
+    "runtime_activation_permitted": false
+  },
+  "slo_profile": {
+    "background_provider_p95_latency_ms": 45000,
+    "generation_provider_p95_latency_ms": 15000,
+    "interactive_final_response_e2e_p95_latency_ms": 20000,
+    "prompt_acceptance_feedback_p95_latency_ms": 2000,
+    "request_timeout_ms": 60000
+  },
+  "source_binding": {
+    "capacity_design_hash": "sha256:50868cb1551070bc6622cf82008a5c23384671235019473578b342014d93b75e",
+    "capacity_manifest_hash": "sha256:378933b6c030c408b774c5bc44291717f66bdc2117c7ec4363b68bf42271160e",
+    "capacity_receipt_hash": "sha256:a2ca5bec7621626e97013cddd7e913cc145bdb2b72c5ffcbb0b3f9928d5c541e",
+    "control_design_hash": "sha256:91710cadebc3aef40e533f80b48e3a5d53cd92d6aeb5cf4e3edfc20986955b55",
+    "control_manifest_hash": "sha256:d456991f604f91c40b939de0cfb9292c6d88306008809839236017358c2db05d",
+    "control_receipt_hash": "sha256:867ba89267b1f7a3fa1d45eb0fcee43bdaad053b6da3d1f8c56c159cf28272f6",
+    "provider_binding_hash": "sha256:e16f1c5a52d8a423383a82b6afab80561a4de376b574f3a1b91b9d139dde3012"
+  },
+  "status": "FROZEN_OPERATOR_DECISION"
+}
