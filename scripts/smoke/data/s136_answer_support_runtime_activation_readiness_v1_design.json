@@ -1,0 +1,52 @@
+{
+  "design_schema_version": "cx_answer_support_runtime_activation_readiness_design.v1",
+  "design_id": "s136-answer-support-runtime-activation-readiness-v1",
+  "status": "FROZEN_POST_HOLDOUT_DECISION",
+  "source_binding": {
+    "authorization_hash": "sha256:4ba9f4f7633136589cda7d17976afa3f2b1ce711c0e8dec67bd17e65527a1575",
+    "canonical_profile_hash": "sha256:495bbc63c50affddd70e90c97fc27655c94c5eeabf890a5f13f5c2df5f90a31e",
+    "dataset_semantic_sha256": "sha256:594209203d25b0a87e6fd136b6794bdc30058a5eb45b7e2c8ff27523bd7f1757",
+    "evaluation_hash": "sha256:e3696095c0fb198ce35d65b291e3121d8a099e6a4fafb993d28be265f3c9a28c",
+    "execution_id": "s20qpq-4ba9f4f7633136589cda7d17",
+    "holdout_report_hash": "sha256:2fe99617c64d25d2c500f065e2c53db38069a8696f37588feaf44c78e9cbe998",
+    "model_revision": "hf:c202236235762e1c871ad0ccb60c8ee5ba337b9a",
+    "profile_id": "answer-support-contradiction-aware-v2",
+    "receipt_document_hash": "sha256:003ecfe1800021c1b88c64bd15ed6b722ecd953d4d0b0dc930162b386433fb25",
+    "receipt_hash": "sha256:1bbfa3983dcad9b0aa39ace9be8eca57dfbd4a7bc1484b2f01366c8ccf5caa68",
+    "request_profile_hash": "sha256:220bdc921d545a4d24a0db9a2dc4e99cefb23c73418f9f790063c665cb2126da",
+    "threshold": 0.46375
+  },
+  "runtime_inventory": {
+    "candidate_profile_schema": "cx_answer_support_runtime_profile.v1",
+    "current_confidence_consumer_schema": "cx_retrieval_confidence_calibration_profile.v1",
+    "direct_activation_compatible": false,
+    "runtime_answer_support_evaluator_installed": false
+  },
+  "readiness_policy": {
+    "activation_status": "NOT_ACTIVATED",
+    "admitted_readiness": "READY_FOR_SHADOW_RUNTIME_INTEGRATION",
+    "expected_provider_evaluations": 40,
+    "expected_provider_http_requests": 40,
+    "maximum_false_ready_rate": 0.1,
+    "minimum_package_auc": 0.8,
+    "minimum_ready_recall": 0.8,
+    "required_holdout_status": "HOLDOUT_ADMITTED"
+  },
+  "rollout_boundary": {
+    "cutover_requires_new_holdout": false,
+    "cutover_requires_separate_operator_approval": true,
+    "fail_closed_on_binding_drift": true,
+    "fallback_policy": "CURRENT_ACTIVE_RETRIEVAL_CONFIDENCE_POLICY",
+    "first_stage": "SHADOW",
+    "rollback_target": "CURRENT_ACTIVE_RETRIEVAL_CONFIDENCE_POLICY",
+    "shadow_decision_user_visible": false
+  },
+  "safety": {
+    "candidate_truth_runtime_input_permitted": false,
+    "holdout_reexecution_permitted": false,
+    "production_cutover_permitted_in_this_slice": false,
+    "provider_call_permitted_in_this_slice": false,
+    "runtime_activation_permitted_in_this_slice": false,
+    "threshold_or_profile_reselection_permitted": false
+  }
+}
