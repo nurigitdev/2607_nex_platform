@@ -8,10 +8,16 @@ from datetime import UTC, datetime
 from pathlib import Path
 from threading import Lock
 from typing import Any
+from uuid import NAMESPACE_URL, uuid5
 
 from fastapi import FastAPI, Header, Request
 from fastapi.responses import JSONResponse
-from nex_runtime import OperationalEventStore, problem_response
+from nex_runtime import (
+    OperationalEventEmitter,
+    OperationalEventStore,
+    build_subject_ref,
+    problem_response,
+)
 from nex_runtime.semantic_hashes import semantic_sha256_hash_ref, validate_hash_ref
 
 from nex_cx.access_context import CxAccessContext
@@ -31,6 +37,9 @@ from nex_cx.retrieval_answer_support_shadow_runtime import (
 from nex_cx.retrieval_observability import CX_ANSWER_SUPPORT_SHADOW_EVENT
 
 POLICY_SCHEMA_VERSION = "cx_answer_support_limited_operations_policy.v1"
+EXTENDED_POLICY_SCHEMA_VERSION = (
+    "cx_answer_support_extended_limited_operations_policy.v2"
+)
 OPERATIONS_SCHEMA_VERSION = "cx_answer_support_limited_operations.v1"
 LIMITED_OPERATIONS_MODE_ENV = "NEX_CX_ANSWER_SUPPORT_LIMITED_OPERATIONS_MODE"
 LIMITED_OPERATIONS_POLICY_PATH_ENV = (
@@ -39,10 +48,16 @@ LIMITED_OPERATIONS_POLICY_PATH_ENV = (
 LIMITED_OPERATIONS_DISABLED = "DISABLED"
 LIMITED_OPERATIONS_ENABLED = "ENABLED"
 OPERATIONS_PATH = "/internal/v1/retrieval/answer-support/shadow-operations"
+WINDOW_EVENT_TYPE = "cx.retrieval.answer_support_shadow_window"
 DEFAULT_POLICY_PATH = (
     Path(__file__).resolve().parent
     / "data"
     / "answer_support_limited_operations.v1.json"
+)
+DEFAULT_EXTENDED_POLICY_PATH = (
+    Path(__file__).resolve().parent
+    / "data"
+    / "answer_support_extended_limited_operations.v2.json"
 )
 
 _POLICY_FIELDS = {
@@ -56,6 +71,47 @@ _POLICY_FIELDS = {
     "maximum_event_scan",
     "safety",
     "policy_hash",
+}
+_EXTENDED_POLICY_FIELDS = _POLICY_FIELDS | {
+    "continuation_authorization",
+    "operational_slo",
+}
+_CONTINUATION_AUTHORIZATION_FIELDS = {
+    "review_design_hash",
+    "operator_decision_hash",
+    "decision_receipt_hash",
+    "source_evidence_hash",
+    "source_report_document_hash",
+    "source_window_id",
+    "decision",
+    "decision_status",
+    "approved_scope",
+    "maximum_provider_samples",
+    "maximum_concurrency",
+}
+_DECISION_RECEIPT_FIELDS = {
+    "receipt_schema_version",
+    "status",
+    "decision",
+    "decision_status",
+    "design_hash",
+    "operator_decision_hash",
+    "manifest_hash",
+    "source_evidence_hash",
+    "source_report_document_hash",
+    "approved_scope",
+    "next_window",
+    "decided_at",
+    "continuation_approved",
+    "continuation_executed",
+    "user_visible_decision_change_permitted",
+    "production_cutover_permitted",
+    "receipt_hash",
+}
+_EXTENDED_OPERATIONAL_SLO = {
+    "maximum_provider_p95_latency_ms": 15000,
+    "maximum_e2e_p95_latency_ms": 20000,
+    "maximum_provider_failures": 0,
 }
 _SAFETY = {
     "holdout_access_permitted": False,
@@ -101,8 +157,14 @@ class OperationalLimitedShadowSource:
         policy = validate_limited_operations_policy(self.policy)
         events = self._events(policy)
         activation = _activation_projection(events["activation"], policy)
-        progress = _progress_projection(events["progress"], activation)
-        outcomes = _outcome_projection(events["outcomes"], activation)
+        window_opened_at = _window_opened_at(events["window"], policy)
+        boundary = (
+            {"activated_at": window_opened_at}
+            if policy["policy_schema_version"] == EXTENDED_POLICY_SCHEMA_VERSION
+            else activation
+        )
+        progress = _progress_projection(events["progress"], boundary)
+        outcomes = _outcome_projection(events["outcomes"], boundary)
         provider_samples = progress["completed_count"] + progress["failed_count"]
         maximum = policy["maximum_provider_samples"]
         runtime = self.runtime_snapshot()
@@ -113,7 +175,14 @@ class OperationalLimitedShadowSource:
         elif provider_samples >= maximum:
             operations_status = "REVIEW_REQUIRED"
             health_status = "READY"
-        elif activation_state == ACTIVE and runtime is not None:
+        elif (
+            activation_state == ACTIVE
+            and runtime is not None
+            and (
+                policy["policy_schema_version"] == POLICY_SCHEMA_VERSION
+                or window_opened_at is not None
+            )
+        ):
             operations_status = "OBSERVING"
             health_status = "READY"
         else:
@@ -169,6 +238,11 @@ class OperationalLimitedShadowSource:
                 "outcomes": self.store.list_events(
                     service_id="nex-cx",
                     event_type=CX_ANSWER_SUPPORT_SHADOW_EVENT,
+                    limit=limit,
+                ),
+                "window": self.store.list_events(
+                    service_id="nex-cx",
+                    event_type=WINDOW_EVENT_TYPE,
                     limit=limit,
                 ),
             }
@@ -289,6 +363,7 @@ def build_installed_limited_shadow_operations_runtime(
     policy = load_limited_operations_policy(
         Path(str(environ.get(LIMITED_OPERATIONS_POLICY_PATH_ENV, DEFAULT_POLICY_PATH)))
     )
+    _ensure_extended_window_open(store=store, policy=policy)
     source = OperationalLimitedShadowSource(
         store=store,
         policy=policy,
@@ -337,7 +412,13 @@ def validate_limited_operations_policy(value: object) -> dict[str, Any]:
     if not isinstance(value, Mapping):
         raise _invalid("policy")
     policy = dict(value)
-    if set(policy) != _POLICY_FIELDS:
+    schema_version = policy.get("policy_schema_version")
+    expected_fields = (
+        _EXTENDED_POLICY_FIELDS
+        if schema_version == EXTENDED_POLICY_SCHEMA_VERSION
+        else _POLICY_FIELDS
+    )
+    if set(policy) != expected_fields:
         raise _invalid("policy_fields")
     supplied_hash = _hash_ref(policy.pop("policy_hash", None), "policy_hash")
     if semantic_sha256_hash_ref(policy) != supplied_hash:
@@ -346,10 +427,7 @@ def validate_limited_operations_policy(value: object) -> dict[str, Any]:
             "Limited shadow operations policy integrity failed.",
         )
     if (
-        policy.get("policy_schema_version") != POLICY_SCHEMA_VERSION
-        or policy.get("status") != "APPROVED_FOR_LIMITED_SHADOW_OPERATIONS"
-        or policy.get("minimum_operator_review_samples") != 12
-        or policy.get("maximum_provider_samples") != 12
+        schema_version not in {POLICY_SCHEMA_VERSION, EXTENDED_POLICY_SCHEMA_VERSION}
         or policy.get("maximum_event_scan") != 500
         or policy.get("safety") != _SAFETY
         or not _text(policy.get("policy_id"))
@@ -357,8 +435,176 @@ def validate_limited_operations_policy(value: object) -> dict[str, Any]:
     ):
         raise _invalid("policy_semantics")
     _hash_ref(policy.get("activation_bundle_hash"), "activation_bundle_hash")
+    if schema_version == POLICY_SCHEMA_VERSION:
+        if (
+            policy.get("status") != "APPROVED_FOR_LIMITED_SHADOW_OPERATIONS"
+            or policy.get("minimum_operator_review_samples") != 12
+            or policy.get("maximum_provider_samples") != 12
+        ):
+            raise _invalid("policy_semantics")
+    else:
+        authorization = _validate_continuation_authorization(
+            policy.get("continuation_authorization")
+        )
+        if policy.get("operational_slo") != _EXTENDED_OPERATIONAL_SLO:
+            raise _invalid("extended_operational_slo")
+        if (
+            policy.get("status")
+            != "APPROVED_FOR_EXTENDED_LIMITED_SHADOW_OPERATIONS"
+            or policy.get("minimum_operator_review_samples") != 30
+            or policy.get("maximum_provider_samples") != 30
+            or policy.get("maximum_provider_samples")
+            != authorization["maximum_provider_samples"]
+            or policy.get("window_id") == authorization["source_window_id"]
+        ):
+            raise _invalid("extended_policy_semantics")
+        policy["continuation_authorization"] = authorization
     policy["policy_hash"] = supplied_hash
     return policy
+
+
+def validate_extended_operations_authorization(
+    policy: Mapping[str, Any],
+    decision_receipt: Mapping[str, Any],
+) -> dict[str, Any]:
+    normalized_policy = validate_limited_operations_policy(policy)
+    if normalized_policy["policy_schema_version"] != EXTENDED_POLICY_SCHEMA_VERSION:
+        raise _invalid("extended_policy_required")
+    authorization = normalized_policy["continuation_authorization"]
+    receipt = dict(decision_receipt)
+    if set(receipt) != _DECISION_RECEIPT_FIELDS:
+        raise _invalid("decision_receipt_fields")
+    receipt_hash = _hash_ref(receipt.pop("receipt_hash", None), "receipt_hash")
+    if semantic_sha256_hash_ref(receipt) != receipt_hash:
+        raise LimitedShadowOperationsError(
+            "CX_LIMITED_SHADOW_AUTHORIZATION_INTEGRITY",
+            "Limited shadow continuation receipt integrity failed.",
+        )
+    receipt["receipt_hash"] = receipt_hash
+    next_window = receipt.get("next_window")
+    if (
+        receipt.get("receipt_schema_version")
+        != "cx_answer_support_limited_shadow_operator_review_receipt.v1"
+        or receipt.get("status") != "PASS"
+        or receipt.get("decision") != authorization["decision"]
+        or receipt.get("decision_status") != authorization["decision_status"]
+        or receipt.get("design_hash") != authorization["review_design_hash"]
+        or receipt.get("operator_decision_hash")
+        != authorization["operator_decision_hash"]
+        or receipt_hash != authorization["decision_receipt_hash"]
+        or receipt.get("source_evidence_hash")
+        != authorization["source_evidence_hash"]
+        or receipt.get("source_report_document_hash")
+        != authorization["source_report_document_hash"]
+        or receipt.get("approved_scope") != authorization["approved_scope"]
+        or not isinstance(next_window, Mapping)
+        or dict(next_window)
+        != {
+            "execution_permitted": False,
+            "fresh_window_policy_required": True,
+            "maximum_concurrency": authorization["maximum_concurrency"],
+            "maximum_provider_samples": authorization["maximum_provider_samples"],
+        }
+        or receipt.get("continuation_approved") is not True
+        or receipt.get("continuation_executed") is not False
+        or receipt.get("user_visible_decision_change_permitted") is not False
+        or receipt.get("production_cutover_permitted") is not False
+    ):
+        raise _invalid("decision_receipt_boundary")
+    return receipt
+
+
+def _validate_continuation_authorization(value: object) -> dict[str, Any]:
+    if not isinstance(value, Mapping) or set(value) != (
+        _CONTINUATION_AUTHORIZATION_FIELDS
+    ):
+        raise _invalid("continuation_authorization_fields")
+    authorization = dict(value)
+    for name in (
+        "review_design_hash",
+        "operator_decision_hash",
+        "decision_receipt_hash",
+        "source_evidence_hash",
+        "source_report_document_hash",
+    ):
+        authorization[name] = _hash_ref(authorization.get(name), name)
+    if (
+        authorization.get("decision")
+        != "CONTINUE_LIMITED_SHADOW_OBSERVATION_APPROVED"
+        or authorization.get("decision_status") != "APPROVED_NOT_EXECUTED"
+        or authorization.get("approved_scope")
+        != "SECOND_BOUNDED_ANSWER_SUPPORT_SHADOW_WINDOW"
+        or authorization.get("maximum_provider_samples") != 30
+        or authorization.get("maximum_concurrency") != 4
+        or not _text(authorization.get("source_window_id"))
+    ):
+        raise _invalid("continuation_authorization_semantics")
+    return authorization
+
+
+def _ensure_extended_window_open(
+    *,
+    store: OperationalEventStore,
+    policy: Mapping[str, Any],
+) -> Mapping[str, Any] | None:
+    if policy["policy_schema_version"] != EXTENDED_POLICY_SCHEMA_VERSION:
+        return None
+    authorization = policy["continuation_authorization"]
+    details = {
+        "window_schema_version": "cx_answer_support_shadow_window.v1",
+        "window_state": "OPEN",
+        "window_id": policy["window_id"],
+        "policy_hash": policy["policy_hash"],
+        "activation_bundle_hash": policy["activation_bundle_hash"],
+        "decision_receipt_hash": authorization["decision_receipt_hash"],
+        "operator_decision_hash": authorization["operator_decision_hash"],
+        "maximum_provider_samples": policy["maximum_provider_samples"],
+        "maximum_concurrency": authorization["maximum_concurrency"],
+    }
+    event = OperationalEventEmitter(service_id="nex-cx", store=store).emit(
+        event_type=WINDOW_EVENT_TYPE,
+        severity="INFO",
+        message="CX answer-support extended shadow window was opened.",
+        subject_ref=build_subject_ref(
+            "cx.answer_support_shadow_window", policy["window_id"]
+        ),
+        details=details,
+        event_id=str(
+            uuid5(
+                NAMESPACE_URL,
+                f"cx-answer-support-shadow-window:{policy['window_id']}",
+            )
+        ),
+    )
+    if event.get("details") != details:
+        raise LimitedShadowOperationsError(
+            "CX_LIMITED_SHADOW_WINDOW_BINDING_DRIFT",
+            "Existing limited shadow window does not match the admitted policy.",
+        )
+    return event
+
+
+def _window_opened_at(
+    events: Sequence[Mapping[str, Any]], policy: Mapping[str, Any]
+) -> str | None:
+    if policy["policy_schema_version"] == POLICY_SCHEMA_VERSION:
+        return None
+    authorization = policy["continuation_authorization"]
+    for event in events:
+        details = event.get("details")
+        if (
+            isinstance(details, Mapping)
+            and details.get("window_state") == "OPEN"
+            and details.get("window_id") == policy["window_id"]
+            and details.get("policy_hash") == policy["policy_hash"]
+            and details.get("activation_bundle_hash")
+            == policy["activation_bundle_hash"]
+            and details.get("decision_receipt_hash")
+            == authorization["decision_receipt_hash"]
+            and isinstance(event.get("created_at"), str)
+        ):
+            return str(event["created_at"])
+    return None
 
 
 def _activation_projection(
