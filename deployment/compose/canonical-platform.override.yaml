@@ -165,6 +165,8 @@ services:
     restart: unless-stopped
     environment:
       NEX_DEPLOYMENT_BOUNDARY: CANONICAL_PLATFORM
+      NEX_CX_ANSWER_SUPPORT_SHADOW_MODE: ${NEX_CX_ANSWER_SUPPORT_SHADOW_MODE:-CONTROLLED}
+      NEX_CX_ANSWER_SUPPORT_ACTIVATION_BUNDLE_PATH: /app/services/nex-cx/nex_cx/data/answer_support_controlled_activation.v1.json
       NEX_SERVICE_TOKEN_BOOTSTRAP_PROFILE: STARTUP_24H
       NEX_STARTUP_SERVICE_TOKEN_BOOTSTRAP: "true"
       NEX_SERVICE_CREDENTIAL_ID_REF: secret://openbao/nex-platform/staging/nex-cx/NEX_SERVICE_CREDENTIAL_ID@${NEX_CANONICAL_PLATFORM_SECRET_VERSION:-v1}

@@ -7,6 +7,7 @@ from nex_runtime import (
     attach_service_persistence_runtime,
     build_service_token_admission_runtime,
     build_service_app,
+    operational_event_emitter_from_app,
     register_service_job_control_routes,
     register_service_log_retention_routes,
 )
@@ -80,6 +81,12 @@ from nex_cx.remediation_execution import (
     SqlAlchemyRemediationExecutionStore,
     register_remediation_execution_routes,
 )
+from nex_cx.retrieval_answer_support_controlled_activation import (
+    OperationalAnswerSupportProgressSink,
+    OperationalRuntimeActivationStateStore,
+    build_installed_controlled_answer_support_runtime,
+)
+from nex_cx.retrieval_observability import OperationalAnswerSupportShadowSink
 from nex_cx.summary_embeddings import register_summary_embedding_routes
 from nex_cx.summaries import register_summary_routes
 from nex_cx.private_content import CxPrivateTextStore
@@ -356,6 +363,21 @@ CX_MO_EMBEDDING_CLIENT = build_default_mo_embedding_client()
 CX_MO_RERANK_CLIENT = build_default_mo_rerank_client()
 CX_EMBEDDING_ALIAS = os.getenv("NEX_CX_EMBEDDING_ALIAS", DEFAULT_EMBEDDING_ALIAS)
 CX_RERANKER_ALIAS = os.getenv("NEX_CX_RERANKER_ALIAS", DEFAULT_RERANKER_ALIAS)
+CX_RETRIEVAL_EVENT_EMITTER = operational_event_emitter_from_app(
+    app,
+    service_id=SERVICE_SPEC.service_id,
+)
+CX_ANSWER_SUPPORT_ACTIVATION_STATE_STORE = OperationalRuntimeActivationStateStore(
+    emitter=CX_RETRIEVAL_EVENT_EMITTER,
+    store=SERVICE_PERSISTENCE.operational_event_store,
+)
+CX_ANSWER_SUPPORT_SHADOW_OBSERVER = build_installed_controlled_answer_support_runtime(
+    environ=os.environ,
+    generation_client=CX_MO_GENERATION_CLIENT,
+    progress_sink=OperationalAnswerSupportProgressSink(CX_RETRIEVAL_EVENT_EMITTER),
+    outcome_sink=OperationalAnswerSupportShadowSink(CX_RETRIEVAL_EVENT_EMITTER),
+    state_store=CX_ANSWER_SUPPORT_ACTIVATION_STATE_STORE,
+)
 CX_MVP_RUNTIME = build_cx_mvp_runtime_composition(
     SERVICE_PERSISTENCE,
     storage_config=CX_STORAGE_CONFIG,
@@ -367,11 +389,13 @@ CX_MVP_RUNTIME = build_cx_mvp_runtime_composition(
     embedding_alias=CX_EMBEDDING_ALIAS,
     rerank_client=CX_MO_RERANK_CLIENT,
     reranker_alias=CX_RERANKER_ALIAS,
+    shadow_observer=CX_ANSWER_SUPPORT_SHADOW_OBSERVER,
 )
 CX_GENERATION_RETRIEVAL_STORE = select_cx_generation_retrieval_store(
     CX_MVP_RUNTIME
 )
 app.state.cx_mvp_runtime = CX_MVP_RUNTIME
+app.state.cx_answer_support_shadow_observer = CX_ANSWER_SUPPORT_SHADOW_OBSERVER
 app.state.cx_generation_retrieval_store = CX_GENERATION_RETRIEVAL_STORE
 app.state.cx_ingestion_step_handlers = (
     CX_MVP_RUNTIME.ingestion_step_handlers if CX_MVP_RUNTIME is not None else None
