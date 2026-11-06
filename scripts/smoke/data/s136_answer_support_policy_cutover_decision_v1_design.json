@@ -1,0 +1,60 @@
+{
+  "cutover_boundary": {
+    "approved_scope": "CONTROLLED_ANSWER_SUPPORT_USER_VISIBLE_POLICY_CUTOVER",
+    "current_policy": "CURRENT_ACTIVE_RETRIEVAL_CONFIDENCE_POLICY",
+    "cutover_execution_permitted_in_this_slice": false,
+    "cutover_requires_installed_acceptance": true,
+    "decision_status": "APPROVED_NOT_EXECUTED",
+    "fallback_policy": "CURRENT_ACTIVE_RETRIEVAL_CONFIDENCE_POLICY",
+    "next_boundary": "ANSWER_SUPPORT_POLICY_CUTOVER_AND_ROLLBACK_ACCEPTANCE",
+    "rollback_target": "CURRENT_ACTIVE_RETRIEVAL_CONFIDENCE_POLICY"
+  },
+  "decision_policy": {
+    "automatic_cutover_permitted": false,
+    "maximum_e2e_p95_latency_ms": 20000,
+    "maximum_provider_p95_latency_ms": 15000,
+    "operator_decision_required": true,
+    "required_candidate_status": "ADMITTED_PENDING_SEPARATE_CUTOVER_DECISION",
+    "required_extended_sample_count": 30,
+    "required_peak_in_flight": 4,
+    "required_review_decision": "PROCEED_TO_ANSWER_SUPPORT_POLICY_CUTOVER_REVIEW_APPROVED",
+    "required_review_decision_status": "APPROVED_NOT_EXECUTED",
+    "required_review_scope": "ANSWER_SUPPORT_POLICY_CUTOVER_REVIEW_ONLY",
+    "required_review_status": "PASS"
+  },
+  "design_hash": "sha256:67caf7cd029bca7422b70b0bd15b097d39b4b04e2ec123f0e45b99cac8aa2304",
+  "design_id": "cx-answer-support-policy-cutover-operator-decision-v1",
+  "design_schema_version": "cx_answer_support_policy_cutover_decision_design.v1",
+  "rollback_policy": {
+    "feedback_p95_slo_breach": "ROLLBACK_PENDING_OPERATOR_REVIEW",
+    "interactive_e2e_p95_slo_breach": "ROLLBACK_PENDING_OPERATOR_REVIEW",
+    "non_retryable_overload": "IMMEDIATE_ROLLBACK",
+    "progress_sink_failure": "IMMEDIATE_ROLLBACK",
+    "provider_error": "IMMEDIATE_ROLLBACK",
+    "provider_p95_slo_breach": "ROLLBACK_PENDING_OPERATOR_REVIEW",
+    "source_binding_drift": "IMMEDIATE_ROLLBACK"
+  },
+  "safety": {
+    "cutover_execution_permitted": false,
+    "database_call_permitted": false,
+    "holdout_access_permitted": false,
+    "production_cutover_permitted": false,
+    "provider_call_permitted": false,
+    "runtime_change_permitted": false
+  },
+  "source_binding": {
+    "activation_bundle_document_hash": "sha256:ecbe2e072066e9a599b9462f9616c14e9381f2818167e1fc61a6eaf28c090b84",
+    "activation_bundle_hash": "sha256:6d5c631c9e18418ae2787d4053d06cdf87cc49a3cbc67aea6258b11f29893a06",
+    "extended_operations_evidence_hash": "sha256:b4956c90e5fe0896456fe9f62a12953b1d9bd1a6d2001f60a0942b23880d0cf2",
+    "provider_binding_hash": "sha256:e16f1c5a52d8a423383a82b6afab80561a4de376b574f3a1b91b9d139dde3012",
+    "readiness_manifest_hash": "sha256:77fb8be58e0c06cc91e9397a2f7d0d32787de1e9b7d844dc45942035e635bf8b",
+    "review_design_hash": "sha256:ddc6c73d885ec58c6c09fc3e15aa77483b2b64ecb1a077406c075632e84188df",
+    "review_manifest_hash": "sha256:ae841b1ee41e32c18c2445e56463ac05753cb67446d36b7301754b972c2649bc",
+    "review_operator_decision_hash": "sha256:42adc3ad9b71c64719fcf8178bf9b4b3ac4106a4b25aafe1bf8b8fa1c83b906c",
+    "review_receipt_document_hash": "sha256:e1cfe99601599be3c1d61f686d8f9a99b9f014e0066ce3df6e970406390292be",
+    "review_receipt_hash": "sha256:f93bf3806460b539951473535dcf3cc89dcd49a4186e37c8a850f52f7cc04e9b",
+    "review_report_document_hash": "sha256:55b73669444f0569ab2e9292dbf8eb873fe9e00a8cb9d87ea783079bd4570749",
+    "selected_policy_hash": "sha256:c81f7a0bf3d3d72d7bbc5de1f564ada3b415f2206689c1939fcb925f172168cb"
+  },
+  "status": "FROZEN_OPERATOR_DECISION"
+}
