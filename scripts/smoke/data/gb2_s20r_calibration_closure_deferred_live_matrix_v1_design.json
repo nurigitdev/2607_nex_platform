@@ -1,0 +1,36 @@
+{
+  "provider_binding": {
+    "embedding": {
+      "model": "Qwen3-Embedding-4B",
+      "revision": "hf:5cf2132abc99cad020ac570b19d031efec650f2b"
+    },
+    "generation": {
+      "deployment_id": "dgx-qwen3-5-9b-9116",
+      "model": "Qwen3.5-9B",
+      "revision": "hf:c202236235762e1c871ad0ccb60c8ee5ba337b9a"
+    },
+    "reranking": {
+      "model": "Qwen3-Reranker-4B",
+      "revision": "hf:22e683669bc0f0bd69640a1354a6d0aebcfeede5"
+    }
+  },
+  "s20q_closure_hash": "sha256:5a2cb9c019d78e55c12288903764b0421d69100a68f04788c82bb5fd7095f4e0",
+  "s20ra_contract_hash": "sha256:525125e26dd462585ecd3d1832ae41d664de20f7320f4767bbaa8eb6e9e91318",
+  "schema_version": "calibration_deferred_live_matrix.v1",
+  "stage_mapping": {
+    "S136": "S20R-A current permission-filtered retrieval replay",
+    "S137": "S20R-A current grounded generation and artifact replay",
+    "S140": "release-candidate protected matrix",
+    "S147": "actual MO provider rollout and persistence acceptance",
+    "S149": "current nine-image canonical installed golden journey",
+    "S150": "current AE/WC/EOS fail-closed restart acceptance plus Full Gate"
+  },
+  "stage_order": [
+    "S136",
+    "S137",
+    "S140",
+    "S147",
+    "S149",
+    "S150"
+  ]
+}

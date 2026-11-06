@@ -67,7 +67,10 @@ GOLDEN_PROMPT = (
     "현금 정산 초안 생성해줘."
 )
 MODEL_PROFILE = "general-llm-default"
-MODEL_REF = "Qwen3.5-4B"
+MODEL_REF_ENV = "NEX_MO_VLLM_MODEL"
+MODEL_REVISION_ENV = "NEX_MO_VLLM_MODEL_REVISION"
+MODEL_DEPLOYMENT_ENV = "NEX_MO_VLLM_DEPLOYMENT_ID"
+DEFAULT_MODEL_REF = "Qwen3.5-9B"
 GOLDEN_JOURNEY_EVIDENCE_CONTRACT = {
     "platform_integrated": True,
     "runtime_transition_fixture": False,
@@ -205,6 +208,13 @@ def execute_canonical_platform_golden_journey(
         installed.DEMO_DOMAIN_WORKERS
     ),
 ) -> dict[str, Any]:
+    model_ref = str(env.get(MODEL_REF_ENV) or DEFAULT_MODEL_REF).strip()
+    model_revision = str(env.get(MODEL_REVISION_ENV) or "").strip()
+    model_deployment_id = str(env.get(MODEL_DEPLOYMENT_ENV) or "").strip()
+    if not model_ref or not model_revision or not model_deployment_id:
+        raise CanonicalPlatformGoldenJourneyError(
+            "generation model, immutable revision, and deployment identity are required"
+        )
     targets = resolve_demo_database_targets(env)
     urls = {target.target.service_id: target.database_url for target in targets}
     engines = {
@@ -243,7 +253,7 @@ def execute_canonical_platform_golden_journey(
         runtime_env = {
             **env,
             SCREENSHOT_ENV: str(screenshot_dir),
-            CALIBRATION_ENV: _semantic_calibration_json(),
+            CALIBRATION_ENV: _semantic_calibration_json(model_ref=model_ref),
         }
 
         def live_hook(**_: Any) -> Mapping[str, Any]:
@@ -330,7 +340,9 @@ def execute_canonical_platform_golden_journey(
                 "actual_remote_generation": True,
                 "actual_playwright": True,
                 "provider_model_profile": MODEL_PROFILE,
-                "provider_model_ref": MODEL_REF,
+                "provider_model_ref": model_ref,
+                "provider_model_revision": model_revision,
+                "provider_deployment_id": model_deployment_id,
                 "capability_activation": capability_activation,
                 "fixture_visibility": fixture,
                 "browser": _public_browser_evidence(browser),
@@ -628,14 +640,14 @@ def _post_restart_failure_detail(
     )
 
 
-def _semantic_calibration_json() -> str:
+def _semantic_calibration_json(*, model_ref: str = DEFAULT_MODEL_REF) -> str:
     policies = [
         {
             "semantic_stage": stage,
             "policy_ref": f"semantic-admission://{stage.lower()}/canonical-platform-s11/v1",
             "policy_version": "canonical-platform-s11-v1",
             "model_profile": MODEL_PROFILE,
-            "model_ref": MODEL_REF,
+            "model_ref": model_ref,
             "minimum_confidence": 0.5,
             "golden_evidence_ref": f"acceptance://canonical-platform-s11/{stage.lower()}/golden",
             "adversarial_evidence_ref": (
