@@ -75,6 +75,9 @@ from nex_cx.pgvector_store import build_pgvector_cx_vector_store  # noqa: E402
 from nex_cx.private_text_store import FileSystemCxPrivateTextStore  # noqa: E402
 from nex_cx.repository import SqlAlchemyCxContentRepository  # noqa: E402
 from nex_cx.retrieval import DEFAULT_RERANKER_ALIAS  # noqa: E402
+from nex_cx.retrieval_answer_support_runtime_composition import (  # noqa: E402
+    build_installed_answer_support_runtime_composition,
+)
 from nex_cx.vector_index_repository import (  # noqa: E402
     SqlAlchemyVectorIndexRepository,
 )
@@ -280,7 +283,14 @@ def run_ae_web_grounded_generation_playwright_postgres_smoke(
 
 
 def configuration_issues(environ: Mapping[str, str]) -> list[dict[str, str]]:
-    issues = cx_configuration_issues(environ)
+    issues = cx_configuration_issues(
+        environ,
+        expected_models={
+            "embedding": str(environ.get("NEX_MO_REMOTE_EMBEDDING_MODEL", "")),
+            "reranking": str(environ.get("NEX_MO_REMOTE_RERANKER_MODEL", "")),
+            "generation": str(environ.get("NEX_MO_VLLM_MODEL", "")),
+        },
+    )
     for field in (AE_DATABASE_ENV, CX_DATABASE_ENV):
         if not str(environ.get(field, "")).strip() and not any(
             item.get("field") == field for item in issues
@@ -469,16 +479,24 @@ def _execute_live_browser_smoke(  # pragma: no cover - protected DB/DGX/browser
     web_server = None
     node_result: dict[str, Any] = {}
     extension_observation: dict[str, Any] = {}
+    answer_support_observation: dict[str, Any] = {}
     cleanup: dict[str, int] = {}
 
     cx_engine = build_engine(cx_database_url)
     cx_factory = build_session_factory(cx_engine)
     ae_engine = build_engine(ae_database_url)
     ae_factory = build_session_factory(ae_engine)
+    answer_support_requested = (
+        runtime_environ.get("NEX_CX_ANSWER_SUPPORT_POLICY_MODE") == "CONTROLLED"
+    )
     stale_runtime_cleanup = {
         "ae": _cleanup_stale_s109_ae_runtime(ae_engine),
         "cx": _cleanup_stale_s109_runtime(cx_engine),
     }
+    if answer_support_requested:
+        stale_runtime_cleanup["cx_answer_support"] = (
+            _cleanup_answer_support_events(cx_engine)
+        )
     repository = SqlAlchemyCxContentRepository(cx_factory)
     vector_repository = SqlAlchemyVectorIndexRepository(cx_factory)
     store = ContentIngestionStore(content_repository=repository)
@@ -531,6 +549,14 @@ def _execute_live_browser_smoke(  # pragma: no cover - protected DB/DGX/browser
                 remote_provider.reset_remote_provider_telemetry()
                 with TestClient(mo_app) as mo_client:
                     live_mo_client = InProcessLiveMoClient(mo_client)
+                    answer_support_runtime = (
+                        build_installed_answer_support_runtime_composition(
+                            environ=effective_env,
+                            generation_client=live_mo_client,
+                            emitter=cx_emitter,
+                            store=event_store,
+                        )
+                    )
                     composition = build_cx_mvp_runtime(
                         session_factory=cx_factory,
                         store=store,
@@ -544,6 +570,10 @@ def _execute_live_browser_smoke(  # pragma: no cover - protected DB/DGX/browser
                         embedding_alias=DEFAULT_EMBEDDING_ALIAS,
                         rerank_client=live_mo_client,
                         reranker_alias=DEFAULT_RERANKER_ALIAS,
+                        primary_policy=answer_support_runtime.primary_policy,
+                        shadow_observer=(
+                            answer_support_runtime.retrieval_shadow_observer
+                        ),
                     )
                     cx_app = _build_cx_app(
                         store=store,
@@ -750,9 +780,38 @@ def _execute_live_browser_smoke(  # pragma: no cover - protected DB/DGX/browser
                             )
                         ae_identity = _database_identity(ae_engine)
                         cx_identity = _database_identity(cx_engine)
+                        answer_support_observation = (
+                            answer_support_runtime.safe_snapshot()
+                        )
 
             node_checks = dict(node_result.get("checks") or {})
             extension_checks = dict(extension_observation.get("checks") or {})
+            expected_models = {
+                "embedding": effective_env.get(
+                    "NEX_MO_REMOTE_EMBEDDING_MODEL",
+                    EXPECTED_MODELS["embedding"],
+                ),
+                "reranking": effective_env.get(
+                    "NEX_MO_REMOTE_RERANKER_MODEL",
+                    EXPECTED_MODELS["reranking"],
+                ),
+                "generation": effective_env.get(
+                    "NEX_MO_VLLM_MODEL",
+                    EXPECTED_MODELS["generation"],
+                ),
+            }
+            expected_provider_identities = {
+                "embedding": effective_env.get(
+                    "NEX_MO_REMOTE_EMBEDDING_MODEL_REVISION"
+                )
+                or expected_models["embedding"],
+                "reranking": effective_env.get(
+                    "NEX_MO_REMOTE_RERANKER_MODEL_REVISION"
+                )
+                or expected_models["reranking"],
+                "generation": effective_env.get("NEX_MO_VLLM_MODEL_REVISION")
+                or expected_models["generation"],
+            }
             checks = {
                 "actual_ae_test_database": ae_identity
                 == {"database": AE_DATABASE, "role": AE_ROLE},
@@ -770,12 +829,30 @@ def _execute_live_browser_smoke(  # pragma: no cover - protected DB/DGX/browser
                 "worker_succeeded": bool(async_client.worker_results)
                 and async_client.worker_results[-1].get("succeeded_count") == 1,
                 "live_provider_models_frozen": all(
-                    provider[capability]["model"] == EXPECTED_MODELS[capability]
-                    for capability in EXPECTED_MODELS
+                    provider[capability]["model"]
+                    == expected_provider_identities[capability]
+                    for capability in expected_provider_identities
                 ),
                 "all_live_provider_capabilities_called": all(
                     provider[capability]["success_count"] >= 1
-                    for capability in EXPECTED_MODELS
+                    for capability in expected_models
+                ),
+                "answer_support_runtime_matches_requested_mode": (
+                    not answer_support_requested
+                    or (
+                        answer_support_observation.get(
+                            "primary_policy_installed"
+                        )
+                        is True
+                        and answer_support_observation.get(
+                            "steady_state_policy_installed"
+                        )
+                        is True
+                        and answer_support_observation.get("steady_state_state")
+                        == "ACTIVE"
+                        and answer_support_observation.get("cutover_state")
+                        == "ACTIVE"
+                    )
                 ),
                 "content_lineage_ready": len(chunk_set["chunks"]) >= 1
                 and lexical["unique_token_count"] >= 1,
@@ -804,6 +881,7 @@ def _execute_live_browser_smoke(  # pragma: no cover - protected DB/DGX/browser
                     or {}
                 ),
                 "provider_observation": provider,
+                "answer_support_observation": answer_support_observation,
                 "worker_observation": _worker_observation(
                     async_client.worker_results[-1]
                     if async_client.worker_results
@@ -821,6 +899,7 @@ def _execute_live_browser_smoke(  # pragma: no cover - protected DB/DGX/browser
                     "credential_material_included": False,
                 },
                 "extension_observation": extension_observation,
+                "cleanup": cleanup,
                 "checks": checks,
                 "failed_checks": [name for name, passed in checks.items() if not passed],
             }
@@ -858,6 +937,10 @@ def _execute_live_browser_smoke(  # pragma: no cover - protected DB/DGX/browser
                 vector_index_id=None,
                 document_id=None,
                 source_file_id=None,
+            )
+        if answer_support_requested:
+            cleanup["answer_support_events"] = _cleanup_answer_support_events(
+                cx_engine
             )
         ae_engine.dispose()
         cx_engine.dispose()
@@ -1077,6 +1160,19 @@ def _cleanup_stale_s109_runtime(engine: Any) -> dict[str, int]:  # pragma: no co
     return deleted
 
 
+def _cleanup_answer_support_events(engine: Any) -> int:  # pragma: no cover
+    with engine.begin() as connection:
+        return int(
+            connection.execute(
+                text(
+                    "DELETE FROM service_operational_events "
+                    "WHERE event_type LIKE 'cx.retrieval.answer_support%'"
+                )
+            ).rowcount
+            or 0
+        )
+
+
 def _cleanup_stale_s109_ae_runtime(engine: Any) -> dict[str, int]:
     deleted: dict[str, int] = {}
     with engine.begin() as connection:
@@ -1116,6 +1212,16 @@ def _cleanup_stale_s109_ae_runtime(engine: Any) -> dict[str, int]:
             ).rowcount
             or 0
         )
+        deleted["conversations"] = int(
+            connection.execute(
+                text(
+                    "DELETE FROM ae_conversations "
+                    "WHERE owner_user_id = :owner_id"
+                ),
+                {"owner_id": OWNER_ID},
+            ).rowcount
+            or 0
+        )
         deleted["workspaces"] = int(
             connection.execute(
                 text("DELETE FROM ae_workspaces WHERE owner_user_id = :owner_id"),
@@ -1147,17 +1253,6 @@ def _cleanup_ae_rows(
             ).rowcount
             or 0
         )
-        if interaction_id:
-            deleted["chat"] = int(
-                connection.execute(
-                    text(
-                        "DELETE FROM ae_chat_interactions "
-                        "WHERE chat_interaction_id = :interaction_id"
-                    ),
-                    {"interaction_id": interaction_id},
-                ).rowcount
-                or 0
-            )
         if prompt_render_event_id:
             deleted["render_event"] = int(
                 connection.execute(
@@ -1169,6 +1264,27 @@ def _cleanup_ae_rows(
                 ).rowcount
                 or 0
             )
+        if interaction_id:
+            deleted["chat"] = int(
+                connection.execute(
+                    text(
+                        "DELETE FROM ae_chat_interactions "
+                        "WHERE chat_interaction_id = :interaction_id"
+                    ),
+                    {"interaction_id": interaction_id},
+                ).rowcount
+                or 0
+            )
+        deleted["conversation"] = int(
+            connection.execute(
+                text(
+                    "DELETE FROM ae_conversations "
+                    "WHERE workspace_id = :workspace_id"
+                ),
+                {"workspace_id": workspace_id},
+            ).rowcount
+            or 0
+        )
         deleted["workspace"] = int(
             connection.execute(
                 text(

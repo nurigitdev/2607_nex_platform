@@ -1,5 +1,4 @@
 import os
-from pathlib import Path
 
 from nex_runtime import (
     PERSISTENCE_MODE_POSTGRES,
@@ -94,41 +93,21 @@ from nex_cx.retrieval import (
     build_default_mo_rerank_client,
     register_retrieval_routes,
 )
-from nex_cx.retrieval_answer_support_controlled_activation import (
-    OperationalAnswerSupportProgressSink,
-    OperationalRuntimeActivationStateStore,
-    build_installed_controlled_answer_support_runtime,
-)
 from nex_cx.retrieval_answer_support_limited_operations import (
-    DEFAULT_POLICY_PATH,
-    LIMITED_OPERATIONS_POLICY_PATH_ENV,
-    OperationalLimitedShadowSource,
-    build_installed_limited_shadow_operations_runtime,
-    load_limited_operations_policy,
     register_limited_shadow_operations_routes,
 )
-from nex_cx.retrieval_answer_support_policy_cutover import (
-    OperationalPolicyCutoverStateStore,
-    build_installed_answer_support_policy_cutover,
-)
 from nex_cx.retrieval_answer_support_policy_cutover_operations import (
-    OperationalPolicyCutoverDecisionSink,
-    build_installed_policy_cutover_operations_source,
     register_policy_cutover_operations_routes,
 )
-from nex_cx.retrieval_answer_support_policy_steady_state import (
-    OperationalSteadyStateStateStore,
-    build_installed_answer_support_policy_steady_state,
-)
 from nex_cx.retrieval_answer_support_policy_steady_state_operations import (
-    build_installed_policy_steady_state_operations_source,
     register_policy_steady_state_operations_routes,
 )
 from nex_cx.retrieval_answer_support_policy_sustained_operations import (
-    build_installed_policy_sustained_operations_source,
     register_policy_sustained_operations_routes,
 )
-from nex_cx.retrieval_observability import OperationalAnswerSupportShadowSink
+from nex_cx.retrieval_answer_support_runtime_composition import (
+    build_installed_answer_support_runtime_composition,
+)
 from nex_cx.summaries import register_summary_routes
 from nex_cx.summary_embeddings import register_summary_embedding_routes
 from nex_cx.summary_pgvector_store import (
@@ -403,120 +382,27 @@ CX_RETRIEVAL_EVENT_EMITTER = operational_event_emitter_from_app(
     app,
     service_id=SERVICE_SPEC.service_id,
 )
-CX_ANSWER_SUPPORT_ACTIVATION_STATE_STORE = OperationalRuntimeActivationStateStore(
+CX_ANSWER_SUPPORT_RUNTIME = build_installed_answer_support_runtime_composition(
+    environ=os.environ,
+    generation_client=CX_MO_GENERATION_CLIENT,
     emitter=CX_RETRIEVAL_EVENT_EMITTER,
     store=SERVICE_PERSISTENCE.operational_event_store,
 )
-CX_ANSWER_SUPPORT_OUTCOME_SINK = OperationalAnswerSupportShadowSink(
-    CX_RETRIEVAL_EVENT_EMITTER
-)
-CX_ANSWER_SUPPORT_PROGRESS_SINK = OperationalAnswerSupportProgressSink(
-    CX_RETRIEVAL_EVENT_EMITTER
-)
-CX_ANSWER_SUPPORT_POLICY_DECISION_SINK = OperationalPolicyCutoverDecisionSink(
-    CX_RETRIEVAL_EVENT_EMITTER
-)
-CX_ANSWER_SUPPORT_POLICY_CUTOVER = build_installed_answer_support_policy_cutover(
-    environ=os.environ,
-    generation_client=CX_MO_GENERATION_CLIENT,
-    progress_sink=CX_ANSWER_SUPPORT_PROGRESS_SINK,
-    outcome_sink=CX_ANSWER_SUPPORT_OUTCOME_SINK,
-    state_store=OperationalPolicyCutoverStateStore(
-        emitter=CX_RETRIEVAL_EVENT_EMITTER,
-        store=SERVICE_PERSISTENCE.operational_event_store,
-    ),
-    decision_sink=CX_ANSWER_SUPPORT_POLICY_DECISION_SINK,
-)
-CX_ANSWER_SUPPORT_STEADY_STATE_POLICY = (
-    build_installed_answer_support_policy_steady_state(
-        environ=os.environ,
-        delegate=CX_ANSWER_SUPPORT_POLICY_CUTOVER,
-        state_store=OperationalSteadyStateStateStore(
-            emitter=CX_RETRIEVAL_EVENT_EMITTER,
-            store=SERVICE_PERSISTENCE.operational_event_store,
-        ),
-    )
-)
-CX_ANSWER_SUPPORT_PRIMARY_POLICY = (
-    CX_ANSWER_SUPPORT_STEADY_STATE_POLICY or CX_ANSWER_SUPPORT_POLICY_CUTOVER
-)
+CX_ANSWER_SUPPORT_POLICY_CUTOVER = CX_ANSWER_SUPPORT_RUNTIME.policy_cutover
+CX_ANSWER_SUPPORT_STEADY_STATE_POLICY = CX_ANSWER_SUPPORT_RUNTIME.steady_state_policy
+CX_ANSWER_SUPPORT_PRIMARY_POLICY = CX_ANSWER_SUPPORT_RUNTIME.primary_policy
 CX_ANSWER_SUPPORT_CUTOVER_OPERATIONS_SOURCE = (
-    build_installed_policy_cutover_operations_source(
-        environ=os.environ,
-        store=SERVICE_PERSISTENCE.operational_event_store,
-        emitter=CX_RETRIEVAL_EVENT_EMITTER,
-        runtime_snapshot=lambda: (
-            CX_ANSWER_SUPPORT_PRIMARY_POLICY.snapshot()
-            if CX_ANSWER_SUPPORT_PRIMARY_POLICY is not None
-            else None
-        ),
-    )
+    CX_ANSWER_SUPPORT_RUNTIME.cutover_operations_source
 )
 CX_ANSWER_SUPPORT_SUSTAINED_OPERATIONS_SOURCE = (
-    build_installed_policy_sustained_operations_source(
-        environ=os.environ,
-        store=SERVICE_PERSISTENCE.operational_event_store,
-        emitter=CX_RETRIEVAL_EVENT_EMITTER,
-        runtime_snapshot=lambda: (
-            CX_ANSWER_SUPPORT_PRIMARY_POLICY.snapshot()
-            if CX_ANSWER_SUPPORT_PRIMARY_POLICY is not None
-            else None
-        ),
-    )
+    CX_ANSWER_SUPPORT_RUNTIME.sustained_operations_source
 )
 CX_ANSWER_SUPPORT_STEADY_STATE_OPERATIONS_SOURCE = (
-    build_installed_policy_steady_state_operations_source(
-        environ=os.environ,
-        store=SERVICE_PERSISTENCE.operational_event_store,
-        emitter=CX_RETRIEVAL_EVENT_EMITTER,
-        runtime_snapshot=lambda: (
-            CX_ANSWER_SUPPORT_STEADY_STATE_POLICY.snapshot()
-            if CX_ANSWER_SUPPORT_STEADY_STATE_POLICY is not None
-            else None
-        ),
-    )
+    CX_ANSWER_SUPPORT_RUNTIME.steady_state_operations_source
 )
-CX_ANSWER_SUPPORT_SHADOW_OBSERVER = (
-    None
-    if CX_ANSWER_SUPPORT_PRIMARY_POLICY is not None
-    else build_installed_controlled_answer_support_runtime(
-        environ=os.environ,
-        generation_client=CX_MO_GENERATION_CLIENT,
-        progress_sink=CX_ANSWER_SUPPORT_PROGRESS_SINK,
-        outcome_sink=CX_ANSWER_SUPPORT_OUTCOME_SINK,
-        state_store=CX_ANSWER_SUPPORT_ACTIVATION_STATE_STORE,
-    )
-)
-CX_ANSWER_SUPPORT_LIMITED_RUNTIME = (
-    None
-    if CX_ANSWER_SUPPORT_POLICY_CUTOVER is not None
-    else build_installed_limited_shadow_operations_runtime(
-        environ=os.environ,
-        controlled_runtime=CX_ANSWER_SUPPORT_SHADOW_OBSERVER,
-        store=SERVICE_PERSISTENCE.operational_event_store,
-        outcome_sink=CX_ANSWER_SUPPORT_OUTCOME_SINK,
-    )
-)
-CX_ANSWER_SUPPORT_OPERATIONS_SOURCE = (
-    CX_ANSWER_SUPPORT_LIMITED_RUNTIME.source
-    if CX_ANSWER_SUPPORT_LIMITED_RUNTIME is not None
-    else OperationalLimitedShadowSource(
-        store=SERVICE_PERSISTENCE.operational_event_store,
-        policy=load_limited_operations_policy(
-            Path(
-                os.environ.get(
-                    LIMITED_OPERATIONS_POLICY_PATH_ENV,
-                    str(DEFAULT_POLICY_PATH),
-                )
-            )
-        ),
-        runtime_snapshot=lambda: (
-            CX_ANSWER_SUPPORT_SHADOW_OBSERVER.snapshot()
-            if CX_ANSWER_SUPPORT_SHADOW_OBSERVER is not None
-            else None
-        ),
-    )
-)
+CX_ANSWER_SUPPORT_SHADOW_OBSERVER = CX_ANSWER_SUPPORT_RUNTIME.shadow_observer
+CX_ANSWER_SUPPORT_LIMITED_RUNTIME = CX_ANSWER_SUPPORT_RUNTIME.limited_runtime
+CX_ANSWER_SUPPORT_OPERATIONS_SOURCE = CX_ANSWER_SUPPORT_RUNTIME.operations_source
 CX_MVP_RUNTIME = build_cx_mvp_runtime_composition(
     SERVICE_PERSISTENCE,
     storage_config=CX_STORAGE_CONFIG,
@@ -529,9 +415,7 @@ CX_MVP_RUNTIME = build_cx_mvp_runtime_composition(
     rerank_client=CX_MO_RERANK_CLIENT,
     reranker_alias=CX_RERANKER_ALIAS,
     primary_policy=CX_ANSWER_SUPPORT_PRIMARY_POLICY,
-    shadow_observer=(
-        CX_ANSWER_SUPPORT_LIMITED_RUNTIME or CX_ANSWER_SUPPORT_SHADOW_OBSERVER
-    ),
+    shadow_observer=CX_ANSWER_SUPPORT_RUNTIME.retrieval_shadow_observer,
 )
 CX_GENERATION_RETRIEVAL_STORE = select_cx_generation_retrieval_store(CX_MVP_RUNTIME)
 app.state.cx_mvp_runtime = CX_MVP_RUNTIME

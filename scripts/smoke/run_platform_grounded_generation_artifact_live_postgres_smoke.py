@@ -54,6 +54,14 @@ SCHEMA_VERSION = "platform_grounded_generation_artifact_live_postgres_smoke.v1"
 SMOKE_ENV = "NEX_S137_GROUNDED_ARTIFACT_LIVE_POSTGRES_SMOKE"
 PROFILE_ENV = f"{SMOKE_ENV}_PROFILE"
 DEFAULT_PROFILE = "test"
+CANONICAL_GENERATION_MODEL = "Qwen3.5-9B"
+CANONICAL_GENERATION_REVISION = (
+    "hf:c202236235762e1c871ad0ccb60c8ee5ba337b9a"
+)
+CANONICAL_GENERATION_DEPLOYMENT_ID = "dgx-qwen3-5-9b-9116"
+CANONICAL_ANSWER_SUPPORT_POLICY_HASH = (
+    "sha256:c81f7a0bf3d3d72d7bbc5de1f564ada3b415f2206689c1939fcb925f172168cb"
+)
 PROTECTED_ENV_KEYS = (
     base.AE_DATABASE_ENV,
     base.CX_DATABASE_ENV,
@@ -174,6 +182,12 @@ def run_platform_grounded_generation_artifact_live_postgres_smoke(
         base.SMOKE_ENV: "1",
         base.PROFILE_ENV: DEFAULT_PROFILE,
         "NEX_MO_PROVIDER_MODE": "live",
+        "NEX_MO_VLLM_MODEL": CANONICAL_GENERATION_MODEL,
+        "NEX_MO_VLLM_MODEL_REVISION": CANONICAL_GENERATION_REVISION,
+        "NEX_MO_VLLM_DEPLOYMENT_ID": CANONICAL_GENERATION_DEPLOYMENT_ID,
+        "NEX_MO_LIVE_EXPECTED_GENERATION_MODELS": CANONICAL_GENERATION_MODEL,
+        "NEX_CX_ANSWER_SUPPORT_POLICY_MODE": "CONTROLLED",
+        "NEX_CX_ANSWER_SUPPORT_STEADY_STATE_MODE": "CONTROLLED",
     }
     run_source = source_runner or _run_source_journey
     source = run_source(effective_env)
@@ -191,6 +205,8 @@ def run_platform_grounded_generation_artifact_live_postgres_smoke(
     read_residue = residue_reader or _read_post_journey_residue
     residue = read_residue(effective_env)
     source_checks = _bool_mapping(source.get("checks"))
+    answer_support = _mapping(source.get("answer_support_observation"))
+    provider_observation = _mapping(source.get("provider_observation"))
     checks = {
         "single_correlated_journey": (
             source.get("evidence_mode") == "single_correlated_browser_request"
@@ -207,6 +223,15 @@ def run_platform_grounded_generation_artifact_live_postgres_smoke(
                 "cx_generation_persisted",
                 "all_live_provider_capabilities_called",
             )
+        ),
+        "canonical_answer_support_policy_applied": (
+            source_checks.get("answer_support_runtime_matches_requested_mode") is True
+            and answer_support.get("primary_policy_installed") is True
+            and answer_support.get("steady_state_policy_installed") is True
+            and answer_support.get("selected_policy_hash")
+            == CANONICAL_ANSWER_SUPPORT_POLICY_HASH
+            and answer_support.get("steady_state_state") == "ACTIVE"
+            and answer_support.get("cutover_state") == "ACTIVE"
         ),
         "ae_response_lineage_persisted": (
             source_checks.get("ae_chat_persisted") is True
@@ -251,6 +276,8 @@ def run_platform_grounded_generation_artifact_live_postgres_smoke(
         "live_provider_required": True,
         "services": ["nex-ae-web", "nex-ae-api", "nex-cx", "nex-mo"],
         "source_status": _source_status(source),
+        "provider_observation": provider_observation,
+        "answer_support_observation": answer_support,
         "artifact_observation": {
             key: value
             for key, value in extension.items()

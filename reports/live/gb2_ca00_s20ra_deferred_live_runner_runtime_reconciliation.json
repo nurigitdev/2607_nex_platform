@@ -1,0 +1,61 @@
+{
+  "checks": {
+    "qwen35_9b_generation_verified": true,
+    "s136_actual_postgres_and_cleanup_verified": true,
+    "s136_current_replay_runner_used": true,
+    "s136_permission_pipeline_repeatability_verified": true,
+    "s136_provider_revisions_exact": true,
+    "s137_actual_postgres_and_zero_residue_verified": true,
+    "s137_answer_support_policy_exact": true,
+    "s137_current_product_runtime_used": true,
+    "s20q_closure_consumed_without_holdout_reexecution": true
+  },
+  "contract_hash": "sha256:525125e26dd462585ecd3d1832ae41d664de20f7320f4767bbaa8eb6e9e91318",
+  "database_migration_changed": false,
+  "decision": "DEFERRED_LIVE_RUNNERS_RECONCILED",
+  "evidence_hash": "sha256:d23fa8fb1fad344d7a652adc4a1580f0cafa0730652c210a843c18fc9e8f9d4e",
+  "evidence_schema_version": "cx_deferred_live_runner_reconciliation_evidence.v1",
+  "failed_checks": [],
+  "holdout_accessed": false,
+  "holdout_reexecuted": false,
+  "next_boundary": "GB2_CA00_S20R_CALIBRATION_CLOSURE_AND_DEFERRED_LIVE_MATRIX_REPLAY",
+  "provider_binding": {
+    "embedding": {
+      "model": "Qwen3-Embedding-4B",
+      "revision": "hf:5cf2132abc99cad020ac570b19d031efec650f2b"
+    },
+    "generation": {
+      "deployment_id": "dgx-qwen3-5-9b-9116",
+      "model": "Qwen3.5-9B",
+      "revision": "hf:c202236235762e1c871ad0ccb60c8ee5ba337b9a"
+    },
+    "reranking": {
+      "model": "Qwen3-Reranker-4B",
+      "revision": "hf:22e683669bc0f0bd69640a1354a6d0aebcfeede5"
+    }
+  },
+  "public_api_changed": false,
+  "replay_order": [
+    "S136",
+    "S137"
+  ],
+  "retired_v1_calibration_reexecuted": false,
+  "s136_replay_hash": "sha256:b2d1e8837e649c797e003914b056741d89c3e8fb48a937437c4293d9e75f0db0",
+  "s137_replay_hash": "sha256:4b29b510cbd6b096fb62904edbeb32936861a448a94828d1b51d737ef9981841",
+  "selected_policy_hash": "sha256:c81f7a0bf3d3d72d7bbc5de1f564ada3b415f2206689c1939fcb925f172168cb",
+  "source_status": {
+    "s136": {
+      "failed_check_count": 0,
+      "failed_checks": [],
+      "failure_code": null,
+      "status": "PASS"
+    },
+    "s137": {
+      "failed_check_count": 0,
+      "failed_checks": [],
+      "failure_code": null,
+      "status": "PASS"
+    }
+  },
+  "status": "PASS"
+}
