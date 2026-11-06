@@ -30,25 +30,21 @@ from nex_cx.retrieval_answer_support_policy_cutover_operations import (
     _decision_projection,
     _progress_projection,
 )
-from nex_cx.retrieval_answer_support_policy_steady_state import (
-    CURRENT_POLICY,
-    STEADY_STATE_EVENT_TYPE,
-)
+from nex_cx.retrieval_answer_support_policy_steady_state import STEADY_STATE_EVENT_TYPE
 from nex_cx.retrieval_answer_support_policy_sustained_operations import (
     _cadence_projection,
     _slo_checks,
 )
 
-POLICY_SCHEMA_VERSION = (
-    "cx_answer_support_policy_steady_state_operations_policy.v1"
+POLICY_SCHEMA_VERSION = "cx_answer_support_policy_steady_state_operations_policy.v1"
+CONTINUATION_POLICY_SCHEMA_VERSION = (
+    "cx_answer_support_policy_steady_state_operations_continuation_policy.v1"
 )
 OPERATIONS_SCHEMA_VERSION = "cx_answer_support_policy_steady_state_operations.v1"
 WINDOW_SCHEMA_VERSION = "cx_answer_support_policy_steady_state_window.v1"
 WINDOW_EVENT_TYPE = "cx.retrieval.answer_support_policy_steady_state_window"
 POLICY_PATH_ENV = "NEX_CX_ANSWER_SUPPORT_STEADY_STATE_OPERATIONS_PATH"
-OPERATIONS_PATH = (
-    "/internal/v1/retrieval/answer-support/policy-steady-state-operations"
-)
+OPERATIONS_PATH = "/internal/v1/retrieval/answer-support/policy-steady-state-operations"
 DEFAULT_POLICY_PATH = (
     Path(__file__).resolve().parent
     / "data"
@@ -57,9 +53,7 @@ DEFAULT_POLICY_PATH = (
 
 _SOURCE_ACTIVATION = {
     "database_profile": "test",
-    "decision": (
-        "ANSWER_SUPPORT_POLICY_STEADY_STATE_ACTIVATION_AND_ROLLBACK_ACCEPTED"
-    ),
+    "decision": ("ANSWER_SUPPORT_POLICY_STEADY_STATE_ACTIVATION_AND_ROLLBACK_ACCEPTED"),
     "evidence_hash": (
         "sha256:f03487ff10b867e0b19c60933369c1dbc8e26c9c0c90b1972d7c14dbb506bcbc"
     ),
@@ -79,6 +73,40 @@ _SOURCE_ACTIVATION = {
         "sha256:082356e051209a0819886b48be5b8dadf41ef63991572b97ce5ede059cefd008"
     ),
     "test_database_residue_rows": 0,
+}
+_CONTINUATION_REVIEW = {
+    "evidence_schema_version": (
+        "gb2_s20qpap_answer_support_policy_steady_state_operations_operator_review.v1"
+    ),
+    "decision": (
+        "CONTINUE_CONTROLLED_ANSWER_SUPPORT_POLICY_STEADY_STATE_OPERATIONS_APPROVED"
+    ),
+    "decision_status": "APPROVED_CONTINUATION_NOT_PRODUCTION",
+    "approved_scope": (
+        "CONTROLLED_ANSWER_SUPPORT_POLICY_STEADY_STATE_OPERATIONS_CONTINUATION_ONLY"
+    ),
+    "next_boundary": "ANSWER_SUPPORT_POLICY_STEADY_STATE_OPERATIONS_CONTINUATION",
+    "design_hash": (
+        "sha256:76bd7ce73004d7e3d9515e4795c0b47086e6572c28e23335f947a55ec789069a"
+    ),
+    "operator_decision_hash": (
+        "sha256:84309fde2a2fd7ecfa50a763c02c2dc986ff4192b39d4c7530452de2553b65ad"
+    ),
+    "manifest_hash": (
+        "sha256:7cb9c276eef74cd2ad1a13d4395468867dbb62c549785637174dd299bdf8f2c9"
+    ),
+    "decision_receipt_hash": (
+        "sha256:adf95c82d9c5d3ec0adec71c93231f7ed9a50e68ffd94c7e2420a0ffce7985fd"
+    ),
+    "decision_receipt_document_hash": (
+        "sha256:66c1bb87f4d92161178dd1947b74c07801a636b7fa4800890a1d267707461788"
+    ),
+    "review_report_document_hash": (
+        "sha256:92025d7f50af8a7c2ef546a07c5e313044a40f8f4be06a5afd9cdb1a1fb4e07c"
+    ),
+    "source_evidence_hash": (
+        "sha256:ba6ac667e2065e1a2b16019529db164d4f8824131aea6a9db5b8cc6eaa3602a0"
+    ),
 }
 _OPERATIONAL_SLO = {
     "maximum_feedback_p95_latency_ms": 2000,
@@ -178,9 +206,7 @@ class OperationalPolicySteadyStateSource:
                     "steady_state_authorization_hash"
                 ],
                 "operations_profile_hash": policy["operations_profile_hash"],
-                "cutover_authorization_hash": policy[
-                    "cutover_authorization_hash"
-                ],
+                "cutover_authorization_hash": policy["cutover_authorization_hash"],
                 "selected_policy_hash": policy["selected_policy_hash"],
             },
             "window": window,
@@ -198,6 +224,9 @@ class OperationalPolicySteadyStateSource:
                 "raw_text_included": False,
             },
         }
+        continuation_receipt_hash = _continuation_receipt_hash(policy)
+        if continuation_receipt_hash is not None:
+            snapshot["policy"]["continuation_receipt_hash"] = continuation_receipt_hash
         snapshot["snapshot_hash"] = semantic_sha256_hash_ref(snapshot)
         return snapshot
 
@@ -306,13 +335,28 @@ def validate_policy_steady_state_operations_policy(value: object) -> dict[str, A
         "escalation_policy",
         "safety",
     }
+    continuation = (
+        policy.get("policy_schema_version") == CONTINUATION_POLICY_SCHEMA_VERSION
+    )
+    if continuation:
+        expected.add("source_review")
     if (
         set(policy) != expected
         or semantic_sha256_hash_ref(policy) != supplied_hash
-        or policy.get("policy_schema_version") != POLICY_SCHEMA_VERSION
-        or policy.get("status")
-        != "APPROVED_FOR_CONTROLLED_STEADY_STATE_OPERATIONS"
+        or policy.get("policy_schema_version")
+        not in {POLICY_SCHEMA_VERSION, CONTINUATION_POLICY_SCHEMA_VERSION}
+        or (
+            continuation
+            and policy.get("status")
+            != "APPROVED_FOR_CONTROLLED_STEADY_STATE_CONTINUATION"
+        )
+        or (
+            not continuation
+            and policy.get("status")
+            != "APPROVED_FOR_CONTROLLED_STEADY_STATE_OPERATIONS"
+        )
         or policy.get("source_activation") != _SOURCE_ACTIVATION
+        or (continuation and policy.get("source_review") != _CONTINUATION_REVIEW)
         or policy.get("steady_state_authorization_hash")
         != _SOURCE_ACTIVATION["steady_state_authorization_hash"]
         or policy.get("operations_profile_hash")
@@ -355,9 +399,7 @@ def _ensure_window_open(
         "window_state": "OPEN",
         "window_id": policy["steady_state_window_id"],
         "policy_hash": policy["policy_hash"],
-        "source_activation_evidence_hash": policy["source_activation"][
-            "evidence_hash"
-        ],
+        "source_activation_evidence_hash": policy["source_activation"]["evidence_hash"],
         "steady_state_receipt_hash": policy["steady_state_authorization_hash"],
         "operations_profile_hash": policy["operations_profile_hash"],
         "cutover_receipt_hash": policy["cutover_authorization_hash"],
@@ -365,6 +407,9 @@ def _ensure_window_open(
         "review_sample_interval": policy["review_sample_interval"],
         "maximum_concurrency": policy["maximum_concurrency"],
     }
+    continuation_receipt_hash = _continuation_receipt_hash(policy)
+    if continuation_receipt_hash is not None:
+        details["continuation_receipt_hash"] = continuation_receipt_hash
     event_id = str(
         uuid5(
             NAMESPACE_URL,
@@ -405,12 +450,9 @@ def _require_runtime_binding(
     if (
         runtime.get("steady_state_authorization_hash")
         != policy["steady_state_authorization_hash"]
-        or runtime.get("operations_profile_hash")
-        != policy["operations_profile_hash"]
-        or runtime.get("authorization_hash")
-        != policy["cutover_authorization_hash"]
-        or runtime.get("activation_bundle_hash")
-        != policy["activation_bundle_hash"]
+        or runtime.get("operations_profile_hash") != policy["operations_profile_hash"]
+        or runtime.get("authorization_hash") != policy["cutover_authorization_hash"]
+        or runtime.get("activation_bundle_hash") != policy["activation_bundle_hash"]
         or runtime.get("selected_policy_hash") != policy["selected_policy_hash"]
         or runtime.get("sustained_policy_hash") != policy["sustained_policy_hash"]
         or runtime.get("steady_state_state")
@@ -434,6 +476,7 @@ def _window_projection(
             and details.get("policy_hash") == policy["policy_hash"]
             and details.get("steady_state_receipt_hash")
             == policy["steady_state_authorization_hash"]
+            and _continuation_window_binding_matches(details, policy)
             and isinstance(event.get("created_at"), str)
         ):
             opened_at = str(event["created_at"])
@@ -446,6 +489,22 @@ def _window_projection(
         "review_sample_interval": policy["review_sample_interval"],
         "maximum_concurrency": policy["maximum_concurrency"],
     }
+
+
+def _continuation_receipt_hash(policy: Mapping[str, Any]) -> str | None:
+    source_review = policy.get("source_review")
+    if not isinstance(source_review, Mapping):
+        return None
+    return str(source_review["decision_receipt_hash"])
+
+
+def _continuation_window_binding_matches(
+    details: Mapping[str, Any], policy: Mapping[str, Any]
+) -> bool:
+    receipt_hash = _continuation_receipt_hash(policy)
+    return (
+        receipt_hash is None or details.get("continuation_receipt_hash") == receipt_hash
+    )
 
 
 def _steady_state_projection(
@@ -581,9 +640,7 @@ def _invalid(detail: str) -> PolicySteadyStateOperationsError:
     )
 
 
-def _problem(
-    request: Request, exc: PolicySteadyStateOperationsError
-) -> JSONResponse:
+def _problem(request: Request, exc: PolicySteadyStateOperationsError) -> JSONResponse:
     return problem_response(
         request,
         status_code=exc.status_code,
