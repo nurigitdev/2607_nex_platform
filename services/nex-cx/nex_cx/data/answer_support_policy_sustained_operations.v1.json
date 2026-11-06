@@ -1,0 +1,50 @@
+{
+  "activation_bundle_hash": "sha256:6d5c631c9e18418ae2787d4053d06cdf87cc49a3cbc67aea6258b11f29893a06",
+  "authorization_hash": "sha256:fe45b9267af3e81095b957c0488ee86dba7f88114b3fff99708ccc812108fc00",
+  "escalation_policy": {
+    "cutover_terminal_state": "ROLLBACK_STATE_DOMINANT",
+    "e2e_p95_slo_breach": "ROLLBACK_PENDING_OPERATOR_REVIEW",
+    "fallback_decision": "IMMEDIATE_ROLLBACK_REQUIRED",
+    "provider_failure": "IMMEDIATE_ROLLBACK_REQUIRED",
+    "provider_p95_slo_breach": "ROLLBACK_PENDING_OPERATOR_REVIEW",
+    "review_cadence_reached": "OPERATOR_REVIEW_REQUIRED"
+  },
+  "maximum_concurrency": 4,
+  "maximum_event_scan": 1000,
+  "operational_slo": {
+    "maximum_e2e_p95_latency_ms": 20000,
+    "maximum_fallback_count": 0,
+    "maximum_feedback_p95_latency_ms": 2000,
+    "maximum_provider_failures": 0,
+    "maximum_provider_p95_latency_ms": 15000
+  },
+  "policy_hash": "sha256:4524e2e54929f42fe1c2e60b6c93941a373a0359ead5810126045c3668c99f6a",
+  "policy_id": "cx-answer-support-policy-sustained-operations-v1",
+  "policy_schema_version": "cx_answer_support_policy_sustained_operations_policy.v1",
+  "review_sample_interval": 12,
+  "safety": {
+    "holdout_access_permitted": false,
+    "operator_review_required_at_cadence": true,
+    "production_cutover_permitted": false,
+    "raw_text_projection_permitted": false,
+    "rollback_contract_preserved": true,
+    "runtime_stopped_at_review_cadence": false
+  },
+  "selected_policy_hash": "sha256:c81f7a0bf3d3d72d7bbc5de1f564ada3b415f2206689c1939fcb925f172168cb",
+  "source_review": {
+    "approved_scope": "CONTROLLED_ANSWER_SUPPORT_POLICY_OPERATIONS_CONTINUATION_ONLY",
+    "decision": "CONTINUE_CONTROLLED_ANSWER_SUPPORT_POLICY_OPERATIONS_APPROVED",
+    "decision_receipt_document_hash": "sha256:015a141d067ccd1a7f7d479d9a8c73d41fe2d7c017954624be455cf4a08a4072",
+    "decision_receipt_hash": "sha256:36c97a3f3033d8963edea0931f05378799e2dfd273bb12cb65599ccaf5899ade",
+    "decision_status": "APPROVED_CONTINUATION_NOT_PRODUCTION",
+    "design_hash": "sha256:e01cd96bf3dd1ab6021f4a3435697218f89bcb4704ea7d0496ffe554ec738228",
+    "evidence_schema_version": "gb2_s20qpai_policy_cutover_operations_operator_review.v1",
+    "manifest_hash": "sha256:98ea9425b80c67ea213add6bbca6f161ce549779cf2e9f0af11f4b8b57affbf3",
+    "next_boundary": "ANSWER_SUPPORT_POLICY_SUSTAINED_OPERATIONS",
+    "operator_decision_hash": "sha256:5a4285d0b75fe10676ae00a43ab8c41016bcb8db61ec911e8ba947b467b87843",
+    "review_report_document_hash": "sha256:adc10e23d0d798b51243d0bca719a4da177768432b00ab2c0fc16d0f2138fbed",
+    "source_evidence_hash": "sha256:0c1ba91b7cf5b537db9f0b3cd24beef651372c2ef8f59aa1422a3048fac14827"
+  },
+  "status": "APPROVED_FOR_CONTROLLED_SUSTAINED_OPERATIONS",
+  "sustained_window_id": "s20qpaj-answer-support-policy-sustained-operations-v1"
+}

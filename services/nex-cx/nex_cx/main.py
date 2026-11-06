@@ -116,6 +116,10 @@ from nex_cx.retrieval_answer_support_policy_cutover_operations import (
     build_installed_policy_cutover_operations_source,
     register_policy_cutover_operations_routes,
 )
+from nex_cx.retrieval_answer_support_policy_sustained_operations import (
+    build_installed_policy_sustained_operations_source,
+    register_policy_sustained_operations_routes,
+)
 from nex_cx.retrieval_observability import OperationalAnswerSupportShadowSink
 from nex_cx.summaries import register_summary_routes
 from nex_cx.summary_embeddings import register_summary_embedding_routes
@@ -427,6 +431,18 @@ CX_ANSWER_SUPPORT_CUTOVER_OPERATIONS_SOURCE = (
         ),
     )
 )
+CX_ANSWER_SUPPORT_SUSTAINED_OPERATIONS_SOURCE = (
+    build_installed_policy_sustained_operations_source(
+        environ=os.environ,
+        store=SERVICE_PERSISTENCE.operational_event_store,
+        emitter=CX_RETRIEVAL_EVENT_EMITTER,
+        runtime_snapshot=lambda: (
+            CX_ANSWER_SUPPORT_POLICY_CUTOVER.snapshot()
+            if CX_ANSWER_SUPPORT_POLICY_CUTOVER is not None
+            else None
+        ),
+    )
+)
 CX_ANSWER_SUPPORT_SHADOW_OBSERVER = (
     None
     if CX_ANSWER_SUPPORT_POLICY_CUTOVER is not None
@@ -585,6 +601,10 @@ register_limited_shadow_operations_routes(
 register_policy_cutover_operations_routes(
     app,
     source=CX_ANSWER_SUPPORT_CUTOVER_OPERATIONS_SOURCE,
+)
+register_policy_sustained_operations_routes(
+    app,
+    source=CX_ANSWER_SUPPORT_SUSTAINED_OPERATIONS_SOURCE,
 )
 register_vector_index_operations_routes(
     app,
