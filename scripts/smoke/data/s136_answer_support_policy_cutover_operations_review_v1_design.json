@@ -1,0 +1,46 @@
+{
+  "decision_boundary": {
+    "approved_scope": "CONTROLLED_ANSWER_SUPPORT_POLICY_OPERATIONS_CONTINUATION_ONLY",
+    "controlled_continuation_permitted": true,
+    "current_policy": "ANSWER_SUPPORT_POLICY_CUTOVER_ACTIVE",
+    "decision_status": "APPROVED_CONTINUATION_NOT_PRODUCTION",
+    "next_boundary": "ANSWER_SUPPORT_POLICY_SUSTAINED_OPERATIONS",
+    "production_cutover_permitted": false,
+    "rollback_contract_preserved": true,
+    "runtime_change_permitted": false
+  },
+  "design_hash": "sha256:e01cd96bf3dd1ab6021f4a3435697218f89bcb4704ea7d0496ffe554ec738228",
+  "design_id": "cx-answer-support-policy-cutover-operations-operator-review-v1",
+  "design_schema_version": "cx_answer_support_policy_cutover_operations_review_design.v1",
+  "review_policy": {
+    "automatic_production_cutover_permitted": false,
+    "maximum_e2e_p95_latency_ms": 20000,
+    "maximum_provider_p95_latency_ms": 15000,
+    "minimum_ready_count": 1,
+    "operator_decision_required": true,
+    "required_operations_status": "REVIEW_REQUIRED",
+    "required_peak_in_flight": 4,
+    "required_provider_call_count": 12,
+    "required_provider_sample_count": 12,
+    "required_source_decision": "ANSWER_SUPPORT_POLICY_CUTOVER_OPERATIONS_ACCEPTED",
+    "required_source_status": "PASS",
+    "required_test_database_residue_rows": 0
+  },
+  "safety": {
+    "database_call_permitted": false,
+    "holdout_access_permitted": false,
+    "production_cutover_permitted": false,
+    "provider_call_permitted": false,
+    "rollback_weakening_permitted": false,
+    "runtime_mutation_permitted": false
+  },
+  "source_binding": {
+    "activation_bundle_hash": "sha256:6d5c631c9e18418ae2787d4053d06cdf87cc49a3cbc67aea6258b11f29893a06",
+    "authorization_hash": "sha256:fe45b9267af3e81095b957c0488ee86dba7f88114b3fff99708ccc812108fc00",
+    "operations_policy_hash": "sha256:7f6dd67840bf1de1ba0d5b9f2d6c5d66afffba6e0ebc5bdb71620d2c7259e439",
+    "selected_policy_hash": "sha256:c81f7a0bf3d3d72d7bbc5de1f564ada3b415f2206689c1939fcb925f172168cb",
+    "source_evidence_hash": "sha256:0c1ba91b7cf5b537db9f0b3cd24beef651372c2ef8f59aa1422a3048fac14827",
+    "source_report_document_hash": "sha256:eb5ab8ca7bf990cd53612094da1c15535c42fe21471240f8c52692d643cdd2ec"
+  },
+  "status": "FROZEN_OPERATOR_REVIEW"
+}
