@@ -217,7 +217,7 @@ def _run_s147(env: Mapping[str, str]) -> Mapping[str, Any]:
 
 def _run_s149(env: Mapping[str, str]) -> Mapping[str, Any]:
     model_ref = str(
-        env.get("NEX_MO_VLLM_MODEL")
+        env.get("NEX_MO_VLLM_MODEL_REVISION")
         or s149_current.canonical_journey.DEFAULT_MODEL_REF
     ).strip()
     stage_env = {

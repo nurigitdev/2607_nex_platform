@@ -253,7 +253,9 @@ def execute_canonical_platform_golden_journey(
         runtime_env = {
             **env,
             SCREENSHOT_ENV: str(screenshot_dir),
-            CALIBRATION_ENV: build_semantic_calibration_json(model_ref=model_ref),
+            CALIBRATION_ENV: build_semantic_calibration_json(
+                model_ref=model_revision
+            ),
         }
 
         def live_hook(**_: Any) -> Mapping[str, Any]:

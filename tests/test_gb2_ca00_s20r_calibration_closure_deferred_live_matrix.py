@@ -24,6 +24,8 @@ def _env(**overrides: str) -> dict[str, str]:
         "NEX_MO_REMOTE_RERANKER_API_KEY": "reranker-secret",
         "NEX_MO_VLLM_BASE_URL": "http://generation.invalid",
         "NEX_MO_VLLM_API_KEY": "generation-secret",
+        "NEX_MO_VLLM_MODEL": "Qwen3.5-9B",
+        "NEX_MO_VLLM_MODEL_REVISION": "hf:generation-revision",
     }
     for service in ("OA", "AG", "AE", "CX", "MO", "WC", "EOS"):
         values[f"NEX_{service}_TEST_DATABASE_URL"] = f"{service.lower()}-test-secret"
@@ -155,7 +157,7 @@ def test_default_stage_adapters_activate_current_runners(monkeypatch) -> None:
         "PLAN",
     }
     assert {policy["model_ref"] for policy in policies} == {
-        environment.get("NEX_MO_VLLM_MODEL")
+        environment.get("NEX_MO_VLLM_MODEL_REVISION")
         or smoke.s149_current.canonical_journey.DEFAULT_MODEL_REF
     }
     assert observed["s150"] is True
