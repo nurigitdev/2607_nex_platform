@@ -120,6 +120,10 @@ from nex_cx.retrieval_answer_support_policy_steady_state import (
     OperationalSteadyStateStateStore,
     build_installed_answer_support_policy_steady_state,
 )
+from nex_cx.retrieval_answer_support_policy_steady_state_operations import (
+    build_installed_policy_steady_state_operations_source,
+    register_policy_steady_state_operations_routes,
+)
 from nex_cx.retrieval_answer_support_policy_sustained_operations import (
     build_installed_policy_sustained_operations_source,
     register_policy_sustained_operations_routes,
@@ -460,6 +464,18 @@ CX_ANSWER_SUPPORT_SUSTAINED_OPERATIONS_SOURCE = (
         ),
     )
 )
+CX_ANSWER_SUPPORT_STEADY_STATE_OPERATIONS_SOURCE = (
+    build_installed_policy_steady_state_operations_source(
+        environ=os.environ,
+        store=SERVICE_PERSISTENCE.operational_event_store,
+        emitter=CX_RETRIEVAL_EVENT_EMITTER,
+        runtime_snapshot=lambda: (
+            CX_ANSWER_SUPPORT_STEADY_STATE_POLICY.snapshot()
+            if CX_ANSWER_SUPPORT_STEADY_STATE_POLICY is not None
+            else None
+        ),
+    )
+)
 CX_ANSWER_SUPPORT_SHADOW_OBSERVER = (
     None
     if CX_ANSWER_SUPPORT_PRIMARY_POLICY is not None
@@ -522,6 +538,9 @@ app.state.cx_mvp_runtime = CX_MVP_RUNTIME
 app.state.cx_answer_support_policy_cutover = CX_ANSWER_SUPPORT_POLICY_CUTOVER
 app.state.cx_answer_support_steady_state_policy = (
     CX_ANSWER_SUPPORT_STEADY_STATE_POLICY
+)
+app.state.cx_answer_support_steady_state_operations_source = (
+    CX_ANSWER_SUPPORT_STEADY_STATE_OPERATIONS_SOURCE
 )
 app.state.cx_answer_support_cutover_operations_source = (
     CX_ANSWER_SUPPORT_CUTOVER_OPERATIONS_SOURCE
@@ -625,6 +644,10 @@ register_policy_cutover_operations_routes(
 register_policy_sustained_operations_routes(
     app,
     source=CX_ANSWER_SUPPORT_SUSTAINED_OPERATIONS_SOURCE,
+)
+register_policy_steady_state_operations_routes(
+    app,
+    source=CX_ANSWER_SUPPORT_STEADY_STATE_OPERATIONS_SOURCE,
 )
 register_vector_index_operations_routes(
     app,

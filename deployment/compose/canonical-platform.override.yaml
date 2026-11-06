@@ -171,6 +171,7 @@ services:
       NEX_CX_ANSWER_SUPPORT_POLICY_SUSTAINED_OPERATIONS_PATH: /app/services/nex-cx/nex_cx/data/answer_support_policy_sustained_operations.v1.json
       NEX_CX_ANSWER_SUPPORT_STEADY_STATE_MODE: ${NEX_CX_ANSWER_SUPPORT_STEADY_STATE_MODE:-CONTROLLED}
       NEX_CX_ANSWER_SUPPORT_STEADY_STATE_AUTHORIZATION_PATH: /app/services/nex-cx/nex_cx/data/answer_support_policy_steady_state_authorization.v1.json
+      NEX_CX_ANSWER_SUPPORT_STEADY_STATE_OPERATIONS_PATH: /app/services/nex-cx/nex_cx/data/answer_support_policy_steady_state_operations.v1.json
       NEX_CX_ANSWER_SUPPORT_SHADOW_MODE: ${NEX_CX_ANSWER_SUPPORT_SHADOW_MODE:-CONTROLLED}
       NEX_CX_ANSWER_SUPPORT_ACTIVATION_BUNDLE_PATH: /app/services/nex-cx/nex_cx/data/answer_support_controlled_activation.v1.json
       NEX_CX_ANSWER_SUPPORT_LIMITED_OPERATIONS_MODE: ${NEX_CX_ANSWER_SUPPORT_LIMITED_OPERATIONS_MODE:-ENABLED}
