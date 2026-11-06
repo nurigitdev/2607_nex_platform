@@ -281,7 +281,14 @@ def test_s20_golden_journey_runs_live_and_restart_projections(
         installed_acceptance,
     )
 
-    result = golden.execute_canonical_platform_golden_journey({}, root=ROOT)
+    result = golden.execute_canonical_platform_golden_journey(
+        {
+            golden.MODEL_REF_ENV: "Qwen3.5-9B",
+            golden.MODEL_REVISION_ENV: "hf:test-generation-revision",
+            golden.MODEL_DEPLOYMENT_ENV: "test-generation-deployment",
+        },
+        root=ROOT,
+    )
 
     assert result["status"] == "PASS"
     assert result["actual_remote_generation"] is True
