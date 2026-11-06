@@ -1,0 +1,51 @@
+{
+  "decision_boundary": {
+    "approved_scope": "CONTROLLED_ANSWER_SUPPORT_POLICY_SUSTAINED_OPERATIONS_CONTINUATION_ONLY",
+    "controlled_continuation_permitted": true,
+    "current_operations_mode": "CONTROLLED_SUSTAINED_OPERATIONS",
+    "current_policy": "ANSWER_SUPPORT_POLICY_CUTOVER_ACTIVE",
+    "decision_status": "APPROVED_CONTINUATION_NOT_PRODUCTION",
+    "next_boundary": "ANSWER_SUPPORT_POLICY_STEADY_STATE_OPERATIONS_READINESS",
+    "production_cutover_permitted": false,
+    "rollback_contract_preserved": true,
+    "runtime_change_permitted": false,
+    "steady_state_activation_permitted": false
+  },
+  "design_hash": "sha256:1c5d49828b4981af473a19bba7ede83e66a75fd3d9b3dd1de064ad9e424c14cf",
+  "design_id": "cx-answer-support-policy-sustained-operations-operator-review-v1",
+  "design_schema_version": "cx_answer_support_policy_sustained_operations_review_design.v1",
+  "review_policy": {
+    "automatic_production_cutover_permitted": false,
+    "maximum_e2e_p95_latency_ms": 20000,
+    "maximum_provider_p95_latency_ms": 15000,
+    "minimum_ready_count": 1,
+    "operator_decision_required": true,
+    "required_health_status": "ATTENTION",
+    "required_operations_status": "OPERATOR_REVIEW_DUE",
+    "required_peak_in_flight": 4,
+    "required_provider_call_count": 12,
+    "required_provider_sample_count": 12,
+    "required_source_decision": "ANSWER_SUPPORT_POLICY_SUSTAINED_OPERATIONS_ACCEPTED",
+    "required_source_status": "PASS",
+    "required_test_database_residue_rows": 0
+  },
+  "safety": {
+    "database_call_permitted": false,
+    "holdout_access_permitted": false,
+    "production_cutover_permitted": false,
+    "provider_call_permitted": false,
+    "rollback_weakening_permitted": false,
+    "runtime_mutation_permitted": false,
+    "steady_state_activation_permitted": false
+  },
+  "source_binding": {
+    "activation_bundle_hash": "sha256:6d5c631c9e18418ae2787d4053d06cdf87cc49a3cbc67aea6258b11f29893a06",
+    "authorization_hash": "sha256:fe45b9267af3e81095b957c0488ee86dba7f88114b3fff99708ccc812108fc00",
+    "continuation_receipt_hash": "sha256:36c97a3f3033d8963edea0931f05378799e2dfd273bb12cb65599ccaf5899ade",
+    "selected_policy_hash": "sha256:c81f7a0bf3d3d72d7bbc5de1f564ada3b415f2206689c1939fcb925f172168cb",
+    "source_evidence_hash": "sha256:dd021190d164c1b0eb1a66af09cd8d8169b5926500cc75d1e1d547c7f78889a8",
+    "source_report_document_hash": "sha256:622b5ede0be12662ad350c54dd7e0d34382f2b4de5e0978a7391ca2c913b714b",
+    "sustained_policy_hash": "sha256:4524e2e54929f42fe1c2e60b6c93941a373a0359ead5810126045c3668c99f6a"
+  },
+  "status": "FROZEN_OPERATOR_REVIEW"
+}
