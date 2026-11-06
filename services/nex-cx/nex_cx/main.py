@@ -116,6 +116,10 @@ from nex_cx.retrieval_answer_support_policy_cutover_operations import (
     build_installed_policy_cutover_operations_source,
     register_policy_cutover_operations_routes,
 )
+from nex_cx.retrieval_answer_support_policy_steady_state import (
+    OperationalSteadyStateStateStore,
+    build_installed_answer_support_policy_steady_state,
+)
 from nex_cx.retrieval_answer_support_policy_sustained_operations import (
     build_installed_policy_sustained_operations_source,
     register_policy_sustained_operations_routes,
@@ -419,14 +423,27 @@ CX_ANSWER_SUPPORT_POLICY_CUTOVER = build_installed_answer_support_policy_cutover
     ),
     decision_sink=CX_ANSWER_SUPPORT_POLICY_DECISION_SINK,
 )
+CX_ANSWER_SUPPORT_STEADY_STATE_POLICY = (
+    build_installed_answer_support_policy_steady_state(
+        environ=os.environ,
+        delegate=CX_ANSWER_SUPPORT_POLICY_CUTOVER,
+        state_store=OperationalSteadyStateStateStore(
+            emitter=CX_RETRIEVAL_EVENT_EMITTER,
+            store=SERVICE_PERSISTENCE.operational_event_store,
+        ),
+    )
+)
+CX_ANSWER_SUPPORT_PRIMARY_POLICY = (
+    CX_ANSWER_SUPPORT_STEADY_STATE_POLICY or CX_ANSWER_SUPPORT_POLICY_CUTOVER
+)
 CX_ANSWER_SUPPORT_CUTOVER_OPERATIONS_SOURCE = (
     build_installed_policy_cutover_operations_source(
         environ=os.environ,
         store=SERVICE_PERSISTENCE.operational_event_store,
         emitter=CX_RETRIEVAL_EVENT_EMITTER,
         runtime_snapshot=lambda: (
-            CX_ANSWER_SUPPORT_POLICY_CUTOVER.snapshot()
-            if CX_ANSWER_SUPPORT_POLICY_CUTOVER is not None
+            CX_ANSWER_SUPPORT_PRIMARY_POLICY.snapshot()
+            if CX_ANSWER_SUPPORT_PRIMARY_POLICY is not None
             else None
         ),
     )
@@ -437,15 +454,15 @@ CX_ANSWER_SUPPORT_SUSTAINED_OPERATIONS_SOURCE = (
         store=SERVICE_PERSISTENCE.operational_event_store,
         emitter=CX_RETRIEVAL_EVENT_EMITTER,
         runtime_snapshot=lambda: (
-            CX_ANSWER_SUPPORT_POLICY_CUTOVER.snapshot()
-            if CX_ANSWER_SUPPORT_POLICY_CUTOVER is not None
+            CX_ANSWER_SUPPORT_PRIMARY_POLICY.snapshot()
+            if CX_ANSWER_SUPPORT_PRIMARY_POLICY is not None
             else None
         ),
     )
 )
 CX_ANSWER_SUPPORT_SHADOW_OBSERVER = (
     None
-    if CX_ANSWER_SUPPORT_POLICY_CUTOVER is not None
+    if CX_ANSWER_SUPPORT_PRIMARY_POLICY is not None
     else build_installed_controlled_answer_support_runtime(
         environ=os.environ,
         generation_client=CX_MO_GENERATION_CLIENT,
@@ -495,7 +512,7 @@ CX_MVP_RUNTIME = build_cx_mvp_runtime_composition(
     embedding_alias=CX_EMBEDDING_ALIAS,
     rerank_client=CX_MO_RERANK_CLIENT,
     reranker_alias=CX_RERANKER_ALIAS,
-    primary_policy=CX_ANSWER_SUPPORT_POLICY_CUTOVER,
+    primary_policy=CX_ANSWER_SUPPORT_PRIMARY_POLICY,
     shadow_observer=(
         CX_ANSWER_SUPPORT_LIMITED_RUNTIME or CX_ANSWER_SUPPORT_SHADOW_OBSERVER
     ),
@@ -503,6 +520,9 @@ CX_MVP_RUNTIME = build_cx_mvp_runtime_composition(
 CX_GENERATION_RETRIEVAL_STORE = select_cx_generation_retrieval_store(CX_MVP_RUNTIME)
 app.state.cx_mvp_runtime = CX_MVP_RUNTIME
 app.state.cx_answer_support_policy_cutover = CX_ANSWER_SUPPORT_POLICY_CUTOVER
+app.state.cx_answer_support_steady_state_policy = (
+    CX_ANSWER_SUPPORT_STEADY_STATE_POLICY
+)
 app.state.cx_answer_support_cutover_operations_source = (
     CX_ANSWER_SUPPORT_CUTOVER_OPERATIONS_SOURCE
 )
