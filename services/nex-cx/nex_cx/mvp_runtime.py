@@ -4,15 +4,15 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
+from nex_runtime.prompts import PromptRegistryStore
 from sqlalchemy import bindparam, text
 from sqlalchemy.orm import Session, sessionmaker
-
-from nex_runtime.prompts import PromptRegistryStore
 
 from nex_cx.access_context import CxAccessContext
 from nex_cx.embedding_index import MoEmbeddingClient
 from nex_cx.hybrid_ranking import PermissionAwareRerankClient
 from nex_cx.hybrid_retrieval_package import (
+    HybridRetrievalPrimaryPolicy,
     HybridRetrievalShadowObserver,
     PermissionFilteredHybridPackageRuntime,
 )
@@ -33,8 +33,8 @@ from nex_cx.private_content import CxPrivateTextStore, build_private_payload_key
 from nex_cx.repository import CxContentRepository
 from nex_cx.retrieval_materialization import RestartSafeRetrievalPackageStore
 from nex_cx.retrieval_permissions import evaluate_retrieval_permission
-from nex_cx.vector_index_repository import VectorIndexRepository
 from nex_cx.vector_index_freshness import build_source_snapshot
+from nex_cx.vector_index_repository import VectorIndexRepository
 
 
 @dataclass(frozen=True)
@@ -63,11 +63,7 @@ class PostgresHybridRetrievalSource(HybridRetrievalSource):
             return {
                 document_id: content
                 for document_id in identifiers
-                if (
-                    content := self.content_repository.get_content_object(
-                        document_id
-                    )
-                )
+                if (content := self.content_repository.get_content_object(document_id))
                 is not None
             }
         except Exception as exc:
@@ -107,18 +103,26 @@ class PostgresHybridRetrievalSource(HybridRetrievalSource):
         ).bindparams(bindparam("document_ids", expanding=True))
         try:
             with self.session_factory() as session:
-                rows = session.execute(
-                    statement,
-                    {
-                        "document_ids": identifiers,
-                        "tenant_id": access_context.tenant_id,
-                        "owner_subject_id": access_context.subject_id,
-                    },
-                ).mappings().all()
-                chunk_set_rows = session.execute(
-                    chunk_set_statement,
-                    {"document_ids": identifiers},
-                ).mappings().all()
+                rows = (
+                    session.execute(
+                        statement,
+                        {
+                            "document_ids": identifiers,
+                            "tenant_id": access_context.tenant_id,
+                            "owner_subject_id": access_context.subject_id,
+                        },
+                    )
+                    .mappings()
+                    .all()
+                )
+                chunk_set_rows = (
+                    session.execute(
+                        chunk_set_statement,
+                        {"document_ids": identifiers},
+                    )
+                    .mappings()
+                    .all()
+                )
             latest_by_document: dict[str, str] = {}
             for row in rows:
                 latest_by_document.setdefault(
@@ -161,9 +165,7 @@ class PostgresHybridRetrievalSource(HybridRetrievalSource):
                     "source_snapshot": build_source_snapshot(
                         chunk_set_id=str(chunk_set["chunk_set_id"]),
                         chunk_policy_id=str(chunk_set["chunk_policy_id"]),
-                        source_markdown_sha256=str(
-                            chunk_set["source_markdown_sha256"]
-                        ),
+                        source_markdown_sha256=str(chunk_set["source_markdown_sha256"]),
                         chunks=chunk_set["chunks"],
                     ),
                     "embedding_profile": manifest["embedding_profile"],
@@ -207,14 +209,18 @@ class PostgresHybridRetrievalSource(HybridRetrievalSource):
         ).bindparams(bindparam("chunk_ids", expanding=True))
         try:
             with self.session_factory() as session:
-                rows = session.execute(
-                    statement,
-                    {
-                        "chunk_ids": [item["chunk_id"] for item in refs],
-                        "tenant_id": access_context.tenant_id,
-                        "owner_subject_id": access_context.subject_id,
-                    },
-                ).mappings().all()
+                rows = (
+                    session.execute(
+                        statement,
+                        {
+                            "chunk_ids": [item["chunk_id"] for item in refs],
+                            "tenant_id": access_context.tenant_id,
+                            "owner_subject_id": access_context.subject_id,
+                        },
+                    )
+                    .mappings()
+                    .all()
+                )
             by_key = {
                 (str(row["content_object_id"]), str(row["chunk_id"])): row
                 for row in rows
@@ -298,6 +304,7 @@ def build_cx_mvp_runtime(
     prompt_store: PromptRegistryStore | None = None,
     confidence_profiles: Sequence[Mapping[str, Any]] = (),
     require_calibrated_confidence: bool = False,
+    primary_policy: HybridRetrievalPrimaryPolicy | None = None,
     shadow_observer: HybridRetrievalShadowObserver | None = None,
 ) -> CxMvpRuntimeComposition:
     source = PostgresHybridRetrievalSource(
@@ -317,6 +324,7 @@ def build_cx_mvp_runtime(
         reranker_alias=reranker_alias,
         confidence_profiles=confidence_profiles,
         require_calibrated_confidence=require_calibrated_confidence,
+        primary_policy=primary_policy,
         shadow_observer=shadow_observer,
     )
     runtime_hydrator = lambda run: hydrate_ingestion_runtime(

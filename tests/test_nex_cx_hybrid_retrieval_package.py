@@ -1,40 +1,38 @@
 from __future__ import annotations
 
-from copy import deepcopy
 import hashlib
 import json
+from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
+import pytest
 from fastapi.testclient import TestClient
 from jsonschema import Draft202012Validator
-import pytest
-
+from nex_cx.access_context import CxAccessContext
+from nex_cx.hybrid_ranking import HybridRankingError, HybridRankingPolicy
+from nex_cx.hybrid_retrieval_package import (
+    CONFIDENCE_POLICY_ID,
+    MAX_QUERY_TEXT_LENGTH,
+    HybridRetrievalPackageError,
+    PermissionFilteredHybridPackageRuntime,
+    _confidence_decision,
+)
+from nex_cx.ingestion import ContentIngestionStore
+from nex_cx.retrieval import register_retrieval_routes
+from nex_cx.retrieval_confidence_calibration import (
+    RETRIEVAL_CONFIDENCE_POLICY_ID,
+    RetrievalConfidenceWeights,
+    build_retrieval_confidence_profile,
+)
+from nex_cx.retrieval_permissions import RetrievalPermissionError
+from nex_cx.retrieval_persistence import build_retrieval_package_persistence_preview
 from nex_runtime import (
     SERVICE_SPECS,
     build_service_app,
     evaluate_binary_score_calibration,
     issue_mock_service_token,
 )
-from nex_cx.access_context import CxAccessContext
-from nex_cx.hybrid_ranking import HybridRankingError, HybridRankingPolicy
-from nex_cx.hybrid_retrieval_package import (
-    CONFIDENCE_POLICY_ID,
-    HybridRetrievalPackageError,
-    MAX_QUERY_TEXT_LENGTH,
-    PermissionFilteredHybridPackageRuntime,
-    _confidence_decision,
-)
-from nex_cx.retrieval_confidence_calibration import (
-    RETRIEVAL_CONFIDENCE_POLICY_ID,
-    RetrievalConfidenceWeights,
-    build_retrieval_confidence_profile,
-)
-from nex_cx.ingestion import ContentIngestionStore
-from nex_cx.retrieval import register_retrieval_routes
-from nex_cx.retrieval_permissions import RetrievalPermissionError
-from nex_cx.retrieval_persistence import build_retrieval_package_persistence_preview
-
 
 QUERY = "owner private retrieval"
 DOC_ID = "content-owner-one"
@@ -247,6 +245,32 @@ def test_shadow_observer_cannot_mutate_or_interrupt_primary_package() -> None:
 
     failing = _runtime(shadow_observer=RecordingObserver(RuntimeError("shadow")))
     assert failing.build_package(_payload(), access_context=_context()) == baseline
+
+
+def test_primary_policy_can_replace_final_package_without_mutating_its_input() -> None:
+    class PrimaryPolicy:
+        def __init__(self) -> None:
+            self.calls: list[dict[str, Any]] = []
+
+        def apply(self, **kwargs: Any) -> dict[str, Any]:
+            self.calls.append(kwargs)
+            result = deepcopy(kwargs["primary_package"])
+            result["status"] = "LOW_CONFIDENCE"
+            result["no_answer_reason"] = "primary_policy"
+            result["score_summary"]["confidence_bucket"] = "LOW_CONFIDENCE"
+            result["score_summary"]["decision_reason"] = "primary_policy"
+            return result
+
+    policy = PrimaryPolicy()
+    result = _runtime(primary_policy=policy).build_package(
+        _payload(), access_context=_context()
+    )
+
+    assert result["status"] == "LOW_CONFIDENCE"
+    assert result["no_answer_reason"] == "primary_policy"
+    assert policy.calls[0]["query_text"] == QUERY
+    policy.calls[0]["primary_package"]["injected"] = True
+    assert "injected" not in result
 
 
 def test_runtime_preserves_fail_closed_permission_denial() -> None:
@@ -772,6 +796,7 @@ def _runtime(
     materializer: FakeMaterializer | None = None,
     reranker: FakeReranker | None | object = ...,
     policy: HybridRankingPolicy = HybridRankingPolicy(),
+    primary_policy=None,
     shadow_observer=None,
 ) -> PermissionFilteredHybridPackageRuntime:
     actual_reranker = FakeReranker() if reranker is ... else reranker
@@ -781,6 +806,7 @@ def _runtime(
         rerank_client=actual_reranker,  # type: ignore[arg-type]
         ranking_policy=policy,
         now_factory=lambda: "2026-09-22T08:00:00+00:00",
+        primary_policy=primary_policy,
         shadow_observer=shadow_observer,
     )
 

@@ -6,8 +6,8 @@ from nex_runtime import (
     SERVICE_SPECS,
     ServicePersistenceRuntime,
     attach_service_persistence_runtime,
-    build_service_token_admission_runtime,
     build_service_app,
+    build_service_token_admission_runtime,
     operational_event_emitter_from_app,
     register_service_job_control_routes,
     register_service_log_retention_routes,
@@ -15,7 +15,7 @@ from nex_runtime import (
 from nex_runtime.compatibility import register_generation_compatibility_routes
 from nex_runtime.prompts import register_prompt_registry_routes
 from nex_runtime.recovery import register_generation_recovery_policy_routes
-from nex_cx.chunking import register_chunking_routes
+
 from nex_cx.async_generation_contracts import CX_ASYNC_GENERATION_JOB_TYPE
 from nex_cx.async_generation_operations import (
     register_async_generation_operations_routes,
@@ -23,10 +23,11 @@ from nex_cx.async_generation_operations import (
 from nex_cx.async_generation_recovery import (
     recover_persisted_async_generation_job,
 )
+from nex_cx.chunking import register_chunking_routes
+from nex_cx.document_blob_store import build_document_blob_store
 from nex_cx.document_intelligence_orchestration import (
     register_document_intelligence_routes,
 )
-from nex_cx.document_blob_store import build_document_blob_store
 from nex_cx.document_library import register_document_library_routes
 from nex_cx.embedding_index import (
     DEFAULT_EMBEDDING_ALIAS,
@@ -41,12 +42,16 @@ from nex_cx.generation import (
     register_generation_routes,
 )
 from nex_cx.generation_private_output import build_generation_output_store
-from nex_cx.generation_request_store import build_generation_request_store
 from nex_cx.generation_read_model import GenerationReadModel
 from nex_cx.generation_repository import SqlAlchemyGenerationRuntimeRepository
+from nex_cx.generation_request_store import build_generation_request_store
 from nex_cx.generation_runtime import (
     GroundedGenerationRuntime,
     SqlAlchemyGenerationAdmissionRepository,
+)
+from nex_cx.hybrid_retrieval_package import (
+    HybridRetrievalPrimaryPolicy,
+    HybridRetrievalShadowObserver,
 )
 from nex_cx.ingestion import (
     DEFAULT_INGESTION_STORE,
@@ -55,32 +60,39 @@ from nex_cx.ingestion import (
     build_storage_config,
     register_ingestion_routes,
 )
+from nex_cx.ingestion_operations import register_ingestion_operations_routes
 from nex_cx.ingestion_orchestration_repository import (
-    InMemoryIngestionRunRepository,
     IngestionRunRepository,
+    InMemoryIngestionRunRepository,
     SqlAlchemyIngestionRunRepository,
 )
-from nex_cx.ingestion_operations import register_ingestion_operations_routes
 from nex_cx.ingestion_worker import (
     CX_INGESTION_JOB_TYPE,
     recover_expired_ingestion_job,
 )
-from nex_cx.hybrid_retrieval_package import HybridRetrievalShadowObserver
 from nex_cx.lexical_index import register_lexical_index_routes
 from nex_cx.mvp_runtime import CxMvpRuntimeComposition, build_cx_mvp_runtime
+from nex_cx.pgvector_store import (
+    PgVectorCxVectorStore,
+    build_pgvector_cx_vector_store,
+)
+from nex_cx.private_content import CxPrivateTextStore
+from nex_cx.private_text_store import (
+    build_private_text_store,
+)
 from nex_cx.processing import register_processing_routes
 from nex_cx.prompts import build_default_cx_prompt_store
+from nex_cx.remediation_execution import (
+    RemediationExecutionStoreProtocol,
+    SqlAlchemyRemediationExecutionStore,
+    register_remediation_execution_routes,
+)
 from nex_cx.repository import CxContentRepository, SqlAlchemyCxContentRepository
 from nex_cx.retrieval import (
     DEFAULT_RERANKER_ALIAS,
     MoRerankClient,
     build_default_mo_rerank_client,
     register_retrieval_routes,
-)
-from nex_cx.remediation_execution import (
-    RemediationExecutionStoreProtocol,
-    SqlAlchemyRemediationExecutionStore,
-    register_remediation_execution_routes,
 )
 from nex_cx.retrieval_answer_support_controlled_activation import (
     OperationalAnswerSupportProgressSink,
@@ -95,17 +107,13 @@ from nex_cx.retrieval_answer_support_limited_operations import (
     load_limited_operations_policy,
     register_limited_shadow_operations_routes,
 )
+from nex_cx.retrieval_answer_support_policy_cutover import (
+    OperationalPolicyCutoverStateStore,
+    build_installed_answer_support_policy_cutover,
+)
 from nex_cx.retrieval_observability import OperationalAnswerSupportShadowSink
-from nex_cx.summary_embeddings import register_summary_embedding_routes
 from nex_cx.summaries import register_summary_routes
-from nex_cx.private_content import CxPrivateTextStore
-from nex_cx.private_text_store import (
-    build_private_text_store,
-)
-from nex_cx.pgvector_store import (
-    PgVectorCxVectorStore,
-    build_pgvector_cx_vector_store,
-)
+from nex_cx.summary_embeddings import register_summary_embedding_routes
 from nex_cx.summary_pgvector_store import (
     SummaryPgVectorStore,
     build_summary_pgvector_store,
@@ -114,6 +122,11 @@ from nex_cx.summary_similarity import (
     PostgresSummarySimilarityStore,
     build_summary_similarity_store,
 )
+from nex_cx.trace_projection import (
+    InMemoryCxTraceProjectionSource,
+    SqlAlchemyCxTraceProjectionSource,
+    register_cx_trace_projection_routes,
+)
 from nex_cx.vector_index_operations import register_vector_index_operations_routes
 from nex_cx.vector_index_repository import (
     SqlAlchemyVectorIndexRepository,
@@ -121,11 +134,6 @@ from nex_cx.vector_index_repository import (
 )
 from nex_cx.worker_leases import SqlAlchemyCxWorkerLeaseStore
 from nex_cx.worker_operations import register_worker_operations_routes
-from nex_cx.trace_projection import (
-    InMemoryCxTraceProjectionSource,
-    SqlAlchemyCxTraceProjectionSource,
-    register_cx_trace_projection_routes,
-)
 
 
 def build_cx_content_repository(
@@ -281,6 +289,7 @@ def build_cx_mvp_runtime_composition(
     embedding_alias: str,
     rerank_client: MoRerankClient | None,
     reranker_alias: str,
+    primary_policy: HybridRetrievalPrimaryPolicy | None = None,
     shadow_observer: HybridRetrievalShadowObserver | None = None,
 ) -> CxMvpRuntimeComposition | None:
     if (
@@ -308,6 +317,7 @@ def build_cx_mvp_runtime_composition(
         embedding_alias=embedding_alias,
         rerank_client=rerank_client,
         reranker_alias=reranker_alias,
+        primary_policy=primary_policy,
         prompt_store=CX_PROMPT_STORE,
         shadow_observer=shadow_observer,
     )
@@ -352,8 +362,8 @@ CX_REMEDIATION_EXECUTION_STORE = build_cx_remediation_execution_store(
 CX_INGESTION_RUN_REPOSITORY = build_cx_ingestion_run_repository(
     SERVICE_PERSISTENCE,
 )
-CX_VECTOR_INDEX_REPOSITORY, CX_VECTOR_STORE = (
-    build_cx_vector_operations_dependencies(SERVICE_PERSISTENCE)
+CX_VECTOR_INDEX_REPOSITORY, CX_VECTOR_STORE = build_cx_vector_operations_dependencies(
+    SERVICE_PERSISTENCE
 )
 CX_GENERATION_RUNTIME = build_cx_generation_runtime(SERVICE_PERSISTENCE)
 CX_GENERATION_READ_MODEL = build_cx_generation_read_model(CX_GENERATION_RUNTIME)
@@ -383,18 +393,39 @@ CX_ANSWER_SUPPORT_ACTIVATION_STATE_STORE = OperationalRuntimeActivationStateStor
 CX_ANSWER_SUPPORT_OUTCOME_SINK = OperationalAnswerSupportShadowSink(
     CX_RETRIEVAL_EVENT_EMITTER
 )
-CX_ANSWER_SUPPORT_SHADOW_OBSERVER = build_installed_controlled_answer_support_runtime(
+CX_ANSWER_SUPPORT_PROGRESS_SINK = OperationalAnswerSupportProgressSink(
+    CX_RETRIEVAL_EVENT_EMITTER
+)
+CX_ANSWER_SUPPORT_POLICY_CUTOVER = build_installed_answer_support_policy_cutover(
     environ=os.environ,
     generation_client=CX_MO_GENERATION_CLIENT,
-    progress_sink=OperationalAnswerSupportProgressSink(CX_RETRIEVAL_EVENT_EMITTER),
+    progress_sink=CX_ANSWER_SUPPORT_PROGRESS_SINK,
     outcome_sink=CX_ANSWER_SUPPORT_OUTCOME_SINK,
-    state_store=CX_ANSWER_SUPPORT_ACTIVATION_STATE_STORE,
+    state_store=OperationalPolicyCutoverStateStore(
+        emitter=CX_RETRIEVAL_EVENT_EMITTER,
+        store=SERVICE_PERSISTENCE.operational_event_store,
+    ),
 )
-CX_ANSWER_SUPPORT_LIMITED_RUNTIME = build_installed_limited_shadow_operations_runtime(
-    environ=os.environ,
-    controlled_runtime=CX_ANSWER_SUPPORT_SHADOW_OBSERVER,
-    store=SERVICE_PERSISTENCE.operational_event_store,
-    outcome_sink=CX_ANSWER_SUPPORT_OUTCOME_SINK,
+CX_ANSWER_SUPPORT_SHADOW_OBSERVER = (
+    None
+    if CX_ANSWER_SUPPORT_POLICY_CUTOVER is not None
+    else build_installed_controlled_answer_support_runtime(
+        environ=os.environ,
+        generation_client=CX_MO_GENERATION_CLIENT,
+        progress_sink=CX_ANSWER_SUPPORT_PROGRESS_SINK,
+        outcome_sink=CX_ANSWER_SUPPORT_OUTCOME_SINK,
+        state_store=CX_ANSWER_SUPPORT_ACTIVATION_STATE_STORE,
+    )
+)
+CX_ANSWER_SUPPORT_LIMITED_RUNTIME = (
+    None
+    if CX_ANSWER_SUPPORT_POLICY_CUTOVER is not None
+    else build_installed_limited_shadow_operations_runtime(
+        environ=os.environ,
+        controlled_runtime=CX_ANSWER_SUPPORT_SHADOW_OBSERVER,
+        store=SERVICE_PERSISTENCE.operational_event_store,
+        outcome_sink=CX_ANSWER_SUPPORT_OUTCOME_SINK,
+    )
 )
 CX_ANSWER_SUPPORT_OPERATIONS_SOURCE = (
     CX_ANSWER_SUPPORT_LIMITED_RUNTIME.source
@@ -410,9 +441,13 @@ CX_ANSWER_SUPPORT_OPERATIONS_SOURCE = (
             )
         ),
         runtime_snapshot=lambda: (
-            CX_ANSWER_SUPPORT_SHADOW_OBSERVER.snapshot()
-            if CX_ANSWER_SUPPORT_SHADOW_OBSERVER is not None
-            else None
+            CX_ANSWER_SUPPORT_POLICY_CUTOVER.snapshot()
+            if CX_ANSWER_SUPPORT_POLICY_CUTOVER is not None
+            else (
+                CX_ANSWER_SUPPORT_SHADOW_OBSERVER.snapshot()
+                if CX_ANSWER_SUPPORT_SHADOW_OBSERVER is not None
+                else None
+            )
         ),
     )
 )
@@ -427,14 +462,14 @@ CX_MVP_RUNTIME = build_cx_mvp_runtime_composition(
     embedding_alias=CX_EMBEDDING_ALIAS,
     rerank_client=CX_MO_RERANK_CLIENT,
     reranker_alias=CX_RERANKER_ALIAS,
+    primary_policy=CX_ANSWER_SUPPORT_POLICY_CUTOVER,
     shadow_observer=(
         CX_ANSWER_SUPPORT_LIMITED_RUNTIME or CX_ANSWER_SUPPORT_SHADOW_OBSERVER
     ),
 )
-CX_GENERATION_RETRIEVAL_STORE = select_cx_generation_retrieval_store(
-    CX_MVP_RUNTIME
-)
+CX_GENERATION_RETRIEVAL_STORE = select_cx_generation_retrieval_store(CX_MVP_RUNTIME)
 app.state.cx_mvp_runtime = CX_MVP_RUNTIME
+app.state.cx_answer_support_policy_cutover = CX_ANSWER_SUPPORT_POLICY_CUTOVER
 app.state.cx_answer_support_shadow_observer = CX_ANSWER_SUPPORT_SHADOW_OBSERVER
 app.state.cx_answer_support_limited_runtime = CX_ANSWER_SUPPORT_LIMITED_RUNTIME
 app.state.cx_generation_retrieval_store = CX_GENERATION_RETRIEVAL_STORE
@@ -499,13 +534,11 @@ register_worker_operations_routes(
     heartbeat_store=SERVICE_PERSISTENCE.worker_heartbeat_store,
     lease_store=CX_WORKER_LEASE_STORE,
     recovery_handlers={
-        CX_INGESTION_JOB_TYPE: lambda job, observed_at: (
-            recover_expired_ingestion_job(
-                str(job["job_id"]),
-                job_queue=SERVICE_PERSISTENCE.job_queue,
-                run_repository=CX_INGESTION_RUN_REPOSITORY,
-                observed_at=observed_at,
-            )
+        CX_INGESTION_JOB_TYPE: lambda job, observed_at: recover_expired_ingestion_job(
+            str(job["job_id"]),
+            job_queue=SERVICE_PERSISTENCE.job_queue,
+            run_repository=CX_INGESTION_RUN_REPOSITORY,
+            observed_at=observed_at,
         ),
         **(
             {
@@ -560,9 +593,7 @@ register_retrieval_routes(
     app,
     store=DEFAULT_INGESTION_STORE,
     hybrid_runtime=(
-        CX_MVP_RUNTIME.hybrid_retrieval_runtime
-        if CX_MVP_RUNTIME is not None
-        else None
+        CX_MVP_RUNTIME.hybrid_retrieval_runtime if CX_MVP_RUNTIME is not None else None
     ),
 )
 register_summary_routes(

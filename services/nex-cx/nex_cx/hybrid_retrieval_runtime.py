@@ -13,6 +13,7 @@ from nex_cx.hybrid_candidate_orchestration import (
 )
 from nex_cx.hybrid_ranking import PermissionAwareRerankClient
 from nex_cx.hybrid_retrieval_package import (
+    HybridRetrievalPrimaryPolicy,
     HybridRetrievalShadowObserver,
     PermissionFilteredHybridPackageRuntime,
 )
@@ -149,6 +150,7 @@ def build_permission_hardened_hybrid_runtime(
     reranker_alias: str = "mock-reranker-default",
     confidence_profiles: Sequence[Mapping[str, Any]] = (),
     require_calibrated_confidence: bool = False,
+    primary_policy: HybridRetrievalPrimaryPolicy | None = None,
     shadow_observer: HybridRetrievalShadowObserver | None = None,
 ) -> PermissionFilteredHybridPackageRuntime:
     return PermissionFilteredHybridPackageRuntime(
@@ -165,6 +167,7 @@ def build_permission_hardened_hybrid_runtime(
         reranker_alias=reranker_alias,
         confidence_profiles=tuple(confidence_profiles),
         require_calibrated_confidence=require_calibrated_confidence,
+        primary_policy=primary_policy,
         shadow_observer=shadow_observer,
     )
 
