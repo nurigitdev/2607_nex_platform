@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Mapping, Sequence
+from contextlib import suppress
 from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
@@ -40,6 +41,7 @@ CUTOVER_AUTHORIZATION_SCHEMA_VERSION = (
     "cx_answer_support_policy_cutover_authorization.v1"
 )
 CUTOVER_STATE_SCHEMA_VERSION = "cx_answer_support_policy_cutover_state.v1"
+CUTOVER_DECISION_EVENT_SCHEMA_VERSION = "cx_answer_support_policy_cutover_decision.v1"
 ACTIVE = "ACTIVE"
 ROLLED_BACK = "ROLLED_BACK"
 ROLLBACK_PENDING_REVIEW = "ROLLBACK_PENDING_REVIEW"
@@ -79,6 +81,10 @@ class CutoverStateStore(Protocol):
     def current_state(self, authorization_hash: str) -> Mapping[str, Any] | None: ...
 
     def record_state(self, state: Mapping[str, Any]) -> None: ...
+
+
+class CutoverDecisionSink(Protocol):
+    def record(self, decision: Mapping[str, Any]) -> None: ...
 
 
 class AnswerSupportPolicyCutoverError(ValueError):
@@ -143,6 +149,7 @@ class ControlledAnswerSupportPolicyCutover:
         activation_bundle: Mapping[str, Any],
         authorization: Mapping[str, Any],
         state_store: CutoverStateStore,
+        decision_sink: CutoverDecisionSink | None = None,
         previous_state: Mapping[str, Any] | None = None,
     ) -> None:
         self.delegate = delegate
@@ -152,6 +159,7 @@ class ControlledAnswerSupportPolicyCutover:
         )
         self._authorization = self._bundle["authorization"]
         self._state_store = state_store
+        self._decision_sink = decision_sink
         self._state = ACTIVE
         self._rollback_reason: str | None = None
         if previous_state is not None:
@@ -171,7 +179,16 @@ class ControlledAnswerSupportPolicyCutover:
     ) -> Mapping[str, Any]:
         with self._lock:
             if self._state in _TERMINAL_STATES:
-                return deepcopy(dict(primary_package))
+                result = deepcopy(dict(primary_package))
+                self._record_decision(
+                    access_context=access_context,
+                    primary_package=primary_package,
+                    result=result,
+                    outcome=None,
+                    decision_state="FALLBACK",
+                    reason_code=self._rollback_reason or "PREVIOUS_ROLLBACK",
+                )
+                return result
         before = self.delegate.generation_client.snapshot()
         try:
             outcome = dict(
@@ -184,7 +201,16 @@ class ControlledAnswerSupportPolicyCutover:
             )
         except Exception:  # noqa: BLE001 - cutover must fall back on any delegate fault
             self._rollback("NON_RETRYABLE_OVERLOAD", pending_review=False)
-            return deepcopy(dict(primary_package))
+            result = deepcopy(dict(primary_package))
+            self._record_decision(
+                access_context=access_context,
+                primary_package=primary_package,
+                result=result,
+                outcome=None,
+                decision_state="FALLBACK",
+                reason_code="NON_RETRYABLE_OVERLOAD",
+            )
+            return result
         after = self.delegate.generation_client.snapshot()
         reason = _immediate_rollback_reason(outcome, before=before, after=after)
         pending_review = False
@@ -193,15 +219,42 @@ class ControlledAnswerSupportPolicyCutover:
             pending_review = reason is not None
         if reason is not None:
             self._rollback(reason, pending_review=pending_review)
-            return deepcopy(dict(primary_package))
+            result = deepcopy(dict(primary_package))
+            self._record_decision(
+                access_context=access_context,
+                primary_package=primary_package,
+                result=result,
+                outcome=outcome,
+                decision_state="FALLBACK",
+                reason_code=reason,
+            )
+            return result
         if outcome.get("status") != "OBSERVED":
-            return deepcopy(dict(primary_package))
-        return _apply_authoritative_decision(
+            result = deepcopy(dict(primary_package))
+            self._record_decision(
+                access_context=access_context,
+                primary_package=primary_package,
+                result=result,
+                outcome=outcome,
+                decision_state="SKIPPED",
+                reason_code=str(outcome.get("skip_reason") or "NOT_OBSERVED"),
+            )
+            return result
+        result = _apply_authoritative_decision(
             primary_package,
             outcome=outcome,
             authorization=self._authorization,
             activation_bundle=self._bundle["activation_bundle"],
         )
+        self._record_decision(
+            access_context=access_context,
+            primary_package=primary_package,
+            result=result,
+            outcome=outcome,
+            decision_state="APPLIED",
+            reason_code=None,
+        )
+        return result
 
     def snapshot(self) -> dict[str, Any]:
         with self._lock:
@@ -260,6 +313,32 @@ class ControlledAnswerSupportPolicyCutover:
             )
         )
 
+    def _record_decision(
+        self,
+        *,
+        access_context: CxAccessContext,
+        primary_package: Mapping[str, Any],
+        result: Mapping[str, Any],
+        outcome: Mapping[str, Any] | None,
+        decision_state: str,
+        reason_code: str | None,
+    ) -> None:
+        if self._decision_sink is None:
+            return
+        decision = build_cutover_decision_event(
+            authorization_hash=self._authorization["authorization_hash"],
+            selected_policy_hash=self._authorization["selected_policy_hash"],
+            request_id=access_context.request_id,
+            trace_id=access_context.trace_id,
+            primary_package=primary_package,
+            result=result,
+            outcome=outcome,
+            decision_state=decision_state,
+            reason_code=reason_code,
+        )
+        with suppress(Exception):
+            self._decision_sink.record(decision)
+
 
 def build_installed_answer_support_policy_cutover(
     *,
@@ -268,6 +347,7 @@ def build_installed_answer_support_policy_cutover(
     progress_sink: OperationalAnswerSupportProgressSink,
     outcome_sink: AnswerSupportShadowOutcomeSink,
     state_store: CutoverStateStore,
+    decision_sink: CutoverDecisionSink | None = None,
 ) -> ControlledAnswerSupportPolicyCutover | None:
     mode = str(environ.get(CUTOVER_MODE_ENV, CUTOVER_MODE_DISABLED)).strip().upper()
     if mode == CUTOVER_MODE_DISABLED:
@@ -305,6 +385,7 @@ def build_installed_answer_support_policy_cutover(
         activation_bundle=activation,
         authorization=authorization,
         state_store=state_store,
+        decision_sink=decision_sink,
         previous_state=previous,
     )
     if previous is None:
@@ -316,6 +397,97 @@ def build_installed_answer_support_policy_cutover(
             )
         )
     return runtime
+
+
+def build_cutover_decision_event(
+    *,
+    authorization_hash: str,
+    selected_policy_hash: str,
+    request_id: str,
+    trace_id: str,
+    primary_package: Mapping[str, Any],
+    result: Mapping[str, Any],
+    outcome: Mapping[str, Any] | None,
+    decision_state: str,
+    reason_code: str | None,
+) -> dict[str, Any]:
+    normalized_outcome = outcome or {}
+    decision = {
+        "decision_event_schema_version": CUTOVER_DECISION_EVENT_SCHEMA_VERSION,
+        "cutover_receipt_hash": _hash_ref(authorization_hash),
+        "selected_policy_hash": _hash_ref(selected_policy_hash),
+        "request_id": _required_text(request_id),
+        "trace_id": _required_text(trace_id),
+        "source_package_id": _required_text(
+            primary_package.get("retrieval_package_id")
+        ),
+        "source_package_hash": _required_text(primary_package.get("package_hash")),
+        "result_package_id": _required_text(result.get("retrieval_package_id")),
+        "result_package_hash": _required_text(result.get("package_hash")),
+        "decision_state": decision_state,
+        "policy_decision": _required_text(result.get("status")),
+        "reason_code": reason_code,
+        "provider_called": normalized_outcome.get("provider_called") is True,
+        "elapsed_ms": _number(normalized_outcome.get("elapsed_ms", 0.0)),
+        "user_visible": decision_state == "APPLIED",
+        "incumbent_fallback": decision_state != "APPLIED",
+        "production_cutover": False,
+    }
+    decision["decision_event_hash"] = semantic_sha256_hash_ref(decision)
+    return validate_cutover_decision_event(decision)
+
+
+def validate_cutover_decision_event(value: object) -> dict[str, Any]:
+    decision = dict(_mapping(value, "cutover_decision"))
+    supplied_hash = _hash_ref(decision.pop("decision_event_hash", None))
+    expected = {
+        "decision_event_schema_version",
+        "cutover_receipt_hash",
+        "selected_policy_hash",
+        "request_id",
+        "trace_id",
+        "source_package_id",
+        "source_package_hash",
+        "result_package_id",
+        "result_package_hash",
+        "decision_state",
+        "policy_decision",
+        "reason_code",
+        "provider_called",
+        "elapsed_ms",
+        "user_visible",
+        "incumbent_fallback",
+        "production_cutover",
+    }
+    state = decision.get("decision_state")
+    if (
+        set(decision) != expected
+        or semantic_sha256_hash_ref(decision) != supplied_hash
+        or decision.get("decision_event_schema_version")
+        != CUTOVER_DECISION_EVENT_SCHEMA_VERSION
+        or state not in {"APPLIED", "FALLBACK", "SKIPPED"}
+        or decision.get("user_visible") is not (state == "APPLIED")
+        or decision.get("incumbent_fallback") is not (state != "APPLIED")
+        or decision.get("production_cutover") is not False
+        or not isinstance(decision.get("provider_called"), bool)
+    ):
+        raise _invalid("cutover_decision")
+    _hash_ref(decision.get("cutover_receipt_hash"))
+    _hash_ref(decision.get("selected_policy_hash"))
+    for name in (
+        "source_package_id",
+        "source_package_hash",
+        "result_package_id",
+        "result_package_hash",
+        "policy_decision",
+    ):
+        _required_text(decision.get(name))
+    reason = decision.get("reason_code")
+    if reason is not None:
+        _required_text(reason)
+    _number(decision.get("elapsed_ms"))
+    decision["decision_event_hash"] = supplied_hash
+    return decision
 
 
 def load_cutover_authorization(
