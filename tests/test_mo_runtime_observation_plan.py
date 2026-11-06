@@ -128,10 +128,11 @@ def test_plan_uses_selected_generation_model_override() -> None:
         {
             "NEX_MO_GENERATION_PROFILE": "custom-profile",
             "NEX_MO_GENERATION_MODEL_NAME": "Custom-Model",
+            "NEX_MO_GENERATION_MODEL_PRECISION": "BF16",
         }
     )
     assert plan.targets[-1].model_revision == "Custom-Model"
-    assert plan.targets[-1].requested_dtype == "nvfp4"
+    assert plan.targets[-1].requested_dtype == "bfloat16"
 
 
 def test_plan_runner_summary_json_and_failure_paths(monkeypatch, capsys) -> None:

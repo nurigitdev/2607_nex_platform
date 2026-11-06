@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+from datetime import UTC, datetime
 import json
 from pathlib import Path
 
@@ -9,6 +10,7 @@ import pytest
 from nex_runtime.calibration_deferred_live_matrix import (
     CalibrationDeferredLiveMatrixError,
     build_calibration_deferred_live_matrix_contract,
+    build_reconciled_release_candidate_provider_source,
     evaluate_calibration_deferred_live_matrix,
 )
 
@@ -33,6 +35,21 @@ def _s20q() -> dict:
         "selected_policy_hash": "sha256:" + "1" * 64,
         "holdout_accessed": False,
         "holdout_reexecution_permitted": False,
+        "checks": {"closed": True},
+        "retrieval_execution": {
+            "database": "nex_cx_test",
+            "role": "nex_cx_user",
+            "embedding_calls": 1440,
+            "reranking_calls": 800,
+            "provider_failures": 0,
+            "scenario_count": 80,
+            "cleanup_complete": True,
+        },
+        "holdout_metrics": {"package_count": 40},
+        "holdout_binding": {
+            "profile_hash": "sha256:" + "4" * 64,
+            "threshold": 0.46375,
+        },
     }
 
 
@@ -45,6 +62,11 @@ def _s20ra() -> dict:
         "provider_binding": _design()["provider_binding"],
         "holdout_accessed": False,
         "holdout_reexecuted": False,
+        "checks": {"reconciled": True},
+        "source_status": {
+            "s136": {"status": "PASS"},
+            "s137": {"status": "PASS"},
+        },
     }
 
 
@@ -125,6 +147,57 @@ def test_contract_freezes_closed_holdout_and_exact_provider_binding() -> None:
     assert contract["provider_binding"]["generation"]["model"] == "Qwen3.5-9B"
     assert contract["holdout_reexecution_permitted"] is False
     assert contract["contract_hash"].startswith("sha256:")
+
+
+def test_reconciled_provider_source_projects_current_protected_evidence() -> None:
+    result = build_reconciled_release_candidate_provider_source(
+        contract=_contract(),
+        s20q_closure=_s20q(),
+        s20ra_reconciliation=_s20ra(),
+        observed_at=datetime(2026, 11, 7, 1, 2, 3, tzinfo=UTC),
+    )
+
+    assert result["status"] == "PASS"
+    gate = result["gate_evidence"]
+    assert gate["actual_execution"] is True
+    assert gate["metrics"]["provider_capability_count"] == 3
+    assert gate["metrics"]["calibration_sample_count"] == 40
+    assert gate["observed_at"] == "2026-11-07T01:02:03Z"
+    assert len(gate["evidence_digest"]) == 64
+    assert result["source_projection"]["holdout_reexecuted"] is False
+
+
+@pytest.mark.parametrize(
+    ("source", "mutation", "check"),
+    (
+        ("s20q", lambda value: value.update(status="FAIL"), "s20q_closure_passed"),
+        (
+            "s20q",
+            lambda value: value["retrieval_execution"].update(provider_failures=1),
+            "provider_failures_absent",
+        ),
+        (
+            "s20ra",
+            lambda value: value["source_status"]["s136"].update(status="FAIL"),
+            "current_replays_passed",
+        ),
+    ),
+)
+def test_reconciled_provider_source_fails_closed(
+    source: str, mutation, check: str
+) -> None:
+    values = {"s20q": _s20q(), "s20ra": _s20ra()}
+    mutation(values[source])
+
+    result = build_reconciled_release_candidate_provider_source(
+        contract=_contract(),
+        s20q_closure=values["s20q"],
+        s20ra_reconciliation=values["s20ra"],
+    )
+
+    assert result["status"] == "FAIL"
+    assert result["gate_evidence"]["actual_execution"] is False
+    assert result["checks"][check] is False
 
 
 @pytest.mark.parametrize(

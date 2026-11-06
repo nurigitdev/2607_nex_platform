@@ -13,6 +13,7 @@ import ssl
 import subprocess
 import sys
 import time
+from urllib.parse import urlsplit, urlunsplit
 from collections.abc import Callable, Mapping, Sequence
 from contextlib import contextmanager
 from pathlib import Path
@@ -20,6 +21,7 @@ from tempfile import TemporaryDirectory
 from typing import Any
 
 import psycopg
+import yaml
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import make_url
 from sqlalchemy.orm import sessionmaker
@@ -124,6 +126,9 @@ COMPOSE_FILES = (
     ROOT / "deployment/compose/s146-object-storage.override.yaml",
     ROOT / "deployment/compose/p9-wa.override.yaml",
     ROOT / "deployment/compose/canonical-platform.override.yaml",
+)
+DEFAULT_TRAEFIK_DYNAMIC_FILE = (
+    ROOT / "deployment/compose/traefik/canonical-platform-dynamic.yaml"
 )
 PROJECT_NAME = "nex-platform-canonical"
 DOMAIN_SERVICES = (
@@ -282,6 +287,13 @@ def execute_canonical_platform_acceptance(
             "NEX_CANONICAL_PLATFORM_SECRET_GENERATION": ("secret:canonical-platform.1"),
             "NEX_CANONICAL_PLATFORM_TLS_GENERATION": "tls:canonical-platform.1",
         }
+        runtime_env["NEX_CANONICAL_PLATFORM_TRAEFIK_DYNAMIC_FILE"] = str(
+            _materialize_runtime_traefik_config(
+                env,
+                source=DEFAULT_TRAEFIK_DYNAMIC_FILE,
+                destination=runtime_dir / "traefik/dynamic.yaml",
+            )
+        )
         _compose(
             runtime_env,
             root=root,
@@ -894,6 +906,66 @@ def _container_database_url(value: str) -> str:
             "Demo database URL must use PostgreSQL"
         )
     return parsed.set(host="host.docker.internal").render_as_string(hide_password=False)
+
+
+def _materialize_runtime_traefik_config(
+    environ: Mapping[str, str],
+    *,
+    source: Path,
+    destination: Path,
+) -> Path:
+    payload = yaml.safe_load(source.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        raise CanonicalPlatformInstalledAcceptanceError(
+            "canonical Traefik dynamic configuration is invalid"
+        )
+    targets = {
+        "embedding": _provider_server_url(
+            environ.get("NEX_MO_REMOTE_EMBEDDING_URL"), suffix="/v1/embeddings"
+        ),
+        "reranker": _provider_server_url(
+            environ.get("NEX_MO_REMOTE_RERANKER_URL"), suffix="/v1/rerank"
+        ),
+        "generation": _provider_server_url(
+            environ.get("NEX_MO_VLLM_BASE_URL"), suffix=""
+        ),
+    }
+    try:
+        services = payload["http"]["services"]
+        for capability, target in targets.items():
+            if target is not None:
+                services[capability]["loadBalancer"]["servers"] = [
+                    {"url": target}
+                ]
+    except (KeyError, TypeError) as exc:
+        raise CanonicalPlatformInstalledAcceptanceError(
+            "canonical Traefik provider service inventory is invalid"
+        ) from exc
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    destination.write_text(
+        yaml.safe_dump(payload, sort_keys=False),
+        encoding="utf-8",
+    )
+    destination.chmod(0o644)
+    return destination
+
+
+def _provider_server_url(value: object, *, suffix: str) -> str | None:
+    if value is None or not str(value).strip():
+        return None
+    parsed = urlsplit(str(value).strip())
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        raise CanonicalPlatformInstalledAcceptanceError(
+            "provider endpoint URL is invalid"
+        )
+    path = parsed.path.rstrip("/")
+    if suffix:
+        if not path.endswith(suffix):
+            raise CanonicalPlatformInstalledAcceptanceError(
+                "provider endpoint path is invalid"
+            )
+        path = path[: -len(suffix)]
+    return urlunsplit((parsed.scheme, parsed.netloc, path, "", ""))
 
 
 def _provision_demo_object_storage(

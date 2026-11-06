@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from datetime import UTC, datetime
 from typing import Any
 
-from .semantic_hashes import semantic_sha256_hash_ref
+from .release_candidate import RELEASE_CANDIDATE_EVIDENCE_SCHEMA_VERSION
+from .semantic_hashes import canonical_json, semantic_sha256_hash_ref, sha256_text
 
 
 SCHEMA_VERSION = "calibration_deferred_live_matrix.v1"
@@ -13,6 +15,104 @@ REQUIRED_STAGES = ("S136", "S137", "S140", "S147", "S149", "S150")
 
 class CalibrationDeferredLiveMatrixError(ValueError):
     pass
+
+
+def build_reconciled_release_candidate_provider_source(
+    *,
+    contract: Mapping[str, Any],
+    s20q_closure: Mapping[str, Any],
+    s20ra_reconciliation: Mapping[str, Any],
+    observed_at: datetime | None = None,
+) -> dict[str, Any]:
+    """Project the admitted current provider evidence into the legacy S140 gate."""
+
+    provider = _mapping(contract.get("provider_binding"))
+    retrieval = _mapping(s20q_closure.get("retrieval_execution"))
+    holdout = _mapping(s20q_closure.get("holdout_metrics"))
+    s20q_checks = _mapping(s20q_closure.get("checks"))
+    s20ra_checks = _mapping(s20ra_reconciliation.get("checks"))
+    source_status = _mapping(s20ra_reconciliation.get("source_status"))
+    checks = {
+        "calibration_contract_admitted": contract.get("decision")
+        == "CALIBRATION_ADMITTED",
+        "s20q_closure_passed": s20q_closure.get("status") == "PASS"
+        and s20q_closure.get("decision")
+        == "MULTI_SIGNAL_LIVE_HOLDOUT_ACCEPTANCE_CLOSED",
+        "s20q_checks_complete": bool(s20q_checks)
+        and all(value is True for value in s20q_checks.values()),
+        "s20ra_reconciliation_passed": s20ra_reconciliation.get("status")
+        == "PASS"
+        and s20ra_reconciliation.get("decision")
+        == "DEFERRED_LIVE_RUNNERS_RECONCILED",
+        "s20ra_checks_complete": bool(s20ra_checks)
+        and all(value is True for value in s20ra_checks.values()),
+        "provider_binding_exact": s20ra_reconciliation.get("provider_binding")
+        == provider,
+        "current_replays_passed": all(
+            _mapping(source_status.get(stage)).get("status") == "PASS"
+            for stage in ("s136", "s137")
+        ),
+        "actual_test_database_verified": retrieval.get("database")
+        == "nex_cx_test"
+        and retrieval.get("role") == "nex_cx_user",
+        "actual_provider_calls_verified": all(
+            isinstance(retrieval.get(name), int) and retrieval.get(name, 0) > 0
+            for name in ("embedding_calls", "reranking_calls")
+        ),
+        "provider_failures_absent": retrieval.get("provider_failures") == 0,
+        "holdout_remained_sealed": contract.get("holdout_reexecution_permitted")
+        is False
+        and s20q_closure.get("holdout_reexecution_permitted") is False,
+    }
+    passed = all(checks.values())
+    timestamp = (observed_at or datetime.now(UTC)).astimezone(UTC)
+    evidence = {
+        "evidence_schema_version": RELEASE_CANDIDATE_EVIDENCE_SCHEMA_VERSION,
+        "gate_id": "live_provider_matrix",
+        "status": "PASS" if passed else "FAIL",
+        "execution_mode": "protected",
+        "actual_execution": passed,
+        "private_payload_included": False,
+        "observed_at": timestamp.isoformat().replace("+00:00", "Z"),
+        "metrics": {
+            "provider_capability_count": len(provider),
+            "failed_provider_count": 0 if passed else 1,
+            "provider_telemetry_failure_count": retrieval.get(
+                "provider_failures", 0
+            ),
+            "calibration_sample_count": holdout.get("package_count", 0),
+            "retrieval_scenario_count": retrieval.get("scenario_count", 0),
+            "embedding_call_count": retrieval.get("embedding_calls", 0),
+            "reranking_call_count": retrieval.get("reranking_calls", 0),
+            "residue_count": 0 if retrieval.get("cleanup_complete") is True else 1,
+        },
+        "checks": checks,
+        "model_binding": {
+            "binding_sha256": semantic_sha256_hash_ref(provider),
+            "model_identity_controls_acceptance": True,
+            "calibration_profile_sha256": _mapping(
+                s20q_closure.get("holdout_binding")
+            ).get("profile_hash"),
+            "selected_threshold": _mapping(
+                s20q_closure.get("holdout_binding")
+            ).get("threshold"),
+        },
+    }
+    evidence["evidence_digest"] = sha256_text(canonical_json(evidence))
+    return {
+        "schema_version": "platform_release_candidate_live_providers.v1",
+        "status": evidence["status"],
+        "failure_code": None
+        if passed
+        else "reconciled_release_candidate_live_provider_failed",
+        "checks": checks,
+        "gate_evidence": evidence,
+        "source_projection": {
+            "retrieval_contract": "S20Q_CLOSURE",
+            "protected_replay": "S20R_A",
+            "holdout_reexecuted": False,
+        },
+    }
 
 
 def build_calibration_deferred_live_matrix_contract(

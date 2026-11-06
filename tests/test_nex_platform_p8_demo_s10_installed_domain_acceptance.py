@@ -124,6 +124,47 @@ def test_secret_material_covers_base_bindings_without_exposing_urls() -> None:
         acceptance._container_database_url("sqlite:///local.db")
 
 
+def test_runtime_traefik_config_uses_operator_provider_endpoints(
+    tmp_path: Path,
+) -> None:
+    destination = tmp_path / "dynamic.yaml"
+    path = acceptance._materialize_runtime_traefik_config(
+        {
+            "NEX_MO_REMOTE_EMBEDDING_URL": (
+                "http://192.168.20.243:9112/v1/embeddings"
+            ),
+            "NEX_MO_REMOTE_RERANKER_URL": "http://192.168.20.243:9113/v1/rerank",
+            "NEX_MO_VLLM_BASE_URL": "http://192.168.20.243:9116",
+        },
+        source=acceptance.DEFAULT_TRAEFIK_DYNAMIC_FILE,
+        destination=destination,
+    )
+
+    payload = acceptance.yaml.safe_load(path.read_text(encoding="utf-8"))
+    services = payload["http"]["services"]
+    assert services["embedding"]["loadBalancer"]["servers"] == [
+        {"url": "http://192.168.20.243:9112"}
+    ]
+    assert services["reranker"]["loadBalancer"]["servers"] == [
+        {"url": "http://192.168.20.243:9113"}
+    ]
+    assert services["generation"]["loadBalancer"]["servers"] == [
+        {"url": "http://192.168.20.243:9116"}
+    ]
+    assert path.stat().st_mode & 0o777 == 0o644
+
+
+def test_runtime_traefik_config_rejects_invalid_provider_endpoint(
+    tmp_path: Path,
+) -> None:
+    with pytest.raises(acceptance.P8DemoS10AcceptanceError, match="endpoint"):
+        acceptance._materialize_runtime_traefik_config(
+            {"NEX_MO_REMOTE_EMBEDDING_URL": "not-a-url"},
+            source=acceptance.DEFAULT_TRAEFIK_DYNAMIC_FILE,
+            destination=tmp_path / "dynamic.yaml",
+        )
+
+
 def test_demo_signing_key_window_honors_production_publication_lead() -> None:
     window = acceptance._signing_key_window(1_000_000)
 

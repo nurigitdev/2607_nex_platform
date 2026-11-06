@@ -25,6 +25,7 @@ import run_platform_release_candidate_protected_matrix as s140_current
 import run_s147_model_rollout_live_acceptance as s147_current
 from nex_runtime.calibration_deferred_live_matrix import (
     build_calibration_deferred_live_matrix_contract,
+    build_reconciled_release_candidate_provider_source,
     evaluate_calibration_deferred_live_matrix,
 )
 
@@ -118,6 +119,11 @@ def run_gb2_s20r_calibration_closure_deferred_live_matrix(
         "NEX_MO_VLLM_DEPLOYMENT_ID": provider["generation"]["deployment_id"],
         "NEX_MO_LIVE_EXPECTED_GENERATION_MODELS": provider["generation"]["model"],
         "NEX_MO_GENERATION_REASONING_MODE": "disabled",
+        "NEX_MO_RUNTIME_OBSERVABILITY_MODE": "live",
+        "NEX_MO_RUNTIME_GENERATION_PORT": "9116",
+        "NEX_MO_GENERATION_PROFILE": "qwen3_5_9b_bf16",
+        "NEX_MO_GENERATION_MODEL_NAME": provider["generation"]["model"],
+        "NEX_MO_GENERATION_MODEL_PRECISION": "BF16",
     }
 
     runners = {
@@ -164,6 +170,20 @@ def run_gb2_s20r_calibration_closure_deferred_live_matrix(
 
 
 def _run_s140(env: Mapping[str, str]) -> Mapping[str, Any]:
+    s20q_closure = _load_json(S20Q_PATH)
+    s20ra_reconciliation = _load_json(S20RA_PATH)
+    contract = build_calibration_deferred_live_matrix_contract(
+        design=_load_json(DESIGN_PATH),
+        s20q_closure=s20q_closure,
+        s20ra_reconciliation=s20ra_reconciliation,
+        s20q_document_hash=f"sha256:{_sha256_file(S20Q_PATH)}",
+        s20ra_document_hash=f"sha256:{_sha256_file(S20RA_PATH)}",
+    )
+    provider_source = build_reconciled_release_candidate_provider_source(
+        contract=contract,
+        s20q_closure=s20q_closure,
+        s20ra_reconciliation=s20ra_reconciliation,
+    )
     stage_env = {
         **env,
         "NEX_S140_RELEASE_CANDIDATE_ACCEPTANCE": "1",
@@ -180,7 +200,8 @@ def _run_s140(env: Mapping[str, str]) -> Mapping[str, Any]:
             f"NEX_{service}_TEST_DATABASE_URL"
         ]
     return s140_current.run_platform_release_candidate_protected_matrix(
-        {**stage_env, s140_current.ENABLE_ENV: "1"}
+        {**stage_env, s140_current.ENABLE_ENV: "1"},
+        provider_runner=lambda _env: provider_source,
     )
 
 

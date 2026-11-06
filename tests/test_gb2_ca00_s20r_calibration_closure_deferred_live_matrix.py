@@ -61,6 +61,9 @@ def test_runner_executes_remaining_stages_in_dependency_order() -> None:
     assert result["status"] == "PASS"
     assert [stage for stage, _ in calls] == ["S140", "S147", "S149", "S150"]
     assert calls[0][1]["NEX_MO_VLLM_MODEL"] == "Qwen3.5-9B"
+    assert calls[0][1]["NEX_MO_RUNTIME_OBSERVABILITY_MODE"] == "live"
+    assert calls[0][1]["NEX_MO_RUNTIME_GENERATION_PORT"] == "9116"
+    assert calls[0][1]["NEX_MO_GENERATION_MODEL_PRECISION"] == "BF16"
     assert calls[2][1]["NEX_MO_VLLM_MODEL_REVISION"].startswith("hf:")
     assert calls[2][1]["NEX_MO_VLLM_DEPLOYMENT_ID"] == "dgx-qwen3-5-9b-9116"
     assert result["holdout_reexecuted"] is False
@@ -108,7 +111,11 @@ def test_default_stage_adapters_activate_current_runners(monkeypatch) -> None:
     monkeypatch.setattr(
         smoke.s140_current,
         "run_platform_release_candidate_protected_matrix",
-        lambda env: (observed.__setitem__("s140", dict(env)), _s140())[1],
+        lambda env, **kwargs: (
+            observed.__setitem__("s140", dict(env)),
+            observed.__setitem__("s140_provider", kwargs["provider_runner"](env)),
+            _s140(),
+        )[-1],
     )
     monkeypatch.setattr(
         smoke.s147_current,
@@ -132,6 +139,7 @@ def test_default_stage_adapters_activate_current_runners(monkeypatch) -> None:
     assert smoke._run_s149(environment) == _s149()
     assert smoke._run_s150(environment) == _s150()
     assert observed["s140"][smoke.s140_current.ENABLE_ENV] == "1"
+    assert observed["s140_provider"]["status"] == "PASS"
     assert observed["s147"][smoke.s147_current.PROFILE_ENV] == "test"
     assert observed["s149"] is True
     assert observed["s150"] is True
@@ -142,7 +150,7 @@ def test_s140_adapter_rebinds_runtime_databases_to_test_profile(monkeypatch) -> 
     monkeypatch.setattr(
         smoke.s140_current,
         "run_platform_release_candidate_protected_matrix",
-        lambda env: observed.update(env) or _s140(),
+        lambda env, **_kwargs: observed.update(env) or _s140(),
     )
 
     smoke._run_s140(_env())
