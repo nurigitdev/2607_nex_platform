@@ -164,8 +164,13 @@ def run_gb2_s20r_calibration_closure_deferred_live_matrix(
 
 
 def _run_s140(env: Mapping[str, str]) -> Mapping[str, Any]:
+    stage_env = dict(env)
+    for service in ("OA", "AG", "AE", "CX", "MO"):
+        stage_env[f"NEX_{service}_DATABASE_URL"] = env[
+            f"NEX_{service}_TEST_DATABASE_URL"
+        ]
     return s140_current.run_platform_release_candidate_protected_matrix(
-        {**env, s140_current.ENABLE_ENV: "1"}
+        {**stage_env, s140_current.ENABLE_ENV: "1"}
     )
 
 

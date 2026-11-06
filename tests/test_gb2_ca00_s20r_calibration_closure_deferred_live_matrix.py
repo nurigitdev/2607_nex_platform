@@ -126,14 +126,31 @@ def test_default_stage_adapters_activate_current_runners(monkeypatch) -> None:
         lambda env, *, execute: (observed.__setitem__("s150", execute), _s150())[1],
     )
 
-    assert smoke._run_s140({}) == _s140()
-    assert smoke._run_s147({}) == _s147()
-    assert smoke._run_s149({}) == _s149()
-    assert smoke._run_s150({}) == _s150()
+    environment = _env()
+    assert smoke._run_s140(environment) == _s140()
+    assert smoke._run_s147(environment) == _s147()
+    assert smoke._run_s149(environment) == _s149()
+    assert smoke._run_s150(environment) == _s150()
     assert observed["s140"][smoke.s140_current.ENABLE_ENV] == "1"
     assert observed["s147"][smoke.s147_current.PROFILE_ENV] == "test"
     assert observed["s149"] is True
     assert observed["s150"] is True
+
+
+def test_s140_adapter_rebinds_runtime_databases_to_test_profile(monkeypatch) -> None:
+    observed = {}
+    monkeypatch.setattr(
+        smoke.s140_current,
+        "run_platform_release_candidate_protected_matrix",
+        lambda env: observed.update(env) or _s140(),
+    )
+
+    smoke._run_s140(_env())
+
+    for service in ("OA", "AG", "AE", "CX", "MO"):
+        assert observed[f"NEX_{service}_DATABASE_URL"] == observed[
+            f"NEX_{service}_TEST_DATABASE_URL"
+        ]
 
 
 def test_json_loader_rejects_non_object(tmp_path) -> None:
