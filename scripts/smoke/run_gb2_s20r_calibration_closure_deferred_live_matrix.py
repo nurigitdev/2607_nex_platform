@@ -164,7 +164,17 @@ def run_gb2_s20r_calibration_closure_deferred_live_matrix(
 
 
 def _run_s140(env: Mapping[str, str]) -> Mapping[str, Any]:
-    stage_env = dict(env)
+    stage_env = {
+        **env,
+        "NEX_S140_RELEASE_CANDIDATE_ACCEPTANCE": "1",
+        "NEX_S140_RELEASE_CANDIDATE_PROFILE": "test_live",
+        "NEX_S140_BROWSER_VIEWPORTS": "desktop,mobile",
+        "NEX_PERSISTENCE_MODE": "postgres",
+        "NEX_SERVICE_TOKEN_ROLLOUT_PROFILE": "SIGNED_ONLY",
+        "NEX_AG_OPERATIONS_SOURCE_MODE": "api",
+        "NEX_AE_AUTH_SESSION_MODE": "oa",
+        "NEX_MO_PROTECTED_LIVE_PROFILE": "dgx_vllm",
+    }
     for service in ("OA", "AG", "AE", "CX", "MO"):
         stage_env[f"NEX_{service}_DATABASE_URL"] = env[
             f"NEX_{service}_TEST_DATABASE_URL"

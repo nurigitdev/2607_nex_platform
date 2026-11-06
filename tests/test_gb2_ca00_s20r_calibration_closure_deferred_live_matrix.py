@@ -151,6 +151,10 @@ def test_s140_adapter_rebinds_runtime_databases_to_test_profile(monkeypatch) -> 
         assert observed[f"NEX_{service}_DATABASE_URL"] == observed[
             f"NEX_{service}_TEST_DATABASE_URL"
         ]
+    assert observed["NEX_S140_RELEASE_CANDIDATE_ACCEPTANCE"] == "1"
+    assert observed["NEX_S140_RELEASE_CANDIDATE_PROFILE"] == "test_live"
+    assert observed["NEX_SERVICE_TOKEN_ROLLOUT_PROFILE"] == "SIGNED_ONLY"
+    assert observed["NEX_AE_AUTH_SESSION_MODE"] == "oa"
 
 
 def test_json_loader_rejects_non_object(tmp_path) -> None:
