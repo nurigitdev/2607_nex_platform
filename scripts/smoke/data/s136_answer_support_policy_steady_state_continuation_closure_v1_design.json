@@ -1,0 +1,49 @@
+{
+  "closure_policy": {
+    "automatic_reopen_permitted": false,
+    "baseline_status": "FROZEN",
+    "closure_status": "CLOSED_CONTROLLED_OPERATIONS_BASELINE",
+    "corrective_chain_closed": true,
+    "next_boundary": "ANSWER_SUPPORT_POLICY_CONTROLLED_STEADY_STATE_BASELINE_MAINTENANCE",
+    "reopen_triggers": [
+      "MODEL_OR_PROVIDER_REVISION_CHANGED",
+      "REQUEST_PROFILE_OR_SCORE_SEMANTICS_CHANGED",
+      "CALIBRATION_DATASET_OR_SELECTED_POLICY_CHANGED",
+      "OPERATIONS_PROFILE_OR_SLO_CHANGED",
+      "PERMISSION_OR_TENANT_BOUNDARY_CHANGED",
+      "FALLBACK_RESTART_OR_ROLLBACK_GUARANTEE_DRIFTED",
+      "EXPLICIT_OPERATOR_REOPEN_DECISION"
+    ],
+    "required_decision_status": "APPROVED_CONTINUATION_NOT_PRODUCTION",
+    "required_source_decision": "CONTROLLED_ANSWER_SUPPORT_POLICY_STEADY_STATE_OPERATIONS_CONTINUATION_CONFIRMED",
+    "required_source_next_boundary": "ANSWER_SUPPORT_POLICY_STEADY_STATE_OPERATIONS_CONTINUATION_CLOSURE",
+    "required_source_status": "PASS",
+    "runtime_disposition": "CONTINUE_CONTROLLED_STEADY_STATE_OPERATIONS"
+  },
+  "design_hash": "sha256:2d74b85bff9322e33fa5b03a7eb6729da2a85ddb1eeaf7f2096a46ae80ade41b",
+  "design_id": "cx-answer-support-policy-steady-state-continuation-closure-v1",
+  "design_schema_version": "cx_answer_support_policy_steady_state_continuation_closure_design.v1",
+  "safety": {
+    "database_call_permitted": false,
+    "holdout_access_permitted": false,
+    "production_cutover_permitted": false,
+    "provider_call_permitted": false,
+    "rollback_weakening_permitted": false,
+    "runtime_mutation_permitted": false
+  },
+  "source_binding": {
+    "continuation_policy_hash": "sha256:7fc019a786ce1ad7e6022f6a2e11daab8829d6ff32e0b4034048406f2a176b97",
+    "operations_profile_hash": "sha256:a7332978f9779253959c555bf9e4186ff59020363431d0962b9442d4712d5376",
+    "operator_decision_hash": "sha256:82788007a90e80d289ab15712dee07b60e2a9e8c3a6f03c6c4473d63053bda33",
+    "operator_review_design_hash": "sha256:a6db9c9afd320829ec8976cfda8410e4f7abd5c8f6c8d8517eee92bcae836d45",
+    "operator_review_manifest_hash": "sha256:3bc49ce39a42d98fd65788b3c568332810b0943e6157a1c685f8508e9e3881ea",
+    "operator_review_receipt_document_hash": "sha256:00bf23e66fb37e00c4675b55ad6b450376d73e53ccc0329d34ca17d8a9f72094",
+    "operator_review_receipt_hash": "sha256:2b831954fbfb9e1496e0e25c3ab73ec5cba5953c295ac8e2f9f553e6728adfb3",
+    "operator_review_report_document_hash": "sha256:d59f053760b17a149e0f810b1c1d098c0ef66cb69b4c47e7891d3600afb7875a",
+    "prior_continuation_receipt_hash": "sha256:adf95c82d9c5d3ec0adec71c93231f7ed9a50e68ffd94c7e2420a0ffce7985fd",
+    "selected_policy_hash": "sha256:c81f7a0bf3d3d72d7bbc5de1f564ada3b415f2206689c1939fcb925f172168cb",
+    "source_continuation_evidence_hash": "sha256:331e6d024713ab7534df2ebac55c1e544aab317c5e77fb6554bda7bec4d4132c",
+    "source_continuation_report_document_hash": "sha256:e6fcf141a615eb1c0162228d9a3f373ef92b15b588fe06681a8124d61a669f2e"
+  },
+  "status": "FROZEN_CLOSURE"
+}
