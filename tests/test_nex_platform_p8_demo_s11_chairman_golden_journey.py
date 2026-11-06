@@ -103,7 +103,7 @@ def test_s11_execution_is_double_opt_in_and_contains_failure() -> None:
 
 
 def test_s11_calibration_is_exact_for_all_three_semantic_stages() -> None:
-    policies = json.loads(acceptance._semantic_calibration_json())
+    policies = json.loads(acceptance.build_semantic_calibration_json())
 
     assert [policy["semantic_stage"] for policy in policies] == [
         "INTENT",
@@ -115,9 +115,12 @@ def test_s11_calibration_is_exact_for_all_three_semantic_stages() -> None:
     assert {policy["minimum_confidence"] for policy in policies} == {0.5}
 
     overridden = json.loads(
-        acceptance._semantic_calibration_json(model_ref="provider-model-b")
+        acceptance.build_semantic_calibration_json(model_ref="provider-model-b")
     )
     assert {policy["model_ref"] for policy in overridden} == {"provider-model-b"}
+    assert acceptance._semantic_calibration_json() == (
+        acceptance.build_semantic_calibration_json()
+    )
 
 
 def test_s11_activates_existing_golden_a_local_skill_capability() -> None:

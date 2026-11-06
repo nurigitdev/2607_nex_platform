@@ -253,7 +253,7 @@ def execute_canonical_platform_golden_journey(
         runtime_env = {
             **env,
             SCREENSHOT_ENV: str(screenshot_dir),
-            CALIBRATION_ENV: _semantic_calibration_json(model_ref=model_ref),
+            CALIBRATION_ENV: build_semantic_calibration_json(model_ref=model_ref),
         }
 
         def live_hook(**_: Any) -> Mapping[str, Any]:
@@ -640,7 +640,7 @@ def _post_restart_failure_detail(
     )
 
 
-def _semantic_calibration_json(*, model_ref: str = DEFAULT_MODEL_REF) -> str:
+def build_semantic_calibration_json(*, model_ref: str = DEFAULT_MODEL_REF) -> str:
     policies = [
         {
             "semantic_stage": stage,
@@ -657,6 +657,11 @@ def _semantic_calibration_json(*, model_ref: str = DEFAULT_MODEL_REF) -> str:
         for stage in ("INTENT", "CONTEXT", "PLAN")
     ]
     return json.dumps(policies, separators=(",", ":"), sort_keys=True)
+
+
+def _semantic_calibration_json(*, model_ref: str = DEFAULT_MODEL_REF) -> str:
+    """Compatibility alias for historical P8 acceptance imports."""
+    return build_semantic_calibration_json(model_ref=model_ref)
 
 
 def _rotate_demo_credentials(

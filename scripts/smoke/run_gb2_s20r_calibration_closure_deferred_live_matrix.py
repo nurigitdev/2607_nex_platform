@@ -216,8 +216,20 @@ def _run_s147(env: Mapping[str, str]) -> Mapping[str, Any]:
 
 
 def _run_s149(env: Mapping[str, str]) -> Mapping[str, Any]:
+    model_ref = str(
+        env.get("NEX_MO_VLLM_MODEL")
+        or s149_current.canonical_journey.DEFAULT_MODEL_REF
+    ).strip()
+    stage_env = {
+        **env,
+        s149_current.canonical_journey.CALIBRATION_ENV: (
+            s149_current.canonical_journey.build_semantic_calibration_json(
+                model_ref=model_ref
+            )
+        ),
+    }
     return s149_current.run_installed_current_platform_continuity(
-        {**env, s149_current.EXECUTION_ENV: "1"}, execute=True
+        {**stage_env, s149_current.EXECUTION_ENV: "1"}, execute=True
     )
 
 

@@ -125,7 +125,11 @@ def test_default_stage_adapters_activate_current_runners(monkeypatch) -> None:
     monkeypatch.setattr(
         smoke.s149_current,
         "run_installed_current_platform_continuity",
-        lambda env, *, execute: (observed.__setitem__("s149", execute), _s149())[1],
+        lambda env, *, execute: (
+            observed.__setitem__("s149", execute),
+            observed.__setitem__("s149_env", dict(env)),
+            _s149(),
+        )[-1],
     )
     monkeypatch.setattr(
         smoke.s150_current,
@@ -142,6 +146,18 @@ def test_default_stage_adapters_activate_current_runners(monkeypatch) -> None:
     assert observed["s140_provider"]["status"] == "PASS"
     assert observed["s147"][smoke.s147_current.PROFILE_ENV] == "test"
     assert observed["s149"] is True
+    policies = json.loads(
+        observed["s149_env"][smoke.s149_current.canonical_journey.CALIBRATION_ENV]
+    )
+    assert {policy["semantic_stage"] for policy in policies} == {
+        "INTENT",
+        "CONTEXT",
+        "PLAN",
+    }
+    assert {policy["model_ref"] for policy in policies} == {
+        environment.get("NEX_MO_VLLM_MODEL")
+        or smoke.s149_current.canonical_journey.DEFAULT_MODEL_REF
+    }
     assert observed["s150"] is True
 
 
