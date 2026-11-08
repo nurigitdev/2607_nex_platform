@@ -7,6 +7,7 @@ import { chromium } from "@playwright/test";
 import { createServer } from "vite";
 
 import { createMockApprovalClient } from "../src/approvalClient.js";
+import { evaluateUxAcceptanceV2Page } from "./uxAcceptanceV2Browser.mjs";
 
 export const MODERN_APPROVAL_SMOKE_SCHEMA_VERSION =
   "ae_web_modern_approval_smoke.uxm_s10.v1";
@@ -43,6 +44,7 @@ export async function runModernApprovalPlaywrightSmoke({
       if (url.pathname.startsWith("/ae-api")) {
         businessRequests.push({
           method: request.method(),
+          origin: url.origin,
           pathname: url.pathname,
           search: url.search,
           body: request.postData() ?? "",
@@ -122,12 +124,17 @@ export async function runModernApprovalPlaywrightSmoke({
     await page.getByLabel(/^사번\s*\*?$/).fill("EMP-UXM-S10");
     await page.getByLabel(/^비밀번호\s*\*?$/).fill("protected-smoke-password");
     await page.getByRole("button", { name: "로그인" }).click();
-    await page.getByRole("heading", { name: "워크스페이스" }).waitFor();
+    await page.getByRole("heading", { name: "작업 공간" }).waitFor();
     await page.getByRole("link", { name: "승인함" }).click();
     await page.getByRole("heading", { name: "보호된 WRITE 승인" }).waitFor();
     await page.screenshot({
       path: resolve(evidenceDir, "01-approval-inbox-desktop.png"),
       fullPage: true,
+    });
+    const desktopAcceptance = await evaluateUxAcceptanceV2Page(page, {
+      profile: "application",
+      viewport: "desktop",
+      requestUrls: businessRequests.map(item => `${item.origin}${item.pathname}`),
     });
 
     const attachmentPopup = page.waitForEvent("popup");
@@ -141,9 +148,14 @@ export async function runModernApprovalPlaywrightSmoke({
     attachmentDownloadUrl = download.url();
 
     await page.getByRole("button", { name: /^승인$/ }).click();
-    await page.getByRole("alertdialog", { name: "이 요청을 승인하시겠습니까?" }).waitFor();
+    const approvalDialog = page.getByRole("alertdialog", { name: "이 요청을 승인하시겠습니까?" });
+    await approvalDialog.waitFor();
+    const dialogFocusContained = await approvalDialog.evaluate(dialog => dialog.contains(document.activeElement));
     await page.getByRole("button", { name: "승인 확정" }).click();
     await page.getByRole("heading", { name: "결정이 기록되었습니다" }).waitFor();
+    const decisionResultIsLiveStatus = await page
+      .getByRole("heading", { name: "결정이 기록되었습니다" })
+      .evaluate(heading => heading.closest('[role="status"]') !== null);
     await page.screenshot({
       path: resolve(evidenceDir, "02-approved-result-desktop.png"),
       fullPage: true,
@@ -171,6 +183,11 @@ export async function runModernApprovalPlaywrightSmoke({
     const mobileOverflow = await page.evaluate(
       () => document.documentElement.scrollWidth > window.innerWidth + 1,
     );
+    const mobileAcceptance = await evaluateUxAcceptanceV2Page(page, {
+      profile: "application",
+      viewport: "mobile",
+      requestUrls: businessRequests.map(item => `${item.origin}${item.pathname}`),
+    });
 
     const facadeOnly = businessRequests.every(request => request.pathname.startsWith("/ae-api/"));
     const observedAttachmentOpen = businessRequests.filter(request =>
@@ -199,6 +216,10 @@ export async function runModernApprovalPlaywrightSmoke({
       decisions_removed_after_completion: (await approvalClient.listApprovalGates()).gates.length === 2,
       no_browser_credential_leak: noCredentialLeak,
       mobile_has_no_horizontal_overflow: !mobileOverflow,
+      dialog_focus_contained: dialogFocusContained,
+      decision_result_is_live_status: decisionResultIsLiveStatus,
+      desktop_acceptance_v2: desktopAcceptance.status === "PASS",
+      mobile_acceptance_v2: mobileAcceptance.status === "PASS",
     });
 
     return Object.freeze({
@@ -210,7 +231,9 @@ export async function runModernApprovalPlaywrightSmoke({
         decision_request_count: decisionRequests.length,
         attachment_open_count: observedAttachmentOpen,
         attachment_download_count: Math.max(observedAttachmentDownload, 1),
+        screenshot_count: 3,
         mobile_active_element: mobileActiveElement,
+        acceptance_v2: { desktop: desktopAcceptance, mobile: mobileAcceptance },
         evidence_dir: evidenceDir,
       }),
       checks,

@@ -6,6 +6,8 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { chromium } from "@playwright/test";
 import { createServer } from "vite";
 
+import { evaluateUxAcceptanceV2Page } from "./uxAcceptanceV2Browser.mjs";
+
 export const MODERN_OPERATIONS_SMOKE_SCHEMA_VERSION = "ae_web_modern_operations_smoke.uxm_s17.v1";
 const APP_ROOT = fileURLToPath(new URL("..", import.meta.url));
 const DEFAULT_EVIDENCE_DIR = resolve(APP_ROOT, "../../reports/uiux/operations-isolation");
@@ -71,9 +73,19 @@ export async function runModernOperationsPlaywrightSmoke({ evidenceDir = DEFAULT
     await page.getByText("ae-web-operations-summary").waitFor();
     await page.screenshot({ path: resolve(evidenceDir, "01-operations-desktop.png"), fullPage: true });
     const desktop = await snapshot(page);
+    const desktopAcceptance = await evaluateUxAcceptanceV2Page(page, {
+      profile: "application",
+      viewport: "desktop",
+      requestUrls: requests.map(item => `${item.origin}${item.path}`),
+    });
     await page.setViewportSize({ width: 390, height: 844 });
     await page.screenshot({ path: resolve(evidenceDir, "02-operations-mobile.png"), fullPage: true });
     const mobile = await snapshot(page);
+    const mobileAcceptance = await evaluateUxAcceptanceV2Page(page, {
+      profile: "application",
+      viewport: "mobile",
+      requestUrls: requests.map(item => `${item.origin}${item.path}`),
+    });
 
     operationsUnavailable = true;
     await page.getByRole("button", { name: "새로고침" }).click();
@@ -90,12 +102,14 @@ export async function runModernOperationsPlaywrightSmoke({ evidenceDir = DEFAULT
       same_origin_only: requests.every(item => item.origin === origin && item.path.startsWith("/ae-api/")),
       no_direct_service_request: directRequests.length === 0,
       no_browser_service_credential: requests.every(item => !/authorization|service_token|api_key/i.test(item.body)),
+      desktop_acceptance_v2: desktopAcceptance.status === "PASS",
+      mobile_acceptance_v2: mobileAcceptance.status === "PASS",
     };
     return {
       schema_version: MODERN_OPERATIONS_SMOKE_SCHEMA_VERSION,
       status: Object.values(checks).every(Boolean) ? "PASS" : "FAIL",
       checks,
-      observations: { request_count: requests.length, direct_request_count: directRequests.length, screenshot_count: 2 },
+      observations: { request_count: requests.length, direct_request_count: directRequests.length, screenshot_count: 2, acceptance_v2: { desktop: desktopAcceptance, mobile: mobileAcceptance } },
     };
   } finally {
     if (browser) await browser.close();

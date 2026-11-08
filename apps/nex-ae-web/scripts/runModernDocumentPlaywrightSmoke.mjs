@@ -6,6 +6,8 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { chromium } from "@playwright/test";
 import { createServer } from "vite";
 
+import { evaluateUxAcceptanceV2Page } from "./uxAcceptanceV2Browser.mjs";
+
 export const MODERN_DOCUMENT_SMOKE_SCHEMA_VERSION = "ae_web_modern_document_smoke.uxm_s15.v1";
 const APP_ROOT = fileURLToPath(new URL("..", import.meta.url));
 const DEFAULT_EVIDENCE_DIR = resolve(APP_ROOT, "../../reports/uiux/document-modernization");
@@ -90,10 +92,20 @@ export async function runModernDocumentPlaywrightSmoke({ evidenceDir = DEFAULT_E
     await page.getByRole("heading", { name: "사용한 출처" }).waitFor();
     await page.screenshot({ path: resolve(evidenceDir, "02-retrieval-desktop.png"), fullPage: true });
     const desktop = await snapshot(page);
+    const desktopAcceptance = await evaluateUxAcceptanceV2Page(page, {
+      profile: "application",
+      viewport: "desktop",
+      requestUrls: requests.map(item => `${item.origin}${item.path}`),
+    });
 
     await page.setViewportSize({ width: 390, height: 844 });
     await page.screenshot({ path: resolve(evidenceDir, "03-retrieval-mobile.png"), fullPage: true });
     const mobile = await snapshot(page);
+    const mobileAcceptance = await evaluateUxAcceptanceV2Page(page, {
+      profile: "application",
+      viewport: "mobile",
+      requestUrls: requests.map(item => `${item.origin}${item.path}`),
+    });
     const checks = {
       document_detail: requests.some(item => item.path.endsWith("/documents/document-uxm-s15")),
       retrieval_source: desktop.body.includes("근거 2건을 찾았습니다."),
@@ -104,12 +116,14 @@ export async function runModernDocumentPlaywrightSmoke({ evidenceDir = DEFAULT_E
       same_origin: requests.every(item => item.origin === origin && item.path.startsWith("/ae-api/")),
       upload_called: requests.some(item => item.path.endsWith("/uploads/files")),
       retrieval_called: requests.some(item => item.path.endsWith("/retrieval/contexts")),
+      desktop_acceptance_v2: desktopAcceptance.status === "PASS",
+      mobile_acceptance_v2: mobileAcceptance.status === "PASS",
     };
     return {
       schema_version: MODERN_DOCUMENT_SMOKE_SCHEMA_VERSION,
       status: Object.values(checks).every(Boolean) ? "PASS" : "FAIL",
       checks,
-      observations: { request_count: requests.length, screenshot_count: 3 },
+      observations: { request_count: requests.length, screenshot_count: 3, acceptance_v2: { desktop: desktopAcceptance, mobile: mobileAcceptance } },
     };
   } finally {
     if (browser) await browser.close();

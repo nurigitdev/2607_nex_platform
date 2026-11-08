@@ -6,6 +6,8 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { chromium } from "@playwright/test";
 import { createServer } from "vite";
 
+import { evaluateUxAcceptanceV2Page } from "./uxAcceptanceV2Browser.mjs";
+
 export const MODERN_ARTIFACT_SMOKE_SCHEMA_VERSION = "ae_web_modern_artifact_smoke.uxm_s16.v1";
 const APP_ROOT = fileURLToPath(new URL("..", import.meta.url));
 const DEFAULT_EVIDENCE_DIR = resolve(APP_ROOT, "../../reports/uiux/artifact-modernization");
@@ -66,10 +68,20 @@ export async function runModernArtifactPlaywrightSmoke({ evidenceDir = DEFAULT_E
     await page.getByText("결과물을 보관했습니다.").waitFor();
     await page.screenshot({ path: resolve(evidenceDir, "01-artifact-desktop.png"), fullPage: true });
     const desktop = await snapshot(page);
+    const desktopAcceptance = await evaluateUxAcceptanceV2Page(page, {
+      profile: "application",
+      viewport: "desktop",
+      requestUrls: requests.map(item => `${item.origin}${item.path}`),
+    });
 
     await page.setViewportSize({ width: 390, height: 844 });
     await page.screenshot({ path: resolve(evidenceDir, "02-artifact-mobile.png"), fullPage: true });
     const mobile = await snapshot(page);
+    const mobileAcceptance = await evaluateUxAcceptanceV2Page(page, {
+      profile: "application",
+      viewport: "mobile",
+      requestUrls: requests.map(item => `${item.origin}${item.path}`),
+    });
     const checks = {
       detail_loaded: requests.some(item => item.path === "/ae-api/api/v1/artifacts/artifact-uxm-s16"),
       preview_loaded: previewObserved,
@@ -81,12 +93,14 @@ export async function runModernArtifactPlaywrightSmoke({ evidenceDir = DEFAULT_E
       desktop_no_overflow: !desktop.overflow,
       mobile_no_overflow: !mobile.overflow,
       same_origin: requests.every(item => item.origin === origin && item.path.startsWith("/ae-api/")),
+      desktop_acceptance_v2: desktopAcceptance.status === "PASS",
+      mobile_acceptance_v2: mobileAcceptance.status === "PASS",
     };
     return {
       schema_version: MODERN_ARTIFACT_SMOKE_SCHEMA_VERSION,
       status: Object.values(checks).every(Boolean) ? "PASS" : "FAIL",
       checks,
-      observations: { request_count: requests.length, screenshot_count: 2 },
+      observations: { request_count: requests.length, screenshot_count: 2, acceptance_v2: { desktop: desktopAcceptance, mobile: mobileAcceptance } },
     };
   } finally {
     if (browser) await browser.close();

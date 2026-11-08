@@ -6,6 +6,8 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { chromium } from "@playwright/test";
 import { createServer } from "vite";
 
+import { evaluateUxAcceptanceV2Page } from "./uxAcceptanceV2Browser.mjs";
+
 export const MODERN_WORKSPACE_EXECUTION_SMOKE_SCHEMA_VERSION =
   "ae_web_modern_workspace_execution_smoke.uxm_s14.v1";
 
@@ -99,6 +101,11 @@ export async function runModernWorkspaceExecutionPlaywrightSmoke({
       progress: document.querySelector('[aria-label="실제 업무 진행 단계"]')?.textContent ?? "",
       overflow: document.documentElement.scrollWidth > window.innerWidth + 1,
     }));
+    const desktopAcceptance = await evaluateUxAcceptanceV2Page(page, {
+      profile: "workspace-result",
+      viewport: "desktop",
+      requestUrls: businessRequests.map(item => `${item.origin}${item.pathname}`),
+    });
 
     await page.setViewportSize({ width: 390, height: 844 });
     await page.getByRole("heading", { name: "전표 등록 결과" }).scrollIntoViewIfNeeded();
@@ -109,6 +116,11 @@ export async function runModernWorkspaceExecutionPlaywrightSmoke({
     const mobileOverflow = await page.evaluate(
       () => document.documentElement.scrollWidth > window.innerWidth + 1,
     );
+    const mobileAcceptance = await evaluateUxAcceptanceV2Page(page, {
+      profile: "workspace-result",
+      viewport: "mobile",
+      requestUrls: businessRequests.map(item => `${item.origin}${item.pathname}`),
+    });
     const facadeOnly = businessRequests.every(request =>
       request.origin === origin && request.pathname.startsWith("/ae-api/"),
     );
@@ -134,6 +146,8 @@ export async function runModernWorkspaceExecutionPlaywrightSmoke({
       no_browser_credential_leak: noCredentialLeak,
       desktop_has_no_horizontal_overflow: !desktop.overflow,
       mobile_has_no_horizontal_overflow: !mobileOverflow,
+      desktop_acceptance_v2: desktopAcceptance.status === "PASS",
+      mobile_acceptance_v2: mobileAcceptance.status === "PASS",
     });
     return Object.freeze({
       smoke_schema_version: MODERN_WORKSPACE_EXECUTION_SMOKE_SCHEMA_VERSION,
@@ -141,6 +155,8 @@ export async function runModernWorkspaceExecutionPlaywrightSmoke({
       observations: Object.freeze({
         business_request_count: businessRequests.length,
         result_read_count: resultReadCount,
+        screenshot_count: 3,
+        acceptance_v2: { desktop: desktopAcceptance, mobile: mobileAcceptance },
         evidence_dir: evidenceDir,
       }),
       checks,

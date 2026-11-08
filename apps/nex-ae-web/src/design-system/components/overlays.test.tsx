@@ -13,6 +13,17 @@ function ControlledModal({ drawer = false }: { readonly drawer?: boolean }) {
   return <Surface open={open} onOpenChange={setOpen} title={drawer ? "상세" : "승인 확인"} description="내용을 검토하세요"><p>본문</p></Surface>;
 }
 
+function TriggeredDrawer() {
+  const [open, setOpen] = useState(false);
+  return <Drawer
+    open={open}
+    onOpenChange={setOpen}
+    trigger={<Button>상세 열기</Button>}
+    title="상세"
+    description="내용을 검토하세요"
+  ><p>본문</p></Drawer>;
+}
+
 describe("design system overlays", () => {
   it("closes modal with Escape and restores controlled state", async () => {
     const user = userEvent.setup();
@@ -28,6 +39,16 @@ describe("design system overlays", () => {
     expect(screen.getByRole("dialog", { name: "상세" })).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "닫기" }));
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("restores keyboard focus to the drawer trigger", async () => {
+    const user = userEvent.setup();
+    render(<TriggeredDrawer />);
+    const trigger = screen.getByRole("button", { name: "상세 열기" });
+    await user.click(trigger);
+    expect(screen.getByRole("dialog", { name: "상세" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "닫기" }));
+    expect(trigger).toHaveFocus();
   });
 
   it("requires confirmation before a destructive command", async () => {

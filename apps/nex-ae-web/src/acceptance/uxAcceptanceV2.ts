@@ -130,11 +130,19 @@ function accessibleName(element: HTMLElement, document: Document) {
   const labelledBy = element.getAttribute("aria-labelledby");
   if (labelledBy) return labelledBy.split(/\s+/).map(id => document.getElementById(id)?.textContent ?? "").join(" ").trim();
   const id = element.id;
-  return id ? document.querySelector<HTMLLabelElement>(`label[for="${cssEscape(id)}"]`)?.textContent?.trim() ?? "" : "";
+  const explicit = id
+    ? document.querySelector<HTMLLabelElement>(`label[for="${cssEscape(id)}"]`)?.textContent?.trim() ?? ""
+    : "";
+  return explicit || element.closest("label")?.textContent?.trim() || "";
 }
 
 function isMeasurableSmallTarget(element: HTMLElement) {
-  const rect = element.getBoundingClientRect();
+  const style = globalThis.getComputedStyle?.(element);
+  if (style?.clipPath && style.clipPath !== "none") return false;
+  const target = element.matches("input[type='checkbox'], input[type='radio']")
+    ? element.closest<HTMLElement>("label") ?? element
+    : element;
+  const rect = target.getBoundingClientRect();
   return rect.width > 0 && rect.height > 0 && (rect.width < 24 || rect.height < 24);
 }
 

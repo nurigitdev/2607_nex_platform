@@ -88,6 +88,41 @@ describe("UX acceptance v2 contract", () => {
     expect(snapshot.directServiceRequestCount).toBe(2);
     expect(evaluateUxAcceptanceV2(snapshot).status).toBe("FAIL");
   });
+
+  it("uses a wrapping label and its activation area for choice controls", () => {
+    document.documentElement.lang = "ko";
+    document.body.innerHTML = `
+      <main data-ux-region="main">
+        <h1>작업 공간</h1>
+        <label style="display:flex;width:80px;height:32px">
+          <input type="checkbox" style="width:16px;height:16px" />
+          <span>근거 사용</span>
+        </label>
+      </main>`;
+    const receipt = evaluateUxAcceptanceV2(captureUxAcceptanceV2Snapshot({
+      document,
+      profile: "login",
+      viewport: "desktop",
+    }));
+    expect(receipt.checks.all_visible_controls_named).toBe(true);
+    expect(receipt.checks.minimum_target_24px).toBe(true);
+  });
+
+  it("does not measure a clipped native file input as the visible activation target", () => {
+    document.documentElement.lang = "ko";
+    document.body.innerHTML = `
+      <main data-ux-region="main">
+        <h1>작업 공간</h1>
+        <input aria-label="파일 선택" type="file" style="position:absolute;width:1px;height:1px;clip-path:inset(50%)" />
+        <button style="width:32px;height:32px">파일 첨부</button>
+      </main>`;
+    const receipt = evaluateUxAcceptanceV2(captureUxAcceptanceV2Snapshot({
+      document,
+      profile: "login",
+      viewport: "desktop",
+    }));
+    expect(receipt.checks.minimum_target_24px).toBe(true);
+  });
 });
 
 function validSnapshot(): UxAcceptanceV2Snapshot {

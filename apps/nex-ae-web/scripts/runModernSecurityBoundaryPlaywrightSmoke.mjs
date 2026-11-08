@@ -6,6 +6,8 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { chromium } from "@playwright/test";
 import { createServer } from "vite";
 
+import { evaluateUxAcceptanceV2Page, verifyKeyboardFocusVisible } from "./uxAcceptanceV2Browser.mjs";
+
 export const MODERN_SECURITY_BOUNDARY_SMOKE_SCHEMA_VERSION =
   "ae_web_modern_security_boundary_smoke.uxm_s07.v1";
 
@@ -82,6 +84,9 @@ export async function runModernSecurityBoundaryPlaywrightSmoke({
       body: document.body.innerText,
       runtimeConfig: document.querySelector("#ae-web-runtime-config")?.textContent ?? "",
     }));
+    const loginAcceptance = await evaluateUxAcceptanceV2Page(page, {
+      profile: "login", viewport: "desktop", requestUrls: businessRequests.map(item => `${item.origin}${item.pathname}`),
+    });
 
     await page.getByLabel(/^사번\s*\*?$/).fill("EMP-UXM-S07");
     await page.getByLabel(/^비밀번호\s*\*?$/).fill("protected-smoke-password");
@@ -91,6 +96,10 @@ export async function runModernSecurityBoundaryPlaywrightSmoke({
       path: resolve(evidenceDir, "02-workspace-desktop.png"),
       fullPage: true,
     });
+    const workspaceDesktopAcceptance = await evaluateUxAcceptanceV2Page(page, {
+      profile: "workspace", viewport: "desktop", requestUrls: businessRequests.map(item => `${item.origin}${item.pathname}`),
+    });
+    const keyboardFocusVisible = await verifyKeyboardFocusVisible(page);
 
     await page.setViewportSize({ width: 390, height: 844 });
     await page.screenshot({
@@ -101,6 +110,9 @@ export async function runModernSecurityBoundaryPlaywrightSmoke({
       overflow: document.documentElement.scrollWidth > window.innerWidth + 1,
       viewportWidth: window.innerWidth,
     }));
+    const workspaceMobileAcceptance = await evaluateUxAcceptanceV2Page(page, {
+      profile: "workspace", viewport: "mobile", requestUrls: businessRequests.map(item => `${item.origin}${item.pathname}`),
+    });
 
     await page.getByRole("button", { name: "로그아웃" }).click();
     await page.getByRole("heading", { name: "사번 로그인" }).waitFor();
@@ -124,6 +136,10 @@ export async function runModernSecurityBoundaryPlaywrightSmoke({
       authenticated_workspace_rendered: true,
       mobile_has_no_horizontal_overflow: !mobile.overflow,
       logout_returns_to_login: true,
+      login_acceptance_v2: loginAcceptance.status === "PASS",
+      workspace_desktop_acceptance_v2: workspaceDesktopAcceptance.status === "PASS",
+      workspace_mobile_acceptance_v2: workspaceMobileAcceptance.status === "PASS",
+      keyboard_focus_visible: keyboardFocusVisible,
     });
 
     return Object.freeze({
@@ -133,8 +149,14 @@ export async function runModernSecurityBoundaryPlaywrightSmoke({
       observations: Object.freeze({
         business_request_count: businessRequests.length,
         protected_service_request_count: protectedServiceRequests.length,
+        screenshot_count: 3,
         mobile_viewport_width: mobile.viewportWidth,
         evidence_dir: evidenceDir,
+        acceptance_v2: Object.freeze({
+          login: loginAcceptance,
+          workspace_desktop: workspaceDesktopAcceptance,
+          workspace_mobile: workspaceMobileAcceptance,
+        }),
       }),
       checks,
     });

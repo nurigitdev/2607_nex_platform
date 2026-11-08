@@ -11,6 +11,7 @@ import styles from "./components.module.css";
 interface DialogSurfaceProps {
   readonly open: boolean;
   readonly onOpenChange: (open: boolean) => void;
+  readonly trigger?: ReactNode;
   readonly title: string;
   readonly description?: string;
   readonly children: ReactNode;
@@ -20,6 +21,7 @@ interface DialogSurfaceProps {
 function DialogSurface({
   open,
   onOpenChange,
+  trigger,
   title,
   description,
   children,
@@ -28,6 +30,7 @@ function DialogSurface({
 }: DialogSurfaceProps & { readonly drawer: boolean }) {
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
+      {trigger ? <Dialog.Trigger asChild>{trigger}</Dialog.Trigger> : null}
       <Dialog.Portal>
         <Dialog.Overlay className={styles.overlay} />
         <Dialog.Content className={classNames(styles.dialog, drawer && styles.drawer)}>

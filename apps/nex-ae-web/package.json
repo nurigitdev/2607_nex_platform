@@ -12,6 +12,7 @@
     "audit:v2-imports": "node scripts/auditModernProductionImports.mjs",
     "audit:v2-security": "node scripts/auditModernBrowserSecurityBoundary.mjs",
     "build:v2": "vite build",
+    "acceptance:v2-full-web": "node scripts/runFullWebAcceptanceV2.mjs --summary",
     "tokens:generate": "node scripts/generateDesignTokens.mjs",
     "tokens:check": "node scripts/generateDesignTokens.mjs --check",
     "smoke:authenticated-upload-fetch": "node scripts/runAuthenticatedUploadFetchSmoke.mjs --summary",
