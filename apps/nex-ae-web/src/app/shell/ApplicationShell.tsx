@@ -4,10 +4,13 @@ import {
   FileText,
   Gauge,
   Inbox,
+  LogOut,
 } from "lucide-react";
 import { NavLink, Outlet } from "react-router-dom";
 
+import { Button } from "../../design-system/components";
 import { projectApplicationShell } from "../legacyAdapters/applicationShellAdapter";
+import { projectSessionIdentity } from "../legacyAdapters/sessionAdapter";
 import { useSession } from "../providers/SessionProvider";
 import styles from "./ApplicationShell.module.css";
 
@@ -19,8 +22,9 @@ const primaryItems = [
 ] as const;
 
 export function ApplicationShell() {
-  const { sessionState } = useSession();
+  const { sessionState, employeeId, logout } = useSession();
   const shell = projectApplicationShell({ sessionState });
+  const identity = projectSessionIdentity({ sessionState, employeeId });
   const items = shell.operationsVisible
     ? [...primaryItems, { path: "/operations", label: "운영/진단", icon: Gauge }]
     : primaryItems;
@@ -46,6 +50,19 @@ export function ApplicationShell() {
       <div className={styles.workspace}>
         <header className={styles.header}>
           <strong>NeX-Platform</strong>
+          {identity.visible ? (
+            <div className={styles.sessionActions}>
+              <span>{identity.account}</span>
+              <Button
+                variant="ghost"
+                size="sm"
+                leadingIcon={<LogOut aria-hidden="true" size={16} />}
+                onClick={() => void logout()}
+              >
+                로그아웃
+              </Button>
+            </div>
+          ) : null}
         </header>
         <main id="main-content" className={styles.main} tabIndex={-1}>
           <Outlet />

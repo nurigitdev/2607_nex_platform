@@ -3,6 +3,7 @@ import { useState } from "react";
 import type { ReactNode } from "react";
 
 import type { SessionState } from "../domain/session";
+import type { SessionClientPort } from "../legacyAdapters/sessionAdapter";
 import { I18nProvider } from "./I18nProvider";
 import { SessionProvider } from "./SessionProvider";
 import { ThemeProvider } from "./ThemeProvider";
@@ -10,9 +11,13 @@ import { ThemeProvider } from "./ThemeProvider";
 export function AppProviders({
   children,
   initialSession,
+  sessionClient,
+  tenantId,
 }: {
   readonly children: ReactNode;
   readonly initialSession?: SessionState;
+  readonly sessionClient?: SessionClientPort;
+  readonly tenantId?: string;
 }) {
   const [queryClient] = useState(
     () =>
@@ -28,7 +33,13 @@ export function AppProviders({
     <QueryClientProvider client={queryClient}>
       <I18nProvider>
         <ThemeProvider>
-          <SessionProvider initialSession={initialSession}>{children}</SessionProvider>
+          <SessionProvider
+            initialSession={initialSession}
+            sessionClient={sessionClient}
+            tenantId={tenantId}
+          >
+            {children}
+          </SessionProvider>
         </ThemeProvider>
       </I18nProvider>
     </QueryClientProvider>

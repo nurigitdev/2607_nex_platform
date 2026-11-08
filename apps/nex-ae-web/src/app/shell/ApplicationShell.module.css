@@ -79,10 +79,13 @@
   border-bottom: 1px solid var(--nex-border-default);
   display: flex;
   height: 56px;
+  justify-content: space-between;
   padding: 0 var(--nex-space-6);
 }
 
 .header strong { font: var(--nex-text-subtitle); }
+.sessionActions { align-items: center; display: flex; gap: var(--nex-space-3); }
+.sessionActions > span { color: var(--nex-text-secondary); font: var(--nex-text-caption); }
 
 .main {
   margin: 0 auto;
@@ -115,5 +118,6 @@
   }
   .navItem span { font: var(--nex-text-caption); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .header { padding: 0 var(--nex-space-4); }
+  .sessionActions > span { max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .main { padding: var(--nex-space-4); }
 }

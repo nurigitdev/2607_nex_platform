@@ -1,6 +1,7 @@
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 
 import { EmptyState } from "../../design-system/components";
+import { LoginPage } from "../auth/LoginPage";
 import { projectApplicationShell } from "../legacyAdapters/applicationShellAdapter";
 import { useSession } from "../providers/SessionProvider";
 import { ApplicationShell } from "../shell/ApplicationShell";
@@ -15,12 +16,6 @@ const pageLabels: Readonly<Record<string, string>> = Object.freeze({
   artifacts: "아티팩트",
   operations: "운영/진단",
 });
-
-function LoginPlaceholder() {
-  const { sessionState } = useSession();
-  if (sessionState.status === "authenticated") return <Navigate to="/workspace" replace />;
-  return <main className={styles.login}><h1>NeX AE</h1></main>;
-}
 
 function ProtectedShell() {
   const location = useLocation();
@@ -49,7 +44,7 @@ function UnknownRoute() {
 export function AppRouter() {
   return (
     <Routes>
-      <Route path="/login" element={<LoginPlaceholder />} />
+      <Route path="/login" element={<LoginPage />} />
       <Route element={<ProtectedShell />}>
         {Object.keys(pageLabels).map(routeId => (
           <Route key={routeId} path={`/${routeId}`} element={<RoutePage routeId={routeId} />} />
