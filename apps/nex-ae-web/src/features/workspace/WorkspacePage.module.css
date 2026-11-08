@@ -20,6 +20,12 @@
   font: var(--nex-text-caption);
 }
 
+.progressStrip {
+  min-width: 0;
+  overflow-x: auto;
+  padding: 0 var(--nex-space-1);
+}
+
 .layout {
   background: var(--nex-bg-surface);
   border: 1px solid var(--nex-border-default);
@@ -121,6 +127,21 @@
 
 .attachmentChips li > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .error { color: var(--nex-danger-fg); margin: 0; }
+
+.issue {
+  background: var(--nex-danger-bg);
+  border: 1px solid var(--nex-danger-border);
+  border-radius: var(--nex-radius-md);
+  color: var(--nex-danger-fg);
+  display: grid;
+  gap: var(--nex-space-2);
+  margin-top: var(--nex-space-4);
+  padding: var(--nex-space-4);
+}
+
+.issue p { margin: 0; }
+.issue details { color: var(--nex-text-secondary); font: var(--nex-text-caption); }
+.issue code { overflow-wrap: anywhere; }
 
 .contextPanel {
   border-left: 1px solid var(--nex-border-default);

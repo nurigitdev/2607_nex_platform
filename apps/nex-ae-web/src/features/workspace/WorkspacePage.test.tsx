@@ -151,6 +151,33 @@ describe("WorkspacePage", () => {
     expect(screen.getByText("일부 결과를 확인해 주세요.")).toBeInTheDocument();
   });
 
+  it("shows only observed progress steps and secondary technical failure detail", () => {
+    render(
+      <WorkspacePage
+        workState={mapWorkState("FAILED")}
+        progressHistory={[
+          mapWorkState("ACCEPTING"),
+          mapWorkState("PLANNING"),
+          mapWorkState("WAITING_APPROVAL"),
+          mapWorkState("FAILED"),
+        ]}
+        issue={{
+          message: "요청을 완료하지 못했습니다.",
+          retryable: true,
+          nextAction: "잠시 후 다시 시도해 주세요.",
+          technicalCode: "WORKSPACE_EXECUTION_FAILED",
+        }}
+      />,
+    );
+
+    expect(screen.getByRole("list", { name: "실제 업무 진행 단계" })).toHaveTextContent(
+      "요청 접수업무 계획승인 대기처리 실패",
+    );
+    expect(screen.queryByText("처리 중")).not.toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent("잠시 후 다시 시도해 주세요.");
+    expect(screen.getByText("WORKSPACE_EXECUTION_FAILED")).not.toBeVisible();
+  });
+
   it("uses a single-column context layout at tablet and mobile widths", () => {
     const css = readFileSync(resolve(process.cwd(), "src/features/workspace/WorkspacePage.module.css"), "utf8");
     expect(css).toContain("@media (max-width: 980px)");

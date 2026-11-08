@@ -9,6 +9,7 @@ describe("legacy runtime boundary", () => {
     expect(boundary.runtime.clientMode).toBe("mock");
     expect(boundary.clients.summary.clientMode).toBe("mock");
     expect(boundary.clients.summary.clients.approval).toBe("mock");
+    expect(boundary.clients.summary.clients.workspace).toBe("mock");
     expect(boundary.clients.summary.metadata.browserServiceTokenIncluded).toBe(
       false,
     );

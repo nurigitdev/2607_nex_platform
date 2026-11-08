@@ -23,6 +23,7 @@ import {
   IconButton,
   Select,
   StatusPill,
+  Stepper,
   Tabs,
   Textarea,
 } from "../../design-system/components";
@@ -33,6 +34,7 @@ import {
   type WorkspaceResultProjection,
 } from "./BusinessResultCard";
 import styles from "./WorkspacePage.module.css";
+import type { WorkspaceExecutionIssue } from "./workspaceExecution";
 
 export interface WorkspaceAttachment {
   readonly id: string;
@@ -68,10 +70,12 @@ export interface WorkspaceController {
 export interface WorkspacePageProps {
   readonly controller?: WorkspaceController | null;
   readonly workState?: WorkStatePresentation;
+  readonly progressHistory?: readonly WorkStatePresentation[];
   readonly messages?: readonly WorkspaceMessage[];
   readonly sources?: readonly WorkspaceSource[];
   readonly recentTasks?: readonly string[];
   readonly result?: WorkspaceResultProjection | null;
+  readonly issue?: WorkspaceExecutionIssue | null;
 }
 
 const RECOMMENDED_WORK = Object.freeze([
@@ -83,10 +87,12 @@ const RECOMMENDED_WORK = Object.freeze([
 export function WorkspacePage({
   controller = null,
   workState = mapWorkState("IDLE"),
+  progressHistory = [],
   messages = [],
   sources = [],
   recentTasks = [],
   result = null,
+  issue = null,
 }: WorkspacePageProps) {
   const [prompt, setPrompt] = useState("");
   const [useEvidence, setUseEvidence] = useState(true);
@@ -98,10 +104,10 @@ export function WorkspacePage({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const workspaceTerm = mapBusinessTerm("WORKSPACE");
 
-  const canSubmit = Boolean(controller && prompt.trim() && !submitting);
   const active = ["ACCEPTING", "PLANNING", "RUNNING", "RESUMING", "VERIFYING"].includes(
     workState.state,
   );
+  const canSubmit = Boolean(controller && prompt.trim() && !submitting && !active);
   const contextItems = useMemo(
     () => [
       {
@@ -201,10 +207,27 @@ export function WorkspacePage({
         <StatusPill tone={workState.tone}>{workState.label}</StatusPill>
       </header>
 
+      {progressHistory.length > 0 ? (
+        <div className={styles.progressStrip}>
+          <Stepper
+            label="실제 업무 진행 단계"
+            items={progressHistory.map((item, index) => ({
+              id: `${item.state}:${index}`,
+              label: item.label,
+              state: item.state === "FAILED"
+                ? "error"
+                : index === progressHistory.length - 1 && !item.terminal
+                  ? "current"
+                  : "complete",
+            }))}
+          />
+        </div>
+      ) : null}
+
       <div className={styles.layout}>
         <div className={styles.mainColumn}>
           <section className={styles.conversation} aria-label="대화">
-            {messages.length === 0 && !result ? (
+            {messages.length === 0 && !result && !issue ? (
               <div className={styles.emptyWorkspace}>
                 <EmptyState
                   icon={Sparkles}
@@ -236,6 +259,7 @@ export function WorkspacePage({
                   </ol>
                 ) : null}
                 {result ? <BusinessResultCard result={result} /> : null}
+                {issue ? <WorkspaceIssue issue={issue} /> : null}
               </div>
             )}
           </section>
@@ -334,6 +358,19 @@ export function WorkspacePage({
           <Tabs items={contextItems} defaultValue="progress" label="작업 컨텍스트" />
         </aside>
       </div>
+    </section>
+  );
+}
+
+function WorkspaceIssue({ issue }: { readonly issue: WorkspaceExecutionIssue }) {
+  return (
+    <section className={styles.issue} role="alert">
+      <strong>{issue.message}</strong>
+      <p>{issue.nextAction}</p>
+      <details>
+        <summary>기술 정보</summary>
+        <code>{issue.technicalCode}</code>
+      </details>
     </section>
   );
 }

@@ -50,6 +50,7 @@ describe("installed browser runtime", () => {
     expect(runtime.clients.summary).toMatchObject({
       clientMode: "fetch",
       baseUrl: "/ae-api",
+      clients: { workspace: "fetch" },
     });
   });
 

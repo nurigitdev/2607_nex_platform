@@ -55,6 +55,7 @@ describe("user-facing work state mapper", () => {
   it("maps each admitted source without inventing progress", () => {
     expect(WORK_STATE_SOURCES).toHaveLength(6);
     expect(mapSourceWorkState("AgentExecution", "COMPILED").state).toBe("PLANNING");
+    expect(mapSourceWorkState("AgentExecution", "BLOCKED").state).toBe("FAILED");
     expect(mapSourceWorkState("GenerationLifecycle", "ACTIVE").state).toBe("RUNNING");
     expect(mapSourceWorkState("Approval", "PENDING").state).toBe("WAITING_APPROVAL");
     expect(mapSourceWorkState("ResultDelivery", "ACKNOWLEDGED").state).toBe("SUCCEEDED");
