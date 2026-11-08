@@ -20,3 +20,7 @@ export function useInstalledRuntime() {
   if (!runtime) throw new Error("Installed runtime is unavailable");
   return runtime;
 }
+
+export function useOptionalInstalledRuntime() {
+  return useContext(RuntimeContext);
+}

@@ -7,6 +7,7 @@ import type {
   ClientGatewaySummary,
   LegacyClientMode,
 } from "../domain/runtime";
+import type { ApprovalClientPort } from "./approvalClientPort";
 
 interface ClientGatewayOptions {
   readonly mode: LegacyClientMode;
@@ -15,7 +16,7 @@ interface ClientGatewayOptions {
 }
 
 export interface LegacyClientGateway {
-  readonly approval: unknown;
+  readonly approval: ApprovalClientPort;
   readonly artifact: unknown;
   readonly documentDetail: unknown;
   readonly upload: unknown;
@@ -44,7 +45,7 @@ export function createLegacyClientGateway({
   const summary = buildClientRegistrySummary(registry);
 
   return Object.freeze({
-    approval: registry.approvalClient,
+    approval: registry.approvalClient as unknown as ApprovalClientPort,
     artifact: registry.artifactClient,
     documentDetail: registry.documentDetailClient,
     upload: registry.uploadClient,

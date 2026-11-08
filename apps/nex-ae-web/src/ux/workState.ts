@@ -48,6 +48,25 @@ export interface WorkStatePresentation {
   readonly technicalDetailRef: "UX_STATE_UNRECOGNIZED" | null;
 }
 
+export type ApprovalOutcome =
+  | "pending"
+  | "approved"
+  | "rejected"
+  | "expired"
+  | "cancelled"
+  | "unknown";
+
+export interface ApprovalStatePresentation {
+  readonly outcome: ApprovalOutcome;
+  readonly labelKey: string;
+  readonly label: string;
+  readonly ariaLabel: string;
+  readonly tone: WorkStateTone;
+  readonly iconRole: WorkStateIconRole;
+  readonly terminal: boolean | null;
+  readonly work: WorkStatePresentation;
+}
+
 interface WorkStateDefinition {
   readonly labelKey: string;
   readonly tone: WorkStateTone;
@@ -111,6 +130,14 @@ const WORK_STATE_DEFINITIONS: Readonly<Record<WorkState, WorkStateDefinition>> =
 
 const WORK_STATE_SET: ReadonlySet<string> = new Set(WORK_STATES);
 
+const APPROVAL_STATE_DEFINITIONS = Object.freeze({
+  PENDING: Object.freeze({ workState: "waiting_approval", outcome: "pending" }),
+  APPROVED: Object.freeze({ workState: "completed", outcome: "approved" }),
+  REJECTED: Object.freeze({ workState: "completed", outcome: "rejected" }),
+  EXPIRED: Object.freeze({ workState: "cancelled", outcome: "expired" }),
+  CANCELLED: Object.freeze({ workState: "cancelled", outcome: "cancelled" }),
+} as const);
+
 export function mapWorkState(
   internalState: unknown,
   locale = DEFAULT_LOCALE,
@@ -136,6 +163,46 @@ export function mapWorkState(
 
 export function isWorkState(value: unknown): value is WorkState {
   return typeof value === "string" && WORK_STATE_SET.has(value);
+}
+
+export function mapApprovalState(
+  approvalState: unknown,
+  locale = DEFAULT_LOCALE,
+): ApprovalStatePresentation {
+  const candidate =
+    typeof approvalState === "string" ? approvalState.trim().toUpperCase() : "";
+  const definition =
+    APPROVAL_STATE_DEFINITIONS[
+      candidate as keyof typeof APPROVAL_STATE_DEFINITIONS
+    ];
+  if (!definition) {
+    const work = mapWorkState(null, locale);
+    return Object.freeze({
+      outcome: "unknown",
+      labelKey: work.labelKey,
+      label: work.label,
+      ariaLabel: work.ariaLabel,
+      tone: work.tone,
+      iconRole: work.iconRole,
+      terminal: work.terminal,
+      work,
+    });
+  }
+
+  const work = mapWorkState(definition.workState, locale);
+  const labelKey = `ux.approval_state.${definition.outcome}`;
+  const label = message(labelKey, { locale });
+  const tone = approvalOutcomeTone(definition.outcome, work.tone);
+  return Object.freeze({
+    outcome: definition.outcome,
+    labelKey,
+    label,
+    ariaLabel: label,
+    tone,
+    iconRole: approvalOutcomeIcon(definition.outcome, work.iconRole),
+    terminal: work.terminal,
+    work,
+  });
 }
 
 function normalizeWorkState(value: unknown): WorkState | null {
@@ -186,4 +253,21 @@ function unknownPresentation(locale: string): WorkStatePresentation {
     defaultAction: null,
     technicalDetailRef: "UX_STATE_UNRECOGNIZED",
   });
+}
+
+function approvalOutcomeTone(
+  outcome: Exclude<ApprovalOutcome, "unknown">,
+  fallback: WorkStateTone,
+): WorkStateTone {
+  if (outcome === "rejected") return "danger";
+  if (outcome === "expired") return "warning";
+  return fallback;
+}
+
+function approvalOutcomeIcon(
+  outcome: Exclude<ApprovalOutcome, "unknown">,
+  fallback: WorkStateIconRole,
+): WorkStateIconRole {
+  if (outcome === "rejected") return "error";
+  return fallback;
 }

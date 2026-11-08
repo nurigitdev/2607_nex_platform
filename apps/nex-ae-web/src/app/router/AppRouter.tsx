@@ -1,8 +1,10 @@
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 
 import { EmptyState } from "../../design-system/components";
+import { ApprovalPage } from "../../features/approvals/ApprovalPage";
 import { LoginPage } from "../auth/LoginPage";
 import { projectApplicationShell } from "../legacyAdapters/applicationShellAdapter";
+import { useOptionalInstalledRuntime } from "../providers/RuntimeProvider";
 import { useSession } from "../providers/SessionProvider";
 import { ApplicationShell } from "../shell/ApplicationShell";
 import styles from "./AppRouter.module.css";
@@ -41,12 +43,18 @@ function UnknownRoute() {
   return <Navigate to={sessionState.status === "authenticated" ? "/workspace" : "/login"} replace />;
 }
 
+function ApprovalRoute() {
+  const runtime = useOptionalInstalledRuntime();
+  return <ApprovalPage client={runtime?.clients.approval ?? null} />;
+}
+
 export function AppRouter() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
       <Route element={<ProtectedShell />}>
-        {Object.keys(pageLabels).map(routeId => (
+        <Route path="/approvals" element={<ApprovalRoute />} />
+        {Object.keys(pageLabels).filter(routeId => routeId !== "approvals").map(routeId => (
           <Route key={routeId} path={`/${routeId}`} element={<RoutePage routeId={routeId} />} />
         ))}
       </Route>

@@ -110,7 +110,12 @@ const ko = Object.freeze({
   "ux.work_state.completed": "완료",
   "ux.work_state.failed": "처리 실패",
   "ux.work_state.cancelled": "취소됨",
-  "ux.work_state.unknown": "상태 확인 필요"
+  "ux.work_state.unknown": "상태 확인 필요",
+  "ux.approval_state.pending": "승인 대기",
+  "ux.approval_state.approved": "승인됨",
+  "ux.approval_state.rejected": "반려됨",
+  "ux.approval_state.expired": "만료됨",
+  "ux.approval_state.cancelled": "취소됨"
 });
 
 const en = Object.freeze({
@@ -222,7 +227,12 @@ const en = Object.freeze({
   "ux.work_state.completed": "Completed",
   "ux.work_state.failed": "Processing failed",
   "ux.work_state.cancelled": "Cancelled",
-  "ux.work_state.unknown": "Status needs review"
+  "ux.work_state.unknown": "Status needs review",
+  "ux.approval_state.pending": "Waiting for approval",
+  "ux.approval_state.approved": "Approved",
+  "ux.approval_state.rejected": "Rejected",
+  "ux.approval_state.expired": "Expired",
+  "ux.approval_state.cancelled": "Cancelled"
 });
 
 export const MESSAGE_CATALOGS = Object.freeze({ ko, en });

@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
 
 import { validateCatalogParity } from "../locales/messages.js";
-import { WORK_STATES, isWorkState, mapWorkState } from "./workState";
+import {
+  WORK_STATES,
+  isWorkState,
+  mapApprovalState,
+  mapWorkState,
+} from "./workState";
 
 describe("user-facing work state mapper", () => {
   it("maps every canonical state to one stable presentation", () => {
@@ -95,5 +100,38 @@ describe("user-facing work state mapper", () => {
     expect(en.label).toBe("Waiting for approval");
     expect(ko.defaultAction?.label).toBe("승인 검토");
     expect(en.defaultAction?.label).toBe("Review approval");
+  });
+
+  it("projects approval outcomes without confusing rejection with work failure", () => {
+    const pending = mapApprovalState("PENDING");
+    const rejected = mapApprovalState("rejected");
+
+    expect(pending).toMatchObject({
+      outcome: "pending",
+      label: "승인 대기",
+      tone: "warning",
+      terminal: false,
+      work: { state: "waiting_approval" },
+    });
+    expect(rejected).toMatchObject({
+      outcome: "rejected",
+      label: "반려됨",
+      tone: "danger",
+      terminal: true,
+      work: { state: "completed" },
+    });
+  });
+
+  it("fails closed for an unknown approval outcome without echoing it", () => {
+    const raw = "PROVIDER_APPROVAL_123";
+    const presentation = mapApprovalState(raw, "en");
+
+    expect(presentation).toMatchObject({
+      outcome: "unknown",
+      label: "Status needs review",
+      terminal: null,
+      work: { technicalDetailRef: "UX_STATE_UNRECOGNIZED" },
+    });
+    expect(JSON.stringify(presentation)).not.toContain(raw);
   });
 });
