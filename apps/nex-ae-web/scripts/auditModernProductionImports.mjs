@@ -17,7 +17,7 @@ const FORBIDDEN_PRODUCTION_IMPORTS = Object.freeze([
 const SOURCE_EXTENSIONS = new Set([".ts", ".tsx"]);
 
 export async function auditModernProductionImports({ sourceRoot } = {}) {
-  const root = sourceRoot ?? fileURLToPath(new URL("../src/app", import.meta.url));
+  const root = sourceRoot ?? fileURLToPath(new URL("../src", import.meta.url));
   const files = await collectProductionSources(root);
   const violations = [];
 

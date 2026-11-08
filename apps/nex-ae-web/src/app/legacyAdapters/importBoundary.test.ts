@@ -7,10 +7,10 @@ import { auditModernProductionImports } from "../../../scripts/auditModernProduc
 describe("modern production import boundary", () => {
   it("does not depend on legacy test fixtures or golden harnesses", async () => {
     const result = await auditModernProductionImports({
-      sourceRoot: join(process.cwd(), "src/app"),
+      sourceRoot: join(process.cwd(), "src"),
     });
 
-    expect(result.filesScanned).toBeGreaterThan(0);
+    expect(result.filesScanned).toBeGreaterThan(25);
     expect(result.violations).toEqual([]);
   });
 });

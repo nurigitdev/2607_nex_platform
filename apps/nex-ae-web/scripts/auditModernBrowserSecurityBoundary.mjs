@@ -26,7 +26,7 @@ export async function auditModernBrowserSecurityBoundary({
   sourceRoot,
   htmlPath,
 } = {}) {
-  const root = sourceRoot ?? fileURLToPath(new URL("../src/app", import.meta.url));
+  const root = sourceRoot ?? fileURLToPath(new URL("../src", import.meta.url));
   const entry = htmlPath ?? fileURLToPath(new URL("../modern.html", import.meta.url));
   const files = await collectProductionSources(root);
   files.push(entry);

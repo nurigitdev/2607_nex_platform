@@ -65,7 +65,7 @@ describe("modern application foundation", () => {
     window.history.pushState({}, "", "/operations");
     render(<App initialSession={memberSession} />);
 
-    expect(await screen.findByRole("heading", { name: "워크스페이스" })).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "작업 공간" })).toBeTruthy();
     expect(screen.queryByRole("link", { name: "운영/진단" })).toBeNull();
     expect(window.location.pathname).toBe("/workspace");
   });
@@ -82,7 +82,7 @@ describe("modern application foundation", () => {
     window.history.pushState({}, "", "/not-a-route");
     render(<App initialSession={memberSession} />);
 
-    expect(await screen.findByRole("heading", { name: "워크스페이스" })).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "작업 공간" })).toBeTruthy();
     expect(window.location.pathname).toBe("/workspace");
   });
 

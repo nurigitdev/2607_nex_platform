@@ -86,7 +86,7 @@ export async function runModernSecurityBoundaryPlaywrightSmoke({
     await page.getByLabel(/^사번\s*\*?$/).fill("EMP-UXM-S07");
     await page.getByLabel(/^비밀번호\s*\*?$/).fill("protected-smoke-password");
     await page.getByRole("button", { name: "로그인" }).click();
-    await page.getByRole("heading", { name: "워크스페이스" }).waitFor();
+    await page.getByRole("heading", { name: "작업 공간" }).waitFor();
     await page.screenshot({
       path: resolve(evidenceDir, "02-workspace-desktop.png"),
       fullPage: true,
@@ -95,7 +95,7 @@ export async function runModernSecurityBoundaryPlaywrightSmoke({
     await page.setViewportSize({ width: 390, height: 844 });
     await page.screenshot({
       path: resolve(evidenceDir, "03-workspace-mobile.png"),
-      fullPage: true,
+      fullPage: false,
     });
     const mobile = await page.evaluate(() => ({
       overflow: document.documentElement.scrollWidth > window.innerWidth + 1,
