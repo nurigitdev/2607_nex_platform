@@ -41,7 +41,7 @@ export function LoginPage() {
   }
 
   return (
-    <main className={styles.page}>
+    <main className={styles.page} data-ux-region="main">
       <section className={styles.panel} aria-labelledby="login-title">
         <header className={styles.brand}>
           <span aria-hidden="true">N</span>

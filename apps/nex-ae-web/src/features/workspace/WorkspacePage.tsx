@@ -198,7 +198,7 @@ export function WorkspacePage({
   }
 
   return (
-    <section className={styles.page} aria-labelledby="workspace-title">
+    <section className={styles.page} aria-labelledby="workspace-title" data-ux-region="workspace">
       <header className={styles.pageHeader}>
         <div>
           <span className={styles.eyebrow}>Interactive Agent</span>
@@ -264,7 +264,7 @@ export function WorkspacePage({
             )}
           </section>
 
-          <form className={styles.composer} onSubmit={submit}>
+          <form className={styles.composer} onSubmit={submit} data-ux-region="composer">
             {attachments.length > 0 ? (
               <ul className={styles.attachmentChips} aria-label="첨부 파일">
                 {attachments.map(item => (
@@ -354,7 +354,7 @@ export function WorkspacePage({
           </form>
         </div>
 
-        <aside className={styles.contextPanel} aria-label="작업 컨텍스트">
+        <aside className={styles.contextPanel} aria-label="작업 컨텍스트" data-ux-region="context">
           <Tabs items={contextItems} defaultValue="progress" label="작업 컨텍스트" />
         </aside>
       </div>

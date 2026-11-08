@@ -30,9 +30,9 @@ export function ApplicationShell() {
     : primaryItems;
 
   return (
-    <div className={styles.shell}>
+    <div className={styles.shell} data-ux-region="shell">
       <a className={styles.skipLink} href="#main-content">본문으로 건너뛰기</a>
-      <aside className={styles.sidebar}>
+      <aside className={styles.sidebar} data-ux-region="sidebar">
         <div className={styles.brand}>NeX AE</div>
         <nav className={styles.navigation} aria-label="주요 탐색">
           {items.map(({ path, label, icon: Icon }) => (
@@ -48,7 +48,7 @@ export function ApplicationShell() {
         </nav>
       </aside>
       <div className={styles.workspace}>
-        <header className={styles.header}>
+        <header className={styles.header} data-ux-region="topbar">
           <strong>NeX-Platform</strong>
           {identity.visible ? (
             <div className={styles.sessionActions}>
@@ -64,7 +64,7 @@ export function ApplicationShell() {
             </div>
           ) : null}
         </header>
-        <main id="main-content" className={styles.main} tabIndex={-1}>
+        <main id="main-content" className={styles.main} tabIndex={-1} data-ux-region="main">
           <Outlet />
         </main>
       </div>

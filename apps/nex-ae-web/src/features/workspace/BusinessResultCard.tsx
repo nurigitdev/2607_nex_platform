@@ -30,7 +30,7 @@ export function BusinessResultCard({ result }: { readonly result: WorkspaceResul
   const successful = ["SUCCEEDED", "PARTIAL"].includes(result.status);
   const warnings = result.warnings ?? [];
   return (
-    <Card className={styles.card} aria-labelledby="business-result-title">
+    <Card className={styles.card} aria-labelledby="business-result-title" data-ux-region="primary-result">
       <header className={styles.header}>
         <div className={styles.titleGroup}>
           {successful ? <CheckCircle2 aria-hidden="true" /> : <TriangleAlert aria-hidden="true" />}
