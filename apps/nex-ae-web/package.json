@@ -6,7 +6,10 @@
   "scripts": {
     "docs:capture-v1": "node scripts/captureV1ManualScreenshots.mjs --summary",
     "dev": "node scripts/serve.mjs",
+    "dev:legacy": "node scripts/serve.mjs",
+    "dev:v2": "vite --open /modern.html",
     "start": "node scripts/serve.mjs",
+    "build:v2": "vite build",
     "smoke:authenticated-upload-fetch": "node scripts/runAuthenticatedUploadFetchSmoke.mjs --summary",
     "smoke:authenticated-upload-playwright": "node scripts/runAuthenticatedUploadPlaywrightSmoke.mjs --summary",
     "smoke:artifact-fetch": "node scripts/runArtifactFetchModeSmoke.mjs --summary",
@@ -29,9 +32,23 @@
     "smoke:canonical-platform-s11-chairman-golden-journey": "node scripts/runCanonicalPlatformGoldenJourney.mjs",
     "smoke:voucher-attachment-playwright": "node scripts/runVoucherAttachmentPlaywrightSmoke.mjs --summary",
     "smoke:playwright-readiness": "node scripts/runCredentialLoginPlaywrightReadiness.mjs --summary",
-    "test": "node --test test/*.test.mjs"
+    "test": "node --test test/*.test.mjs",
+    "test:react": "vitest run",
+    "typecheck:v2": "tsc --noEmit"
   },
   "devDependencies": {
-    "@playwright/test": "^1.62.1"
+    "@playwright/test": "^1.62.1",
+    "@testing-library/react": "^16.3.3",
+    "@testing-library/user-event": "^14.6.8",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "jsdom": "^29.1.1",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.6",
+    "vitest": "^4.1.12"
+  },
+  "dependencies": {
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1"
   }
 }
