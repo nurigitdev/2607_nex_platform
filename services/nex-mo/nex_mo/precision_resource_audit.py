@@ -30,8 +30,8 @@ EVIDENCE_PROBES = (
     ),
     EvidenceProbe(
         "generation_bf16_catalog",
-        "services/nex-mo/nex_mo/provider_catalog.py",
-        '"model_name": "Qwen3.5-4B"',
+        "services/_shared/nex_runtime/canonical_generation_binding.py",
+        'model_name="Qwen3.5-9B"',
     ),
     EvidenceProbe(
         "dtype_operator_rule",

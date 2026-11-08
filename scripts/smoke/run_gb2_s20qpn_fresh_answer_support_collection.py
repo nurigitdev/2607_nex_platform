@@ -28,6 +28,7 @@ from nex_cx.retrieval_answer_support_fresh_calibration import (
     build_fresh_calibration_dataset,
 )
 from nex_mo import remote_provider
+from nex_runtime.canonical_generation_binding import CANONICAL_GENERATION_BINDING
 from run_protected_dgx_live_profile import protected_dgx_vllm_profile_defaults
 
 SCHEMA_VERSION = "gb2_s20qpn_fresh_answer_support_collection.v1"
@@ -270,7 +271,7 @@ def _bind_effective_provider(
     environ: dict[str, str], binding: Mapping[str, Any], artifact_revision: str
 ) -> None:
     configured_revision = environ.get("NEX_MO_VLLM_MODEL_REVISION")
-    if configured_revision not in {None, "", artifact_revision, "Qwen3.5-4B"}:
+    if configured_revision not in {None, "", artifact_revision}:
         raise ValueError("configured generation revision differs from P-I")
     configured_deployment = environ.get("NEX_MO_VLLM_DEPLOYMENT_ID")
     expected_deployment = _required_text(binding.get("deployment_id"), "deployment_id")
@@ -278,6 +279,7 @@ def _bind_effective_provider(
         None,
         "",
         expected_deployment,
+        CANONICAL_GENERATION_BINDING.deployment_id,
         "vllm-generation-http",
     }:
         raise ValueError("configured generation deployment differs from P-I")

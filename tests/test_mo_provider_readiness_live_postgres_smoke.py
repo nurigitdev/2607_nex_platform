@@ -42,7 +42,11 @@ def _provider_payload() -> dict[str, object]:
     for route, capability, model in zip(
         payload["routes"],
         ("embedding", "reranking", "generation"),
-        ("Qwen3-Embedding-4B", "Qwen3-Reranker-4B", "Qwen3.5-4B"),
+        (
+            "Qwen3-Embedding-4B",
+            "Qwen3-Reranker-4B",
+            "hf:c202236235762e1c871ad0ccb60c8ee5ba337b9a",
+        ),
         strict=True,
     ):
         route["provider_capability"] = capability
@@ -134,7 +138,7 @@ def test_smoke_proves_database_provider_cache_auth_and_redaction() -> None:
     assert evidence["provider_models"] == {
         "embedding": "Qwen3-Embedding-4B",
         "reranking": "Qwen3-Reranker-4B",
-        "generation": "Qwen3.5-4B",
+        "generation": "hf:c202236235762e1c871ad0ccb60c8ee5ba337b9a",
     }
     assert evidence["summary"]["passed_check_count"] == 8
     assert "private-db-secret" not in serialized

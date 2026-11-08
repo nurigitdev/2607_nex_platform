@@ -19,7 +19,7 @@ def test_repository_catalog_drift_is_classified() -> None:
     assert all(result["checks"].values())
     assert result["issues"] == []
     assert result["summary"] == {
-        "profile_count": 5,
+        "profile_count": 6,
         "selected_profile_count": 3,
         "drift_count": 4,
         "high_risk_count": 0,
@@ -28,7 +28,7 @@ def test_repository_catalog_drift_is_classified() -> None:
     assert result["current_defaults"]["selected_profiles"] == {
         "embedding": "Qwen3-Embedding-4B",
         "reranking": "Qwen3-Reranker-4B",
-        "generation": "Qwen3.5-4B",
+        "generation": "Qwen3.5-9B",
     }
     assert [item["priority"] for item in result["ordered_remediation"]] == ["P1", "P2"]
 

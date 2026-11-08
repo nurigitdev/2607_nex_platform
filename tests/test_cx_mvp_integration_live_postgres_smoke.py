@@ -217,7 +217,7 @@ def test_generation_payload_headers_and_provider_observation() -> None:
     }
     observation = smoke._provider_observation(telemetry)
     assert observation["embedding"]["success_count"] == 1
-    assert observation["generation"]["model"] == "Qwen3.5-4B"
+    assert observation["generation"]["model"] == "Qwen3.5-9B"
     assert smoke._provider_observation({})["reranking"] == {
         "model": None,
         "success_count": 0,

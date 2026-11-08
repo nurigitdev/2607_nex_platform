@@ -5,21 +5,32 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from nex_runtime.canonical_generation_binding import CANONICAL_GENERATION_BINDING
+
 from nex_mo.provider_projection import project_model_profile
 
 
 DEFAULT_MODEL_ROOT = "/data/nex-platform/models"
 DEFAULT_PROVIDER_MODE = "mock"
-DEFAULT_GENERATION_PROFILE = "qwen3_5_4b_bf16"
+DEFAULT_GENERATION_PROFILE = CANONICAL_GENERATION_BINDING.profile_name
 GENERATION_PROFILE_CANDIDATES: tuple[dict[str, str], ...] = (
     {
+        "profile_name": CANONICAL_GENERATION_BINDING.profile_name,
+        "alias": CANONICAL_GENERATION_BINDING.alias,
+        "model_name": CANONICAL_GENERATION_BINDING.model_name,
+        "model_path_suffix": "qwen3.5-9b-bf16",
+        "precision": CANONICAL_GENERATION_BINDING.precision,
+        "candidate_role": "primary",
+        "selection_reason": "Calibrated canonical DGX-Spark generation target.",
+    },
+    {
         "profile_name": "qwen3_5_4b_bf16",
-        "alias": "general-llm-default",
+        "alias": "general-llm-rollback",
         "model_name": "Qwen3.5-4B",
         "model_path_suffix": "qwen3.5-4b-bf16",
         "precision": "BF16",
-        "candidate_role": "primary",
-        "selection_reason": "Current DGX-Spark vLLM generation target.",
+        "candidate_role": "rollback",
+        "selection_reason": "Retained rollback candidate; not selected by default.",
     },
     {
         "profile_name": "qwen3_6_27b_nvfp4",
@@ -206,6 +217,7 @@ def generation_model_path(
     selected: bool,
 ) -> str:
     profile_specific_env = {
+        "qwen3_5_9b_bf16": "NEX_MO_GENERATION_QWEN35_9B_MODEL_PATH",
         "qwen3_5_4b_bf16": "NEX_MO_GENERATION_QWEN35_4B_MODEL_PATH",
         "qwen3_6_27b_nvfp4": "NEX_MO_GENERATION_QWEN36_27B_MODEL_PATH",
         "k_ai_generation_candidate": "NEX_MO_GENERATION_KAI_MODEL_PATH",

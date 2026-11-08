@@ -118,7 +118,7 @@ def test_protected_smoke_composes_correlated_live_evidence() -> None:
     assert calls[0]["NEX_MO_PROVIDER_MODE"] == "live"
     assert calls[0]["NEX_MO_VLLM_MODEL"] == "Qwen3.5-9B"
     assert calls[0]["NEX_MO_VLLM_DEPLOYMENT_ID"] == (
-        "dgx-qwen3-5-9b-9116"
+        smoke.CANONICAL_GENERATION_DEPLOYMENT_ID
     )
     assert calls[0]["NEX_CX_ANSWER_SUPPORT_STEADY_STATE_MODE"] == "CONTROLLED"
 

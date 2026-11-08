@@ -6,11 +6,13 @@ import hashlib
 import json
 from typing import Any
 
+from nex_runtime.canonical_generation_binding import CANONICAL_GENERATION_BINDING
+
 from nex_cx.generation import MoGenerationClient
 
 
 DEFAULT_SUMMARY_GENERATION_ALIAS = "general-llm-default"
-DEFAULT_SUMMARY_MODEL_PROFILE = "Qwen3.5-4B"
+DEFAULT_SUMMARY_MODEL_PROFILE = CANONICAL_GENERATION_BINDING.model_name
 DEFAULT_SUMMARY_MAX_OUTPUT_TOKENS = 512
 DEFAULT_SUMMARY_TIMEOUT_MS = 60_000
 

@@ -50,7 +50,7 @@ def test_live_evaluation_runs_three_active_probes_and_records_latency() -> None:
             return httpx.Response(200, json={"data": [{"embedding": [0.1]}]})
         if url.endswith("/v1/rerank"):
             return httpx.Response(200, json={"results": [{"score": 0.9}]})
-        return httpx.Response(200, json={"data": [{"id": "Qwen3.5-4B"}]})
+        return httpx.Response(200, json={"data": [{"id": "Qwen3.5-9B"}]})
 
     snapshot = evaluate_provider_readiness_plan(
         build_provider_readiness_probe_plan(live_env()),

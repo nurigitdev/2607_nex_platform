@@ -26,7 +26,7 @@
           "runtime_engine": {"enum": ["local_mock", "remote_http", "vllm"]},
           "selected": {"type": "boolean"},
           "status": {"enum": ["READY", "CONFIGURED", "UNAVAILABLE", "PLANNED"]},
-          "candidate_role": {"enum": ["primary", "candidate", "planned", "custom"]},
+          "candidate_role": {"enum": ["primary", "rollback", "candidate", "planned", "custom"]},
           "selection_reason": {"type": "string", "minLength": 1}
         }
       }

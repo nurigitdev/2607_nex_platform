@@ -53,7 +53,7 @@ def test_candidate_is_sealed_deterministic_and_privacy_safe() -> None:
     assert first["model_aliases"] == {
         "embedding": "Qwen3-Embedding-4B",
         "reranking": "Qwen3-Reranker-4B",
-        "generation": "Qwen3.5-4B",
+            "generation": "Qwen3.5-9B",
     }
     serialized = str(first)
     assert "postgresql://" not in serialized

@@ -1,0 +1,28 @@
+{
+  "amendment_hash": "sha256:4cc29b7d91edcca23749a31d6f18f85af408b0b1849200ef67a7c6401eec81c6",
+  "calibration_reuse_authorized": true,
+  "decided_at": "2026-11-08T00:00:00Z",
+  "model_artifact_changed": false,
+  "operator_decision": "CANONICAL_GENERATION_BINDING_PROMOTION_APPROVED",
+  "relocation_schema_version": "cx_answer_support_provider_relocation.v1",
+  "request_profile_changed": false,
+  "scope": "ENDPOINT_RELOCATION_ONLY",
+  "source_activation_bundle_hash": "sha256:6d5c631c9e18418ae2787d4053d06cdf87cc49a3cbc67aea6258b11f29893a06",
+  "source_provider_binding": {
+    "deployment_id": "dgx-qwen3-5-9b-9116",
+    "model_revision": "hf:c202236235762e1c871ad0ccb60c8ee5ba337b9a",
+    "provider_alias": "general-llm-default",
+    "provider_type": "vllm",
+    "request_profile_id": "s136-answer-support-generation-json-v1",
+    "score_semantics_id": "bounded-ordinal-answer-support-v1"
+  },
+  "status": "APPROVED",
+  "target_provider_binding": {
+    "deployment_id": "dgx-qwen3-5-9b-9111",
+    "model_revision": "hf:c202236235762e1c871ad0ccb60c8ee5ba337b9a",
+    "provider_alias": "general-llm-default",
+    "provider_type": "vllm",
+    "request_profile_id": "s136-answer-support-generation-json-v1",
+    "score_semantics_id": "bounded-ordinal-answer-support-v1"
+  }
+}

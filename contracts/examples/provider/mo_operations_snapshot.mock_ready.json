@@ -49,9 +49,9 @@
     {
       "provider_capability": "generation",
       "alias": "general-llm-default",
-      "catalog_id": "qwen3.5-4b",
-      "model_revision": "Qwen3.5-4B",
-      "deployment_id": "vllm-generation-http",
+      "catalog_id": "qwen3.5-9b",
+      "model_revision": "hf:c202236235762e1c871ad0ccb60c8ee5ba337b9a",
+      "deployment_id": "dgx-qwen3-5-9b-9111",
       "catalog_status": "READY",
       "route_status": "READY",
       "telemetry_status": "READY",

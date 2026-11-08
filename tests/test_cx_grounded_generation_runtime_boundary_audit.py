@@ -52,7 +52,7 @@ def test_repository_grounded_generation_runtime_boundary_passes() -> None:
 def test_grounded_generation_runtime_boundary_freezes_runtime_decisions() -> None:
     decision = audit._boundary_decision()
 
-    assert decision["generation_model"] == "Qwen3.5-4B"
+    assert decision["generation_model"] == "Qwen3.5-9B"
     assert decision["generation_provider_port"] == 9111
     assert decision["retrieval_input_policy"] == (
         "owner_admitted_ready_package_only"

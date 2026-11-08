@@ -15,7 +15,7 @@ def live_env() -> dict[str, str]:
         "NEX_MO_REMOTE_EMBEDDING_API_KEY": "secret-key",
         "NEX_MO_REMOTE_RERANKER_URL": "http://dgx.local:9113/v1/rerank",
         "NEX_MO_REMOTE_RERANKER_API_KEY": "secret-key",
-        "NEX_MO_VLLM_BASE_URL": "http://dgx.local:12000",
+        "NEX_MO_VLLM_BASE_URL": "http://dgx.local:9111",
         "NEX_MO_VLLM_API_KEY": "secret-key",
     }
 
@@ -99,7 +99,7 @@ def test_protected_dgx_live_profile_passes_and_redacts_live_values() -> None:
             )
         return httpx.Response(
             200,
-            json={"data": [{"id": "Qwen3.5-4B"}]},
+            json={"data": [{"id": "Qwen3.5-9B"}]},
         )
 
     evidence = protected_live.run_protected_dgx_live_profile(
@@ -271,8 +271,8 @@ def test_protected_dgx_live_profile_main_fails_for_bad_profile(capsys) -> None:
 def test_protected_dgx_live_profile_rejects_unredacted_output() -> None:
     with pytest.raises(ValueError) as exc_info:
         protected_live.assert_profile_evidence_redacted(
-            '{"url":"http://dgx.local:12000"}',
-            {"NEX_MO_VLLM_BASE_URL": "http://dgx.local:12000"},
+            '{"url":"http://dgx.local:9111"}',
+            {"NEX_MO_VLLM_BASE_URL": "http://dgx.local:9111"},
         )
 
     assert "NEX_MO_VLLM_BASE_URL" in str(exc_info.value)

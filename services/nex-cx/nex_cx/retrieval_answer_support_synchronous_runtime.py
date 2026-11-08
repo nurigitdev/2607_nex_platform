@@ -309,6 +309,7 @@ def build_bounded_synchronous_answer_support_runtime(
     generation_client: AnswerSupportGenerationClient,
     progress_sink: AnswerSupportProgressSink,
     outcome_sink: AnswerSupportShadowOutcomeSink,
+    runtime_provider_binding: Mapping[str, Any] | None = None,
     clock: Callable[[], float] = monotonic,
 ) -> BoundedSynchronousAnswerSupportRuntime:
     normalized_policy = validate_synchronous_runtime_policy(policy)
@@ -327,6 +328,7 @@ def build_bounded_synchronous_answer_support_runtime(
             request_profile=request_profile,
             generation_client=gateway,
             outcome_sink=outcome_sink,
+            runtime_provider_binding=runtime_provider_binding,
         ),
         generation_client=gateway,
     )

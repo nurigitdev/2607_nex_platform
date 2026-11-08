@@ -6,16 +6,27 @@ import json
 import os
 import re
 import subprocess
+import sys
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Callable
+
+ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / "services" / "_shared"))
+
+from nex_runtime.canonical_generation_binding import (  # noqa: E402
+    CANONICAL_GENERATION_BINDING,
+)
 
 ACTIVATION_ENV = "NEX_MO_DGX_PROCESS_DTYPE_PROBE"
 SSH_TARGET_ENV = "NEX_MO_DGX_SSH_TARGET"
 EVIDENCE_SCHEMA_VERSION = "mo_dgx_process_dtype_probe_evidence.v1"
 RAW_SCHEMA_VERSION = "mo_dgx_process_dtype_probe.raw.v1"
 EXPECTED_PROVIDERS = {
-    9111: {"capability": "generation", "model": "Qwen3.5-4B"},
+    CANONICAL_GENERATION_BINDING.provider_port: {
+        "capability": "generation",
+        "model": CANONICAL_GENERATION_BINDING.model_name,
+    },
     9112: {"capability": "embedding", "model": "Qwen3-Embedding-4B"},
     9113: {"capability": "reranking", "model": "Qwen3-Reranker-4B"},
 }
@@ -28,7 +39,7 @@ REMOTE_PROBE = r'''import json
 import os
 
 expected = {
-    9111: "Qwen3.5-4B",
+    9111: "Qwen3.5-9B",
     9112: "Qwen3-Embedding-4B",
     9113: "Qwen3-Reranker-4B",
 }

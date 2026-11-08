@@ -35,7 +35,7 @@ def test_s100_closure_freezes_live_models_storage_and_provider_path() -> None:
     assert decision["provider_models"] == {
         "embedding": "Qwen3-Embedding-4B",
         "reranking": "Qwen3-Reranker-4B",
-        "generation": "Qwen3.5-4B",
+        "generation": "Qwen3.5-9B",
     }
     assert decision["storage_policy"] == (
         "postgres_metadata_external_owner_private_payloads"

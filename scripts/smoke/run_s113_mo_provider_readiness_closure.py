@@ -286,7 +286,7 @@ def _closure_decision() -> dict[str, Any]:
         "provider_models": {
             "embedding": "Qwen3-Embedding-4B",
             "reranking": "Qwen3-Reranker-4B",
-            "generation": "Qwen3.5-4B",
+            "generation": "Qwen3.5-9B",
         },
         "postgres_smoke_target": "nex_mo_user@nex_mo_test",
         "protected_live_check_count": 8,

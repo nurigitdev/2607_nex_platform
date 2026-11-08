@@ -43,7 +43,7 @@ def run_mo_provider_readiness_service() -> dict[str, Any]:
             return httpx.Response(200, json={"data": [{"embedding": [0.1]}]})
         if url.endswith("/v1/rerank"):
             return httpx.Response(200, json={"results": [{"score": 0.9}]})
-        return httpx.Response(200, json={"data": [{"id": "Qwen3.5-4B"}]})
+        return httpx.Response(200, json={"data": [{"id": "Qwen3.5-9B"}]})
 
     service = ProviderReadinessService(
         environ=env,

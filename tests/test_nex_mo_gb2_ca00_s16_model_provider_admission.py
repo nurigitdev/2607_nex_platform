@@ -38,7 +38,7 @@ def requester(method: str, url: str, **kwargs: object) -> httpx.Response:
         return httpx.Response(200, json={"data": [{"embedding": [0.1]}]})
     if url.endswith("/v1/rerank"):
         return httpx.Response(200, json={"results": [{"score": 0.9}]})
-    return httpx.Response(200, json={"data": [{"id": "Qwen3.5-4B"}]})
+    return httpx.Response(200, json={"data": [{"id": "Qwen3.5-9B"}]})
 
 
 def test_rag_profile_admits_three_live_providers_as_platform_dependencies() -> None:
@@ -74,7 +74,7 @@ def test_semantic_planning_requires_only_generation() -> None:
 
     def generation_requester(method: str, url: str, **kwargs: object) -> httpx.Response:
         calls.append(url)
-        return httpx.Response(200, json={"data": [{"id": "Qwen3.5-4B"}]})
+        return httpx.Response(200, json={"data": [{"id": "Qwen3.5-9B"}]})
 
     result = admit_model_provider_readiness(
         {
@@ -151,7 +151,7 @@ def test_provider_rejection_and_model_mismatch_are_bounded() -> None:
     )
     assert mismatch["status"] == "FAIL"
     assert mismatch["checks"][2]["failure_code"] == "expected_model_missing"
-    assert mismatch["checks"][2]["missing_expected_models"] == ["Qwen3.5-4B"]
+    assert mismatch["checks"][2]["missing_expected_models"] == ["Qwen3.5-9B"]
 
 
 def test_mock_mode_does_not_satisfy_live_admission() -> None:

@@ -92,8 +92,8 @@ EVIDENCE_TOKENS = (
     ),
     EvidenceToken(
         "current_generation_model",
-        "scripts/smoke/run_protected_dgx_live_profile.py",
-        '"NEX_MO_VLLM_MODEL": "Qwen3.5-4B"',
+        "services/_shared/nex_runtime/canonical_generation_binding.py",
+        'model_name="Qwen3.5-9B"',
     ),
     EvidenceToken(
         "quality_hook",
@@ -322,7 +322,7 @@ def run_cx_grounded_generation_runtime_boundary_audit(
 def _boundary_decision() -> dict[str, Any]:
     return {
         "feature_scope": "owner_private_grounded_generation_runtime",
-        "generation_model": "Qwen3.5-4B",
+        "generation_model": "Qwen3.5-9B",
         "generation_provider_port": 9111,
         "retrieval_input_policy": "owner_admitted_ready_package_only",
         "provider_prompt_policy": "cx_assembled_untrusted_evidence_envelope",

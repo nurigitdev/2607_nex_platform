@@ -7,6 +7,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from nex_runtime.canonical_generation_binding import CANONICAL_GENERATION_BINDING
+
 
 AE_MVP_ACCEPTANCE_POLICY_SCHEMA_VERSION = "ae_mvp_acceptance_policy.v1"
 AE_MVP_ACCEPTANCE_POLICY_ID = "ae-mvp-acceptance-v1"
@@ -103,7 +105,7 @@ def build_ae_mvp_acceptance_policy(
             "required_models": {
                 "embedding": "Qwen3-Embedding-4B",
                 "reranking": "Qwen3-Reranker-4B",
-                "generation": "Qwen3.5-4B",
+                "generation": CANONICAL_GENERATION_BINDING.model_name,
             },
             "failed_calls_allowed": 0,
         },

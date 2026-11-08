@@ -15,7 +15,7 @@ def live_env() -> dict[str, str]:
         "NEX_MO_REMOTE_EMBEDDING_API_KEY": "embedding-secret",
         "NEX_MO_REMOTE_RERANKER_URL": "http://dgx.local:9113/v1/rerank",
         "NEX_MO_REMOTE_RERANKER_API_KEY": "reranker-secret",
-        "NEX_MO_VLLM_BASE_URL": "http://dgx.local:12000",
+        "NEX_MO_VLLM_BASE_URL": "http://dgx.local:9111",
         "NEX_MO_VLLM_API_KEY": "generation-secret",
     }
 
@@ -126,7 +126,7 @@ def test_protected_remote_provider_live_smoke_executes_three_providers_and_redac
                     "usage": {"prompt_tokens": 5, "total_tokens": 5},
                 },
             )
-        assert kwargs["json"]["model"] == "Qwen3.5-4B"
+        assert kwargs["json"]["model"] == "Qwen3.5-9B"
         assert kwargs["json"]["messages"] == [
             {"role": "user", "content": smoke.GENERATION_PROMPT}
         ]
@@ -172,7 +172,7 @@ def test_protected_remote_provider_live_smoke_executes_three_providers_and_redac
     assert [call["url"] for call in calls] == [
         "http://dgx.local:9112/v1/embeddings",
         "http://dgx.local:9113/v1/rerank",
-        "http://dgx.local:12000/v1/chat/completions",
+        "http://dgx.local:9111/v1/chat/completions",
     ]
     assert calls[0]["headers"]["Authorization"] == "Bearer embedding-secret"
     assert calls[1]["headers"]["Authorization"] == "Bearer reranker-secret"

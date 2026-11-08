@@ -23,6 +23,9 @@ from nex_cx.retrieval_answer_support_controlled_activation import (
     OperationalAnswerSupportProgressSink,
     load_controlled_activation_bundle,
 )
+from nex_cx.retrieval_answer_support_provider_relocation import (
+    resolve_runtime_provider_binding,
+)
 from nex_cx.retrieval_answer_support_shadow_runtime import (
     AnswerSupportGenerationClient,
     AnswerSupportShadowOutcomeSink,
@@ -370,6 +373,10 @@ def build_installed_answer_support_policy_cutover(
         ),
         activation_bundle=activation,
     )
+    runtime_provider_binding = resolve_runtime_provider_binding(
+        environ,
+        activation_bundle=activation,
+    )
     previous = state_store.current_state(authorization["authorization_hash"])
     delegate = build_bounded_synchronous_answer_support_runtime(
         policy=activation["selected_policy"],
@@ -379,6 +386,7 @@ def build_installed_answer_support_policy_cutover(
         generation_client=generation_client,
         progress_sink=progress_sink,
         outcome_sink=outcome_sink,
+        runtime_provider_binding=runtime_provider_binding,
     )
     runtime = ControlledAnswerSupportPolicyCutover(
         delegate,

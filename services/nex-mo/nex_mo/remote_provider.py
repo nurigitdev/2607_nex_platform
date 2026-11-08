@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 import httpx
+from nex_runtime.canonical_generation_binding import CANONICAL_GENERATION_BINDING
 
 from nex_mo.provider_normalization import (
     _finish_reason_from_choice,
@@ -392,6 +393,11 @@ def build_remote_generation_execution_config(
     env = environ if environ is not None else os.environ
     profile = _selected_profile(env, "generation")
     model_name = env.get("NEX_MO_VLLM_MODEL", profile.model_name)
+    default_revision = (
+        CANONICAL_GENERATION_BINDING.model_revision
+        if model_name == CANONICAL_GENERATION_BINDING.model_name
+        else model_name
+    )
     return RemoteProviderExecutionConfig(
         capability="generation",
         endpoint_env="NEX_MO_VLLM_CHAT_COMPLETIONS_URL",
@@ -399,8 +405,11 @@ def build_remote_generation_execution_config(
         method="POST",
         request_shape="openai_chat_completions",
         model_name=model_name,
-        model_revision=env.get("NEX_MO_VLLM_MODEL_REVISION", model_name),
-        deployment_id=env.get("NEX_MO_VLLM_DEPLOYMENT_ID", "vllm-generation-http"),
+        model_revision=env.get("NEX_MO_VLLM_MODEL_REVISION", default_revision),
+        deployment_id=env.get(
+            "NEX_MO_VLLM_DEPLOYMENT_ID",
+            CANONICAL_GENERATION_BINDING.deployment_id,
+        ),
         api_key_env="NEX_MO_VLLM_API_KEY",
         api_key=_empty_to_none(env.get("NEX_MO_VLLM_API_KEY")),
         timeout_seconds=_timeout_seconds(env, "generation"),

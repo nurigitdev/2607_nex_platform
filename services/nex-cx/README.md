@@ -171,7 +171,7 @@ Internal persistence boundary:
 - Document summaries use `summary_1000_0`, target 900 chars, and hard limit
   1000 chars so summary text fits within one default retrieval chunk.
 - Document-summary generation can use the NeX-MO `general-llm-default` port with
-  the `Qwen3.5-4B` profile. The adapter rejects truncated or
+  the canonical `Qwen3.5-9B` profile. The adapter rejects truncated or
   over-limit responses and records safe model/deployment lineage.
 - Summary embeddings index the document summary separately from chunk
   embeddings for future document-level similarity features.

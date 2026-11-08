@@ -48,17 +48,18 @@ import run_ae_web_grounded_generation_playwright_postgres_smoke as base  # noqa:
 from run_protected_dgx_live_profile import (  # noqa: E402
     protected_dgx_vllm_profile_defaults,
 )
+from nex_runtime.canonical_generation_binding import (  # noqa: E402
+    CANONICAL_GENERATION_BINDING,
+)
 
 
 SCHEMA_VERSION = "platform_grounded_generation_artifact_live_postgres_smoke.v1"
 SMOKE_ENV = "NEX_S137_GROUNDED_ARTIFACT_LIVE_POSTGRES_SMOKE"
 PROFILE_ENV = f"{SMOKE_ENV}_PROFILE"
 DEFAULT_PROFILE = "test"
-CANONICAL_GENERATION_MODEL = "Qwen3.5-9B"
-CANONICAL_GENERATION_REVISION = (
-    "hf:c202236235762e1c871ad0ccb60c8ee5ba337b9a"
-)
-CANONICAL_GENERATION_DEPLOYMENT_ID = "dgx-qwen3-5-9b-9116"
+CANONICAL_GENERATION_MODEL = CANONICAL_GENERATION_BINDING.model_name
+CANONICAL_GENERATION_REVISION = CANONICAL_GENERATION_BINDING.model_revision
+CANONICAL_GENERATION_DEPLOYMENT_ID = CANONICAL_GENERATION_BINDING.deployment_id
 CANONICAL_ANSWER_SUPPORT_POLICY_HASH = (
     "sha256:c81f7a0bf3d3d72d7bbc5de1f564ada3b415f2206689c1939fcb925f172168cb"
 )

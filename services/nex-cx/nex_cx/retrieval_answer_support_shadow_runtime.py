@@ -72,6 +72,7 @@ class AnswerSupportShadowRuntime:
     request_profile: Mapping[str, Any]
     generation_client: AnswerSupportGenerationClient
     outcome_sink: AnswerSupportShadowOutcomeSink
+    runtime_provider_binding: Mapping[str, Any] | None = None
 
     def observe(
         self,
@@ -132,6 +133,10 @@ class AnswerSupportShadowRuntime:
         started: float,
     ) -> dict[str, Any]:
         profile = configuration["candidate_profile"]
+        expected_binding = _runtime_provider_binding(
+            profile["provider_binding"],
+            self.runtime_provider_binding,
+        )
         base = _outcome_base(
             package_id=package_id,
             primary_status=primary_status,
@@ -189,7 +194,6 @@ class AnswerSupportShadowRuntime:
                 "The shadow generation provider is unavailable.",
                 provider_called=True,
             ) from exc
-        expected_binding = profile["provider_binding"]
         try:
             evidence = normalize_answer_support_generation_result(
                 request=request,
@@ -437,6 +441,24 @@ def _failure_outcome(
 def _finish_outcome(outcome: dict[str, Any]) -> dict[str, Any]:
     outcome["outcome_hash"] = semantic_sha256_hash_ref(outcome)
     return outcome
+
+
+def _runtime_provider_binding(
+    calibrated_binding: Mapping[str, Any],
+    override: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    calibrated = dict(calibrated_binding)
+    if override is None:
+        return calibrated
+    runtime = dict(override)
+    if set(runtime) != set(calibrated):
+        raise ValueError("runtime provider binding fields do not match calibration")
+    stable_fields = set(calibrated) - {"deployment_id"}
+    if any(runtime.get(field) != calibrated.get(field) for field in stable_fields):
+        raise ValueError("runtime provider binding changed calibrated semantics")
+    if not str(runtime.get("deployment_id", "")).strip():
+        raise ValueError("runtime provider deployment_id is required")
+    return runtime
 
 
 def _safe_usage(value: object) -> dict[str, int] | None:

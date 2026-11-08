@@ -20,8 +20,8 @@ def test_repository_profile_privacy_boundary_is_repaired() -> None:
     assert all(result["checks"].values())
     assert result["failed_checks"] == []
     assert result["summary"] == {
-        "internal_profile_count": 5,
-        "public_profile_count": 5,
+        "internal_profile_count": 6,
+        "public_profile_count": 6,
         "forbidden_public_field_count": 0,
         "remaining_catalog_drift_count": 4,
     }

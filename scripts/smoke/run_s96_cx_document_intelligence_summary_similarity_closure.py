@@ -129,7 +129,7 @@ TOKEN_CHECKS = (
     (
         "generation_model",
         "services/nex-cx/nex_cx/document_summary_generation.py",
-        'DEFAULT_SUMMARY_MODEL_PROFILE = "Qwen3.5-4B"',
+        "DEFAULT_SUMMARY_MODEL_PROFILE = CANONICAL_GENERATION_BINDING.model_name",
     ),
     (
         "generation_reasoning_disabled",
@@ -293,7 +293,7 @@ def run_s96_cx_document_intelligence_summary_similarity_closure(
         "summary_contract_closed": (
             evidence["summary_contract"].get("summary_hard_limit_chars") == 1000
             and evidence["summary_contract"].get("generation_model")
-            == "Qwen3.5-4B"
+            == "Qwen3.5-9B"
             and evidence["summary_contract"].get("embedding_model")
             == "Qwen3-Embedding-4B"
         ),
@@ -304,7 +304,7 @@ def run_s96_cx_document_intelligence_summary_similarity_closure(
             == "filesystem-text-v1"
         ),
         "generation_adapter_closed": (
-            evidence["generation"].get("model_profile_id") == "Qwen3.5-4B"
+            evidence["generation"].get("model_profile_id") == "Qwen3.5-9B"
             and evidence["generation"].get("passed_checks") == 10
         ),
         "summary_vector_freshness_closed": (
@@ -326,7 +326,7 @@ def run_s96_cx_document_intelligence_summary_similarity_closure(
         "actual_postgres_evidence_passed": all(postgres_tokens.values()),
         "actual_live_provider_evidence_passed": all(live_tokens.values()),
         "canonical_models_current": (
-            boundary_decision.get("summary_generation_model") == "Qwen3.5-4B"
+            boundary_decision.get("summary_generation_model") == "Qwen3.5-9B"
             and boundary_decision.get("summary_embedding_model")
             == "Qwen3-Embedding-4B"
             and decision["embedding_dimension"] == 2560
@@ -410,7 +410,7 @@ def _closure_decision() -> dict[str, Any]:
         "summary_source": "latest_ready_extracted_markdown",
         "summary_hard_limit_chars": 1000,
         "summary_storage_policy": "private_durable_payload_reference",
-        "generation_model": "Qwen3.5-4B",
+        "generation_model": "Qwen3.5-9B",
         "generation_reasoning_mode": "disabled",
         "embedding_model": "Qwen3-Embedding-4B",
         "embedding_dimension": 2560,

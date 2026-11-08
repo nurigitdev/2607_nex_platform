@@ -12,12 +12,19 @@ from typing import Any
 
 
 ROOT = Path(__file__).resolve().parents[2]
-for path in (ROOT / "services" / "nex-mo", ROOT / "scripts" / "smoke"):
+for path in (
+    ROOT / "services" / "_shared",
+    ROOT / "services" / "nex-mo",
+    ROOT / "scripts" / "smoke",
+):
     sys.path.insert(0, str(path))
 
 from nex_mo.mvp_oa_transition_handoff import (  # noqa: E402
     build_mo_mvp_oa_transition_candidate,
     verify_mo_mvp_oa_transition_handoff,
+)
+from nex_runtime.canonical_generation_binding import (  # noqa: E402
+    CANONICAL_GENERATION_BINDING,
 )
 from run_mo_operations_live_acceptance import (  # noqa: E402
     ACTIVATION_ENV as OPERATIONS_ACTIVATION_ENV,
@@ -35,7 +42,7 @@ EXPECTED_DATABASE_IDENTITY = {
 EXPECTED_MODELS = {
     "embedding": "Qwen3-Embedding-4B",
     "reranking": "Qwen3-Reranker-4B",
-    "generation": "Qwen3.5-4B",
+    "generation": CANONICAL_GENERATION_BINDING.model_name,
 }
 
 OperationsRunner = Callable[[Mapping[str, str]], Mapping[str, Any]]

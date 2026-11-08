@@ -47,7 +47,7 @@ def run_mo_provider_readiness_evaluator() -> dict[str, Any]:
             return httpx.Response(200, json={"data": [{"embedding": [0.1]}]})
         if url.endswith("/v1/rerank"):
             return httpx.Response(200, json={"results": [{"index": 0, "score": 0.9}]})
-        return httpx.Response(200, json={"data": [{"id": "Qwen3.5-4B"}]})
+        return httpx.Response(200, json={"data": [{"id": "Qwen3.5-9B"}]})
 
     mock_snapshot = evaluate_provider_readiness_plan(
         build_provider_readiness_probe_plan({}),
