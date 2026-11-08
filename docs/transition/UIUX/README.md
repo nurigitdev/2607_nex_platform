@@ -20,9 +20,11 @@ baseline, asset location, gate cadence, or Slice ordering differs.
 ```text
 PAD                         = FROZEN
 UXM-CA01                    = PASS / CLOSED
-design asset input          = ADMITTED FOR UXM-S03
+UXM-S01 through UXM-S04     = PASS / CLOSED
+Foundation Checkpoint #1    = PASS / CLOSED
+design token source         = PROMOTED / REPRODUCIBLE
 UXM-S00                     = SATISFIED BY UXM-CA01
-next implementation Slice   = UXM-S01
+next implementation Slice   = UXM-S05
 implementation branch       = transition/ae-web-uiux-modernization
 ```
 
