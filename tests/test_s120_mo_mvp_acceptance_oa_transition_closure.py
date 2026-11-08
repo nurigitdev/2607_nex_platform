@@ -32,7 +32,7 @@ def _live() -> dict:
                 "provider_models": {
                     "embedding": "Qwen3-Embedding-4B",
                     "reranking": "Qwen3-Reranker-4B",
-                    "generation": "Qwen3.5-4B",
+                    "generation": "Qwen3.5-9B",
                 },
                 "ready_capabilities": 3,
                 "failed_calls": 0,

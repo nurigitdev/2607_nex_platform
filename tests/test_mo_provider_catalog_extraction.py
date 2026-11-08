@@ -19,7 +19,7 @@ def test_catalog_compatibility_and_selected_capabilities() -> None:
         "reranking",
         "generation",
     }
-    assert len(list_model_profiles("generation", direct)) == 3
+    assert len(list_model_profiles("generation", direct)) == 4
     assert list_model_profiles("missing", direct) == []
 
 

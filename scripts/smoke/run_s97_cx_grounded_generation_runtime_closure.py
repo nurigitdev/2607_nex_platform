@@ -231,7 +231,7 @@ def run_s97_cx_grounded_generation_runtime_closure(
             == "citation_validated_structured_draft"
         ),
         "canonical_live_target_confirmed": (
-            boundary_decision.get("generation_model") == "Qwen3.5-4B"
+            boundary_decision.get("generation_model") == "Qwen3.5-9B"
             and boundary_decision.get("generation_provider_port") == 9111
             and decision["postgres_smoke_target"] == "nex_cx_user@nex_cx_test"
         ),
@@ -293,7 +293,7 @@ def _closure_decision() -> dict[str, Any]:
         "public_persistence_policy": "metadata_hashes_lineage_only",
         "private_output_policy": "durable_owner_scoped_payload_reference",
         "cross_owner_behavior": "not_found_without_disclosure",
-        "generation_model": "Qwen3.5-4B",
+        "generation_model": "Qwen3.5-9B",
         "generation_provider_port": 9111,
         "reasoning_mode": "request_bound_and_idempotency_hashed",
         "observability_policy": "metadata_only_best_effort",

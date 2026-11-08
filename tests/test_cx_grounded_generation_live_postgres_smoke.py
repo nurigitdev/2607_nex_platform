@@ -84,7 +84,7 @@ def test_activation_profile_configuration_and_model_guards() -> None:
         _live_env(NEX_MO_VLLM_MODEL="old-model")
     )
     assert mismatch["failure_code"] == "generation_model_mismatch"
-    assert mismatch["diagnostics"]["expected_model"] == "Qwen3.5-4B"
+    assert mismatch["diagnostics"]["expected_model"] == "Qwen3.5-9B"
 
 
 def test_successful_execution_builds_redacted_evidence(monkeypatch) -> None:
@@ -101,18 +101,18 @@ def test_successful_execution_builds_redacted_evidence(monkeypatch) -> None:
     )
 
     assert evidence["status"] == "PASS"
-    assert evidence["generation_model"] == "Qwen3.5-4B"
+    assert evidence["generation_model"] == "Qwen3.5-9B"
     assert evidence["migration"]["skipped_count"] == 2
     assert evidence["redacted_database_url"].endswith("@localhost/nex_cx_test")
     assert calls[0]["database_env"] == "NEX_CX_TEST_DATABASE_URL"
     runtime = calls[0]["runtime_environ"]
     assert runtime["NEX_MO_PROVIDER_MODE"] == "live"
-    assert runtime["NEX_MO_VLLM_MODEL"] == "Qwen3.5-4B"
+    assert runtime["NEX_MO_VLLM_MODEL"] == "Qwen3.5-9B"
     assert "db-secret" not in str(evidence)
     assert "generation-secret" not in str(evidence)
     assert smoke.summary_line(evidence) == (
         "cx_grounded_generation_live_postgres=pass db=nex_cx_test "
-        "generation=COMPLETED model=Qwen3.5-4B provider_calls=1"
+        "generation=COMPLETED model=Qwen3.5-9B provider_calls=1"
     )
 
 

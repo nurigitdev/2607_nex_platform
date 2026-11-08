@@ -27,7 +27,7 @@ def live_env() -> dict[str, str]:
         "NEX_MO_VLLM_DEPLOYMENT_ID": "dgx-generation",
         "NEX_MO_REMOTE_EMBEDDING_MODEL_REVISION": "Qwen3-Embedding-4B",
         "NEX_MO_REMOTE_RERANKER_MODEL_REVISION": "Qwen3-Reranker-4B",
-        "NEX_MO_VLLM_MODEL_REVISION": "Qwen3.5-4B",
+        "NEX_MO_VLLM_MODEL_REVISION": "hf:c202236235762e1c871ad0ccb60c8ee5ba337b9a",
     }
 
 
@@ -66,7 +66,7 @@ def test_live_probe_plan_reuses_preflight_and_execution_identity() -> None:
     assert [target.model_revision for target in plan.targets] == [
         "Qwen3-Embedding-4B",
         "Qwen3-Reranker-4B",
-        "Qwen3.5-4B",
+        "hf:c202236235762e1c871ad0ccb60c8ee5ba337b9a",
     ]
     assert all(target.configured for target in plan.targets)
     assert all(target.authorization_configured for target in plan.targets)
@@ -92,7 +92,7 @@ def test_live_plan_retains_unconfigured_targets_for_fail_closed_evaluation() -> 
 
     assert len(plan.targets) == 3
     assert not any(target.configured for target in plan.targets)
-    assert plan.target_for("generation").expected_models == ("Qwen3.5-4B",)
+    assert plan.target_for("generation").expected_models == ("Qwen3.5-9B",)
 
 
 @pytest.mark.parametrize(

@@ -214,7 +214,7 @@ def boundary_decision() -> dict[str, Any]:
         "provider_models": [
             "Qwen3-Embedding-4B",
             "Qwen3-Reranker-4B",
-            "Qwen3.5-4B",
+            "Qwen3.5-9B",
         ],
         "new_tables_expected": 0,
         "advisory_deferrals": [

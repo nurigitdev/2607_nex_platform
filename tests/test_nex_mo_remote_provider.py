@@ -385,7 +385,7 @@ def test_remote_provider_configs_keep_legacy_live_endpoint_fallbacks() -> None:
 
 
 def test_selected_generation_model_default_follows_profile_catalog() -> None:
-    assert selected_generation_model_names({}) == ("Qwen3.5-4B",)
+    assert selected_generation_model_names({}) == ("Qwen3.5-9B",)
     assert selected_generation_model_names(
         {
             "NEX_MO_GENERATION_PROFILE": "qwen3_6_27b_nvfp4",
@@ -1044,7 +1044,7 @@ def test_direct_vllm_profile_executes_three_providers_and_records_safe_telemetry
         "documents": ["doc-a", "doc-b"],
         "top_n": 1,
     }
-    assert calls[2]["json"]["model"] == "Qwen3.5-4B"
+    assert calls[2]["json"]["model"] == "Qwen3.5-9B"
     assert calls[2]["json"]["messages"] == [{"role": "user", "content": "Say hello."}]
     assert calls[2]["json"]["chat_template_kwargs"] == {"enable_thinking": True}
     assert all(call["headers"]["Authorization"] == "Bearer secret" for call in calls)

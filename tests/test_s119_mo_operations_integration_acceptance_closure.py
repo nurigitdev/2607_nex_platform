@@ -62,7 +62,7 @@ def test_s119_closure_freezes_operations_and_quality_decisions() -> None:
     assert decision["provider_models"] == (
         "Qwen3-Embedding-4B",
         "Qwen3-Reranker-4B",
-        "Qwen3.5-4B",
+        "Qwen3.5-9B",
     )
     assert decision["protected_live_required"] is True
 

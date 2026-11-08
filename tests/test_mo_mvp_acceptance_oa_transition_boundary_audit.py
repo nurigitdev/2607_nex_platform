@@ -45,7 +45,7 @@ def test_boundary_decision_freezes_live_database_and_quality_scope() -> None:
     assert decision["provider_models"] == [
         "Qwen3-Embedding-4B",
         "Qwen3-Reranker-4B",
-        "Qwen3.5-4B",
+        "Qwen3.5-9B",
     ]
     assert decision["new_tables_expected"] == 0
     assert decision["quality_cadence"]["checkpoint_gate"] == "1196"

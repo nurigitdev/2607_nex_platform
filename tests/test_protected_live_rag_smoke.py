@@ -18,7 +18,7 @@ def live_env() -> dict[str, str]:
         "NEX_MO_REMOTE_EMBEDDING_API_KEY": "live-embedding-secret",
         "NEX_MO_REMOTE_RERANKER_URL": "http://dgx.local:9113/v1/rerank",
         "NEX_MO_REMOTE_RERANKER_API_KEY": "live-reranker-secret",
-        "NEX_MO_VLLM_CHAT_COMPLETIONS_URL": "http://dgx.local:12000/v1/chat/completions",
+        "NEX_MO_VLLM_CHAT_COMPLETIONS_URL": "http://dgx.local:9111/v1/chat/completions",
         "NEX_MO_VLLM_API_KEY": "live-generation-secret",
     }
 
@@ -83,7 +83,7 @@ def test_protected_live_rag_smoke_runs_live_shape_and_redacts_values() -> None:
                     "usage": {"prompt_tokens": 4, "total_tokens": 4},
                 },
             )
-        assert payload["model"] == "Qwen3.5-4B"
+        assert payload["model"] == "Qwen3.5-9B"
         assert payload["messages"][0]["role"] == "system"
         assert "untrusted data" in payload["messages"][0]["content"]
         assert payload["messages"][1]["role"] == "user"
@@ -128,7 +128,7 @@ def test_protected_live_rag_smoke_runs_live_shape_and_redacts_values() -> None:
     assert [call["url"] for call in calls] == [
         "http://dgx.local:9112/v1/embeddings",
         "http://dgx.local:9113/v1/rerank",
-        "http://dgx.local:12000/v1/chat/completions",
+        "http://dgx.local:9111/v1/chat/completions",
     ]
     assert calls[0]["headers"]["Authorization"] == "Bearer live-embedding-secret"
     assert calls[1]["headers"]["Authorization"] == "Bearer live-reranker-secret"

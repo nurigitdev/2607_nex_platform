@@ -37,6 +37,7 @@ from nex_cx.retrieval_answer_support_holdout_freeze import (
     freeze_holdout_one_shot_execution,
 )
 from nex_mo import remote_provider
+from nex_runtime.canonical_generation_binding import CANONICAL_GENERATION_BINDING
 from run_protected_dgx_live_profile import protected_dgx_vllm_profile_defaults
 
 SCHEMA_VERSION = "gb2_s20qpq_one_shot_holdout.v1"
@@ -337,9 +338,15 @@ def _bind_effective_provider(
     deployment = _required_text(binding.get("deployment_id"), "deployment_id")
     configured_revision = environ.get("NEX_MO_VLLM_MODEL_REVISION")
     configured_deployment = environ.get("NEX_MO_VLLM_DEPLOYMENT_ID")
-    if configured_revision not in {None, "", "Qwen3.5-4B", revision}:
+    if configured_revision not in {None, "", revision}:
         raise ValueError("configured generation revision differs from freeze")
-    if configured_deployment not in {None, "", "vllm-generation-http", deployment}:
+    if configured_deployment not in {
+        None,
+        "",
+        "vllm-generation-http",
+        CANONICAL_GENERATION_BINDING.deployment_id,
+        deployment,
+    }:
         raise ValueError("configured generation deployment differs from freeze")
     environ["NEX_MO_VLLM_MODEL_REVISION"] = revision
     environ["NEX_MO_VLLM_DEPLOYMENT_ID"] = deployment

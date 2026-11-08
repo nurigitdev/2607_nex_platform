@@ -63,6 +63,9 @@ from nex_runtime import (  # noqa: E402
     load_env_file,
     redact_database_url,
 )
+from nex_runtime.canonical_generation_binding import (  # noqa: E402
+    CANONICAL_GENERATION_BINDING,
+)
 from run_cx_document_library_postgres_smoke import _migration_evidence  # noqa: E402
 from run_migrations import (  # noqa: E402
     MigrationError,
@@ -93,7 +96,7 @@ DEFAULT_PROFILE = "test"
 SERVICE_ID = "nex-cx"
 EXPECTED_DATABASE = "nex_cx_test"
 EXPECTED_ROLE = "nex_cx_user"
-EXPECTED_GENERATION_MODEL = "Qwen3.5-4B"
+EXPECTED_GENERATION_MODEL = CANONICAL_GENERATION_BINDING.model_name
 TENANT_ID = "s97-live-tenant"
 OWNER_ID = "s97-live-owner"
 OTHER_OWNER_ID = "s97-live-other-owner"

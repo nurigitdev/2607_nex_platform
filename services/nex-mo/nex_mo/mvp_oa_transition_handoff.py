@@ -9,6 +9,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from nex_runtime.canonical_generation_binding import CANONICAL_GENERATION_BINDING
+
 from nex_mo.mvp_acceptance import MO_MVP_ACCEPTANCE_POLICY_ID
 
 
@@ -81,7 +83,7 @@ def build_mo_mvp_oa_transition_candidate(
         "model_aliases": {
             "embedding": "Qwen3-Embedding-4B",
             "reranking": "Qwen3-Reranker-4B",
-            "generation": "Qwen3.5-4B",
+            "generation": CANONICAL_GENERATION_BINDING.model_name,
         },
         "ownership_boundaries": [
             "mo_retains_provider_catalog_alias_telemetry_and_runtime_records",

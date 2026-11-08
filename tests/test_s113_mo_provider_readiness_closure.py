@@ -38,7 +38,7 @@ def test_s113_closure_freezes_readiness_models_cache_and_storage() -> None:
     assert decision["provider_models"] == {
         "embedding": "Qwen3-Embedding-4B",
         "reranking": "Qwen3-Reranker-4B",
-        "generation": "Qwen3.5-4B",
+        "generation": "Qwen3.5-9B",
     }
     assert decision["cache_policy"] == (
         "bounded_process_local_ttl_stale_never_ready"

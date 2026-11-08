@@ -52,7 +52,7 @@ def passing_evidence() -> dict:
             "provider_models": {
                 "embedding": "Qwen3-Embedding-4B",
                 "reranking": "Qwen3-Reranker-4B",
-                "generation": "Qwen3.5-4B",
+                "generation": "Qwen3.5-9B",
             },
             "failed_calls": 0,
             "browser_engine": "chromium",

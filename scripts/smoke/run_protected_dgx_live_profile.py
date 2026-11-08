@@ -15,6 +15,7 @@ sys.path.insert(0, str(ROOT_DIR / "scripts" / "smoke"))
 
 import check_local_live_provider_config as local_config
 import run_dgx_live_provider_preflight as dgx_preflight
+from nex_runtime.canonical_generation_binding import CANONICAL_GENERATION_BINDING
 
 PROFILE_ENV = "NEX_MO_PROTECTED_LIVE_PROFILE"
 DGX_PROFILE_NAME = "dgx_vllm"
@@ -238,10 +239,12 @@ def protected_dgx_vllm_profile_defaults() -> dict[str, str]:
         ),
         "NEX_MO_REMOTE_RERANKER_DEPLOYMENT_ID": "vllm-reranker-http",
         "NEX_MO_LIVE_EXPECTED_RERANKER_MODELS": "Qwen3-Reranker-4B",
-        "NEX_MO_VLLM_MODEL": "Qwen3.5-4B",
-        "NEX_MO_VLLM_MODEL_REVISION": "Qwen3.5-4B",
-        "NEX_MO_VLLM_DEPLOYMENT_ID": "vllm-generation-http",
-        "NEX_MO_LIVE_EXPECTED_GENERATION_MODELS": "Qwen3.5-4B",
+        "NEX_MO_VLLM_MODEL": CANONICAL_GENERATION_BINDING.model_name,
+        "NEX_MO_VLLM_MODEL_REVISION": CANONICAL_GENERATION_BINDING.model_revision,
+        "NEX_MO_VLLM_DEPLOYMENT_ID": CANONICAL_GENERATION_BINDING.deployment_id,
+        "NEX_MO_LIVE_EXPECTED_GENERATION_MODELS": (
+            CANONICAL_GENERATION_BINDING.model_name
+        ),
     }
 
 

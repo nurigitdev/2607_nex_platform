@@ -60,6 +60,7 @@ def test_model_profile_catalog_uses_qwen_defaults() -> None:
     assert [profile.profile_name for profile in profiles] == [
         "qwen3_embedding_4b_bf16",
         "qwen3_reranker_4b_bf16",
+        "qwen3_5_9b_bf16",
         "qwen3_5_4b_bf16",
         "qwen3_6_27b_nvfp4",
         "k_ai_generation_candidate",
@@ -69,16 +70,18 @@ def test_model_profile_catalog_uses_qwen_defaults() -> None:
     assert profiles[1].model_name == "Qwen3-Reranker-4B"
     assert profiles[1].precision == "BF16"
     assert profiles[2].runtime_engine == "vllm"
-    assert profiles[2].model_name == "Qwen3.5-4B"
+    assert profiles[2].model_name == "Qwen3.5-9B"
     assert profiles[2].precision == "BF16"
     assert profiles[2].selected is True
-    assert profiles[3].candidate_role == "candidate"
-    assert profiles[4].status == "PLANNED"
+    assert profiles[3].candidate_role == "rollback"
+    assert profiles[4].candidate_role == "candidate"
+    assert profiles[5].status == "PLANNED"
     assert all(profile.provider_mode == "mock" for profile in profiles)
     assert [profile.status for profile in profiles] == [
         "READY",
         "READY",
         "READY",
+        "CONFIGURED",
         "CONFIGURED",
         "PLANNED",
     ]
@@ -101,11 +104,14 @@ def test_model_profile_catalog_accepts_env_overrides() -> None:
     assert profiles[0].model_path == "/override/embed"
     assert profiles[0].runtime_engine == "remote_http"
     assert profiles[1].model_path == "/models/qwen3-reranker-4b-bf16"
-    assert profiles[2].model_path == "/models/qwen3.5-4b-bf16"
+    assert profiles[2].model_path == "/models/qwen3.5-9b-bf16"
     assert profiles[2].selected is False
-    assert profiles[3].model_path == "/override/generation-selected"
-    assert profiles[3].selected is True
+    assert profiles[3].model_path == "/models/qwen3.5-4b-bf16"
+    assert profiles[3].selected is False
+    assert profiles[4].model_path == "/override/generation-selected"
+    assert profiles[4].selected is True
     assert [profile.status for profile in profiles] == [
+        "CONFIGURED",
         "CONFIGURED",
         "CONFIGURED",
         "CONFIGURED",
@@ -128,7 +134,7 @@ def test_generation_model_profiles_support_custom_selected_profile() -> None:
         profile for profile in profiles if profile.provider_capability == "generation"
     ]
 
-    assert len(GENERATION_PROFILE_CANDIDATES) == 3
+    assert len(GENERATION_PROFILE_CANDIDATES) == 4
     assert generation_profiles[-1].profile_name == "kai_local_trial_v1"
     assert generation_profiles[-1].model_name == "K-AI local trial v1"
     assert generation_profiles[-1].precision == "BF16"
@@ -234,7 +240,7 @@ def test_provider_profiles_endpoint_lists_selected_profiles() -> None:
 
     assert response.status_code == 200
     payload = response.json()
-    assert payload["meta"]["count"] == 5
+    assert payload["meta"]["count"] == 6
     assert payload["meta"]["provider_mode"] == "mock"
     assert payload["data"][0]["profile_name"] == "qwen3_embedding_4b_bf16"
     assert payload["data"][0]["selected"] is True
@@ -265,15 +271,17 @@ def test_provider_profiles_endpoint_lists_generation_candidates() -> None:
 
     assert response.status_code == 200
     payload = response.json()
-    assert payload["meta"]["count"] == 3
+    assert payload["meta"]["count"] == 4
     assert [item["profile_name"] for item in payload["data"]] == [
+        "qwen3_5_9b_bf16",
         "qwen3_5_4b_bf16",
         "qwen3_6_27b_nvfp4",
         "k_ai_generation_candidate",
     ]
     assert payload["data"][0]["selected"] is True
-    assert payload["data"][1]["candidate_role"] == "candidate"
-    assert payload["data"][2]["candidate_role"] == "planned"
+    assert payload["data"][1]["candidate_role"] == "rollback"
+    assert payload["data"][2]["candidate_role"] == "candidate"
+    assert payload["data"][3]["candidate_role"] == "planned"
 
 
 def test_provider_telemetry_endpoint_requires_service_claim() -> None:
@@ -763,7 +771,7 @@ def test_create_generation_response_uses_remote_adapter_in_live_mode() -> None:
         trace_id="trace-001",
         environ={
             "NEX_MO_PROVIDER_MODE": "live",
-            "NEX_MO_VLLM_BASE_URL": "http://dgx.local:12000",
+            "NEX_MO_VLLM_BASE_URL": "http://dgx.local:9111",
             "NEX_MO_VLLM_MODEL": "GenerationA",
         },
         requester=requester,

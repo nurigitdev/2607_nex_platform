@@ -26,7 +26,7 @@ def test_default_policy_freezes_all_blocking_acceptance_gates() -> None:
     assert policy["live_providers"]["required_models"] == {
         "embedding": "Qwen3-Embedding-4B",
         "reranking": "Qwen3-Reranker-4B",
-        "generation": "Qwen3.5-4B",
+            "generation": "Qwen3.5-9B",
     }
     assert policy["browser"]["required_display_state"] == "VERIFIED_RESPONSE"
     assert len(policy["gates"]) == 9

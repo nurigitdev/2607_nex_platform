@@ -28,6 +28,9 @@ from nex_cx.retrieval_answer_support_synchronous_runtime import (
     build_bounded_synchronous_answer_support_runtime,
     validate_synchronous_runtime_policy,
 )
+from nex_cx.retrieval_answer_support_provider_relocation import (
+    resolve_runtime_provider_binding,
+)
 
 ACTIVATION_BUNDLE_SCHEMA_VERSION = "cx_answer_support_controlled_activation_bundle.v1"
 ACTIVATION_STATE_SCHEMA_VERSION = "cx_answer_support_controlled_activation_state.v1"
@@ -324,6 +327,10 @@ def build_installed_controlled_answer_support_runtime(
         str(environ.get(ACTIVATION_BUNDLE_PATH_ENV, DEFAULT_ACTIVATION_BUNDLE_PATH))
     )
     bundle = load_controlled_activation_bundle(path)
+    runtime_provider_binding = resolve_runtime_provider_binding(
+        environ,
+        activation_bundle=bundle,
+    )
     previous = state_store.current_state(bundle["bundle_hash"])
     if previous is not None:
         previous = validate_activation_state(previous)
@@ -337,6 +344,7 @@ def build_installed_controlled_answer_support_runtime(
         generation_client=generation_client,
         progress_sink=progress_sink,
         outcome_sink=outcome_sink,
+        runtime_provider_binding=runtime_provider_binding,
     )
     runtime = ControlledAnswerSupportRuntime(
         delegate,

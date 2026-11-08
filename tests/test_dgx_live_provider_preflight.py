@@ -12,7 +12,7 @@ def live_env() -> dict[str, str]:
         "NEX_MO_LIVE_PREFLIGHT": "1",
         "NEX_MO_REMOTE_EMBEDDING_URL": "http://dgx.local/v1/embeddings",
         "NEX_MO_REMOTE_RERANKER_URL": "http://dgx.local/v1/rerank",
-        "NEX_MO_VLLM_BASE_URL": "http://dgx.local:12000",
+        "NEX_MO_VLLM_BASE_URL": "http://dgx.local:9111",
     }
 
 
@@ -37,7 +37,7 @@ def test_dgx_preflight_passes_when_expected_models_are_observed() -> None:
             return httpx.Response(200, json={"results": [{"index": 0, "score": 0.91}]})
         return httpx.Response(
             200,
-            json={"data": [{"id": "Qwen3.5-4B"}]},
+            json={"data": [{"id": "Qwen3.5-9B"}]},
         )
 
     evidence = dgx_preflight.run_dgx_live_provider_preflight(
@@ -63,7 +63,7 @@ def test_dgx_preflight_passes_when_expected_models_are_observed() -> None:
         "top_n": 1,
     }
     assert "json" not in calls[2]
-    assert calls[2]["url"] == "http://dgx.local:12000/v1/models"
+    assert calls[2]["url"] == "http://dgx.local:9111/v1/models"
     assert calls[2]["headers"] == {
         "Accept": "application/json",
         "Authorization": "Bearer secret-key",
@@ -101,7 +101,7 @@ def test_dgx_preflight_reports_missing_endpoint_and_model() -> None:
     assert missing_model["status"] == "FAIL"
     assert missing_model["checks"][2]["failure_code"] == "expected_model_missing"
     assert missing_model["checks"][2]["missing_expected_models"] == [
-        "Qwen3.5-4B",
+        "Qwen3.5-9B",
     ]
 
 

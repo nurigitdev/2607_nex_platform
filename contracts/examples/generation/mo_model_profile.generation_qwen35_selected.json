@@ -1,13 +1,13 @@
 {
-  "profile_name": "qwen3_5_4b_bf16",
+  "profile_name": "qwen3_5_9b_bf16",
   "provider_capability": "generation",
   "alias": "general-llm-default",
   "provider_mode": "live",
-  "model_name": "Qwen3.5-4B",
+  "model_name": "Qwen3.5-9B",
   "precision": "BF16",
   "runtime_engine": "vllm",
   "selected": true,
   "status": "CONFIGURED",
   "candidate_role": "primary",
-  "selection_reason": "Current DGX-Spark vLLM generation target."
+  "selection_reason": "Calibrated canonical DGX-Spark generation target."
 }

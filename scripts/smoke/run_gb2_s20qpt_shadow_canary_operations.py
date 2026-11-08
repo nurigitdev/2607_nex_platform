@@ -31,6 +31,7 @@ from nex_cx.retrieval_answer_support_shadow_runtime import (
     validate_answer_support_shadow_configuration,
 )
 from nex_mo import remote_provider
+from nex_runtime.canonical_generation_binding import CANONICAL_GENERATION_BINDING
 from nex_runtime.model_artifact_revision import admit_model_artifact_revision_evidence
 from nex_runtime.semantic_hashes import semantic_sha256_hash_ref
 from run_protected_dgx_live_profile import protected_dgx_vllm_profile_defaults
@@ -438,12 +439,13 @@ def _bind_effective_provider(
         raise ValueError("generation artifact revision differs from readiness binding")
     configured_revision = environ.get("NEX_MO_VLLM_MODEL_REVISION")
     configured_deployment = environ.get("NEX_MO_VLLM_DEPLOYMENT_ID")
-    if configured_revision not in {None, "", "Qwen3.5-4B", revision}:
+    if configured_revision not in {None, "", revision}:
         raise ValueError("configured generation revision differs from readiness binding")
     if configured_deployment not in {
         None,
         "",
         "vllm-generation-http",
+        CANONICAL_GENERATION_BINDING.deployment_id,
         deployment,
     }:
         raise ValueError("configured generation deployment differs from readiness binding")

@@ -1,11 +1,11 @@
 {
   "data": [
     {
-      "profile_name": "qwen3_5_4b_bf16",
+      "profile_name": "qwen3_5_9b_bf16",
       "provider_capability": "generation",
       "alias": "general-llm-default",
       "provider_mode": "mock",
-      "model_name": "Qwen3.5-4B",
+      "model_name": "Qwen3.5-9B",
       "precision": "BF16",
       "runtime_engine": "local_mock",
       "selected": true,

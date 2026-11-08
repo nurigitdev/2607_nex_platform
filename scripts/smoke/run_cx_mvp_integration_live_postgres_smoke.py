@@ -90,6 +90,9 @@ from run_migrations import (  # noqa: E402
 from run_protected_dgx_live_profile import (  # noqa: E402
     protected_dgx_vllm_profile_defaults,
 )
+from nex_runtime.canonical_generation_binding import (  # noqa: E402
+    CANONICAL_GENERATION_BINDING,
+)
 from run_protected_live_rag_smoke import (  # noqa: E402
     InProcessLiveMoClient,
     patched_environ,
@@ -108,7 +111,7 @@ EXPECTED_ROLE = "nex_cx_user"
 EXPECTED_MODELS = {
     "embedding": "Qwen3-Embedding-4B",
     "reranking": "Qwen3-Reranker-4B",
-    "generation": "Qwen3.5-4B",
+    "generation": CANONICAL_GENERATION_BINDING.model_name,
 }
 TENANT_ID = "s100-live-tenant"
 OWNER_ID = "s100-live-owner"

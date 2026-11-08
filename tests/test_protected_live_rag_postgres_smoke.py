@@ -27,11 +27,15 @@ def _live_env(database_url: str = "postgresql://user:secret@localhost/db") -> di
         "NEX_MO_REMOTE_RERANKER_MODEL": "Qwen3-Reranker-4B",
         "NEX_MO_LIVE_EXPECTED_RERANKER_MODELS": "Qwen3-Reranker-4B",
         "NEX_MO_VLLM_CHAT_COMPLETIONS_URL": (
-            "http://dgx.local:12000/v1/chat/completions"
+            "http://dgx.local:9111/v1/chat/completions"
         ),
         "NEX_MO_VLLM_API_KEY": "live-generation-secret",
-        "NEX_MO_VLLM_MODEL": "Qwen3.5-4B",
-        "NEX_MO_LIVE_EXPECTED_GENERATION_MODELS": "Qwen3.5-4B",
+        "NEX_MO_VLLM_MODEL": "Qwen3.5-9B",
+        "NEX_MO_VLLM_MODEL_REVISION": (
+            "hf:c202236235762e1c871ad0ccb60c8ee5ba337b9a"
+        ),
+        "NEX_MO_VLLM_DEPLOYMENT_ID": "dgx-qwen3-5-9b-9111",
+        "NEX_MO_LIVE_EXPECTED_GENERATION_MODELS": "Qwen3.5-9B",
         "NEX_MO_PROVIDER_MODE": "live",
         "NEX_MO_REMOTE_EMBEDDING_REQUEST_SHAPE": "openai_embeddings",
         "NEX_MO_REMOTE_RERANKER_REQUEST_SHAPE": "rerank",
@@ -75,7 +79,7 @@ def _fake_remote_request(
                     "usage": {"prompt_tokens": 8, "total_tokens": 8},
                 },
             )
-        assert payload["model"] == "Qwen3.5-4B"
+        assert payload["model"] == "Qwen3.5-9B"
         assert payload["messages"][0]["role"] == "system"
         assert "untrusted data" in payload["messages"][0]["content"]
         assert payload["messages"][1]["role"] == "user"
@@ -413,7 +417,7 @@ def test_protected_live_rag_postgres_smoke_sqlite_route_path(tmp_path: Path) -> 
     assert [call["url"] for call in calls] == [
         "http://dgx.local:9112/v1/embeddings",
         "http://dgx.local:9113/v1/rerank",
-        "http://dgx.local:12000/v1/chat/completions",
+        "http://dgx.local:9111/v1/chat/completions",
     ]
     assert calls[0]["headers"]["Authorization"] == "Bearer live-embedding-secret"
     assert calls[1]["headers"]["Authorization"] == "Bearer live-reranker-secret"

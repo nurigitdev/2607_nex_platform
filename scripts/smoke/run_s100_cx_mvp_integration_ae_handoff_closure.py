@@ -226,7 +226,7 @@ def run_s100_cx_mvp_integration_ae_handoff_closure(
             == {
                 "embedding": "Qwen3-Embedding-4B",
                 "reranking": "Qwen3-Reranker-4B",
-                "generation": "Qwen3.5-4B",
+                "generation": "Qwen3.5-9B",
             }
         ),
         "tiered_quality_cadence_preserved": (
@@ -293,7 +293,7 @@ def _closure_decision() -> dict[str, Any]:
         "provider_models": {
             "embedding": "Qwen3-Embedding-4B",
             "reranking": "Qwen3-Reranker-4B",
-            "generation": "Qwen3.5-4B",
+            "generation": "Qwen3.5-9B",
         },
         "postgres_smoke_target": "nex_cx_user@nex_cx_test",
         "protected_live_check_count": 11,

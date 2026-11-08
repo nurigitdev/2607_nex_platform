@@ -44,7 +44,7 @@ def test_local_live_provider_config_passes_with_current_dgx_reranker_model() -> 
             "NEX_MO_PROVIDER_MODE": "live",
             "NEX_MO_REMOTE_EMBEDDING_URL": "http://dgx.local:9103/v1/embeddings",
             "NEX_MO_REMOTE_RERANKER_URL": "http://dgx.local:9104/v1/rerank",
-            "NEX_MO_VLLM_BASE_URL": "http://dgx.local:12000",
+            "NEX_MO_VLLM_BASE_URL": "http://dgx.local:9111",
             "NEX_MO_VLLM_API_KEY": "secret-key",
         }
     )
@@ -152,7 +152,7 @@ def test_local_live_provider_config_rejects_legacy_shapes_without_legacy_profile
             "NEX_MO_REMOTE_EMBEDDING_REQUEST_SHAPE": "nex_pcx_embeddings_v1",
             "NEX_MO_REMOTE_RERANKER_URL": "http://dgx.local:9113/v1/rerank",
             "NEX_MO_REMOTE_RERANKER_REQUEST_SHAPE": "nex_pcx_rerank_v1",
-            "NEX_MO_VLLM_BASE_URL": "http://dgx.local:12000",
+            "NEX_MO_VLLM_BASE_URL": "http://dgx.local:9111",
         }
     )
 
@@ -200,7 +200,7 @@ def test_local_live_provider_config_rejects_unsupported_profile() -> None:
             "NEX_MO_PROTECTED_LIVE_PROFILE": "staging",
             "NEX_MO_REMOTE_EMBEDDING_URL": "http://dgx.local:9112/v1/embeddings",
             "NEX_MO_REMOTE_RERANKER_URL": "http://dgx.local:9113/v1/rerank",
-            "NEX_MO_VLLM_BASE_URL": "http://dgx.local:12000",
+            "NEX_MO_VLLM_BASE_URL": "http://dgx.local:9111",
         }
     )
 

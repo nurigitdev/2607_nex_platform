@@ -323,7 +323,7 @@ def _closure_decision() -> dict[str, Any]:
         "provider_models": (
             "Qwen3-Embedding-4B",
             "Qwen3-Reranker-4B",
-            "Qwen3.5-4B",
+            "Qwen3.5-9B",
         ),
         "test_database_target": "nex_mo_user@nex_mo_test",
         "protected_live_required": True,

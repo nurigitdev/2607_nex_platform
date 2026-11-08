@@ -74,6 +74,7 @@
       "type": "string",
       "enum": [
         "primary",
+        "rollback",
         "candidate",
         "planned",
         "custom"
