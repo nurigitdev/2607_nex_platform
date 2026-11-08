@@ -11,6 +11,8 @@
     "start": "node scripts/serve.mjs",
     "audit:v2-imports": "node scripts/auditModernProductionImports.mjs",
     "build:v2": "vite build",
+    "tokens:generate": "node scripts/generateDesignTokens.mjs",
+    "tokens:check": "node scripts/generateDesignTokens.mjs --check",
     "smoke:authenticated-upload-fetch": "node scripts/runAuthenticatedUploadFetchSmoke.mjs --summary",
     "smoke:authenticated-upload-playwright": "node scripts/runAuthenticatedUploadPlaywrightSmoke.mjs --summary",
     "smoke:artifact-fetch": "node scripts/runArtifactFetchModeSmoke.mjs --summary",
