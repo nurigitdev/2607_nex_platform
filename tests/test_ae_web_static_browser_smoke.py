@@ -84,8 +84,8 @@ def test_run_static_browser_smoke_reports_missing_anchor_without_server() -> Non
     )
 
     assert result.status == "failed"
-    assert "runtime-diagnostics-panel" in result.missing_anchors
-    assert "missing=ae-web-runtime-config" in ae_web_smoke.format_summary(result)
+    assert "modern-root" in result.missing_anchors
+    assert "missing=modern-root,ae-web-runtime-config" in ae_web_smoke.format_summary(result)
 
 
 def test_wait_for_html_retries_until_available() -> None:
@@ -104,7 +104,7 @@ def test_wait_for_html_retries_until_available() -> None:
         sleeper=lambda seconds: None,
     )
 
-    assert "runtime-diagnostics-panel" in html
+    assert "modern-root" in html
     assert calls["count"] == 2
 
 

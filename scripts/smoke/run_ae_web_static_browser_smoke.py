@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import signal
 import subprocess
 import sys
 import time
@@ -32,22 +33,11 @@ class BrowserSmokeResult:
 def required_anchors(slice_label: str = DEFAULT_SLICE_LABEL) -> tuple[str, ...]:
     return (
         slice_label,
+        "modern-root",
         "ae-web-runtime-config",
-        "credential-login-panel",
-        "credential-login-form",
-        "credential-employee-id",
-        "credential-password",
-        "credential-login-feedback",
-        "session-route-guard-summary",
-        "runtime-diagnostics-panel",
-        "runtime-diagnostics-preview",
-        "upload-feedback",
-        "upload-retry-button",
-        "document-detail-feedback",
-        "document-detail-retry-button",
-        "retrieval-feedback",
-        "retrieval-retry-button",
-        "retrieval-client-summary",
+        '"client_mode":"fetch"',
+        '"ae_base_url":"/ae-api"',
+        "/assets/",
     )
 
 
@@ -119,6 +109,7 @@ def start_dev_server(
         ["npm", "--prefix", str(APP_DIR), "run", "dev"],
         cwd=ROOT_DIR,
         env=env,
+        start_new_session=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
     )
@@ -146,12 +137,26 @@ def wait_for_html(
 def stop_process(process: subprocess.Popen[bytes]) -> None:
     if process.poll() is not None:
         return
-    process.terminate()
+    _signal_process_group(process, signal.SIGTERM)
     try:
         process.wait(timeout=3)
     except subprocess.TimeoutExpired:
-        process.kill()
+        _signal_process_group(process, signal.SIGKILL)
         process.wait(timeout=3)
+
+
+def _signal_process_group(process: subprocess.Popen[bytes], sig: signal.Signals) -> None:
+    pid = getattr(process, "pid", None)
+    if pid is None:
+        if sig == signal.SIGTERM:
+            process.terminate()
+        else:
+            process.kill()
+        return
+    try:
+        os.killpg(os.getpgid(pid), sig)
+    except ProcessLookupError:
+        return
 
 
 def format_summary(result: BrowserSmokeResult) -> str:

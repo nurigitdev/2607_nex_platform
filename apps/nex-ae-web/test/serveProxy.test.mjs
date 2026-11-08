@@ -1,13 +1,25 @@
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { once } from "node:events";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, it } from "node:test";
 
 import {
   AE_API_PROXY_PREFIX,
   createAeWebServer,
+  cacheControlFor,
   isProxyPath
 } from "../scripts/serve.mjs";
+
+async function staticFixture() {
+  const root = await mkdtemp(join(tmpdir(), "ae-web-static-"));
+  await mkdir(join(root, "assets"));
+  await writeFile(join(root, "index.html"), '<div id="modern-root"></div>', "utf8");
+  await writeFile(join(root, "assets", "app-abc123.js"), "export {};", "utf8");
+  return root;
+}
 
 async function listen(server) {
   server.listen(0, "127.0.0.1");
@@ -29,17 +41,51 @@ describe("AE Web dev server same-origin proxy", () => {
   });
 
   it("serves static files when proxy target is not configured", async () => {
-    const server = createAeWebServer({ apiProxyTarget: "" });
+    const rootDir = await staticFixture();
+    const server = createAeWebServer({ rootDir, apiProxyTarget: "" });
     const port = await listen(server);
     try {
       const response = await fetch(`http://127.0.0.1:${port}/`);
       const body = await response.text();
 
       assert.equal(response.status, 200);
-      assert.match(body, /credential-login-form/);
+      assert.match(body, /modern-root/);
+      assert.equal(response.headers.get("cache-control"), "no-cache, no-store, must-revalidate");
     } finally {
       await close(server);
+      await rm(rootDir, { recursive: true, force: true });
     }
+  });
+
+  it("supports SPA fallback, modern redirect, immutable assets, and API fail-closed", async () => {
+    const rootDir = await staticFixture();
+    const server = createAeWebServer({ rootDir, apiProxyTarget: "" });
+    const port = await listen(server);
+    try {
+      const navigation = await fetch(`http://127.0.0.1:${port}/approvals`);
+      assert.match(await navigation.text(), /modern-root/);
+
+      const redirect = await fetch(`http://127.0.0.1:${port}/modern.html`, { redirect: "manual" });
+      assert.equal(redirect.status, 308);
+      assert.equal(redirect.headers.get("location"), "/");
+
+      const asset = await fetch(`http://127.0.0.1:${port}/assets/app-abc123.js`);
+      assert.equal(asset.headers.get("cache-control"), "public, max-age=31536000, immutable");
+      assert.equal(asset.headers.get("content-type"), "text/javascript; charset=utf-8");
+
+      const unavailable = await fetch(`http://127.0.0.1:${port}/ae-api/api/v1/auth/session`);
+      assert.equal(unavailable.status, 503);
+      assert.deepEqual(await unavailable.json(), { error_code: "ae_web_proxy_target_unavailable" });
+    } finally {
+      await close(server);
+      await rm(rootDir, { recursive: true, force: true });
+    }
+  });
+
+  it("freezes safe cache classification", () => {
+    assert.equal(cacheControlFor("/app/dist/index.html"), "no-cache, no-store, must-revalidate");
+    assert.equal(cacheControlFor("/app/dist/assets/app.js"), "public, max-age=31536000, immutable");
+    assert.equal(cacheControlFor("/app/dist/favicon.ico"), "public, max-age=300");
   });
 
   it("proxies /ae-api requests to the configured backend target", async () => {

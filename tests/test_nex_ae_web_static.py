@@ -1197,14 +1197,10 @@ def test_ae_web_static_browser_smoke_runner_is_quality_gate_wired() -> None:
         "ae_web_static_browser_smoke",
         "DEFAULT_SLICE_LABEL = \"NeX-Platform\"",
         "required_anchors",
-        "runtime-diagnostics-panel",
-        "credential-login-panel",
-        "credential-login-form",
-        "credential-password",
-        "session-route-guard-summary",
-        "upload-retry-button",
-        "document-detail-feedback",
-        "retrieval-retry-button",
+        "modern-root",
+        "ae-web-runtime-config",
+        '\"client_mode\":\"fetch\"',
+        '\"ae_base_url\":\"/ae-api\"',
         "BrowserSmokeResult",
         "validate_html",
         "wait_for_html",
@@ -1228,5 +1224,5 @@ def test_ae_web_package_version_tracks_slice_0227() -> None:
 
     assert package["name"] == "nex-ae-web"
     assert package["version"] == "0.0.0-slice0227"
-    assert package["scripts"]["dev"] == "node scripts/serve.mjs"
+    assert package["scripts"]["dev"] == "npm run build:v2 && node scripts/serve.mjs"
     assert package["scripts"]["test"] == "node --test test/*.test.mjs"

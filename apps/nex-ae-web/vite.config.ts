@@ -14,7 +14,7 @@ export default defineConfig({
     : undefined,
   build: {
     emptyOutDir: true,
-    outDir: "dist-v2",
+    outDir: "dist",
     rollupOptions: {
       input: "modern.html",
     },
