@@ -5,8 +5,6 @@ import {
 
 export const AE_WEB_ARTIFACT_LIBRARY_PANEL_SCHEMA_VERSION =
   "ae_web_artifact_library_panel.v1";
-export const AE_WEB_ARTIFACT_LIBRARY_PANEL_RENDERER_SCHEMA_VERSION =
-  "ae_web_artifact_library_panel_renderer.v1";
 
 const PANEL_STATUSES = [
   "READY",
@@ -192,28 +190,6 @@ export function buildArtifactLibraryPanelSummary(state) {
   return summary;
 }
 
-export function renderArtifactLibraryPanel(state) {
-  const current = assertArtifactLibraryPanelState(state);
-  const summary = buildArtifactLibraryPanelSummary(current);
-  const feedback = panelFeedback(summary);
-  const view = {
-    artifact_library_panel_renderer_schema_version:
-      AE_WEB_ARTIFACT_LIBRARY_PANEL_RENDERER_SCHEMA_VERSION,
-    status: summary.status,
-    severity: feedback.severity,
-    feedback: feedback.message,
-    summaryHtml: renderSummary(summary),
-    listHtml: renderItemList(current),
-    metadata: {
-      htmlEscaped: true,
-      contentRendered: false,
-      storageLocationRendered: false
-    }
-  };
-  assertArtifactLibraryPanelSafe(view);
-  return view;
-}
-
 export function assertArtifactLibraryPanelSafe(payload) {
   const sensitiveKeys = findSensitiveArtifactLibraryPanelKeys(payload);
   if (sensitiveKeys.length > 0) {
@@ -382,126 +358,6 @@ function itemMatchesFilter(item, filterMode) {
   return true;
 }
 
-function panelFeedback(summary) {
-  if (summary.status === "RUNNING") {
-    return {
-      severity: "running",
-      message: "Artifact library is loading."
-    };
-  }
-  if (summary.status === "EMPTY") {
-    return {
-      severity: "pending",
-      message: "No artifacts match this library view."
-    };
-  }
-  if (summary.status === "UNAVAILABLE") {
-    return {
-      severity: "danger",
-      message: `Artifact library is unavailable. ${summary.error_status || "ARTIFACT_LIBRARY_PANEL_ERROR"}`
-    };
-  }
-  return {
-    severity: "success",
-    message: "Artifact library is ready."
-  };
-}
-
-function renderSummary(summary) {
-  return `
-    <div>
-      <dt>artifacts</dt>
-      <dd>${escapeHtml(summary.item_count)}</dd>
-    </div>
-    <div>
-      <dt>ready</dt>
-      <dd>${escapeHtml(summary.ready_count)}</dd>
-    </div>
-    <div>
-      <dt>actions</dt>
-      <dd>${escapeHtml(`${summary.previewable_count} preview / ${summary.downloadable_count} download`)}</dd>
-    </div>
-    <div>
-      <dt>formats</dt>
-      <dd>${escapeHtml(summary.formats.join(", ") || "n/a")}</dd>
-    </div>
-    <div>
-      <dt>filter</dt>
-      <dd>${escapeHtml(summary.filter_mode)}</dd>
-    </div>
-    <div>
-      <dt>client</dt>
-      <dd>${escapeHtml(summary.client_mode)}</dd>
-    </div>
-  `;
-}
-
-function renderItemList(state) {
-  if (state.status === "RUNNING") {
-    return `<p class="artifact-library-empty">Loading artifact library.</p>`;
-  }
-  if (state.status === "UNAVAILABLE") {
-    return `<p class="artifact-library-empty">Artifact library request failed.</p>`;
-  }
-  if (state.items.length === 0) {
-    return `<p class="artifact-library-empty">No artifacts.</p>`;
-  }
-  return `
-    <ul class="artifact-library-list" aria-label="Artifact library">
-      ${state.items.map(renderLibraryItem).join("")}
-    </ul>
-  `;
-}
-
-function renderLibraryItem(item) {
-  return `
-    <li
-      data-artifact-library-item="${escapeAttribute(item.artifactId)}"
-      data-artifact-status="${escapeAttribute(item.artifactStatus)}"
-    >
-      <div class="artifact-library-row">
-        <strong>${escapeHtml(item.displayTitle)}</strong>
-        <span>${escapeHtml(item.artifactStatus)}</span>
-      </div>
-      <dl class="inline-meta slim">
-        <div>
-          <dt>format</dt>
-          <dd>${escapeHtml(item.primaryFormat)}</dd>
-        </div>
-        <div>
-          <dt>versions</dt>
-          <dd>${escapeHtml(item.versionCount)}</dd>
-        </div>
-        <div>
-          <dt>citations</dt>
-          <dd>${escapeHtml(`${item.citationStatus} · ${item.evidenceRefCount}`)}</dd>
-        </div>
-        <div>
-          <dt>updated</dt>
-          <dd>${escapeHtml(item.updatedAt || "pending")}</dd>
-        </div>
-      </dl>
-      <div class="artifact-library-actions">
-        ${renderRouteAction("Detail", item.detailRoute, "detail")}
-        ${renderRouteAction("Versions", item.versionsRoute, "versions")}
-      </div>
-    </li>
-  `;
-}
-
-function renderRouteAction(label, route, action) {
-  if (!route) {
-    return `<button type="button" data-artifact-library-action="${escapeAttribute(action)}" disabled>${escapeHtml(label)}</button>`;
-  }
-  return `
-    <a
-      href="${escapeAttribute(route)}"
-      data-artifact-library-action="${escapeAttribute(action)}"
-      data-artifact-library-route="${escapeAttribute(route)}"
-    >${escapeHtml(label)}</a>
-  `;
-}
-
 function normalizePanelStatus(status) {
   if (!PANEL_STATUSES.includes(status)) {
     throw new ArtifactLibraryPanelError("Artifact library status is unsupported.", {
@@ -593,19 +449,6 @@ function safePanelMetadata() {
 
 function isAllowedFalseSensitiveFlag(key, value) {
   return ALLOWED_FALSE_SENSITIVE_FLAGS.includes(key) && value === false;
-}
-
-function escapeAttribute(value) {
-  return escapeHtml(value).replaceAll("`", "&#096;");
-}
-
-function escapeHtml(value) {
-  return String(value)
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#039;");
 }
 
 function isObject(value) {

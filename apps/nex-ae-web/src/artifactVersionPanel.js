@@ -204,28 +204,6 @@ export function buildArtifactVersionPanelSummary(state) {
   return summary;
 }
 
-export function renderArtifactVersionPanel(state) {
-  const current = assertArtifactVersionPanelState(state);
-  const summary = buildArtifactVersionPanelSummary(current);
-  const feedback = panelFeedback(summary);
-  const view = {
-    artifact_version_panel_renderer_schema_version:
-      "ae_web_artifact_version_panel_renderer.v1",
-    status: summary.status,
-    severity: feedback.severity,
-    feedback: feedback.message,
-    summaryHtml: renderSummary(summary),
-    listHtml: renderVersionList(current),
-    metadata: {
-      htmlEscaped: true,
-      contentRendered: false,
-      storageLocationRendered: false
-    }
-  };
-  assertArtifactVersionPanelSafe(view);
-  return view;
-}
-
 export function assertArtifactVersionPanelSafe(payload) {
   const sensitiveKeys = findSensitiveArtifactVersionPanelKeys(payload);
   if (sensitiveKeys.length > 0) {
@@ -395,137 +373,6 @@ function linkRouteForFile(links, artifactFileId, linkType) {
   return safeRoute(found?.linkRoute || found?.link_route);
 }
 
-function panelFeedback(summary) {
-  if (summary.status === "RUNNING") {
-    return {
-      severity: "running",
-      message: "Artifact version metadata is loading."
-    };
-  }
-  if (summary.status === "VERSION_READY") {
-    return {
-      severity: "success",
-      message: "Artifact versions and generated files are ready."
-    };
-  }
-  if (summary.status === "EMPTY") {
-    return {
-      severity: "pending",
-      message: "No rendered artifact version has been recorded yet."
-    };
-  }
-  if (summary.status === "UNAVAILABLE") {
-    return {
-      severity: "danger",
-      message: `Artifact version metadata is unavailable. ${summary.error_status || "ARTIFACT_VERSION_PANEL_ERROR"}`
-    };
-  }
-  return {
-    severity: "neutral",
-    message: "Artifact version metadata is ready to load."
-  };
-}
-
-function renderSummary(summary) {
-  return `
-    <div>
-      <dt>versions</dt>
-      <dd>${escapeHtml(summary.version_count)}</dd>
-    </div>
-    <div>
-      <dt>files</dt>
-      <dd>${escapeHtml(summary.file_count)}</dd>
-    </div>
-    <div>
-      <dt>formats</dt>
-      <dd>${escapeHtml(summary.formats.join(", ") || "n/a")}</dd>
-    </div>
-    <div>
-      <dt>current</dt>
-      <dd>${escapeHtml(summary.current_version_id || "pending")}</dd>
-    </div>
-    <div>
-      <dt>actions</dt>
-      <dd>${escapeHtml(`${summary.preview_route_count} preview · ${summary.download_route_count} download`)}</dd>
-    </div>
-    <div>
-      <dt>client</dt>
-      <dd>${escapeHtml(summary.client_mode)}</dd>
-    </div>
-  `;
-}
-
-function renderVersionList(state) {
-  if (state.status === "RUNNING") {
-    return `<p class="artifact-version-empty">Loading version metadata.</p>`;
-  }
-  if (state.status === "UNAVAILABLE") {
-    return `<p class="artifact-version-empty">Version metadata request failed.</p>`;
-  }
-  if (state.versions.length === 0) {
-    return `<p class="artifact-version-empty">No rendered versions.</p>`;
-  }
-  return `
-    <ul class="artifact-version-list" aria-label="Artifact versions">
-      ${state.versions.map(renderVersionItem).join("")}
-    </ul>
-  `;
-}
-
-function renderVersionItem(version) {
-  const label =
-    version.versionNo == null
-      ? version.artifactVersionId || "pending"
-      : `v${version.versionNo}`;
-  return `
-    <li data-current="${version.current ? "true" : "false"}">
-      <div class="artifact-version-row">
-        <strong>${escapeHtml(label)}</strong>
-        <span>${escapeHtml(version.current ? "current" : "archived")}</span>
-      </div>
-      <dl class="inline-meta slim">
-        <div>
-          <dt>formats</dt>
-          <dd>${escapeHtml(version.renderedFormats.join(", ") || "n/a")}</dd>
-        </div>
-        <div>
-          <dt>hash</dt>
-          <dd>${escapeHtml(version.artifactContentHashPresent ? "present" : "missing")}</dd>
-        </div>
-        <div>
-          <dt>files</dt>
-          <dd>${escapeHtml(version.files.length)}</dd>
-        </div>
-      </dl>
-      ${renderVersionFiles(version.files)}
-    </li>
-  `;
-}
-
-function renderVersionFiles(files) {
-  if (files.length === 0) return "";
-  return `
-    <ul class="artifact-file-list" aria-label="Artifact files">
-      ${files.map(renderFileItem).join("")}
-    </ul>
-  `;
-}
-
-function renderFileItem(file) {
-  const size =
-    file.fileSizeBytes == null ? "n/a" : `${file.fileSizeBytes.toLocaleString()} B`;
-  const actions = [
-    file.previewRoute ? "preview" : null,
-    file.downloadRoute ? "download" : null
-  ].filter(Boolean);
-  return `
-    <li>
-      <span>${escapeHtml(file.fileName)}</span>
-      <em>${escapeHtml(`${file.format} · ${size} · ${actions.join("/") || "no action"}`)}</em>
-    </li>
-  `;
-}
-
 function assertArtifactVersionPanelState(value) {
   if (
     !value ||
@@ -621,13 +468,4 @@ function isAllowedFalseSensitiveFlag(key, value) {
 
 function isObject(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
-}
-
-function escapeHtml(value) {
-  return String(value)
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#039;");
 }

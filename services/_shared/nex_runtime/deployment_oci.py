@@ -90,12 +90,10 @@ def build_default_oci_definitions(
                 "apps/nex-ae-web/package.json",
                 "apps/nex-ae-web/package-lock.json",
                 "apps/nex-ae-web/index.html",
-                "apps/nex-ae-web/modern.html",
                 "apps/nex-ae-web/vite.config.ts",
                 "apps/nex-ae-web/tsconfig.json",
                 "apps/nex-ae-web/src",
                 "apps/nex-ae-web/scripts/serve.mjs",
-                "apps/nex-ae-web/scripts/promoteModernBuild.mjs",
             )
             containerfile = NODE_CONTAINERFILE
             base_image = NODE_BASE_IMAGE

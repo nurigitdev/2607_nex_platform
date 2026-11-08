@@ -1,12 +1,10 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { readFile } from "node:fs/promises";
 
 import {
   AE_PROJECT_MEMBERSHIP_BATCH_RESULT_SCHEMA_VERSION,
   ProjectMembershipBatchResultError,
-  buildProjectMembershipBatchResultSurface,
-  renderProjectMembershipBatchResult
+  buildProjectMembershipBatchResultSurface
 } from "../src/projectMembershipBatchResult.js";
 
 function projection(overrides = {}) {
@@ -66,29 +64,22 @@ function projection(overrides = {}) {
 describe("AE Web Project membership batch result", () => {
   it("builds a safe Korean result surface with mixed outcomes", () => {
     const surface = buildProjectMembershipBatchResultSurface(projection());
-    const html = renderProjectMembershipBatchResult(surface);
 
     assert.equal(surface.requestedCount, 3);
     assert.equal(surface.appliedCount, 2);
     assert.equal(surface.rejectedCount, 1);
     assert.equal(surface.items[0].outcomeLabel, "사번과 이름 불일치");
-    assert.match(html, /프로젝트 멤버 처리 결과/);
-    assert.match(html, /반영/);
-    assert.match(html, /emp-0002/);
     assert.doesNotMatch(
-      html,
+      JSON.stringify(surface),
       /api_key|service_token|database_url|provider_endpoint|raw_prompt|password/
     );
   });
 
-  it("escapes projected identities and never renders markup", () => {
+  it("preserves projected identities as data without rendering markup", () => {
     const changed = projection();
     changed.items[1].subject_id = '<script>alert("x")</script>';
-    const html = renderProjectMembershipBatchResult(
-      buildProjectMembershipBatchResultSurface(changed)
-    );
-    assert.doesNotMatch(html, /<script>/);
-    assert.match(html, /&lt;script&gt;/);
+    const surface = buildProjectMembershipBatchResultSurface(changed);
+    assert.equal(surface.items[1].subjectId, '<script>alert("x")</script>');
   });
 
   it("rejects schema drift, count drift, outcomes, and private keys", () => {
@@ -113,13 +104,5 @@ describe("AE Web Project membership batch result", () => {
         ProjectMembershipBatchResultError
       );
     }
-  });
-
-  it("is wired into the authenticated Chat message renderer", async () => {
-    const mainSource = await readFile(new URL("../src/main.js", import.meta.url), "utf8");
-    assert.match(mainSource, /renderProjectMembershipBatchResult/);
-    assert.match(mainSource, /message\.projectMembershipBatchResult/);
-    assert.match(mainSource, /generationPresentation\.projectMembershipBatchResult/);
-    assert.match(mainSource, /presentation\.projectMembershipBatchResult/);
   });
 });

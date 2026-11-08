@@ -27,7 +27,7 @@ export async function auditModernBrowserSecurityBoundary({
   htmlPath,
 } = {}) {
   const root = sourceRoot ?? fileURLToPath(new URL("../src", import.meta.url));
-  const entry = htmlPath ?? fileURLToPath(new URL("../modern.html", import.meta.url));
+  const entry = htmlPath ?? fileURLToPath(new URL("../index.html", import.meta.url));
   const files = await collectProductionSources(root);
   files.push(entry);
   const violations = [];
@@ -37,7 +37,7 @@ export async function auditModernBrowserSecurityBoundary({
     for (const rule of FORBIDDEN_PATTERNS) {
       if (rule.pattern.test(source)) {
         violations.push({
-          file: file === entry ? "modern.html" : relative(root, file),
+          file: file === entry ? "index.html" : relative(root, file),
           rule: rule.id,
         });
       }
@@ -46,13 +46,13 @@ export async function auditModernBrowserSecurityBoundary({
 
   const html = await readFile(entry, "utf8");
   if (!html.includes('"client_mode":"fetch"')) {
-    violations.push({ file: "modern.html", rule: "FETCH_MODE_REQUIRED" });
+    violations.push({ file: "index.html", rule: "FETCH_MODE_REQUIRED" });
   }
   if (!html.includes('"ae_base_url":"/ae-api"')) {
-    violations.push({ file: "modern.html", rule: "AE_FACADE_REQUIRED" });
+    violations.push({ file: "index.html", rule: "AE_FACADE_REQUIRED" });
   }
   if (!html.includes('"fetch_clients_enabled":true')) {
-    violations.push({ file: "modern.html", rule: "FETCH_FLAG_REQUIRED" });
+    violations.push({ file: "index.html", rule: "FETCH_FLAG_REQUIRED" });
   }
 
   return Object.freeze({

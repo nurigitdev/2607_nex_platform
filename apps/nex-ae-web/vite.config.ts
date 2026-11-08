@@ -16,7 +16,7 @@ export default defineConfig({
     emptyOutDir: true,
     outDir: "dist",
     rollupOptions: {
-      input: "modern.html",
+      input: "index.html",
     },
   },
   test: {

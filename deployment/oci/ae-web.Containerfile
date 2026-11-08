@@ -5,9 +5,8 @@ FROM ${NODE_BASE_IMAGE} AS ae-web-build
 WORKDIR /build/apps/nex-ae-web
 COPY apps/nex-ae-web/package.json apps/nex-ae-web/package-lock.json ./
 RUN npm ci --ignore-scripts
-COPY apps/nex-ae-web/modern.html apps/nex-ae-web/vite.config.ts apps/nex-ae-web/tsconfig.json ./
+COPY apps/nex-ae-web/index.html apps/nex-ae-web/vite.config.ts apps/nex-ae-web/tsconfig.json ./
 COPY apps/nex-ae-web/src ./src
-COPY apps/nex-ae-web/scripts/promoteModernBuild.mjs ./scripts/promoteModernBuild.mjs
 RUN npm run build:v2 \
     && npm cache clean --force
 

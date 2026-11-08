@@ -127,22 +127,6 @@ export function projectInteractionAgentResult(
   };
 }
 
-export function renderInteractionAgentResult(result) {
-  if (!result) return "";
-  const summary = result.result?.businessSummary;
-  const state = result.result?.status || result.executionState;
-  return `
-    <section class="agent-result" data-agent-result-state="${escapeHtml(state)}">
-      <div class="agent-result__header">
-        <strong>업무 처리 결과</strong>
-        <span class="badge ${result.terminal ? "success" : "pending"}">${escapeHtml(state)}</span>
-      </div>
-      <p>${escapeHtml(resultMessage(result))}</p>
-      ${summary ? renderBusinessSummary(summary) : ""}
-    </section>
-  `;
-}
-
 export function projectBusinessResultSummary(value) {
   if (!value || typeof value !== "object") return null;
   if (value.result_type !== "FINANCE.VOUCHER_DRAFT") return null;
@@ -198,27 +182,6 @@ export function projectBusinessResultSummary(value) {
     projectCode,
     businessObjectLink: null
   });
-}
-
-function resultMessage(result) {
-  if (!result.terminal) return "Agent가 요청을 처리하고 있습니다.";
-  if (["SUCCEEDED", "PARTIAL"].includes(result.result?.status)) {
-    return "요청한 업무가 완료되어 Workspace에 결과가 게시되었습니다.";
-  }
-  return "Agent 실행이 종료되었습니다. 상태와 경고를 확인해 주세요.";
-}
-
-function renderBusinessSummary(summary) {
-  const voucher = summary.voucherNumber
-    ? `<dt>전표번호</dt><dd>${escapeHtml(summary.voucherNumber)}</dd>`
-    : "";
-  return `<dl class="agent-result__summary">
-    ${voucher}
-    <dt>금액</dt><dd>${escapeHtml(`${summary.amount} ${summary.currency}`)}</dd>
-    <dt>계정</dt><dd>${escapeHtml(summary.accountCodes.join(", "))}</dd>
-    <dt>프로젝트</dt><dd>${escapeHtml(summary.projectCode)}</dd>
-    <dt>승인 상태</dt><dd>${escapeHtml(summary.approvalState)}</dd>
-  </dl>`;
 }
 
 function mockProjection(interactionId) {
@@ -311,13 +274,4 @@ function requiredText(value, name) {
     });
   }
   return normalized;
-}
-
-function escapeHtml(value) {
-  return String(value ?? "")
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#039;");
 }

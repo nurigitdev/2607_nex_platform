@@ -7,8 +7,7 @@ import {
   createMockInteractionAgentResultClient,
   interactionAgentResultRoute,
   projectBusinessResultSummary,
-  projectInteractionAgentResult,
-  renderInteractionAgentResult
+  projectInteractionAgentResult
 } from "../src/interactionAgentResultClient.js";
 
 const INTERACTION_ID = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
@@ -56,7 +55,7 @@ function projection() {
   };
 }
 
-test("projects and renders a reference-only completed IA result", () => {
+test("projects a reference-only completed IA result", () => {
   const result = projectInteractionAgentResult(projection(), {
     clientMode: "fetch",
     route: interactionAgentResultRoute(INTERACTION_ID)
@@ -66,12 +65,6 @@ test("projects and renders a reference-only completed IA result", () => {
   assert.equal(result.result.deliveryState, "ACKNOWLEDGED");
   assert.equal(result.result.businessSummary.voucherNumber, "voucher-1");
   assert.equal(result.rawResultIncluded, false);
-  const html = renderInteractionAgentResult(result);
-  assert.match(html, /업무 처리 결과/);
-  assert.match(html, /12500.00 KRW/);
-  assert.match(html, /NVT/);
-  assert.doesNotMatch(html, /EOS:BUSINESS_OPERATION/);
-  assert.doesNotMatch(html, /prompt/i);
 });
 
 test("fetch client uses same-origin credentials and the owner result route", async () => {

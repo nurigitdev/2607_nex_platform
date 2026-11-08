@@ -314,31 +314,3 @@ export function statusMessage(status, locale = DEFAULT_LOCALE) {
   const translated = message(key, { locale });
   return translated === key ? rawStatus || "UNKNOWN" : translated;
 }
-
-export function applyDocumentMessages(root, locale = DEFAULT_LOCALE) {
-  const resolvedLocale = normalizeLocale(locale);
-  const documentElement = root?.documentElement;
-  if (documentElement) {
-    documentElement.lang = resolvedLocale;
-    documentElement.dataset.locale = resolvedLocale;
-  }
-
-  applyAttribute(root, "[data-i18n]", "i18n", (node, value) => {
-    node.textContent = value;
-  }, resolvedLocale);
-  applyAttribute(root, "[data-i18n-aria-label]", "i18nAriaLabel", (node, value) => {
-    node.setAttribute("aria-label", value);
-  }, resolvedLocale);
-  applyAttribute(root, "[data-i18n-title]", "i18nTitle", (node, value) => {
-    node.setAttribute("title", value);
-  }, resolvedLocale);
-
-  return Object.freeze({ locale: resolvedLocale, catalog: validateCatalogParity() });
-}
-
-function applyAttribute(root, selector, datasetKey, update, locale) {
-  for (const node of root?.querySelectorAll?.(selector) || []) {
-    const key = node.dataset?.[datasetKey];
-    if (key) update(node, message(key, { locale }));
-  }
-}

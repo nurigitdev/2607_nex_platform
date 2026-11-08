@@ -113,35 +113,6 @@ export function buildArtifactDownloadFormatSelectorSummary(selector) {
   return summary;
 }
 
-export function renderArtifactDownloadFormatSelector(selector) {
-  const current = assertArtifactDownloadFormatSelector(selector);
-  const summary = buildArtifactDownloadFormatSelectorSummary(current);
-  const view = {
-    artifact_download_format_selector_renderer_schema_version:
-      "ae_web_artifact_download_format_selector_renderer.v1",
-    status: summary.status,
-    selectedFormat: summary.selected_format,
-    optionCount: summary.option_count,
-    enabledOptionCount: summary.enabled_option_count,
-    html: `
-      <div
-        class="artifact-download-selector"
-        data-artifact-download-selector-status="${escapeAttribute(summary.status)}"
-        data-artifact-download-selected-format="${escapeAttribute(summary.selected_format || "")}"
-        aria-label="아티팩트 다운로드 포맷"
-      >
-        ${current.options.map(renderOption).join("")}
-      </div>
-    `,
-    metadata: {
-      ...safeSelectorMetadata(),
-      htmlEscaped: true
-    }
-  };
-  assertArtifactDownloadFormatSelectorSafe(view);
-  return view;
-}
-
 export function assertArtifactDownloadFormatSelectorSafe(payload) {
   const sensitiveKeys = findSensitiveArtifactDownloadFormatSelectorKeys(payload);
   if (sensitiveKeys.length > 0) {
@@ -299,29 +270,6 @@ function normalizeFormats(values) {
   ];
 }
 
-function renderOption(option) {
-  if (!option.enabled) {
-    return `
-      <button
-        type="button"
-        data-artifact-download-format="${escapeAttribute(option.format)}"
-        aria-disabled="true"
-        disabled
-      >${escapeHtml(option.label)}</button>
-    `;
-  }
-  return `
-    <a
-      href="${escapeAttribute(option.route)}"
-      role="button"
-      aria-pressed="${option.selected ? "true" : "false"}"
-      data-artifact-action="download"
-      data-artifact-download-format="${escapeAttribute(option.format)}"
-      data-artifact-download-route="${escapeAttribute(option.route)}"
-    >${escapeHtml(option.label)}</a>
-  `;
-}
-
 function safeSelectorMetadata(overrides = {}) {
   return {
     rawPromptIncluded: false,
@@ -349,19 +297,6 @@ function requiredText(value, status) {
     );
   }
   return text;
-}
-
-function escapeAttribute(value) {
-  return escapeHtml(value).replaceAll("`", "&#096;");
-}
-
-function escapeHtml(value) {
-  return String(value)
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#039;");
 }
 
 function normalizeOptionalText(value) {

@@ -163,9 +163,7 @@ def test_materialized_context_is_deterministic_and_owner_scoped(tmp_path: Path) 
     paths = {item["path"] for item in projection["files"]}
     assert "Containerfile" in paths
     assert "apps/nex-ae-web/index.html" in paths
-    assert "apps/nex-ae-web/modern.html" in paths
     assert "apps/nex-ae-web/vite.config.ts" in paths
-    assert "apps/nex-ae-web/scripts/promoteModernBuild.mjs" in paths
     assert not any("node_modules" in path or "/test/" in path for path in paths)
 
 

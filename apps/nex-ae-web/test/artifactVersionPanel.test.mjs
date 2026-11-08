@@ -15,8 +15,7 @@ import {
   buildArtifactVersionPanelSummary,
   createArtifactVersionPanelState,
   createRunningArtifactVersionPanelState,
-  findSensitiveArtifactVersionPanelKeys,
-  renderArtifactVersionPanel
+  findSensitiveArtifactVersionPanelKeys
 } from "../src/artifactVersionPanel.js";
 
 function artifactRecord(overrides = {}) {
@@ -139,7 +138,6 @@ describe("AE Web artifact version panel", () => {
     );
     assert.equal(buildArtifactVersionPanelSummary(idle).status, "READY");
     assert.equal(running.status, "RUNNING");
-    assert.equal(renderArtifactVersionPanel(running).severity, "running");
     assert.doesNotMatch(
       JSON.stringify(buildArtifactVersionPanelSummary(running)),
       /service_token|database_url|provider_url|storage_ref|\/data\/nex-platform/
@@ -149,8 +147,7 @@ describe("AE Web artifact version panel", () => {
   it("builds version and file read-models without rendering raw hashes or storage", () => {
     const state = panelState();
     const summary = buildArtifactVersionPanelSummary(state);
-    const view = renderArtifactVersionPanel(state);
-    const serialized = JSON.stringify({ state, summary, view });
+    const serialized = JSON.stringify({ state, summary });
 
     assert.equal(state.status, "VERSION_READY");
     assert.equal(state.artifactId, "artifact-001");
@@ -163,10 +160,7 @@ describe("AE Web artifact version panel", () => {
     assert.equal(summary.preview_route_count, 1);
     assert.equal(summary.download_route_count, 1);
     assert.equal(summary.hash_presence_count, 4);
-    assert.match(view.listHtml, /report-v2.html/);
     assert.doesNotMatch(serialized, /storage_ref|ae:\/\/artifacts|eeee|ffff/);
-    assert.doesNotMatch(view.summaryHtml, /<Report>/);
-    assert.match(view.summaryHtml, /VERSION_READY|versions|files|formats/);
   });
 
   it("marks empty artifact version responses as an empty but safe state", () => {
@@ -177,12 +171,9 @@ describe("AE Web artifact version panel", () => {
       links: []
     });
     const state = panelState(record);
-    const view = renderArtifactVersionPanel(state);
 
     assert.equal(state.status, "EMPTY");
     assert.equal(buildArtifactVersionPanelSummary(state).version_count, 0);
-    assert.match(view.listHtml, /No rendered versions/);
-    assert.equal(view.severity, "pending");
   });
 
   it("normalizes failures as retryable unavailable states", () => {
@@ -195,13 +186,11 @@ describe("AE Web artifact version panel", () => {
       clientMode: "fetch"
     });
     const summary = buildArtifactVersionPanelSummary(state);
-    const view = renderArtifactVersionPanel(state);
 
     assert.equal(state.status, "UNAVAILABLE");
     assert.equal(state.retryable, true);
     assert.equal(summary.client_mode, "fetch");
-    assert.equal(view.severity, "danger");
-    assert.match(view.feedback, /NETWORK_ERROR/);
+    assert.equal(summary.error_status, "NETWORK_ERROR");
   });
 
   it("rejects invalid state and unsafe payloads", () => {

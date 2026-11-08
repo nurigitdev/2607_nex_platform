@@ -94,51 +94,6 @@ export function buildProjectMembershipBatchResultSurface(projection) {
   });
 }
 
-export function renderProjectMembershipBatchResult(surface) {
-  const result = buildProjectMembershipBatchResultSurface({
-    schema_version: surface.schemaVersion,
-    operation_id: surface.operationId,
-    project_id: surface.projectId,
-    member_role: surface.memberRole,
-    overall_status: surface.overallStatus,
-    business_result_ref: surface.businessResultRef,
-    summary: {
-      requested_count: surface.requestedCount,
-      admitted_count: surface.admittedCount,
-      applied_count: surface.appliedCount,
-      total_rejected_count: surface.rejectedCount
-    },
-    items: surface.items.map(item => ({
-      stage: item.stage,
-      input_index: item.inputIndex,
-      subject_id: item.subjectId,
-      normalized_employee_id: item.employeeId,
-      outcome: item.outcome,
-      applied: item.applied
-    }))
-  });
-  return `
-    <section class="project-membership-batch-result" data-batch-status="${escapeAttribute(result.overallStatus)}" aria-label="프로젝트 멤버 일괄 추가 결과">
-      <header>
-        <strong>프로젝트 멤버 처리 결과</strong>
-        <span>${escapeHtml(result.overallStatus)}</span>
-      </header>
-      <dl>
-        <div><dt>요청</dt><dd>${result.requestedCount}명</dd></div>
-        <div><dt>반영</dt><dd>${result.appliedCount}명</dd></div>
-        <div><dt>확인 필요</dt><dd>${result.rejectedCount}명</dd></div>
-        <div><dt>역할</dt><dd>${escapeHtml(result.memberRole)}</dd></div>
-      </dl>
-      <ul>${result.items.map(renderItem).join("")}</ul>
-    </section>
-  `;
-}
-
-function renderItem(item) {
-  const identity = item.employeeId || item.subjectId || `입력 ${item.inputIndex + 1}`;
-  return `<li data-batch-outcome="${escapeAttribute(item.outcome)}"><span>${escapeHtml(identity)}</span><strong>${escapeHtml(item.outcomeLabel)}</strong></li>`;
-}
-
 function assertSafe(value) {
   if (Array.isArray(value)) {
     value.forEach(assertSafe);
@@ -159,7 +114,6 @@ function requiredObject(value, field) {
   }
   return value;
 }
-
 function requiredArray(value, field) {
   if (!Array.isArray(value)) {
     throw new ProjectMembershipBatchResultError(`${field} must be an array.`);
@@ -188,17 +142,4 @@ function nonNegativeInteger(value, field) {
     throw new ProjectMembershipBatchResultError(`${field} must be non-negative.`);
   }
   return value;
-}
-
-function escapeHtml(value) {
-  return String(value)
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#039;");
-}
-
-function escapeAttribute(value) {
-  return escapeHtml(value);
 }

@@ -6,8 +6,7 @@ import {
   allowedApplicationViews,
   buildApplicationShellSummary,
   canAccessOperations,
-  resolveApplicationShell,
-  viewFromLocationHash
+  resolveApplicationShell
 } from "../src/applicationShell.js";
 
 function session(status = "authenticated", roles = ["employee"]) {
@@ -58,13 +57,6 @@ test("unknown views fall back to workspace without broadening access", () => {
   });
   assert.equal(shell.activeView, "workspace");
   assert.equal(shell.operationsVisible, false);
-});
-
-test("hash parsing accepts only canonical application views", () => {
-  assert.equal(viewFromLocationHash("#documents"), "documents");
-  assert.equal(viewFromLocationHash("#OPERATIONS"), "operations");
-  assert.equal(viewFromLocationHash("#credential-login-panel"), null);
-  assert.equal(viewFromLocationHash(""), null);
 });
 
 test("shell summary contains routing metadata but no roles or identity", () => {

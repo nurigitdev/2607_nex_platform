@@ -8,7 +8,7 @@ describe("modern Vite foundation", () => {
       build: {
         outDir: "dist",
         rollupOptions: {
-          input: "modern.html",
+          input: "index.html",
         },
       },
     });
