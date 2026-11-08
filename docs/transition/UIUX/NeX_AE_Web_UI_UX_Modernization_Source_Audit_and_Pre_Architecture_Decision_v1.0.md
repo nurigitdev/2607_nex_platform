@@ -2,6 +2,7 @@
 # Source Audit & Pre-Architecture Decision v1.0
 
 **Status:** FROZEN FOR IMPLEMENTATION PLANNING / PRE-ARCHITECTURE DECISION  
+**Mandatory Implementation Amendment:** `UXM_CA01_Source_Backed_Entry_Baseline_and_Design_Asset_Admission_Closure_v1.0.md`
 **Program:** NeX Platform v2.1  
 **Product:** NeX-AE Web / Assistant Workspace  
 **Purpose:** 현재 `master` source와 UI/UX 개선 분석안을 기준으로 NeX-AE Web의 현대화 범위, 자산 보존/재사용/폐기/신규 원칙, target architecture를 고정  

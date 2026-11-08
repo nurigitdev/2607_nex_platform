@@ -4,7 +4,8 @@
 **Status:** PRE-IMPLEMENTATION / CODEX-READY SLICE PLAN  
 **Program:** NeX Platform v2.1  
 **Product:** NeX-AE Web / Assistant Workspace  
-**Parent PAD:** `261108_NeX_AE_Web_UI_UX_Modernization_Source_Audit_and_Pre_Architecture_Decision_v1.0.md`  
+**Parent PAD:** `NeX_AE_Web_UI_UX_Modernization_Source_Audit_and_Pre_Architecture_Decision_v1.0.md`
+**Mandatory Entry Closure:** `UXM_CA01_Source_Backed_Entry_Baseline_and_Design_Asset_Admission_Closure_v1.0.md`
 **Repository:** `nurigitdev/2607_nex_platform`  
 **Canonical Branch:** `master`  
 **Observed Master HEAD:** `4dcecb6c4a682ef1e94ff3a701d5fffe4faa19d7`  
@@ -294,9 +295,10 @@ Band H — Legacy Retirement / Production Closure
 | UXM-S06 | Authentication and Session UX |
 | UXM-S07 | Production Runtime Config and Same-Origin Boundary |
 | UXM-S08 | Approval User-Facing Projection Contract Closure |
+| UXM-S08A | User-Facing UX State Mapper Foundation |
 | UXM-S09 | Approval Inbox React Surface |
 | UXM-S10 | Approval Decision / Evidence / Risk UX |
-| UXM-S11 | UX State Mapper and Business Terminology |
+| UXM-S11 | UX State Mapper Completion and Business Terminology |
 | UXM-S12 | Workspace / Composer / Context Panel |
 | UXM-S13 | Business Result Projection Contract Closure |
 | UXM-S14 | Workspace Progress / Result / Grounded Execution Integration |
@@ -319,7 +321,9 @@ Band H — Legacy Retirement / Production Closure
 transition/ae-web-uiux-modernization
 ```
 
-또는 team naming convention에 맞는 short-lived branch.
+이 branch는 S01-S22를 통합하는 transition integration branch이다. Slice별
+별도 branch를 만들 필요는 없으며, 공개된 이후에는 force-push/rebase로
+이력을 다시 쓰지 않는다.
 
 원칙:
 
@@ -329,6 +333,8 @@ branch from current master
 Slice 단위 commit
 
 major Checkpoint마다 master와 drift 확인
+
+master 변경이 있으면 merge commit으로 동기화
 
 Final Full Gate 전 최신 master descendant 확인
 ```
@@ -395,12 +401,16 @@ S01-S04
 Foundation + Design System
 → Checkpoint #1
 
-S05-S09
-Shell/Auth + Approval Projection + Approval Base
+S05-S07
+Shell/Auth + Runtime/Same-Origin
+→ Security Boundary Checkpoint
+
+S08-S10 + S08A
+Approval Projection + UX State Foundation + Approval UX
 → Checkpoint #2
 
-S10-S14
-Approval Completion + Workspace
+S11-S14
+UX State Completion + Workspace
 → Checkpoint #3
 
 S15-S19
@@ -409,7 +419,8 @@ Document/Artifact + UX Acceptance v2
 
 S20-S22
 Cutover + Retirement + Closure
-→ Repository Full Gate
+→ S21 Retirement Checkpoint
+→ S22 Repository Full Gate
 ```
 
 다음 변경은 즉시 escalation 가능:
@@ -427,6 +438,13 @@ quality infrastructure
 ---
 
 # 13. UXM-S00 — Pre-Implementation Entry Gate
+
+Status: `SATISFIED BY UXM-CA01`
+
+`UXM-CA01` records the source-backed branch point, current source inventory,
+design asset admission, document identity, gate cadence, and Slice ordering.
+Do not create a second entry-gate document or repeat S00 as an implementation
+Slice.
 
 ## Goal
 
@@ -689,13 +707,16 @@ src/design-system/tokens/tokens.json
 src/design-system/tokens/tokens.css
 ```
 
-원본:
+Admitted 원본:
 
 ```text
-NeX_AE_Web_UI_UX_개선_분석.zip
+docs/transition/UIUX/tokens.json
+docs/transition/UIUX/tokens.css
 ```
 
-의 design baseline을 사용한다.
+`tokens.json`은 S03의 canonical candidate이고 `tokens.css`는 제공된
+reference/generated candidate이다. S03은 JSON에서 CSS를 재생성하여
+동일성을 검증한 뒤 application source로 승격한다.
 
 ## Source of Truth
 
@@ -1276,6 +1297,80 @@ amount/account when applicable
 
 ```text
 Approval UI data contract source-backed
+S08A authorized
+```
+
+---
+
+# 21A. UXM-S08A — User-Facing UX State Mapper Foundation
+
+## Goal
+
+Approval 화면을 만들기 전에 internal state를 user-facing vocabulary로
+변환하는 단일 foundation을 활성화한다.
+
+## Add
+
+```text
+src/ux/workState.ts
+src/ux/workState.test.ts
+```
+
+## Initial Scope
+
+S08A는 Approval UX에 필요한 최소 mapping을 먼저 닫는다.
+
+```text
+requested
+in_progress
+waiting_approval
+completed
+failed
+cancelled
+```
+
+각 상태는 다음 presentation을 source-backed mapping으로 제공한다.
+
+```text
+label
+tone
+icon role
+terminal/non-terminal
+allowed default action presentation
+```
+
+## Invariant
+
+```text
+same internal state
+→ same user-facing meaning
+→ Approval, Workspace, Result에서 재사용
+```
+
+React component가 raw state를 자체 번역하거나 별도 상태 vocabulary를
+만들어서는 안 된다. Unknown state는 fail-closed neutral presentation과
+안전한 technical detail reference를 사용한다.
+
+## Tests
+
+```text
+known state mapping
+unknown state fallback
+terminal state semantics
+tone/icon accessibility
+internal identifier non-disclosure
+ko/en message-key parity
+```
+
+## Follow-up
+
+S11은 같은 module을 Workspace, progress, result, document terminology까지
+확장하는 completion Slice이다. 별도의 mapper를 만들지 않는다.
+
+## Exit
+
+```text
+Approval UX state vocabulary source-backed
 S09 authorized
 ```
 
@@ -1481,7 +1576,7 @@ journey를 React v2에도 적용.
 
 ## Checkpoint #2
 
-S05-S10 cumulative Checkpoint.
+S05-S10 + S08A cumulative Checkpoint.
 
 ## Exit
 
@@ -1491,15 +1586,16 @@ Approval Inbox end-to-end UX PASS
 
 ---
 
-# 24. UXM-S11 — UX State Mapper and Business Terminology
+# 24. UXM-S11 — UX State Mapper Completion and Business Terminology
 
 ## Goal
 
-Workspace 구현 전에 internal state와 user language를 formalize한다.
+S08A의 canonical mapper를 Workspace, progress, result, document language로
+확장하고 전체 화면의 terminology를 formalize한다.
 
 ## Add
 
-예:
+S08A에서 생성한 source를 확장한다.
 
 ```text
 src/ux/workState.ts
@@ -1836,7 +1932,7 @@ grounded citations
 
 ## Checkpoint #3
 
-S10-S14 cumulative Checkpoint.
+S11-S14 cumulative Checkpoint.
 
 ## Exit
 
@@ -2553,6 +2649,7 @@ PWA Phase = NOT STARTED / SUCCESSOR
 | S06 | ✓ | ✓ | auth | optional | Slice |
 | S07 | ✓ | ✓ | network audit | - | Checkpoint |
 | S08 | ✓ | optional | - | ✓ | Escalated |
+| S08A | ✓ | ✓ | - | - | Slice |
 | S09 | ✓ | ✓ | targeted | - | Slice |
 | S10 | ✓ | ✓ | approval | ✓ if needed | Checkpoint |
 | S11 | ✓ | ✓ | - | - | Slice |
@@ -3303,10 +3400,11 @@ S06  Auth
 S07  Runtime/Same-Origin
 
 S08  Approval Projection
+S08A UX State Mapper Foundation
 S09  Approval Read UX
 S10  Approval Decision UX
 
-S11  UX State/Terminology
+S11  UX State/Terminology Completion
 S12  Workspace
 S13  Result Projection
 S14  Workspace Result
