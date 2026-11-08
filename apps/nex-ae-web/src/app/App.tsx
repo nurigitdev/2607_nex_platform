@@ -1,8 +1,15 @@
-export function App() {
+import { BrowserRouter } from "react-router-dom";
+
+import type { SessionState } from "./domain/session";
+import { AppProviders } from "./providers/AppProviders";
+import { AppRouter } from "./router/AppRouter";
+
+export function App({ initialSession }: { readonly initialSession?: SessionState }) {
   return (
-    <main aria-labelledby="modernization-title">
-      <p>NeX AE</p>
-      <h1 id="modernization-title">UI Modernization Foundation</h1>
-    </main>
+    <BrowserRouter>
+      <AppProviders initialSession={initialSession}>
+        <AppRouter />
+      </AppProviders>
+    </BrowserRouter>
   );
 }

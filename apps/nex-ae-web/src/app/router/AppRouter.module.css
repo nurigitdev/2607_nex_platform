@@ -1,0 +1,11 @@
+.login {
+  align-items: center;
+  display: flex;
+  justify-content: center;
+  min-height: 100vh;
+}
+
+.login h1 { font: var(--nex-text-display); margin: 0; }
+
+.page { display: grid; gap: var(--nex-space-6); }
+.page h1 { font: var(--nex-text-title); margin: 0; }
