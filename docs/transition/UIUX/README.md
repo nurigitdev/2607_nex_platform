@@ -22,9 +22,13 @@ PAD                         = FROZEN
 UXM-CA01                    = PASS / CLOSED
 UXM-S01 through UXM-S04     = PASS / CLOSED
 Foundation Checkpoint #1    = PASS / CLOSED
+UXM-S05 through UXM-S07     = PASS / CLOSED
+Security Boundary Checkpoint = PASS / CLOSED
+UXM-S08 through UXM-S10     = PASS / CLOSED
+Approval UX Checkpoint #2   = PASS / CLOSED
 design token source         = PROMOTED / REPRODUCIBLE
 UXM-S00                     = SATISFIED BY UXM-CA01
-next implementation Slice   = UXM-S05
+next implementation Slice   = UXM-S11
 implementation branch       = transition/ae-web-uiux-modernization
 ```
 

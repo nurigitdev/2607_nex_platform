@@ -44,7 +44,14 @@ def test_repository_build_inputs_are_locked_and_deterministic() -> None:
         "node-production",
         "python-production",
     ]
-    assert projection["locks"][0]["package_count"] == 4
+    node_lock = json.loads((ROOT / NODE_LOCK_PATH).read_text(encoding="utf-8"))
+    expected_node_packages = sum(
+        1
+        for path, package in node_lock["packages"].items()
+        if path and isinstance(package, dict)
+    )
+    assert projection["locks"][0]["package_count"] == expected_node_packages
+    assert projection["locks"][0]["integrity_count"] == expected_node_packages
     python_versions = python_lock_package_versions(ROOT / PYTHON_LOCK_PATH)
     assert projection["locks"][1]["package_count"] == len(python_versions)
     assert projection["locks"][1]["integrity_count"] > 1000
