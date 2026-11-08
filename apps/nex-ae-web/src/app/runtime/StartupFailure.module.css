@@ -1,0 +1,23 @@
+.page {
+  align-items: center;
+  background: var(--nex-bg-canvas);
+  display: flex;
+  justify-content: center;
+  min-height: 100vh;
+  padding: var(--nex-space-6);
+}
+
+.message {
+  align-items: flex-start;
+  background: var(--nex-bg-surface);
+  border: 1px solid var(--nex-danger-border);
+  border-radius: var(--nex-radius-md);
+  color: var(--nex-danger-fg);
+  display: flex;
+  gap: var(--nex-space-4);
+  max-width: 460px;
+  padding: var(--nex-space-6);
+}
+
+.message h1 { color: var(--nex-text-primary); font: var(--nex-text-title); margin: 0; }
+.message p { color: var(--nex-text-secondary); margin: var(--nex-space-2) 0 0; }

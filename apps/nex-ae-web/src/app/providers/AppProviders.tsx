@@ -4,20 +4,24 @@ import type { ReactNode } from "react";
 
 import type { SessionState } from "../domain/session";
 import type { SessionClientPort } from "../legacyAdapters/sessionAdapter";
+import type { InstalledBrowserRuntime } from "../runtime/installedRuntime";
 import { I18nProvider } from "./I18nProvider";
 import { SessionProvider } from "./SessionProvider";
 import { ThemeProvider } from "./ThemeProvider";
+import { RuntimeProvider } from "./RuntimeProvider";
 
 export function AppProviders({
   children,
   initialSession,
   sessionClient,
   tenantId,
+  runtime,
 }: {
   readonly children: ReactNode;
   readonly initialSession?: SessionState;
   readonly sessionClient?: SessionClientPort;
   readonly tenantId?: string;
+  readonly runtime?: InstalledBrowserRuntime;
 }) {
   const [queryClient] = useState(
     () =>
@@ -33,13 +37,15 @@ export function AppProviders({
     <QueryClientProvider client={queryClient}>
       <I18nProvider>
         <ThemeProvider>
-          <SessionProvider
-            initialSession={initialSession}
-            sessionClient={sessionClient}
-            tenantId={tenantId}
-          >
-            {children}
-          </SessionProvider>
+          <RuntimeProvider runtime={runtime}>
+            <SessionProvider
+              initialSession={initialSession}
+              sessionClient={sessionClient}
+              tenantId={tenantId}
+            >
+              {children}
+            </SessionProvider>
+          </RuntimeProvider>
         </ThemeProvider>
       </I18nProvider>
     </QueryClientProvider>

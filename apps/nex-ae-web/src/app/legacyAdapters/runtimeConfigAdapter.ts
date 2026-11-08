@@ -1,5 +1,6 @@
 import {
   buildRuntimeConfigSummary,
+  loadRuntimeConfig,
   normalizeRuntimeConfig,
 } from "../../runtimeConfig.js";
 
@@ -13,6 +14,27 @@ export function projectRuntimeConfig(
 ): RuntimeProjection {
   const summary = buildRuntimeConfigSummary(normalizeRuntimeConfig(input));
 
+  return Object.freeze({
+    schemaVersion: summary.runtime_config_schema_version,
+    clientMode: summary.client_mode,
+    aeBaseUrl: summary.ae_base_url,
+    features: Object.freeze({ ...summary.features }),
+    metadata: Object.freeze({ ...summary.metadata }),
+  });
+}
+
+export function loadProjectedRuntimeConfig({
+  documentRef,
+  windowRef,
+}: {
+  readonly documentRef: Document;
+  readonly windowRef: typeof globalThis;
+}): RuntimeProjection {
+  const loadConfig = loadRuntimeConfig as unknown as (options: {
+    readonly documentRef: Document;
+    readonly windowRef: typeof globalThis;
+  }) => ReturnType<typeof normalizeRuntimeConfig>;
+  const summary = buildRuntimeConfigSummary(loadConfig({ documentRef, windowRef }));
   return Object.freeze({
     schemaVersion: summary.runtime_config_schema_version,
     clientMode: summary.client_mode,
