@@ -100,6 +100,9 @@ export function createFetchApprovalClient({ baseUrl = "", fetchImpl } = {}) {
   const normalizedBaseUrl = normalizeBaseUrl(baseUrl);
   return {
     clientMode: "fetch",
+    resolveResourceRoute(route) {
+      return `${normalizedBaseUrl}${requiredResourceRoute(route)}`;
+    },
     async listApprovalGates({ limit = 50 } = {}) {
       const route = approvalInboxRoute(limit);
       const payload = await fetchJson(request, `${normalizedBaseUrl}${route}`);
@@ -148,6 +151,9 @@ export function createMockApprovalClient({
 
   return {
     clientMode: "mock",
+    resolveResourceRoute(route) {
+      return requiredResourceRoute(route);
+    },
     async listApprovalGates({ limit = 50 } = {}) {
       const admitted = boundedLimit(limit);
       const gates = [...records.values()]
@@ -438,6 +444,15 @@ export function isApprovalGateExpired(gate, now = new Date()) {
   if (!gate?.expires_at) return false;
   const expiresAt = new Date(gate.expires_at);
   return !Number.isNaN(expiresAt.valueOf()) && expiresAt <= now;
+}
+
+function requiredResourceRoute(route) {
+  if (typeof route !== "string" || !route.startsWith("/api/v1/")) {
+    throw new ApprovalClientError("Approval resource route is invalid.", {
+      status: "APPROVAL_RESOURCE_ROUTE_INVALID"
+    });
+  }
+  return route;
 }
 
 export function assertApprovalPayloadSafe(payload) {

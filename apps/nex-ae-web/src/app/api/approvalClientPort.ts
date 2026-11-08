@@ -127,6 +127,7 @@ export interface ApprovalDecisionResult {
 
 export interface ApprovalClientPort {
   readonly clientMode: "mock" | "fetch";
+  readonly resolveResourceRoute: (route: string) => string;
   readonly listApprovalGates: (input?: { readonly limit?: number }) => Promise<ApprovalInbox>;
   readonly getApprovalGate: (gateId: string) => Promise<ApprovalGateDetail>;
   readonly getApprovalProjection: (gateId: string) => Promise<UserApprovalProjection>;

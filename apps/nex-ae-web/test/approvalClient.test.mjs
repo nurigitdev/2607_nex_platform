@@ -75,7 +75,24 @@ function userProjection(overrides = {}) {
 
 describe("AE Web approval client", () => {
   it("builds bounded same-origin routes and exact decision requests", () => {
+    const fetchClient = createFetchApprovalClient({
+      baseUrl: "/ae-api",
+      fetchImpl: async () => new Response("{}", { status: 200 })
+    });
+    const mockClient = createMockApprovalClient();
     assert.equal(approvalInboxRoute(), "/api/v1/approval-gates?limit=50");
+    assert.equal(
+      fetchClient.resolveResourceRoute("/api/v1/approval-gates/gate/attachments/item/content"),
+      "/ae-api/api/v1/approval-gates/gate/attachments/item/content"
+    );
+    assert.equal(
+      mockClient.resolveResourceRoute("/api/v1/approval-gates/gate/attachments/item/content"),
+      "/api/v1/approval-gates/gate/attachments/item/content"
+    );
+    assert.throws(
+      () => fetchClient.resolveResourceRoute("https://untrusted.example/evidence"),
+      error => error.status === "APPROVAL_RESOURCE_ROUTE_INVALID"
+    );
     assert.equal(approvalGateRoute(GATE_ID), `/api/v1/approval-gates/${GATE_ID}`);
     assert.equal(
       approvalDecisionRoute(GATE_ID),

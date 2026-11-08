@@ -81,6 +81,105 @@ describe("Approval Inbox React surface", () => {
     expect(view.container.textContent).not.toContain("owner-local");
     expect(view.container.textContent).not.toContain("source_contract");
     expect(view.container.innerHTML).not.toContain("service_token");
+    expect(screen.queryByRole("button", { name: /^승인$/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^반려$/ })).toBeNull();
+  });
+
+  it("confirms approval, shows the result, and advances to the next request", async () => {
+    const user = userEvent.setup();
+    const base = mockClient();
+    const submitApprovalDecision = vi.fn(base.submitApprovalDecision);
+    renderPage({ ...base, submitApprovalDecision });
+
+    await screen.findByRole("heading", { name: "보호된 WRITE 승인" });
+    await user.click(screen.getByRole("button", { name: /^승인$/ }));
+    expect(screen.getByRole("alertdialog")).toHaveAccessibleName("이 요청을 승인하시겠습니까?");
+    await user.click(screen.getByRole("button", { name: "승인 확정" }));
+
+    const resultHeading = await screen.findByRole("heading", { name: "결정이 기록되었습니다" });
+    expect(resultHeading.closest('[role="status"]')).toHaveTextContent("승인됨");
+    expect(resultHeading.closest('[role="status"]')).toHaveFocus();
+    expect(screen.getByText("승인됨")).toBeInTheDocument();
+    expect(submitApprovalDecision).toHaveBeenCalledWith(
+      "42000000-0000-4000-8000-000000000001",
+      expect.objectContaining({ decision: "APPROVE", decision_comment: null }),
+    );
+    await user.click(screen.getByRole("button", { name: "다음 요청 검토" }));
+    expect(await screen.findByRole("heading", { name: "Agent 공식 작업 승인" })).toBeInTheDocument();
+  });
+
+  it("requires a rejection reason and confirms a rejection accessibly", async () => {
+    const user = userEvent.setup();
+    const base = mockClient();
+    const submitApprovalDecision = vi.fn(base.submitApprovalDecision);
+    renderPage({ ...base, submitApprovalDecision });
+
+    await screen.findByRole("heading", { name: "보호된 WRITE 승인" });
+    const reject = screen.getByRole("button", { name: /^반려$/ });
+    expect(reject).toBeDisabled();
+    const reason = screen.getByLabelText(/반려 사유/);
+    await user.click(reason);
+    await user.tab();
+    expect(screen.getByText("반려 사유를 입력해 주세요.")).toBeInTheDocument();
+    await user.type(reason, "증빙 금액을 다시 확인해 주세요.");
+    expect(reject).toBeEnabled();
+    await user.click(reject);
+    expect(screen.getByRole("alertdialog")).toHaveAccessibleDescription(
+      "입력한 사유가 요청자에게 결정 근거로 전달됩니다.",
+    );
+    await user.click(screen.getByRole("button", { name: "반려 확정" }));
+    expect(await screen.findByText("반려됨")).toBeInTheDocument();
+    expect(submitApprovalDecision).toHaveBeenCalledWith(
+      "42000000-0000-4000-8000-000000000001",
+      expect.objectContaining({
+        decision: "REJECT",
+        decision_comment: "증빙 금액을 다시 확인해 주세요.",
+      }),
+    );
+  });
+
+  it.each([
+    ["APPROVAL_DECISION_CONFLICT", 409, false, "다른 결정이 이미 기록되었습니다."],
+    ["APPROVAL_DECISION_UNAUTHORIZED", 403, false, "현재 계정에 승인 권한이 없습니다."],
+    ["APPROVAL_SERVER_ERROR", 503, true, "일시적인 오류가 발생했습니다."],
+  ])("maps %s decision failures to safe guidance", async (status, httpStatus, retryable, expected) => {
+    const user = userEvent.setup();
+    const error = Object.assign(new Error("protected backend detail"), {
+      status,
+      httpStatus,
+      retryable,
+    });
+    const client = clientWith({
+      submitApprovalDecision: vi.fn(async () => { throw error; }),
+    });
+    renderPage(client);
+
+    await screen.findByRole("heading", { name: "보호된 WRITE 승인" });
+    await user.click(screen.getByRole("button", { name: /^승인$/ }));
+    await user.click(screen.getByRole("button", { name: "승인 확정" }));
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent(expected);
+    expect(alert).not.toHaveTextContent("protected backend detail");
+  });
+
+  it("shows only authoritative risk and exposes safe attachment access routes", async () => {
+    const base = mockClient();
+    const getApprovalProjection = vi.fn(async (gateId: string) => ({
+      ...(await base.getApprovalProjection(gateId)),
+      risk: { status: "AVAILABLE" as const, level: "HIGH" as const, explanation: "고액 지출 검토" },
+    }));
+    renderPage({ ...base, getApprovalProjection });
+
+    await screen.findByRole("heading", { name: "보호된 WRITE 승인" });
+    expect(screen.getAllByText("높음")).toHaveLength(2);
+    expect(screen.getByText("고액 지출 검토")).toBeInTheDocument();
+    expect(screen.queryByText("HIGH")).toBeNull();
+    const open = screen.getByRole("link", { name: "교통비-영수증.png 열기" });
+    const download = screen.getByRole("link", { name: "교통비-영수증.png 다운로드" });
+    expect(open).toHaveAttribute("href", expect.stringMatching(/^\/api\/v1\/approval-gates\//));
+    expect(open).toHaveAttribute("target", "_blank");
+    expect(download).toHaveAttribute("href", expect.stringContaining("download=true"));
+    expect(download).toHaveAttribute("download");
   });
 });
 

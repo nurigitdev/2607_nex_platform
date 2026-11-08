@@ -17,6 +17,8 @@ import {
 } from "../../design-system/components";
 import { isApprovalGateExpired } from "../../approvalClient.js";
 import { mapApprovalState } from "../../ux/workState";
+import { ApprovalDecisionPanel } from "./ApprovalDecisionPanel";
+import { ApprovalEvidence, approvalRiskLabel } from "./ApprovalEvidence";
 import styles from "./ApprovalPage.module.css";
 
 const DOMAIN_LABELS = Object.freeze({
@@ -94,6 +96,7 @@ export function ApprovalPage({
                   gates={gates}
                   selectedGateId={selectedGateId}
                   onSelect={setSelectedGateId}
+                  onDecisionComplete={() => inbox.refetch().then(() => undefined)}
                   now={now}
                 />
               ) : (
@@ -128,12 +131,14 @@ function ApprovalWorkspace({
   gates,
   selectedGateId,
   onSelect,
+  onDecisionComplete,
   now,
 }: {
   readonly client: ApprovalClientPort;
   readonly gates: readonly ApprovalGate[];
   readonly selectedGateId: string | null;
   readonly onSelect: (gateId: string) => void;
+  readonly onDecisionComplete: () => Promise<void>;
   readonly now: () => Date;
 }) {
   return (
@@ -145,7 +150,12 @@ function ApprovalWorkspace({
         now={now}
       />
       {selectedGateId ? (
-        <ApprovalDetail client={client} gateId={selectedGateId} now={now} />
+        <ApprovalDetail
+          client={client}
+          gateId={selectedGateId}
+          now={now}
+          onDecisionComplete={onDecisionComplete}
+        />
       ) : null}
     </div>
   );
@@ -203,10 +213,12 @@ function ApprovalDetail({
   client,
   gateId,
   now,
+  onDecisionComplete,
 }: {
   readonly client: ApprovalClientPort;
   readonly gateId: string;
   readonly now: () => Date;
+  readonly onDecisionComplete: () => Promise<void>;
 }) {
   const detail = useQuery({
     queryKey: ["approval-detail", client.clientMode, gateId],
@@ -235,17 +247,29 @@ function ApprovalDetail({
     );
   }
 
-  return <ApprovalDetailContent detail={detail.data} projection={projection.data} now={now} />;
+  return (
+    <ApprovalDetailContent
+      client={client}
+      detail={detail.data}
+      projection={projection.data}
+      now={now}
+      onDecisionComplete={onDecisionComplete}
+    />
+  );
 }
 
 function ApprovalDetailContent({
+  client,
   detail,
   projection,
   now,
+  onDecisionComplete,
 }: {
+  readonly client: ApprovalClientPort;
   readonly detail: ApprovalGateDetail;
   readonly projection: UserApprovalProjection;
   readonly now: () => Date;
+  readonly onDecisionComplete: () => Promise<void>;
 }) {
   const gate = detail.gate;
   const state = approvalStateForGate(gate, now());
@@ -273,11 +297,21 @@ function ApprovalDetailContent({
         <div><dt>금액</dt><dd>{amount}</dd></div>
         <div><dt>요청 시각</dt><dd>{formatDateTime(projection.requested_at.value)}</dd></div>
         <div><dt>업무일</dt><dd>{projection.business_date.value ?? "정보 미제공"}</dd></div>
-        <div><dt>위험도</dt><dd>{projection.risk.level ?? "정보 미제공"}</dd></div>
+        <div><dt>위험도</dt><dd>{approvalRiskLabel(projection.risk)}</dd></div>
       </dl>
 
       {gate.formal_approval ? <FormalProgress progress={gate.formal_approval} /> : null}
-      <AttachmentSummary manifest={gate.attachment_manifest} />
+      <ApprovalEvidence
+        risk={projection.risk}
+        manifest={gate.attachment_manifest}
+        resolveResourceRoute={client.resolveResourceRoute}
+      />
+      <ApprovalDecisionPanel
+        client={client}
+        gateId={gate.gate_id}
+        actionable={state.outcome === "pending"}
+        onNext={onDecisionComplete}
+      />
 
       <details className={styles.technicalDetails}>
         <summary>기술 상세</summary>
@@ -312,22 +346,6 @@ function FormalProgress({ progress }: { readonly progress: NonNullable<ApprovalG
   );
 }
 
-function AttachmentSummary({ manifest }: { readonly manifest?: ApprovalGate["attachment_manifest"] }) {
-  return (
-    <section className={styles.section} aria-labelledby="attachment-summary-title">
-      <div className={styles.sectionHeading}>
-        <h3 id="attachment-summary-title">첨부 근거</h3>
-        <span>{manifest ? `${manifest.attachment_count}개 · ${formatBytes(manifest.total_size_bytes)}` : "없음"}</span>
-      </div>
-      {manifest ? (
-        <ul className={styles.attachmentList}>
-          {manifest.items.map(item => <li key={item.attachment_id}>{item.display_name}</li>)}
-        </ul>
-      ) : null}
-    </section>
-  );
-}
-
 function approvalStateForGate(gate: ApprovalGate, now: Date) {
   return mapApprovalState(isApprovalGateExpired(gate, now) ? "EXPIRED" : gate.state);
 }
@@ -337,9 +355,4 @@ function formatDateTime(value: string) {
   return Number.isNaN(date.valueOf())
     ? "정보 미제공"
     : new Intl.DateTimeFormat("ko-KR", { dateStyle: "medium", timeStyle: "short" }).format(date);
-}
-
-function formatBytes(value: number) {
-  if (value < 1024) return `${value} B`;
-  return `${(value / 1024).toFixed(value < 10240 ? 1 : 0)} KB`;
 }
