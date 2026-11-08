@@ -16,6 +16,10 @@ from nex_runtime import (
     trace_id_from_headers,
 )
 
+from nex_ae_api.approval_projection import (
+    ApprovalProjectionError,
+    build_user_approval_projection,
+)
 from nex_ae_api.oa_session_client import OaUserSessionClient
 from nex_ae_api.route_auth import (
     AeFacadeRouteAuthContext,
@@ -269,6 +273,48 @@ def register_approval_facade_routes(
                 subject_id=auth.browser_context.user_id,
                 request_id=request_id_from_headers(request),
                 trace_id=trace_id_from_headers(request),
+            )
+        except ApprovalFacadeError as exc:
+            return _approval_problem(request, exc)
+
+    @app.get(
+        "/api/v1/approval-gates/{approval_work_item_id}/user-projection",
+        response_model=None,
+    )
+    def get_approval_gate_user_projection(
+        approval_work_item_id: str,
+        request: Request,
+        authorization: str | None = Header(default=None),
+    ):
+        auth = _browser_approval_context(
+            request,
+            authorization,
+            oa_session_client=oa_session_client,
+            session_mode=session_mode,
+        )
+        if isinstance(auth, JSONResponse):
+            return auth
+        try:
+            detail = client.get_gate(
+                approval_work_item_id,
+                tenant_id=auth.browser_context.tenant_id,
+                subject_id=auth.browser_context.user_id,
+                request_id=request_id_from_headers(request),
+                trace_id=trace_id_from_headers(request),
+            )
+            return build_user_approval_projection(
+                tenant_id=auth.browser_context.tenant_id,
+                detail=detail,
+            )
+        except ApprovalProjectionError as exc:
+            return _approval_problem(
+                request,
+                ApprovalFacadeError(
+                    502,
+                    "ae.approval_projection_invalid",
+                    str(exc),
+                    True,
+                ),
             )
         except ApprovalFacadeError as exc:
             return _approval_problem(request, exc)

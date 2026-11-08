@@ -2307,6 +2307,27 @@ paths:
         "403": {description: Current approval read authority is denied.}
         "404": {description: Gate is absent or unavailable to the browser user.}
         "503": {description: WC approval service is unavailable.}
+  /api/v1/approval-gates/{approval_work_item_id}/user-projection:
+    get:
+      operationId: getAeUserApprovalProjection
+      tags: [Approvals]
+      description: >-
+        Returns the authenticated user's display-safe approval projection.
+        Fields without an admitted authoritative source are represented as
+        OPEN and are never joined by the browser.
+      parameters:
+        - {$ref: "#/components/parameters/ApprovalWorkItemId"}
+      responses:
+        "200":
+          description: Source-backed user-facing approval projection.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/AeUserApprovalProjection"}
+        "401": {description: Authenticated browser session is missing or invalid.}
+        "403": {description: Current approval read authority is denied.}
+        "404": {description: Gate is absent or unavailable to the browser user.}
+        "502": {description: Authoritative approval detail could not be projected safely.}
+        "503": {description: WC approval service is unavailable.}
   /api/v1/approval-gates/{approval_work_item_id}/decisions:
     post:
       operationId: decideAeApprovalGate
@@ -2639,6 +2660,9 @@ components:
     WcApprovalInbox:
       type: object
       x-nex-canonical-json-schema: schemas/service/nex_wc/approval_inbox.v1.schema.json
+    AeUserApprovalProjection:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_ae_api/user_approval_projection.v1.schema.json
     AeUploadIngestionProgress:
       type: object
       x-nex-canonical-json-schema: schemas/service/nex_ae_api/upload_ingestion_progress.v1.schema.json

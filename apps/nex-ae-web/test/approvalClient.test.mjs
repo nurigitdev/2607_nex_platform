@@ -6,6 +6,7 @@ import {
   approvalDecisionRoute,
   approvalGateRoute,
   approvalInboxRoute,
+  approvalProjectionRoute,
   assertApprovalPayloadSafe,
   buildApprovalDecisionRequest,
   buildDefaultMockApprovalInbox,
@@ -14,13 +15,63 @@ import {
   isApprovalGateExpired,
   normalizeApprovalDecision,
   normalizeApprovalGateDetail,
-  normalizeApprovalInbox
+  normalizeApprovalInbox,
+  normalizeUserApprovalProjection
 } from "../src/approvalClient.js";
 
 const GATE_ID = "42000000-0000-4000-8000-000000000001";
 const DENIED_ID = "42000000-0000-4000-8000-000000000002";
 const BUSINESS_ID = "42000000-0000-4000-8000-000000000003";
 const EXPIRED_ID = "42000000-0000-4000-8000-000000000004";
+
+function userProjection(overrides = {}) {
+  return {
+    schema_version: "ae_user_approval_projection.v1",
+    tenant_id: "tenant-local",
+    gate_id: GATE_ID,
+    approval_domain: "NSL_WRITE",
+    state: "PENDING",
+    title: "승인 요청",
+    summary: "전표 등록 요청을 검토합니다.",
+    expires_at: "2026-11-09T09:00:00Z",
+    approval_provider_type: "NSL",
+    approval_target_ref: "approval-request-s08",
+    business_operation_id: "operation-s08",
+    requester: { status: "AVAILABLE", display_name: "김승인" },
+    requested_at: { status: "AVAILABLE", value: "2026-11-08T08:00:00Z" },
+    project: {
+      id_status: "AVAILABLE",
+      project_id: "project-nvt",
+      display_status: "AVAILABLE",
+      display_name: "NVT 프로젝트"
+    },
+    amount: { status: "AVAILABLE", value: "125000.00", currency: "KRW" },
+    business_date: { status: "AVAILABLE", value: "2026-11-08" },
+    accounts: {
+      status: "AVAILABLE",
+      items: [{ code: "8110", display_name: "여비교통비" }]
+    },
+    risk: { status: "AVAILABLE", level: "LOW", explanation: "예산 범위 내" },
+    line_items: {
+      status: "AVAILABLE",
+      items: [
+        {
+          line_no: 1,
+          description: "출장 교통비",
+          account_code: "8110",
+          amount: "125000.00",
+          currency: "KRW"
+        }
+      ]
+    },
+    metadata: {
+      source_contract: "wc_approval_gate_detail.v1",
+      browser_join_required: false,
+      protected_fields_included: false
+    },
+    ...overrides
+  };
+}
 
 describe("AE Web approval client", () => {
   it("builds bounded same-origin routes and exact decision requests", () => {
@@ -29,6 +80,10 @@ describe("AE Web approval client", () => {
     assert.equal(
       approvalDecisionRoute(GATE_ID),
       `/api/v1/approval-gates/${GATE_ID}/decisions`
+    );
+    assert.equal(
+      approvalProjectionRoute(GATE_ID),
+      `/api/v1/approval-gates/${GATE_ID}/user-projection`
     );
     assert.deepEqual(
       buildApprovalDecisionRequest({
@@ -59,6 +114,50 @@ describe("AE Web approval client", () => {
           decisionComment: "x".repeat(2001)
         }),
       error => error.status === "APPROVAL_DECISION_COMMENT_INVALID"
+    );
+  });
+
+  it("normalizes authoritative user-facing values and explicit OPEN fields", () => {
+    const available = normalizeUserApprovalProjection(userProjection());
+    const open = normalizeUserApprovalProjection(
+      userProjection({
+        requester: { status: "OPEN", display_name: null },
+        project: {
+          id_status: "OPEN",
+          project_id: null,
+          display_status: "OPEN",
+          display_name: null
+        },
+        amount: { status: "OPEN", value: null, currency: null },
+        business_date: { status: "OPEN", value: null },
+        accounts: { status: "OPEN", items: [] },
+        risk: { status: "OPEN", level: null, explanation: null },
+        line_items: { status: "OPEN", items: [] }
+      })
+    );
+
+    assert.equal(available.requester.display_name, "김승인");
+    assert.equal(available.project.display_name, "NVT 프로젝트");
+    assert.equal(available.amount.value, "125000.00");
+    assert.equal(available.accounts.items[0].code, "8110");
+    assert.equal(open.requester.status, "OPEN");
+    assert.equal(open.project.project_id, null);
+    assert.equal(open.line_items.items.length, 0);
+    assert.throws(
+      () =>
+        normalizeUserApprovalProjection(
+          userProjection({ summary: '{"service_token":"private"}' })
+        ),
+      error => error.status === "APPROVAL_PROJECTION_INVALID"
+    );
+    assert.throws(
+      () =>
+        normalizeUserApprovalProjection(
+          userProjection({
+            requested_at: { status: "AVAILABLE", value: "2026-11-08T08:00:00" }
+          })
+        ),
+      error => error.status === "APPROVAL_PROJECTION_INVALID"
     );
   });
 
@@ -162,7 +261,10 @@ describe("AE Web approval client", () => {
   it("loads safe mock detail and rejects missing identities and malformed requests", async () => {
     const client = createMockApprovalClient();
     const detail = await client.getApprovalGate(GATE_ID);
+    const projection = await client.getApprovalProjection(BUSINESS_ID);
     assert.deepEqual(detail.decision_options, ["APPROVE", "REJECT"]);
+    assert.equal(projection.project.project_id, "project-p8-s42");
+    assert.equal(projection.project.display_status, "OPEN");
     await assert.rejects(
       () => client.getApprovalGate("42000000-0000-4000-8000-000000000099"),
       error => error.status === "APPROVAL_GATE_NOT_FOUND"
@@ -198,7 +300,8 @@ describe("AE Web approval client", () => {
       authorization_checked_at: "2026-10-22T09:00:00Z",
       decided_at: "2026-10-22T09:00:00Z"
     };
-    const responses = [inbox, detail, decision];
+    const projection = userProjection();
+    const responses = [inbox, detail, projection, decision];
     const client = createFetchApprovalClient({
       baseUrl: "/ae-api/",
       fetchImpl: async (url, options) => {
@@ -209,6 +312,7 @@ describe("AE Web approval client", () => {
 
     await client.listApprovalGates();
     await client.getApprovalGate(GATE_ID);
+    await client.getApprovalProjection(GATE_ID);
     await client.submitApprovalDecision(
       GATE_ID,
       buildApprovalDecisionRequest({ decision: "APPROVE" })
@@ -216,7 +320,11 @@ describe("AE Web approval client", () => {
 
     assert.equal(calls[0].url, "/ae-api/api/v1/approval-gates?limit=50");
     assert.equal(calls[0].options.credentials, "same-origin");
-    assert.equal(calls[2].options.method, "POST");
+    assert.equal(
+      calls[2].url,
+      `/ae-api/api/v1/approval-gates/${GATE_ID}/user-projection`
+    );
+    assert.equal(calls[3].options.method, "POST");
     for (const call of calls) {
       assert.equal(call.options.headers.Authorization, undefined);
       assert.equal(call.options.headers["X-NeX-Tenant-Id"], undefined);
