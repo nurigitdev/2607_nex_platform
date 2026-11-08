@@ -1333,9 +1333,57 @@ paths:
                   terminal:
                     type: boolean
                   result:
-                    type:
-                      - object
-                      - "null"
+                    oneOf:
+                      - type: "null"
+                      - type: object
+                        additionalProperties: false
+                        required:
+                          - result_ref
+                          - result_hash
+                          - status
+                          - structured_result_contract_ref
+                          - business_refs
+                          - external_refs
+                          - artifact_refs
+                          - warnings
+                          - business_summary
+                          - delivery
+                        properties:
+                          result_ref: {type: string}
+                          result_hash:
+                            type: string
+                            pattern: '^sha256:[0-9a-f]{64}$'
+                          status: {type: string}
+                          structured_result_contract_ref:
+                            type: [string, "null"]
+                          business_refs:
+                            type: array
+                            items: {type: string}
+                          external_refs:
+                            type: array
+                            items: {type: string}
+                          artifact_refs:
+                            type: array
+                            items: {type: string}
+                          warnings:
+                            type: array
+                            items: {type: string}
+                          business_summary:
+                            oneOf:
+                              - type: "null"
+                              - $ref: "#/components/schemas/AeBusinessResultSummary"
+                          delivery:
+                            type: object
+                            additionalProperties: false
+                            required:
+                              - delivery_ref
+                              - state
+                              - workspace_activity_ref
+                            properties:
+                              delivery_ref: {type: string}
+                              state: {type: string}
+                              workspace_activity_ref:
+                                type: [string, "null"]
                   updated_at:
                     type: string
                     format: date-time
@@ -2639,6 +2687,9 @@ components:
         type: string
         format: uuid
   schemas:
+    AeBusinessResultSummary:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_ae_api/business_result_summary.v1.schema.json
     WaSourceReconciliationPage:
       type: object
       x-nex-canonical-json-schema: schemas/service/nex_ae_api/wa_source_reconciliation_page.v1.schema.json

@@ -12,6 +12,10 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
 
+from nex_ae_api.business_result_summary import (
+    BusinessResultSummaryError,
+    admit_business_result_summary,
+)
 from nex_ae_api.plan_finalization import (
     P5PlanFinalizationError,
     SqlAlchemyP5PlanFinalizationService,
@@ -604,6 +608,15 @@ def _interaction_result_projection(row: Mapping[str, Any]) -> dict[str, Any]:
     if envelope is not None:
         structured = envelope.get("structured_result")
         structured = structured if isinstance(structured, Mapping) else {}
+        try:
+            business_summary = admit_business_result_summary(
+                structured.get("business_summary")
+            )
+        except BusinessResultSummaryError as exc:
+            raise WorkspaceResultPublicationError(
+                "ae.interaction_agent_result_record_invalid",
+                "Persisted business result summary is invalid.",
+            ) from exc
         result = {
             "result_ref": f"AE:AGENT_RESULT:{result_id}",
             "result_hash": row["result_hash"],
@@ -615,6 +628,7 @@ def _interaction_result_projection(row: Mapping[str, Any]) -> dict[str, Any]:
             "external_refs": list(structured.get("external_refs") or ()),
             "artifact_refs": list(envelope.get("artifact_refs") or ()),
             "warnings": list(envelope.get("warnings") or ()),
+            "business_summary": business_summary,
             "delivery": {
                 "delivery_ref": f"AE:RESULT_DELIVERY:{row['delivery_id']}",
                 "state": row["delivery_state"],

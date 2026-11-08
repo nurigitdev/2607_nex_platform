@@ -28,6 +28,10 @@ import {
 } from "../../design-system/components";
 import { mapBusinessTerm } from "../../ux/terminology";
 import { mapWorkState, type WorkStatePresentation } from "../../ux/workState";
+import {
+  BusinessResultCard,
+  type WorkspaceResultProjection,
+} from "./BusinessResultCard";
 import styles from "./WorkspacePage.module.css";
 
 export interface WorkspaceAttachment {
@@ -67,6 +71,7 @@ export interface WorkspacePageProps {
   readonly messages?: readonly WorkspaceMessage[];
   readonly sources?: readonly WorkspaceSource[];
   readonly recentTasks?: readonly string[];
+  readonly result?: WorkspaceResultProjection | null;
 }
 
 const RECOMMENDED_WORK = Object.freeze([
@@ -81,6 +86,7 @@ export function WorkspacePage({
   messages = [],
   sources = [],
   recentTasks = [],
+  result = null,
 }: WorkspacePageProps) {
   const [prompt, setPrompt] = useState("");
   const [useEvidence, setUseEvidence] = useState(true);
@@ -198,7 +204,7 @@ export function WorkspacePage({
       <div className={styles.layout}>
         <div className={styles.mainColumn}>
           <section className={styles.conversation} aria-label="대화">
-            {messages.length === 0 ? (
+            {messages.length === 0 && !result ? (
               <div className={styles.emptyWorkspace}>
                 <EmptyState
                   icon={Sparkles}
@@ -218,14 +224,19 @@ export function WorkspacePage({
                 ) : null}
               </div>
             ) : (
-              <ol className={styles.messages}>
-                {messages.map(item => (
-                  <li key={item.id} className={item.role === "user" ? styles.userMessage : styles.agentMessage}>
-                    <span>{item.role === "user" ? "나" : "IA"}</span>
-                    <p>{item.content}</p>
-                  </li>
-                ))}
-              </ol>
+              <div className={styles.resultFlow}>
+                {messages.length > 0 ? (
+                  <ol className={styles.messages}>
+                    {messages.map(item => (
+                      <li key={item.id} className={item.role === "user" ? styles.userMessage : styles.agentMessage}>
+                        <span>{item.role === "user" ? "나" : "IA"}</span>
+                        <p>{item.content}</p>
+                      </li>
+                    ))}
+                  </ol>
+                ) : null}
+                {result ? <BusinessResultCard result={result} /> : null}
+              </div>
             )}
           </section>
 

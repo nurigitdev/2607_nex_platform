@@ -106,6 +106,51 @@ describe("WorkspacePage", () => {
     expect(screen.queryByText("secret")).not.toBeInTheDocument();
   });
 
+  it("renders a source-backed voucher result without technical lineage", () => {
+    render(
+      <WorkspacePage
+        result={{
+          status: "SUCCEEDED",
+          businessSummary: {
+            resultType: "FINANCE.VOUCHER_DRAFT",
+            schemaVersion: "ae_business_result_summary.v1",
+            outcome: "COMMITTED",
+            verificationStatus: "VERIFIED",
+            approvalState: "APPROVED",
+            businessOperationId: "operation-private-1",
+            voucherNumber: "V-2026-001",
+            amount: "12500.00",
+            currency: "KRW",
+            accountCodes: ["TRAVEL", "CASH"],
+            projectCode: "NVT",
+            businessObjectLink: null,
+          },
+        }}
+      />,
+    );
+
+    expect(screen.getByRole("heading", { name: "전표 등록 결과" })).toBeInTheDocument();
+    expect(screen.getByText("V-2026-001")).toBeInTheDocument();
+    expect(screen.getByText("12,500 KRW")).toBeInTheDocument();
+    expect(screen.getByText("TRAVEL / CASH")).toBeInTheDocument();
+    expect(screen.getByText("NVT")).toBeInTheDocument();
+    expect(screen.getByText("승인 완료")).toBeInTheDocument();
+    expect(screen.queryByText("operation-private-1")).not.toBeInTheDocument();
+  });
+
+  it("uses a generic safe card when no typed business projection is admitted", () => {
+    render(
+      <WorkspacePage
+        result={{ status: "PARTIAL", artifactCount: 1, warnings: ["일부 결과를 확인해 주세요."] }}
+      />,
+    );
+
+    expect(screen.getByRole("heading", { name: "요청 처리 결과" })).toBeInTheDocument();
+    expect(screen.getByText("안전하게 공개할 수 있는 결과 요약만 표시합니다.")).toBeInTheDocument();
+    expect(screen.getByText("생성된 결과물 1건")).toBeInTheDocument();
+    expect(screen.getByText("일부 결과를 확인해 주세요.")).toBeInTheDocument();
+  });
+
   it("uses a single-column context layout at tablet and mobile widths", () => {
     const css = readFileSync(resolve(process.cwd(), "src/features/workspace/WorkspacePage.module.css"), "utf8");
     expect(css).toContain("@media (max-width: 980px)");
