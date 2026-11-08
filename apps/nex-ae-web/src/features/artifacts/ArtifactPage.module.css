@@ -1,0 +1,34 @@
+.page { display: grid; gap: var(--nex-space-5); min-width: 0; }
+.page > header, .headerActions, .detailHeader, .lifecycle, .exportActions { align-items: center; display: flex; gap: var(--nex-space-2); justify-content: space-between; }
+.page > header span:first-child { color: var(--nex-text-secondary); font: var(--nex-text-caption); }
+.page h1 { font: var(--nex-text-title); margin: var(--nex-space-1) 0 0; }
+.layout { border: 1px solid var(--nex-border-default); display: grid; grid-template-columns: minmax(240px, .36fr) minmax(0, 1fr); min-height: 560px; }
+.library { border-right: 1px solid var(--nex-border-default); padding: var(--nex-space-4); }
+.library h2, .detail h2 { font: var(--nex-text-heading); margin: 0 0 var(--nex-space-4); }
+.library ul, .files ul, .versions ol { list-style: none; margin: 0; padding: 0; }
+.library li { border-bottom: 1px solid var(--nex-border-default); }
+.library li button { background: transparent; border: 0; color: inherit; cursor: pointer; display: grid; gap: var(--nex-space-1); inline-size: 100%; padding: var(--nex-space-3); text-align: left; }
+.library li button span, .library li button small { color: var(--nex-text-secondary); }
+.library li.selected { background: var(--nex-accent-subtle); box-shadow: inset 3px 0 var(--nex-accent); }
+.detail { min-width: 0; padding: var(--nex-space-5); }
+.detailHeader > div:first-child { display: grid; gap: var(--nex-space-1); }
+.detailHeader span { color: var(--nex-text-secondary); }
+.exportActions { justify-content: flex-start; margin: var(--nex-space-4) 0; }
+.files, .versions, .preview { border-top: 1px solid var(--nex-border-default); padding-top: var(--nex-space-4); }
+.files h3, .versions h3, .preview h3 { align-items: center; display: flex; font: var(--nex-text-heading); gap: var(--nex-space-2); margin: 0 0 var(--nex-space-3); }
+.files li { align-items: center; display: flex; justify-content: space-between; padding: var(--nex-space-2) 0; }
+.files li > div { display: flex; gap: var(--nex-space-1); }
+.versions ol { display: grid; gap: var(--nex-space-2); }
+.versions li { display: grid; gap: var(--nex-space-3); grid-template-columns: 100px 1fr auto; }
+.preview { margin-top: var(--nex-space-4); }
+.preview pre { background: var(--nex-bg-subtle); max-height: 280px; overflow: auto; padding: var(--nex-space-4); white-space: pre-wrap; }
+.preview p { color: var(--nex-text-secondary); }
+.error, .feedback { border: 1px solid; padding: var(--nex-space-3); }
+.error { background: var(--nex-danger-bg); border-color: var(--nex-danger-border); color: var(--nex-danger-fg); }
+.feedback { background: var(--nex-info-bg); border-color: var(--nex-info-border); color: var(--nex-info-fg); }
+@media (max-width: 720px) {
+  .layout { grid-template-columns: 1fr; }
+  .library { border-bottom: 1px solid var(--nex-border-default); border-right: 0; }
+  .detailHeader, .files li { align-items: stretch; flex-direction: column; }
+  .versions li { grid-template-columns: 80px 1fr auto; }
+}

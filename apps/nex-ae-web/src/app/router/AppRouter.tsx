@@ -2,6 +2,7 @@ import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 
 import { EmptyState } from "../../design-system/components";
 import { ApprovalPage } from "../../features/approvals/ApprovalPage";
+import { ArtifactRuntimeRoute } from "../../features/artifacts/ArtifactRuntimeRoute";
 import { DocumentRuntimeRoute } from "../../features/documents/DocumentRuntimeRoute";
 import { WorkspaceRuntimeRoute } from "../../features/workspace/WorkspaceRuntimeRoute";
 import { LoginPage } from "../auth/LoginPage";
@@ -17,7 +18,7 @@ const pageLabels: Readonly<Record<string, string>> = Object.freeze({
   upload: "업로드",
   documents: "문서",
   retrieval: "검색",
-  artifacts: "아티팩트",
+  artifacts: "결과물",
   operations: "운영/진단",
 });
 
@@ -60,7 +61,8 @@ export function AppRouter() {
         <Route path="/documents" element={<DocumentRuntimeRoute />} />
         <Route path="/upload" element={<DocumentRuntimeRoute initialTab="upload" />} />
         <Route path="/retrieval" element={<DocumentRuntimeRoute initialTab="retrieval" />} />
-        {Object.keys(pageLabels).filter(routeId => !["workspace", "approvals", "documents", "upload", "retrieval"].includes(routeId)).map(routeId => (
+        <Route path="/artifacts" element={<ArtifactRuntimeRoute />} />
+        {Object.keys(pageLabels).filter(routeId => !["workspace", "approvals", "documents", "upload", "retrieval", "artifacts"].includes(routeId)).map(routeId => (
           <Route key={routeId} path={`/${routeId}`} element={<RoutePage routeId={routeId} />} />
         ))}
       </Route>

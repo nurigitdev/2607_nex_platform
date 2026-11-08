@@ -103,7 +103,7 @@ describe("modern application foundation", () => {
     expect(await screen.findByRole("link", { name: "워크스페이스" })).toBeTruthy();
     expect(screen.getByRole("link", { name: "승인함" })).toBeTruthy();
     expect(screen.getByRole("link", { name: "문서" })).toBeTruthy();
-    expect(screen.getByRole("link", { name: "아티팩트" })).toBeTruthy();
+    expect(screen.getByRole("link", { name: "결과물" })).toBeTruthy();
   });
 
   it("submits the existing credential contract and activates the requested route", async () => {

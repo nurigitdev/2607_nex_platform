@@ -18,7 +18,7 @@ const primaryItems = [
   { path: "/workspace", label: "워크스페이스", icon: BriefcaseBusiness },
   { path: "/approvals", label: "승인함", icon: Inbox },
   { path: "/documents", label: "문서", icon: FileText },
-  { path: "/artifacts", label: "아티팩트", icon: Archive },
+  { path: "/artifacts", label: "결과물", icon: Archive },
 ] as const;
 
 export function ApplicationShell() {
