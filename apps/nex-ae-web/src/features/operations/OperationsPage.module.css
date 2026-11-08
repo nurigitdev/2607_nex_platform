@@ -1,0 +1,25 @@
+.page { display: grid; gap: var(--nex-space-5); min-width: 0; }
+.page > header { align-items: center; display: flex; gap: var(--nex-space-3); justify-content: space-between; }
+.page > header span:first-child { color: var(--nex-text-secondary); font: var(--nex-text-caption); }
+.page h1 { font: var(--nex-text-title); margin: var(--nex-space-1) 0 0; }
+.summary { align-items: center; border: 1px solid var(--nex-border-default); display: flex; gap: var(--nex-space-3); padding: var(--nex-space-4); }
+.summary strong { font: var(--nex-text-heading); }
+.section { border-top: 1px solid var(--nex-border-default); padding-top: var(--nex-space-4); }
+.section h2 { font: var(--nex-text-heading); margin: 0 0 var(--nex-space-3); }
+.table { border-collapse: collapse; inline-size: 100%; table-layout: fixed; }
+.table th, .table td { border-bottom: 1px solid var(--nex-border-default); padding: var(--nex-space-3); text-align: left; overflow-wrap: anywhere; }
+.table th { color: var(--nex-text-secondary); font: var(--nex-text-caption); }
+.runtime { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); margin: 0; }
+.runtime > div { border: 1px solid var(--nex-border-default); padding: var(--nex-space-4); }
+.runtime dt { color: var(--nex-text-secondary); font: var(--nex-text-caption); }
+.runtime dd { font-weight: 600; margin: var(--nex-space-2) 0 0; }
+.routes { list-style: none; margin: 0; padding: 0; }
+.routes li { align-items: center; border-bottom: 1px solid var(--nex-border-default); display: grid; gap: var(--nex-space-3); grid-template-columns: 190px 64px minmax(0, 1fr); padding: var(--nex-space-3) 0; }
+.routes code { overflow-wrap: anywhere; }
+.error { background: var(--nex-danger-bg); border: 1px solid var(--nex-danger-border); color: var(--nex-danger-fg); padding: var(--nex-space-3); }
+@media (max-width: 720px) {
+  .runtime { grid-template-columns: 1fr; }
+  .table { font-size: 13px; }
+  .table th, .table td { padding: var(--nex-space-2); }
+  .routes li { grid-template-columns: 1fr; gap: var(--nex-space-1); }
+}

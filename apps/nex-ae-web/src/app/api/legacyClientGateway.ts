@@ -13,6 +13,7 @@ import {
   type DocumentLibraryClientPort,
 } from "./documentLibraryClientPort";
 import { createWorkspaceClient, type WorkspaceClientPort } from "./workspaceClientPort";
+import { createOperationsClient, type OperationsClientPort } from "./operationsClientPort";
 
 interface ClientGatewayOptions {
   readonly mode: LegacyClientMode;
@@ -24,6 +25,7 @@ export interface LegacyClientGateway {
   readonly workspace: WorkspaceClientPort;
   readonly documentLibrary: DocumentLibraryClientPort;
   readonly approval: ApprovalClientPort;
+  readonly operations: OperationsClientPort;
   readonly artifact: unknown;
   readonly documentDetail: unknown;
   readonly upload: unknown;
@@ -55,6 +57,7 @@ export function createLegacyClientGateway({
     workspace: createWorkspaceClient({ mode, baseUrl, fetchImpl }),
     documentLibrary: createDocumentLibraryClient({ mode, baseUrl, fetchImpl }),
     approval: registry.approvalClient as unknown as ApprovalClientPort,
+    operations: createOperationsClient({ mode, baseUrl, fetchImpl }),
     artifact: registry.artifactClient,
     documentDetail: registry.documentDetailClient,
     upload: registry.uploadClient,

@@ -5,6 +5,7 @@ import { ApprovalPage } from "../../features/approvals/ApprovalPage";
 import { ArtifactRuntimeRoute } from "../../features/artifacts/ArtifactRuntimeRoute";
 import { DocumentRuntimeRoute } from "../../features/documents/DocumentRuntimeRoute";
 import { WorkspaceRuntimeRoute } from "../../features/workspace/WorkspaceRuntimeRoute";
+import { OperationsRuntimeRoute } from "../../features/operations/OperationsRuntimeRoute";
 import { LoginPage } from "../auth/LoginPage";
 import { projectApplicationShell } from "../legacyAdapters/applicationShellAdapter";
 import { useOptionalInstalledRuntime } from "../providers/RuntimeProvider";
@@ -62,7 +63,8 @@ export function AppRouter() {
         <Route path="/upload" element={<DocumentRuntimeRoute initialTab="upload" />} />
         <Route path="/retrieval" element={<DocumentRuntimeRoute initialTab="retrieval" />} />
         <Route path="/artifacts" element={<ArtifactRuntimeRoute />} />
-        {Object.keys(pageLabels).filter(routeId => !["workspace", "approvals", "documents", "upload", "retrieval", "artifacts"].includes(routeId)).map(routeId => (
+        <Route path="/operations" element={<OperationsRuntimeRoute />} />
+        {Object.keys(pageLabels).filter(routeId => !["workspace", "approvals", "documents", "upload", "retrieval", "artifacts", "operations"].includes(routeId)).map(routeId => (
           <Route key={routeId} path={`/${routeId}`} element={<RoutePage routeId={routeId} />} />
         ))}
       </Route>

@@ -34,6 +34,7 @@
     "smoke:v2-workspace-playwright": "node scripts/runModernWorkspaceExecutionPlaywrightSmoke.mjs --summary",
     "smoke:v2-document-playwright": "node scripts/runModernDocumentPlaywrightSmoke.mjs --summary",
     "smoke:v2-artifact-playwright": "node scripts/runModernArtifactPlaywrightSmoke.mjs --summary",
+    "smoke:v2-operations-playwright": "node scripts/runModernOperationsPlaywrightSmoke.mjs --summary",
     "smoke:v2-approval-playwright": "node scripts/runModernApprovalPlaywrightSmoke.mjs --summary",
     "smoke:p8-s102-demo-playwright": "node scripts/runP8S102DemoPlaywrightSmoke.mjs",
     "smoke:p8-s112-project-membership-playwright": "node scripts/runP8S112ProjectMembershipPlaywrightSmoke.mjs",

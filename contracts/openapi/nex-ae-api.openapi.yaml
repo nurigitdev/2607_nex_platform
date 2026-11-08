@@ -152,6 +152,23 @@ paths:
           description: Revoked safe OA browser session snapshot and cleared session cookie.
         "401":
           description: Browser user session is already missing, expired, or invalid.
+  /api/v1/web/operations/summary:
+    get:
+      operationId: getAeWebOperationsSummary
+      tags:
+        - Operations
+      description: >
+        Read-only, redacted same-origin operations projection. Browser access is
+        restricted to authenticated admin or operator roles.
+      responses:
+        "200":
+          description: Safe AE operations summary without service endpoints or credentials.
+        "401":
+          description: Browser session is missing or invalid.
+        "403":
+          description: Authenticated user is not an admin or operator.
+        "503":
+          description: Safe operations projection is temporarily unavailable.
   /api/v1/workspaces:
     post:
       operationId: createAeWorkspace
