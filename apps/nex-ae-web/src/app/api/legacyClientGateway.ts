@@ -8,6 +8,10 @@ import type {
   LegacyClientMode,
 } from "../domain/runtime";
 import type { ApprovalClientPort } from "./approvalClientPort";
+import {
+  createDocumentLibraryClient,
+  type DocumentLibraryClientPort,
+} from "./documentLibraryClientPort";
 import { createWorkspaceClient, type WorkspaceClientPort } from "./workspaceClientPort";
 
 interface ClientGatewayOptions {
@@ -18,6 +22,7 @@ interface ClientGatewayOptions {
 
 export interface LegacyClientGateway {
   readonly workspace: WorkspaceClientPort;
+  readonly documentLibrary: DocumentLibraryClientPort;
   readonly approval: ApprovalClientPort;
   readonly artifact: unknown;
   readonly documentDetail: unknown;
@@ -48,6 +53,7 @@ export function createLegacyClientGateway({
 
   return Object.freeze({
     workspace: createWorkspaceClient({ mode, baseUrl, fetchImpl }),
+    documentLibrary: createDocumentLibraryClient({ mode, baseUrl, fetchImpl }),
     approval: registry.approvalClient as unknown as ApprovalClientPort,
     artifact: registry.artifactClient,
     documentDetail: registry.documentDetailClient,
@@ -64,7 +70,7 @@ export function createLegacyClientGateway({
       schemaVersion: summary.client_registry_schema_version,
       clientMode: summary.client_mode,
       baseUrl: summary.base_url,
-      clients: Object.freeze({ workspace: mode, ...summary.clients }),
+      clients: Object.freeze({ workspace: mode, document_library: mode, ...summary.clients }),
       metadata: Object.freeze({ ...summary.metadata }),
     }),
   });

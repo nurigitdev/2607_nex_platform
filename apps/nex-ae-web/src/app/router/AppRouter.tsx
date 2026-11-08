@@ -2,6 +2,7 @@ import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 
 import { EmptyState } from "../../design-system/components";
 import { ApprovalPage } from "../../features/approvals/ApprovalPage";
+import { DocumentRuntimeRoute } from "../../features/documents/DocumentRuntimeRoute";
 import { WorkspaceRuntimeRoute } from "../../features/workspace/WorkspaceRuntimeRoute";
 import { LoginPage } from "../auth/LoginPage";
 import { projectApplicationShell } from "../legacyAdapters/applicationShellAdapter";
@@ -56,7 +57,10 @@ export function AppRouter() {
       <Route element={<ProtectedShell />}>
         <Route path="/workspace" element={<WorkspaceRuntimeRoute />} />
         <Route path="/approvals" element={<ApprovalRoute />} />
-        {Object.keys(pageLabels).filter(routeId => !["workspace", "approvals"].includes(routeId)).map(routeId => (
+        <Route path="/documents" element={<DocumentRuntimeRoute />} />
+        <Route path="/upload" element={<DocumentRuntimeRoute initialTab="upload" />} />
+        <Route path="/retrieval" element={<DocumentRuntimeRoute initialTab="retrieval" />} />
+        {Object.keys(pageLabels).filter(routeId => !["workspace", "approvals", "documents", "upload", "retrieval"].includes(routeId)).map(routeId => (
           <Route key={routeId} path={`/${routeId}`} element={<RoutePage routeId={routeId} />} />
         ))}
       </Route>
