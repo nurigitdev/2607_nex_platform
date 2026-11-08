@@ -31,6 +31,10 @@ const ko = Object.freeze({
   "action.retry": "재시도",
   "action.refresh": "새로고침",
   "action.apply": "적용",
+  "action.review_request": "요청 확인",
+  "action.view_progress": "진행 확인",
+  "action.review_approval": "승인 검토",
+  "action.view_result": "결과 확인",
   "action.skip_main": "본문으로 건너뛰기",
   "generation.controls": "생성 작업 제어",
   "generation.none": "생성 작업 없음",
@@ -99,7 +103,14 @@ const ko = Object.freeze({
   "status.cancelled": "취소됨",
   "status.cancelling": "취소 중",
   "status.recoverable": "복구 가능",
-  "status.repair_required": "보완 필요"
+  "status.repair_required": "보완 필요",
+  "ux.work_state.requested": "요청됨",
+  "ux.work_state.in_progress": "처리 중",
+  "ux.work_state.waiting_approval": "승인 대기",
+  "ux.work_state.completed": "완료",
+  "ux.work_state.failed": "처리 실패",
+  "ux.work_state.cancelled": "취소됨",
+  "ux.work_state.unknown": "상태 확인 필요"
 });
 
 const en = Object.freeze({
@@ -132,6 +143,10 @@ const en = Object.freeze({
   "action.retry": "Retry",
   "action.refresh": "Refresh",
   "action.apply": "Apply",
+  "action.review_request": "Review request",
+  "action.view_progress": "View progress",
+  "action.review_approval": "Review approval",
+  "action.view_result": "View result",
   "action.skip_main": "Skip to main content",
   "generation.controls": "Generation controls",
   "generation.none": "No generation job",
@@ -200,7 +215,14 @@ const en = Object.freeze({
   "status.cancelled": "Cancelled",
   "status.cancelling": "Cancelling",
   "status.recoverable": "Recoverable",
-  "status.repair_required": "Repair required"
+  "status.repair_required": "Repair required",
+  "ux.work_state.requested": "Requested",
+  "ux.work_state.in_progress": "In progress",
+  "ux.work_state.waiting_approval": "Waiting for approval",
+  "ux.work_state.completed": "Completed",
+  "ux.work_state.failed": "Processing failed",
+  "ux.work_state.cancelled": "Cancelled",
+  "ux.work_state.unknown": "Status needs review"
 });
 
 export const MESSAGE_CATALOGS = Object.freeze({ ko, en });

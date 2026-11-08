@@ -18,5 +18,5 @@
     "jsx": "react-jsx",
     "types": ["node", "vitest/globals"]
   },
-  "include": ["src/app", "src/design-system", "src/vite-env.d.ts", "vite.config.ts"]
+  "include": ["src/app", "src/design-system", "src/ux", "src/vite-env.d.ts", "vite.config.ts"]
 }
