@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_wa/wa_error.v1.schema.json",
+  "title": "NeX-WA Error v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "error_code", "detail", "request_id", "trace_id"],
+  "properties": {
+    "schema_version": {"const": "wa_error.v1"},
+    "error_code": {"type": "string", "pattern": "^WA_[A-Z0-9_]{1,124}$"},
+    "detail": {"type": "string", "minLength": 1, "maxLength": 512},
+    "request_id": {"$ref": "#/$defs/scoped_id"},
+    "trace_id": {"$ref": "#/$defs/scoped_id"}
+  },
+  "$defs": {
+    "scoped_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$"
+    }
+  }
+}

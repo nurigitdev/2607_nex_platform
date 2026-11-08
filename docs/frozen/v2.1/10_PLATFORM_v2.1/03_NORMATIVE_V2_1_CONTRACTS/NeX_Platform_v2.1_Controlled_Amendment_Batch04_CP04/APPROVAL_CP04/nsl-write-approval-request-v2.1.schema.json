@@ -1,0 +1,69 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "NSLWriteApprovalRequest v2.1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "tenant_id",
+    "nsl_execution_id",
+    "business_operation_id",
+    "approval_id",
+    "approval_request_id",
+    "skill_semantic_hash",
+    "payload_hash",
+    "write_intent_hash",
+    "checkpoint_version",
+    "display_safe_summary"
+  ],
+  "properties": {
+    "tenant_id": {
+      "type": "string"
+    },
+    "nsl_execution_id": {
+      "type": "string"
+    },
+    "business_operation_id": {
+      "type": "string"
+    },
+    "approval_id": {
+      "type": "string"
+    },
+    "approval_request_id": {
+      "type": "string"
+    },
+    "skill_semantic_hash": {
+      "type": "string"
+    },
+    "write_node_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "tool_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "payload_hash": {
+      "type": "string"
+    },
+    "write_intent_hash": {
+      "type": "string"
+    },
+    "checkpoint_version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "display_safe_summary": {
+      "type": "object"
+    },
+    "expires_at": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  }
+}

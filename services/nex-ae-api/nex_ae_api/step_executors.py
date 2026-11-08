@@ -1,0 +1,910 @@
+from __future__ import annotations
+
+import json
+from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass
+from datetime import UTC, datetime
+from typing import Any, Literal, Protocol
+
+from nex_ae_api.chat_application import ChatApplicationService
+from nex_ae_api.delegated_work import DelegatedWorkError, delegation_dispatch
+from nex_ae_api.executable_plans import WC_DELEGATE_WORK_EXECUTOR_KIND
+from nex_ae_api.executable_steps import ExecutableStepError, compatibility_outcome
+from nex_ae_api.multi_step_engine import (
+    SqlAlchemyMultiStepEngine,
+    StepExecutionContext,
+    StepTerminalOutcome,
+    StepWaitingOutcome,
+)
+from nex_ae_api.nsl_backend_profiles import normalize_nsl_backend_profile
+from nex_ae_api.planning_capabilities import (
+    LOCAL_SKILL_EXECUTOR_KIND,
+    CapabilitySnapshotError,
+    validate_local_skill_binding,
+)
+from nex_ae_api.runtime_jobs import RuntimeJobClaim, SqlAlchemyRuntimeJobQueue
+from nex_ae_api.work_result_events import validate_work_result_event
+
+EXECUTOR_KINDS = frozenset(
+    {
+        "P4_CHAT_RAG_COMPATIBILITY",
+        "DETERMINISTIC_AGGREGATE",
+        "DETERMINISTIC_REPORT",
+    }
+)
+PLATFORM_EXECUTOR_KINDS = frozenset(
+    (*EXECUTOR_KINDS, "LOCAL_SKILL", WC_DELEGATE_WORK_EXECUTOR_KIND)
+)
+
+
+@dataclass
+class P5StepExecutorError(Exception):
+    error_code: str
+    detail: str
+    retryable: bool = False
+
+    def __str__(self) -> str:
+        return self.detail
+
+
+@dataclass(frozen=True)
+class P5ExecutorOutcome:
+    state: Literal["WAITING", "SUCCEEDED", "FAILED", "BLOCKED", "CANCELLED"]
+    result_contract_ref: str
+    result_payload: Mapping[str, Any]
+    external_refs: tuple[str, ...] = ()
+    artifact_refs: tuple[str, ...] = ()
+    evidence_refs: tuple[str, ...] = ()
+    error_ref: str | None = None
+    retrieval_package_ref: str | None = None
+    retrieval_package_hash: str | None = None
+    cx_generation_id: str | None = None
+    cx_job_id: str | None = None
+    business_operation_id: str | None = None
+    started_at: str | None = None
+    completed_at: str | None = None
+    wait_id: str | None = None
+    wait_external_ref: str | None = None
+
+
+@dataclass(frozen=True)
+class P5WorkerExecution:
+    disposition: Literal["WAITING", "TERMINAL", "ALREADY_TERMINAL"]
+    step: dict[str, Any] | None
+    step_result: dict[str, Any] | None
+    runtime_job: dict[str, Any]
+
+
+class P5StepExecutor(Protocol):
+    def execute(
+        self,
+        context: StepExecutionContext,
+        *,
+        continuation_result: Any | None = None,
+    ) -> P5ExecutorOutcome: ...
+
+
+class ContinuationSource(Protocol):
+    def resolve(self, claim: RuntimeJobClaim) -> Mapping[str, Any]: ...
+
+
+@dataclass(frozen=True)
+class LocalSkillExecutorDependencies:
+    artifact_gateway: object
+    binding_repository: object
+    request_builder: Callable[..., Mapping[str, Any]]
+    backend: object
+    result_mapper: Callable[..., P5ExecutorOutcome]
+
+
+@dataclass(frozen=True)
+class DelegateWorkExecutorDependencies:
+    runtime_repository: object
+    wait_repository: object
+    work_item_client: object
+
+
+class P6LocalSkillExecutor:
+    def __init__(
+        self,
+        *,
+        dependencies: LocalSkillExecutorDependencies,
+        handler: Callable[
+            [StepExecutionContext, LocalSkillExecutorDependencies], P5ExecutorOutcome
+        ],
+        continuation_handler: Callable[
+            [StepExecutionContext, LocalSkillExecutorDependencies, Any],
+            P5ExecutorOutcome,
+        ]
+        | None = None,
+    ) -> None:
+        self._dependencies = validate_local_skill_executor_dependencies(dependencies)
+        if not callable(handler):
+            raise _local_skill_unavailable("LOCAL_SKILL handler is unavailable.")
+        if continuation_handler is not None and not callable(continuation_handler):
+            raise _local_skill_unavailable(
+                "LOCAL_SKILL continuation handler is unavailable."
+            )
+        self._handler = handler
+        self._continuation_handler = continuation_handler
+
+    @property
+    def backend_profile(self) -> str:
+        profiles = self.backend_profiles
+        if len(profiles) != 1:
+            raise _local_skill_unavailable(
+                "LOCAL_SKILL executor has multiple configured backend profiles."
+            )
+        return profiles[0]
+
+    @property
+    def backend_profiles(self) -> tuple[str, ...]:
+        return _local_skill_backend_profiles(self._dependencies.backend)
+
+    def execute(
+        self,
+        context: StepExecutionContext,
+        *,
+        continuation_result: Any | None = None,
+    ) -> P5ExecutorOutcome:
+        _require_executor(context.step, LOCAL_SKILL_EXECUTOR_KIND)
+        if context.step.get("step_type") != "LOCAL_SKILL":
+            raise _invalid("LOCAL_SKILL executor requires a LOCAL_SKILL step.")
+        if continuation_result is not None and self._continuation_handler is None:
+            raise _invalid("LOCAL_SKILL READ cannot consume continuation input in P6.")
+        try:
+            binding = validate_local_skill_binding(context.step.get("skill_binding"))
+        except CapabilitySnapshotError as exc:
+            raise _invalid("LOCAL_SKILL compiled binding is invalid.") from exc
+        if binding["backend_profile"] not in self.backend_profiles:
+            raise _local_skill_unavailable(
+                "LOCAL_SKILL compiled binding has no matching configured backend."
+            )
+        outcome = (
+            self._handler(context, self._dependencies)
+            if continuation_result is None
+            else self._continuation_handler(
+                context,
+                self._dependencies,
+                continuation_result,
+            )
+        )
+        if not isinstance(outcome, P5ExecutorOutcome):
+            raise _invalid("LOCAL_SKILL handler returned an invalid outcome.")
+        return outcome
+
+
+class P7DelegateWorkExecutor:
+    def __init__(
+        self,
+        *,
+        dependencies: DelegateWorkExecutorDependencies,
+        clock: Callable[[], datetime] | None = None,
+    ) -> None:
+        self._dependencies = validate_delegate_work_executor_dependencies(dependencies)
+        self._clock = clock or (lambda: datetime.now(UTC))
+
+    def execute(
+        self,
+        context: StepExecutionContext,
+        *,
+        continuation_result: Any | None = None,
+    ) -> P5ExecutorOutcome:
+        _require_executor(context.step, WC_DELEGATE_WORK_EXECUTOR_KIND)
+        if context.step.get("step_type") != "DELEGATE_WORK":
+            raise _invalid("WC_DELEGATE_WORK requires a DELEGATE_WORK step.")
+        if continuation_result is not None:
+            return _delegated_result_outcome(context, continuation_result)
+        created_at = self._clock().astimezone(UTC).isoformat().replace("+00:00", "Z")
+        try:
+            runtime = self._dependencies.runtime_repository.load(
+                tenant_id=context.job["tenant_id"],
+                agent_execution_id=context.step["agent_execution_id"],
+                executable_plan_id=context.step["executable_plan_id"],
+                executable_step_id=context.step["executable_step_id"],
+            )
+            dispatch = delegation_dispatch(runtime, created_at=created_at)
+            wait = self._dependencies.wait_repository.register(**dispatch["wait"])
+            response = self._dependencies.work_item_client.create_work_item(
+                dispatch["work_item_request"]
+            )
+        except DelegatedWorkError as exc:
+            raise P5StepExecutorError(
+                exc.error_code, exc.detail, exc.retryable
+            ) from exc
+        work_item = response.get("work_item")
+        expected_work_item_id = wait["external_ref"]
+        if (
+            not isinstance(work_item, Mapping)
+            or work_item.get("tenant_id") != wait["tenant_id"]
+            or work_item.get("work_item_id") != expected_work_item_id
+            or work_item.get("state") != "CREATED"
+        ):
+            raise _invalid("WC returned a mismatched delegated WorkItem.")
+        return P5ExecutorOutcome(
+            state="WAITING",
+            result_contract_ref=wait["result_contract_ref"],
+            result_payload={},
+            external_refs=(f"WC:WORK_ITEM:{expected_work_item_id}",),
+            wait_id=wait["wait_id"],
+            wait_external_ref=expected_work_item_id,
+        )
+
+
+def validate_local_skill_executor_dependencies(
+    value: object,
+) -> LocalSkillExecutorDependencies:
+    if not isinstance(value, LocalSkillExecutorDependencies):
+        raise _local_skill_unavailable("LOCAL_SKILL dependencies are unavailable.")
+    requirements = (
+        (value.artifact_gateway, "resolve_verified", "artifact gateway"),
+        (value.binding_repository, "bind_request", "binding repository"),
+    )
+    for dependency, method, label in requirements:
+        if dependency is None or not callable(getattr(dependency, method, None)):
+            raise _local_skill_unavailable(
+                f"LOCAL_SKILL {label} dependency is unavailable."
+            )
+    if not callable(value.request_builder):
+        raise _local_skill_unavailable(
+            "LOCAL_SKILL request builder dependency is unavailable."
+        )
+    if not callable(value.result_mapper):
+        raise _local_skill_unavailable(
+            "LOCAL_SKILL result mapper dependency is unavailable."
+        )
+    _local_skill_backend_profiles(value.backend)
+    return value
+
+
+def validate_delegate_work_executor_dependencies(
+    value: object,
+) -> DelegateWorkExecutorDependencies:
+    if not isinstance(value, DelegateWorkExecutorDependencies):
+        raise _delegate_unavailable("DELEGATE_WORK dependencies are unavailable.")
+    requirements = (
+        (value.runtime_repository, "load", "runtime repository"),
+        (value.wait_repository, "register", "wait repository"),
+        (value.work_item_client, "create_work_item", "WC client"),
+    )
+    for dependency, method, label in requirements:
+        if dependency is None or not callable(getattr(dependency, method, None)):
+            raise _delegate_unavailable(
+                f"DELEGATE_WORK {label} dependency is unavailable."
+            )
+    return value
+
+
+def _local_skill_backend_profiles(backend: object) -> tuple[str, ...]:
+    routed_profiles = getattr(backend, "backend_profiles", None)
+    if routed_profiles is not None:
+        if (
+            not isinstance(routed_profiles, Sequence)
+            or isinstance(routed_profiles, (str, bytes))
+            or not routed_profiles
+            or not callable(getattr(backend, "resolve", None))
+        ):
+            raise _local_skill_unavailable("LOCAL_SKILL backend router is unavailable.")
+        try:
+            profiles = tuple(
+                normalize_nsl_backend_profile(profile) for profile in routed_profiles
+            )
+        except ValueError as exc:
+            raise _local_skill_unavailable(
+                "LOCAL_SKILL routed backend profile is unsupported."
+            ) from exc
+        if len(set(profiles)) != len(profiles):
+            raise _local_skill_unavailable(
+                "LOCAL_SKILL routed backend profiles must be unique."
+            )
+        return tuple(sorted(profiles))
+    if not callable(getattr(backend, "execute", None)):
+        raise _local_skill_unavailable(
+            "LOCAL_SKILL selected backend dependency is unavailable."
+        )
+    try:
+        return (
+            normalize_nsl_backend_profile(getattr(backend, "backend_profile", None)),
+        )
+    except ValueError as exc:
+        raise _local_skill_unavailable(
+            "LOCAL_SKILL selected backend profile is unsupported."
+        ) from exc
+
+
+class P5CompatibilityChatExecutor:
+    def __init__(
+        self,
+        callback: Callable[[StepExecutionContext], Any],
+        *,
+        application: ChatApplicationService | None = None,
+    ) -> None:
+        self._callback = callback
+        self._application = application or ChatApplicationService()
+
+    def execute(
+        self,
+        context: StepExecutionContext,
+        *,
+        continuation_result: Any | None = None,
+    ) -> P5ExecutorOutcome:
+        step = context.step
+        _require_executor(step, "P4_CHAT_RAG_COMPATIBILITY")
+        is_continuation = step.get("state") == "WAITING"
+        if is_continuation:
+            if continuation_result is None:
+                raise _invalid(
+                    "A waiting compatibility step requires its terminal result."
+                )
+            result = continuation_result
+        else:
+            if continuation_result is not None:
+                raise _invalid(
+                    "A fresh compatibility step cannot consume a continuation result."
+                )
+            result = self._application.create(lambda: self._callback(context))
+        try:
+            outcome = compatibility_outcome(
+                result,
+                expected_interaction_id=_required_text(
+                    "legacy_interaction_id", step.get("legacy_interaction_id"), 128
+                ),
+            )
+        except ExecutableStepError as exc:
+            raise P5StepExecutorError(
+                exc.error_code, exc.detail, exc.retryable
+            ) from exc
+        if is_continuation and outcome.state == "WAITING":
+            raise _invalid("A compatibility continuation result must be terminal.")
+        record = _result_record(result)
+        payload = {
+            "interaction_ref": outcome.result_ref,
+            "status": _required_text("status", record.get("status"), 32).upper(),
+            "retrieval_package_ref": outcome.retrieval_package_ref,
+            "retrieval_package_hash": outcome.retrieval_package_hash,
+            "cx_generation_ref": outcome.cx_generation_id,
+            "cx_job_ref": outcome.cx_job_id,
+            "generated_response_ref": outcome.generated_response_id,
+        }
+        return P5ExecutorOutcome(
+            state=outcome.state,
+            result_contract_ref=_required_text(
+                "output_contract_ref", step.get("output_contract_ref"), 256
+            ),
+            result_payload={
+                key: value for key, value in payload.items() if value is not None
+            },
+            external_refs=_external_refs(outcome),
+            artifact_refs=_artifact_refs(record.get("artifact_refs", ())),
+            evidence_refs=(outcome.result_ref,) if outcome.result_ref else (),
+            error_ref=outcome.error_ref,
+            retrieval_package_ref=outcome.retrieval_package_ref,
+            retrieval_package_hash=outcome.retrieval_package_hash,
+            cx_generation_id=outcome.cx_generation_id,
+            cx_job_id=outcome.cx_job_id,
+        )
+
+
+class P5DeterministicProjectionExecutor:
+    def execute(
+        self,
+        context: StepExecutionContext,
+        *,
+        continuation_result: Any | None = None,
+    ) -> P5ExecutorOutcome:
+        kind = str(context.step.get("executor_kind") or "")
+        if kind not in {"DETERMINISTIC_REPORT", "DETERMINISTIC_AGGREGATE"}:
+            raise _invalid("Deterministic projection executor kind is invalid.")
+        if continuation_result is not None:
+            raise _invalid("Deterministic projection cannot consume a continuation.")
+        dependencies = {
+            item["compiled_step_key"]: item for item in context.dependency_results
+        }
+        if not dependencies or any(
+            item.get("status") != "SUCCEEDED" for item in dependencies.values()
+        ):
+            raise _invalid(
+                "Deterministic projection requires successful dependency results."
+            )
+        bindings: dict[str, Any] = {}
+        for binding in context.step.get("compiled_input_bindings", ()):
+            if not isinstance(binding, Mapping):
+                raise _invalid("Compiled input binding is not an object.")
+            target = _required_text("target_name", binding.get("target_name"), 128)
+            if target in bindings:
+                raise _invalid("Compiled input binding target is duplicated.")
+            bindings[target] = _resolve_binding(binding, dependencies)
+        if not bindings:
+            raise _invalid("Deterministic projection requires compiled input bindings.")
+        dependency_values = tuple(dependencies.values())
+        return P5ExecutorOutcome(
+            state="SUCCEEDED",
+            result_contract_ref=_required_text(
+                "output_contract_ref",
+                context.step.get("output_contract_ref"),
+                256,
+            ),
+            result_payload={
+                "projection_kind": (
+                    "REPORT" if kind == "DETERMINISTIC_REPORT" else "AGGREGATE"
+                ),
+                "bindings": bindings,
+            },
+            external_refs=_union_refs(dependency_values, "external_refs"),
+            artifact_refs=_union_refs(dependency_values, "artifact_refs"),
+            evidence_refs=tuple(
+                sorted(
+                    {
+                        *_union_refs(dependency_values, "evidence_refs"),
+                        *(
+                            f"AE:STEP_RESULT:{item['step_result_id']}"
+                            for item in dependency_values
+                        ),
+                    }
+                )
+            ),
+        )
+
+
+class P5StepExecutorRegistry:
+    def __init__(self, executors: Mapping[str, P5StepExecutor]) -> None:
+        unknown = set(executors) - PLATFORM_EXECUTOR_KINDS
+        if unknown:
+            raise _invalid("Executor registry contains an unsupported kind.")
+        local_skill = executors.get(LOCAL_SKILL_EXECUTOR_KIND)
+        if local_skill is not None and not isinstance(
+            local_skill, P6LocalSkillExecutor
+        ):
+            raise _local_skill_unavailable(
+                "LOCAL_SKILL registry entry lacks verified dependency composition."
+            )
+        delegate = executors.get(WC_DELEGATE_WORK_EXECUTOR_KIND)
+        if delegate is not None and not isinstance(delegate, P7DelegateWorkExecutor):
+            raise _delegate_unavailable(
+                "WC_DELEGATE_WORK registry entry lacks verified composition."
+            )
+        self._executors = dict(executors)
+
+    @property
+    def registered_kinds(self) -> tuple[str, ...]:
+        return tuple(sorted(self._executors))
+
+    @property
+    def backend_profiles(self) -> tuple[str, ...]:
+        return tuple(
+            sorted(
+                {
+                    profile
+                    for executor in self._executors.values()
+                    if isinstance(executor, P6LocalSkillExecutor)
+                    for profile in executor.backend_profiles
+                }
+            )
+        )
+
+    def execute(
+        self,
+        context: StepExecutionContext,
+        *,
+        continuation_result: Any | None = None,
+    ) -> P5ExecutorOutcome:
+        kind = str(context.step.get("executor_kind") or "")
+        executor = self._executors.get(kind)
+        if executor is None:
+            raise P5StepExecutorError(
+                "ae.p5_executor_unavailable",
+                f"P5 executor is unavailable for {kind or 'unknown'}.",
+            )
+        return executor.execute(context, continuation_result=continuation_result)
+
+
+class P5StepExecutionWorker:
+    def __init__(
+        self,
+        *,
+        engine: SqlAlchemyMultiStepEngine,
+        jobs: SqlAlchemyRuntimeJobQueue,
+        executors: P5StepExecutorRegistry,
+        continuation_source: ContinuationSource | None = None,
+        clock: Callable[[], datetime] | None = None,
+    ) -> None:
+        self._engine = engine
+        self._jobs = jobs
+        self._executors = executors
+        self._continuation_source = continuation_source
+        self._clock = clock or (lambda: datetime.now(UTC))
+
+    def run_claim(
+        self,
+        *,
+        tenant_id: str,
+        claim: RuntimeJobClaim,
+        continuation_result: Any | None = None,
+    ) -> P5WorkerExecution:
+        started_at = self._now()
+        context = self._engine.begin_claim(
+            tenant_id=tenant_id, claim=claim, now=started_at
+        )
+        if context.already_terminal:
+            job = self._complete(tenant_id, claim, self._now())
+            return P5WorkerExecution(
+                disposition="ALREADY_TERMINAL",
+                step=context.step,
+                step_result=context.existing_result,
+                runtime_job=job,
+            )
+        if (
+            continuation_result is None
+            and claim.job.get("job_type") == "RESUME_EXECUTION"
+        ):
+            if self._continuation_source is None:
+                raise _invalid(
+                    "RESUME_EXECUTION requires a durable continuation source."
+                )
+            continuation_result = self._continuation_source.resolve(claim)
+        try:
+            outcome = self._executors.execute(
+                context, continuation_result=continuation_result
+            )
+        except P5StepExecutorError as exc:
+            error = exc
+        except Exception:  # noqa: BLE001 - adapters are an untrusted boundary
+            error = P5StepExecutorError(
+                "ae.p5_executor_callback_failed",
+                "P5 executor callback failed.",
+            )
+        else:
+            return self._record_outcome(
+                tenant_id=tenant_id,
+                claim=claim,
+                context=context,
+                outcome=outcome,
+                started_at=started_at,
+                observed_at=self._now(),
+            )
+        return self._record_failure(
+            tenant_id=tenant_id,
+            claim=claim,
+            context=context,
+            error=error,
+            started_at=started_at,
+            observed_at=self._now(),
+        )
+
+    def _record_failure(
+        self,
+        *,
+        tenant_id: str,
+        claim: RuntimeJobClaim,
+        context: StepExecutionContext,
+        error: P5StepExecutorError,
+        started_at: str,
+        observed_at: str,
+    ) -> P5WorkerExecution:
+        result = self._engine.record_outcome(
+            tenant_id=tenant_id,
+            claim=claim,
+            outcome=StepTerminalOutcome(
+                status="FAILED",
+                result_contract_ref=_required_text(
+                    "output_contract_ref",
+                    context.step.get("output_contract_ref"),
+                    256,
+                ),
+                result_payload={"failure_code": error.error_code},
+                error_ref=error.error_code,
+                started_at=started_at,
+                completed_at=observed_at,
+            ),
+            observed_at=observed_at,
+        )
+        job = self._fail(tenant_id, claim, observed_at, error.error_code)
+        return P5WorkerExecution(
+            disposition="TERMINAL",
+            step=context.step,
+            step_result=result,
+            runtime_job=job,
+        )
+
+    def _record_outcome(
+        self,
+        *,
+        tenant_id: str,
+        claim: RuntimeJobClaim,
+        context: StepExecutionContext,
+        outcome: P5ExecutorOutcome,
+        started_at: str,
+        observed_at: str,
+    ) -> P5WorkerExecution:
+        if outcome.state == "WAITING":
+            step = self._engine.record_waiting(
+                tenant_id=tenant_id,
+                claim=claim,
+                outcome=StepWaitingOutcome(
+                    retrieval_package_ref=outcome.retrieval_package_ref,
+                    retrieval_package_hash=outcome.retrieval_package_hash,
+                    cx_generation_id=outcome.cx_generation_id,
+                    cx_job_id=outcome.cx_job_id,
+                    wait_id=outcome.wait_id,
+                    external_ref=outcome.wait_external_ref,
+                    result_contract_ref=outcome.result_contract_ref,
+                ),
+                now=observed_at,
+            )
+            job = self._complete(tenant_id, claim, observed_at)
+            return P5WorkerExecution(
+                disposition="WAITING",
+                step=step,
+                step_result=None,
+                runtime_job=job,
+            )
+        result = self._engine.record_outcome(
+            tenant_id=tenant_id,
+            claim=claim,
+            outcome=StepTerminalOutcome(
+                status=outcome.state,
+                result_contract_ref=outcome.result_contract_ref,
+                result_payload=outcome.result_payload,
+                external_refs=outcome.external_refs,
+                artifact_refs=outcome.artifact_refs,
+                evidence_refs=outcome.evidence_refs,
+                error_ref=outcome.error_ref,
+                executor_kind=(
+                    LOCAL_SKILL_EXECUTOR_KIND
+                    if context.step.get("executor_kind") == LOCAL_SKILL_EXECUTOR_KIND
+                    else None
+                ),
+                business_operation_id=outcome.business_operation_id,
+                started_at=outcome.started_at or started_at,
+                completed_at=outcome.completed_at or observed_at,
+            ),
+            observed_at=observed_at,
+        )
+        job = self._complete(tenant_id, claim, observed_at)
+        return P5WorkerExecution(
+            disposition="TERMINAL",
+            step=context.step,
+            step_result=result,
+            runtime_job=job,
+        )
+
+    def _complete(
+        self, tenant_id: str, claim: RuntimeJobClaim, now: str
+    ) -> dict[str, Any]:
+        return self._jobs.complete(
+            tenant_id=tenant_id,
+            runtime_job_id=claim.job["runtime_job_id"],
+            worker_id=claim.job["lease_owner"],
+            lease_token=claim.job["lease_token"],
+            now=now,
+        )
+
+    def _fail(
+        self, tenant_id: str, claim: RuntimeJobClaim, now: str, error_ref: str
+    ) -> dict[str, Any]:
+        return self._jobs.fail(
+            tenant_id=tenant_id,
+            runtime_job_id=claim.job["runtime_job_id"],
+            worker_id=claim.job["lease_owner"],
+            lease_token=claim.job["lease_token"],
+            now=now,
+            error_ref=error_ref,
+        )
+
+    def _now(self) -> str:
+        return self._clock().astimezone(UTC).isoformat().replace("+00:00", "Z")
+
+
+def _delegated_result_outcome(
+    context: StepExecutionContext, continuation_result: object
+) -> P5ExecutorOutcome:
+    event = validate_work_result_event(continuation_result)
+    job = context.job
+    payload = job.get("payload")
+    if (
+        job.get("job_type") != "RESUME_EXECUTION"
+        or not isinstance(payload, Mapping)
+        or str(payload.get("event_id")) != event["event_id"]
+        or str(payload.get("result_id")) != event["result_id"]
+        or str(payload.get("external_ref")) != event["work_item_id"]
+        or context.step.get("output_contract_ref") != event["result_schema_ref"]
+    ):
+        raise _invalid(
+            "Delegated WorkResult continuation differs from RuntimeJob authority."
+        )
+    status = {
+        "SUCCEEDED": "SUCCEEDED",
+        "PARTIAL": "SUCCEEDED",
+        "FAILED": "FAILED",
+        "UNKNOWN": "BLOCKED",
+    }[event["technical_outcome"]]
+    error_ref = (
+        None
+        if status == "SUCCEEDED"
+        else f"wc-work-result://{event['technical_outcome'].lower()}"
+    )
+    return P5ExecutorOutcome(
+        state=status,
+        result_contract_ref=event["result_schema_ref"],
+        result_payload={
+            "work_item_ref": event["work_item_id"],
+            "work_result_ref": event["result_id"],
+            "work_result_event_ref": event["event_id"],
+            "technical_outcome": event["technical_outcome"],
+            "business_outcome": event["business_outcome"],
+        },
+        external_refs=(
+            f"WC:WORK_ITEM:{event['work_item_id']}",
+            f"WC:WORK_RESULT:{event['result_id']}",
+        ),
+        evidence_refs=(f"WC:WORK_RESULT_EVENT:{event['event_id']}",),
+        error_ref=error_ref,
+    )
+
+
+def default_p5_executor_registry(
+    callback: Callable[[StepExecutionContext], Any],
+) -> P5StepExecutorRegistry:
+    projection = P5DeterministicProjectionExecutor()
+    return P5StepExecutorRegistry(
+        {
+            "P4_CHAT_RAG_COMPATIBILITY": P5CompatibilityChatExecutor(callback),
+            "DETERMINISTIC_REPORT": projection,
+            "DETERMINISTIC_AGGREGATE": projection,
+        }
+    )
+
+
+def default_p6_executor_registry(
+    callback: Callable[[StepExecutionContext], Any],
+    *,
+    local_skill_dependencies: LocalSkillExecutorDependencies,
+    local_skill_handler: Callable[
+        [StepExecutionContext, LocalSkillExecutorDependencies], P5ExecutorOutcome
+    ],
+    local_skill_continuation_handler: Callable[
+        [StepExecutionContext, LocalSkillExecutorDependencies, Any],
+        P5ExecutorOutcome,
+    ]
+    | None = None,
+) -> P5StepExecutorRegistry:
+    projection = P5DeterministicProjectionExecutor()
+    return P5StepExecutorRegistry(
+        {
+            "P4_CHAT_RAG_COMPATIBILITY": P5CompatibilityChatExecutor(callback),
+            "DETERMINISTIC_REPORT": projection,
+            "DETERMINISTIC_AGGREGATE": projection,
+            LOCAL_SKILL_EXECUTOR_KIND: P6LocalSkillExecutor(
+                dependencies=local_skill_dependencies,
+                handler=local_skill_handler,
+                continuation_handler=local_skill_continuation_handler,
+            ),
+        }
+    )
+
+
+def default_p7_executor_registry(
+    callback: Callable[[StepExecutionContext], Any],
+    *,
+    local_skill_dependencies: LocalSkillExecutorDependencies,
+    local_skill_handler: Callable[
+        [StepExecutionContext, LocalSkillExecutorDependencies], P5ExecutorOutcome
+    ],
+    delegate_work_dependencies: DelegateWorkExecutorDependencies,
+    clock: Callable[[], datetime] | None = None,
+) -> P5StepExecutorRegistry:
+    projection = P5DeterministicProjectionExecutor()
+    return P5StepExecutorRegistry(
+        {
+            "P4_CHAT_RAG_COMPATIBILITY": P5CompatibilityChatExecutor(callback),
+            "DETERMINISTIC_REPORT": projection,
+            "DETERMINISTIC_AGGREGATE": projection,
+            LOCAL_SKILL_EXECUTOR_KIND: P6LocalSkillExecutor(
+                dependencies=local_skill_dependencies,
+                handler=local_skill_handler,
+            ),
+            WC_DELEGATE_WORK_EXECUTOR_KIND: P7DelegateWorkExecutor(
+                dependencies=delegate_work_dependencies,
+                clock=clock,
+            ),
+        }
+    )
+
+
+def _resolve_binding(
+    binding: Mapping[str, Any], dependencies: Mapping[str, Mapping[str, Any]]
+) -> dict[str, Any]:
+    binding_type = binding.get("binding_type")
+    if binding_type == "COMPILED_STEP_OUTPUT":
+        source_ref = _required_text("source_ref", binding.get("source_ref"), 256)
+        compiled_key, separator, pointer = source_ref.partition(":")
+        if not separator or pointer != "$" or compiled_key not in dependencies:
+            raise _invalid("Compiled step output binding cannot be resolved.")
+        source = dependencies[compiled_key]
+        return {
+            "source_step_result_ref": f"AE:STEP_RESULT:{source['step_result_id']}",
+            "source_result_hash": source["result_hash"],
+            "source_contract_ref": source["result_contract_ref"],
+            "value": source["result_payload"],
+        }
+    if binding_type == "LITERAL":
+        return {"value": binding.get("value")}
+    if binding_type == "RESOURCE_REF":
+        return {
+            "resource_ref": _required_text("source_ref", binding.get("source_ref"), 256)
+        }
+    raise _invalid("Compiled input binding type is unsupported.")
+
+
+def _external_refs(outcome: Any) -> tuple[str, ...]:
+    values = (
+        ("CX:RETRIEVAL", outcome.retrieval_package_ref),
+        ("CX:GENERATION", outcome.cx_generation_id),
+        ("CX:JOB", outcome.cx_job_id),
+        ("AE:GENERATED_RESPONSE", outcome.generated_response_id),
+    )
+    return tuple(sorted(f"{prefix}:{value}" for prefix, value in values if value))
+
+
+def _artifact_refs(value: object) -> tuple[str, ...]:
+    if not isinstance(value, Sequence) or isinstance(value, (str, bytes)):
+        raise _invalid("artifact_refs must be an array.")
+    refs: set[str] = set()
+    for item in value:
+        if isinstance(item, str):
+            ref = item
+        elif isinstance(item, Mapping):
+            ref = item.get("artifact_version_id") or item.get("artifact_id")
+        else:
+            raise _invalid("artifact_refs contains an invalid reference.")
+        refs.add(f"AE:ARTIFACT:{_required_text('artifact_ref', ref, 256)}")
+    return tuple(sorted(refs))
+
+
+def _union_refs(
+    dependencies: Sequence[Mapping[str, Any]], field: str
+) -> tuple[str, ...]:
+    refs: set[str] = set()
+    for result in dependencies:
+        value = result.get(field, ())
+        if not isinstance(value, Sequence) or isinstance(value, (str, bytes)):
+            raise _invalid(f"Dependency {field} is not an array.")
+        refs.update(_required_text(field, item, 256) for item in value)
+    return tuple(sorted(refs))
+
+
+def _result_record(value: Any) -> Mapping[str, Any]:
+    if isinstance(value, Mapping):
+        return value
+    body = getattr(value, "body", None)
+    if isinstance(body, bytes):
+        try:
+            decoded = json.loads(body.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise _invalid("Chat response body is not valid JSON.") from exc
+        if isinstance(decoded, Mapping):
+            return decoded
+    raise _invalid("Chat application result is not a structured record.")
+
+
+def _require_executor(step: Mapping[str, Any], expected: str) -> None:
+    if step.get("executor_kind") != expected:
+        raise _invalid("Executor does not match the compiled step binding.")
+
+
+def _required_text(field: str, value: object, maximum: int) -> str:
+    if not isinstance(value, str) or not value.strip() or len(value.strip()) > maximum:
+        raise _invalid(f"{field} must be a non-empty bounded string.")
+    return value.strip()
+
+
+def _invalid(detail: str) -> P5StepExecutorError:
+    return P5StepExecutorError("ae.p5_executor_invalid", detail)
+
+
+def _local_skill_unavailable(detail: str) -> P5StepExecutorError:
+    return P5StepExecutorError("ae.local_skill_dependency_unavailable", detail)
+
+
+def _delegate_unavailable(detail: str) -> P5StepExecutorError:
+    return P5StepExecutorError("ae.delegate_work_dependency_unavailable", detail)

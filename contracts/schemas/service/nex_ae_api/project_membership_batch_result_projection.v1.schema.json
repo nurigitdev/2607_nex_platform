@@ -1,0 +1,117 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_ae_api/project_membership_batch_result_projection.v1.schema.json",
+  "title": "NeX AE Project Membership Batch Result Projection",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "operation_id",
+    "payload_hash",
+    "project_id",
+    "member_role",
+    "overall_status",
+    "business_result_ref",
+    "summary",
+    "items",
+    "metadata",
+    "result_hash"
+  ],
+  "properties": {
+    "schema_version": {"const": "p8.project_membership_batch_result_projection.v1"},
+    "operation_id": {"const": "PROJECT.MEMBERSHIP.ADD_MANY"},
+    "payload_hash": {"$ref": "#/$defs/hashRef"},
+    "project_id": {"type": "string", "minLength": 1, "maxLength": 128},
+    "member_role": {"enum": ["OWNER", "MANAGER", "MEMBER", "VIEWER"]},
+    "overall_status": {
+      "enum": ["APPLIED", "PARTIALLY_APPLIED", "NO_CHANGE", "REJECTED"]
+    },
+    "business_result_ref": {"type": "string", "minLength": 1, "maxLength": 256},
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "requested_count",
+        "admitted_count",
+        "applied_count",
+        "pre_admission_rejected_count",
+        "commit_rejected_count",
+        "total_rejected_count"
+      ],
+      "properties": {
+        "requested_count": {"type": "integer", "minimum": 1, "maximum": 50},
+        "admitted_count": {"type": "integer", "minimum": 1, "maximum": 50},
+        "applied_count": {"type": "integer", "minimum": 0, "maximum": 50},
+        "pre_admission_rejected_count": {"type": "integer", "minimum": 0, "maximum": 50},
+        "commit_rejected_count": {"type": "integer", "minimum": 0, "maximum": 50},
+        "total_rejected_count": {"type": "integer", "minimum": 0, "maximum": 50}
+      }
+    },
+    "items": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 50,
+      "items": {"$ref": "#/$defs/item"}
+    },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "model_authority",
+        "raw_prompt_included",
+        "credentials_included",
+        "provider_configuration_included"
+      ],
+      "properties": {
+        "model_authority": {"const": false},
+        "raw_prompt_included": {"const": false},
+        "credentials_included": {"const": false},
+        "provider_configuration_included": {"const": false}
+      }
+    },
+    "result_hash": {"$ref": "#/$defs/hashRef"}
+  },
+  "$defs": {
+    "hashRef": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "nullableIndex": {
+      "oneOf": [{"type": "null"}, {"type": "integer", "minimum": 0, "maximum": 49}]
+    },
+    "nullableText": {
+      "oneOf": [{"type": "null"}, {"type": "string", "minLength": 1, "maxLength": 128}]
+    },
+    "item": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "stage",
+        "input_index",
+        "subject_id",
+        "normalized_employee_id",
+        "outcome",
+        "applied"
+      ],
+      "properties": {
+        "stage": {"enum": ["OA_RESOLUTION", "EOS_COMMIT"]},
+        "input_index": {"$ref": "#/$defs/nullableIndex"},
+        "subject_id": {"$ref": "#/$defs/nullableText"},
+        "normalized_employee_id": {"$ref": "#/$defs/nullableText"},
+        "outcome": {
+          "enum": [
+            "ADDED",
+            "REACTIVATED",
+            "ALREADY_ACTIVE",
+            "SUBJECT_INACTIVE",
+            "ROLE_CONFLICT",
+            "NOT_ELIGIBLE",
+            "INVALID_EMPLOYEE_ID",
+            "EMPLOYEE_NOT_FOUND",
+            "NAME_MISMATCH",
+            "DUPLICATE_INPUT",
+            "DUPLICATE_SUBJECT"
+          ]
+        },
+        "applied": {"type": "boolean"}
+      }
+    }
+  }
+}

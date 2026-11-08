@@ -1,0 +1,69 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "NeX AgentSession v2.1",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "session_id",
+    "tenant_id",
+    "created_at"
+  ],
+  "properties": {
+    "session_id": {
+      "type": "string"
+    },
+    "principal_ref": {
+      "type": "string"
+    },
+    "business_actor_ref": {
+      "type": "string"
+    },
+    "coworker_profile_ref": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Optional legacy/employee-bound CA security profile reference; not generic Agent identity."
+    },
+    "active_role_context_ref": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "current_project_ref": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "current_document_ref": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "conversation_ref": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "context_version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "schema_version": {
+      "const": "2.1"
+    },
+    "tenant_id": {
+      "type": "string",
+      "minLength": 1
+    }
+  },
+  "$id": "urn:nex:schema:ae:agent-session:2.1"
+}

@@ -1,0 +1,21 @@
+{
+  "schema_version": "wc_approval_work_item.v1",
+  "tenant_id": "tenant-p8",
+  "approval_work_item_id": "32000000-0000-4000-8000-000000000001",
+  "approval_domain": "NSL_WRITE",
+  "source_ref": "approval-request-p8-001",
+  "semantic_hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "title": "Approve voucher draft creation",
+  "display_safe_summary": "Safe summary.",
+  "approval_provider_type": "NSL",
+  "approval_target_ref": "approval-request-p8-001",
+  "agent_execution_id": "agent-execution-p8-001",
+  "executable_step_id": "step-p8-write-001",
+  "nsl_execution_id": "nsl-execution-p8-001",
+  "business_operation_id": "business-operation-p8-001",
+  "protected_request_ref": "ae-private:approval-request-p8-001",
+  "resume_target_ref": "ae-wait:approval-request-p8-001",
+  "state": "PENDING",
+  "created_at": "2026-10-22T09:00:00Z",
+  "version": 1
+}

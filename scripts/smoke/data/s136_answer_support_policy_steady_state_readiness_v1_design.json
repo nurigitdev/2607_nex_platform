@@ -1,0 +1,76 @@
+{
+  "design_id": "cx-answer-support-policy-steady-state-readiness-v1",
+  "design_schema_version": "cx_answer_support_policy_steady_state_readiness_design.v1",
+  "design_hash": "sha256:057728a73784d92a4748dd8dda4f5184c2c9d8d18aa03e80fd025eac890e5042",
+  "operations_profile": {
+    "current_operations_mode": "CONTROLLED_SUSTAINED_OPERATIONS",
+    "current_policy": "ANSWER_SUPPORT_POLICY_CUTOVER_ACTIVE",
+    "escalation_policy": {
+      "cutover_terminal_state": "ROLLBACK_STATE_DOMINANT",
+      "e2e_p95_slo_breach": "ROLLBACK_PENDING_OPERATOR_REVIEW",
+      "fallback_decision": "IMMEDIATE_ROLLBACK_REQUIRED",
+      "provider_failure": "IMMEDIATE_ROLLBACK_REQUIRED",
+      "provider_p95_slo_breach": "ROLLBACK_PENDING_OPERATOR_REVIEW",
+      "review_cadence_reached": "OPERATOR_REVIEW_REQUIRED"
+    },
+    "maximum_concurrency": 4,
+    "maximum_event_scan": 1000,
+    "operational_slo": {
+      "maximum_e2e_p95_latency_ms": 20000,
+      "maximum_fallback_count": 0,
+      "maximum_feedback_p95_latency_ms": 2000,
+      "maximum_provider_failures": 0,
+      "maximum_provider_p95_latency_ms": 15000
+    },
+    "profile_id": "cx-answer-support-policy-steady-state-operations-v1",
+    "profile_schema_version": "cx_answer_support_policy_steady_state_operations_profile.v1",
+    "review_sample_interval": 12,
+    "status": "READY_FOR_OPERATOR_DECISION"
+  },
+  "readiness_policy": {
+    "maximum_e2e_p95_latency_ms": 20000,
+    "maximum_provider_p95_latency_ms": 15000,
+    "minimum_ready_count": 1,
+    "required_decision_status": "APPROVED_CONTINUATION_NOT_PRODUCTION",
+    "required_peak_in_flight": 4,
+    "required_production_cutover_permitted": false,
+    "required_provider_call_count": 12,
+    "required_provider_sample_count": 12,
+    "required_review_decision": "CONTINUE_CONTROLLED_ANSWER_SUPPORT_POLICY_SUSTAINED_OPERATIONS_APPROVED",
+    "required_review_status": "PASS",
+    "required_runtime_change_permitted": false,
+    "required_steady_state_activation_permitted": false
+  },
+  "rollout_boundary": {
+    "current_runtime_continues_unchanged": true,
+    "fallback_policy": "CURRENT_ANSWER_SUPPORT_POLICY_FALLBACK",
+    "next_boundary": "ANSWER_SUPPORT_POLICY_STEADY_STATE_OPERATIONS_OPERATOR_DECISION",
+    "production_release_requires_separate_decision": true,
+    "rollback_contract_remains_authoritative": true,
+    "rollback_target": "CURRENT_CONTROLLED_ANSWER_SUPPORT_POLICY",
+    "steady_state_activation_requires_separate_operator_decision": true
+  },
+  "safety": {
+    "database_call_permitted": false,
+    "holdout_access_permitted": false,
+    "production_cutover_permitted": false,
+    "provider_call_permitted": false,
+    "runtime_mutation_permitted": false,
+    "steady_state_activation_permitted": false,
+    "threshold_or_profile_reselection_permitted": false
+  },
+  "source_binding": {
+    "activation_bundle_hash": "sha256:6d5c631c9e18418ae2787d4053d06cdf87cc49a3cbc67aea6258b11f29893a06",
+    "authorization_hash": "sha256:fe45b9267af3e81095b957c0488ee86dba7f88114b3fff99708ccc812108fc00",
+    "operator_decision_hash": "sha256:37b95d8daf0dd77ceb9f872f8e25cb31d2a06a81de1642deb2689e7a9239fa6f",
+    "review_design_hash": "sha256:1c5d49828b4981af473a19bba7ede83e66a75fd3d9b3dd1de064ad9e424c14cf",
+    "review_manifest_hash": "sha256:0663eac079920b8f4212877edb0b515843b59af95b9fcf0668977c6a2f236b66",
+    "review_receipt_document_hash": "sha256:44d2c94db1b600fcb30675513cbf2abeead99bbc64bcc741a5415fbd6a2a3a99",
+    "review_receipt_hash": "sha256:2290062fe78edb246940a1b85fd9f0a3e984477079d1f65eec266a7f9341131f",
+    "review_report_hash": "sha256:a6b49a7cc50afce92459dace39ff2ed3d27e19ae96536a7512fb49356e16519e",
+    "selected_policy_hash": "sha256:c81f7a0bf3d3d72d7bbc5de1f564ada3b415f2206689c1939fcb925f172168cb",
+    "source_evidence_hash": "sha256:dd021190d164c1b0eb1a66af09cd8d8169b5926500cc75d1e1d547c7f78889a8",
+    "sustained_policy_hash": "sha256:4524e2e54929f42fe1c2e60b6c93941a373a0359ead5810126045c3668c99f6a"
+  },
+  "status": "FROZEN_PRE_ACTIVATION_READINESS"
+}

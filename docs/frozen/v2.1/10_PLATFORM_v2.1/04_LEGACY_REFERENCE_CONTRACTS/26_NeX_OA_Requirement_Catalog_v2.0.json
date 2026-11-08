@@ -1,0 +1,643 @@
+{
+  "schema_version": "2.0",
+  "document": "26_NeX_OA_SRS_and_Detailed_Design_v2.0",
+  "requirements": [
+    {
+      "id": "NEX-OA-ID-FR-001",
+      "priority": "MUST",
+      "requirement": "OA는 HUMAN_USER, SERVICE_ACCOUNT, SYSTEM_JOB, EXTERNAL_AGENT, ADMIN_OPERATOR Principal 유형을 구분해야 한다.",
+      "verification": "Schema/Unit",
+      "parent": "09"
+    },
+    {
+      "id": "NEX-OA-ID-FR-002",
+      "priority": "MUST",
+      "requirement": "Authentication Principal과 Business Actor를 별도 식별자로 관리해야 한다.",
+      "verification": "Architecture Test",
+      "parent": "09"
+    },
+    {
+      "id": "NEX-OA-ID-FR-003",
+      "priority": "MUST",
+      "requirement": "Principal은 Employee/Service/External Agent 등 SubjectRef와 연결되어야 하며 client가 Business Actor를 임의 지정해서는 안 된다.",
+      "verification": "Security Test",
+      "parent": "09"
+    },
+    {
+      "id": "NEX-OA-ID-FR-004",
+      "priority": "MUST",
+      "requirement": "Employee 상태가 SUSPENDED/DISABLED/TERMINATED되면 신규 Session/Authority 발급을 차단해야 한다.",
+      "verification": "Lifecycle Test",
+      "parent": "09"
+    },
+    {
+      "id": "NEX-OA-ID-FR-005",
+      "priority": "MUST",
+      "requirement": "Local Login Name은 unique하게 관리하고 external identity subject와 별도로 다뤄야 한다.",
+      "verification": "Schema Test",
+      "parent": "26"
+    },
+    {
+      "id": "NEX-OA-ID-FR-006",
+      "priority": "MUST",
+      "requirement": "인증 Event에는 raw password/token/OTP/secret을 저장해서는 안 된다.",
+      "verification": "Security Test",
+      "parent": "09"
+    },
+    {
+      "id": "NEX-OA-RB-FR-001",
+      "priority": "MUST",
+      "requirement": "활성 Employee는 논리적으로 최대 하나의 Persistent Coworker Profile을 가져야 한다.",
+      "verification": "Invariant Test",
+      "parent": "03/11"
+    },
+    {
+      "id": "NEX-OA-RB-FR-002",
+      "priority": "MUST",
+      "requirement": "Coworker Profile은 Employee Job Code 자체가 아니라 autonomy/policy/prompt/model preference를 담아야 한다.",
+      "verification": "Inspection",
+      "parent": "11"
+    },
+    {
+      "id": "NEX-OA-RB-FR-003",
+      "priority": "MUST",
+      "requirement": "Employee는 RoleBinding 1:N을 가질 수 있어야 한다.",
+      "verification": "Schema Test",
+      "parent": "09"
+    },
+    {
+      "id": "NEX-OA-RB-FR-004",
+      "priority": "MUST",
+      "requirement": "RoleBinding은 Role, Org Scope, Project Scope, Capability Scope, Risk Ceiling, Effective Period를 포함해야 한다.",
+      "verification": "Schema Test",
+      "parent": "09"
+    },
+    {
+      "id": "NEX-OA-RB-FR-005",
+      "priority": "MUST",
+      "requirement": "Leader/Supervisor Role은 operator 모든 권한을 자동 상속하지 않고 별도 capability pack/policy로 구성할 수 있어야 한다.",
+      "verification": "Authorization Test",
+      "parent": "Runtime baseline"
+    },
+    {
+      "id": "NEX-OA-RB-FR-006",
+      "priority": "MUST",
+      "requirement": "RoleBinding revoke/expire가 발생하면 이후 Authorization과 Resume에서 즉시 반영되어야 한다.",
+      "verification": "Security Test",
+      "parent": "09/12"
+    },
+    {
+      "id": "NEX-OA-RB-FR-007",
+      "priority": "MUST",
+      "requirement": "RoleBinding 변경 이력과 source(HR/Manual/Project/System)를 audit 가능해야 한다.",
+      "verification": "Audit Test",
+      "parent": "09"
+    },
+    {
+      "id": "NEX-OA-AUTH-FR-001",
+      "priority": "MUST",
+      "requirement": "Interactive login은 Primary Authentication과 Policy-based MFA를 지원해야 한다.",
+      "verification": "E2E Auth Test",
+      "parent": "NIST/OA"
+    },
+    {
+      "id": "NEX-OA-AUTH-FR-002",
+      "priority": "MUST",
+      "requirement": "OA는 Local 인증과 External OIDC Federation을 Provider Adapter 방식으로 지원해야 한다.",
+      "verification": "Integration Test",
+      "parent": "Kakao OIDC/Corporate IdP"
+    },
+    {
+      "id": "NEX-OA-AUTH-FR-003",
+      "priority": "MUST",
+      "requirement": "Login 성공 후 OA Session은 Principal, Business Actor, Authenticator Set, Auth Level, Token Family를 고정해야 한다.",
+      "verification": "Schema Test",
+      "parent": "26"
+    },
+    {
+      "id": "NEX-OA-AUTH-FR-004",
+      "priority": "MUST",
+      "requirement": "Access Token은 short-lived이고 raw token 값을 DB business field에 저장해서는 안 된다.",
+      "verification": "Security Test",
+      "parent": "09"
+    },
+    {
+      "id": "NEX-OA-AUTH-FR-005",
+      "priority": "MUST",
+      "requirement": "Refresh Token은 rotation/replay detection/token-family revocation을 지원해야 한다.",
+      "verification": "Fault Test",
+      "parent": "26"
+    },
+    {
+      "id": "NEX-OA-AUTH-FR-006",
+      "priority": "MUST",
+      "requirement": "Logout, password reset, MFA reset, suspected token replay는 관련 Session/Token Family를 revoke할 수 있어야 한다.",
+      "verification": "Security Test",
+      "parent": "26"
+    },
+    {
+      "id": "NEX-OA-AUTH-FR-007",
+      "priority": "MUST",
+      "requirement": "Session idle/absolute timeout은 Auth Level/role에 따라 versioned policy로 설정 가능해야 한다.",
+      "verification": "Policy Test",
+      "parent": "NIST"
+    },
+    {
+      "id": "NEX-OA-AUTH-FR-008",
+      "priority": "SHOULD",
+      "requirement": "Privileged/Admin Session은 일반 Workforce Session보다 짧은 timeout과 stronger reauthentication policy를 가져야 한다.",
+      "verification": "Policy Test",
+      "parent": "NIST"
+    },
+    {
+      "id": "NEX-OA-MFA-FR-001",
+      "priority": "MUST",
+      "requirement": "OA는 TOTP, SMS_OOB, KAKAO_OOB, WEBAUTHN, RECOVERY_CODE, EXTERNAL_OIDC authenticator 유형을 지원할 수 있어야 한다.",
+      "verification": "Schema Test",
+      "parent": "26"
+    },
+    {
+      "id": "NEX-OA-MFA-FR-002",
+      "priority": "MUST",
+      "requirement": "Digital OTP 기본 구현은 RFC 6238 TOTP를 지원해야 한다.",
+      "verification": "Unit Test",
+      "parent": "RFC6238"
+    },
+    {
+      "id": "NEX-OA-MFA-FR-003",
+      "priority": "MUST",
+      "requirement": "TOTP Secret은 user별 unique secret_ref로 보관하고 business/audit/log에 원문을 저장해서는 안 된다.",
+      "verification": "Security Test",
+      "parent": "RFC6238/09"
+    },
+    {
+      "id": "NEX-OA-MFA-FR-004",
+      "priority": "MUST",
+      "requirement": "TOTP 검증은 configurable time-step/window, replay/rate limit 정책을 적용해야 한다.",
+      "verification": "Unit/Security",
+      "parent": "RFC6238"
+    },
+    {
+      "id": "NEX-OA-MFA-FR-005",
+      "priority": "MUST",
+      "requirement": "OOB OTP Challenge는 single-use, short-lived, attempt-limited여야 한다.",
+      "verification": "Security Test",
+      "parent": "NIST"
+    },
+    {
+      "id": "NEX-OA-MFA-FR-006",
+      "priority": "MUST",
+      "requirement": "SMS OOB는 Default sole MFA가 아니라 fallback/recovery channel로 구성하고 non-PSTN alternative factor를 제공해야 한다.",
+      "verification": "Policy Test",
+      "parent": "NIST 800-63B-4"
+    },
+    {
+      "id": "NEX-OA-MFA-FR-007",
+      "priority": "MUST",
+      "requirement": "KAKAO_OOB는 승인된 Messaging/Auth Provider Adapter로만 활성화하고 generic social-message API를 universal OTP transport로 가정해서는 안 된다.",
+      "verification": "Integration/Inspection",
+      "parent": "Kakao official docs"
+    },
+    {
+      "id": "NEX-OA-MFA-FR-008",
+      "priority": "MUST",
+      "requirement": "Kakao Login OIDC는 EXTERNAL_OIDC provider로 별도 모델링하고 ID token issuer/audience/expiry/nonce/signature를 검증해야 한다.",
+      "verification": "Integration Test",
+      "parent": "Kakao OIDC"
+    },
+    {
+      "id": "NEX-OA-MFA-FR-009",
+      "priority": "SHOULD",
+      "requirement": "WebAuthn/Passkey를 phishing-resistant factor로 지원하고 Admin/R5 기본 우선수단으로 구성할 수 있어야 한다.",
+      "verification": "Security Test",
+      "parent": "W3C/NIST"
+    },
+    {
+      "id": "NEX-OA-MFA-FR-010",
+      "priority": "MUST",
+      "requirement": "Email OTP를 OOB authentication factor로 사용해서는 안 된다.",
+      "verification": "Policy Test",
+      "parent": "NIST"
+    },
+    {
+      "id": "NEX-OA-MFA-FR-011",
+      "priority": "MUST",
+      "requirement": "Authenticator binding/contact change는 strong reauthentication/recovery 절차를 요구해야 한다.",
+      "verification": "Security Test",
+      "parent": "NIST"
+    },
+    {
+      "id": "NEX-OA-MFA-FR-012",
+      "priority": "MUST",
+      "requirement": "사용자가 최소 두 개의 독립적인 복구/인증 수단을 등록하도록 권고할 수 있어야 한다.",
+      "verification": "UX/Policy",
+      "parent": "NIST"
+    },
+    {
+      "id": "NEX-OA-STEP-FR-001",
+      "priority": "MUST",
+      "requirement": "OA는 LOGIN, STEP_UP, AUTHENTICATOR_BINDING, RECOVERY, ADMIN_OPERATION Challenge 목적을 구분해야 한다.",
+      "verification": "Schema Test",
+      "parent": "26"
+    },
+    {
+      "id": "NEX-OA-STEP-FR-002",
+      "priority": "MUST",
+      "requirement": "Challenge는 status, expiry, attempt count, max attempts, correlation_id를 가져야 한다.",
+      "verification": "Schema Test",
+      "parent": "26"
+    },
+    {
+      "id": "NEX-OA-STEP-FR-003",
+      "priority": "MUST",
+      "requirement": "R4/R5 또는 Admin/Sensitive Capability는 Authorization Policy가 Step-up을 요구할 수 있어야 한다.",
+      "verification": "Authorization Test",
+      "parent": "09"
+    },
+    {
+      "id": "NEX-OA-STEP-FR-004",
+      "priority": "MUST",
+      "requirement": "Step-up Authentication과 Human Confirmation/Formal Approval을 동일 개념으로 취급해서는 안 된다.",
+      "verification": "Architecture Test",
+      "parent": "18/09"
+    },
+    {
+      "id": "NEX-OA-STEP-FR-005",
+      "priority": "MUST",
+      "requirement": "Step-up 만족 결과는 short-lived auth context로 Session/EAC에 반영되어야 한다.",
+      "verification": "Security Test",
+      "parent": "26"
+    },
+    {
+      "id": "NEX-OA-STEP-FR-006",
+      "priority": "MUST",
+      "requirement": "동일 외부 Provider를 Primary와 Second Factor로 동시에 사용하는 것이 독립 factor 요건을 약화시키는 경우 Policy가 이를 거부할 수 있어야 한다.",
+      "verification": "Policy Test",
+      "parent": "Security"
+    },
+    {
+      "id": "NEX-OA-SVC-FR-001",
+      "priority": "MUST",
+      "requirement": "Background AE/WC/EOS/WA Worker는 SERVICE_ACCOUNT Principal로 인증해야 한다.",
+      "verification": "Architecture Test",
+      "parent": "09"
+    },
+    {
+      "id": "NEX-OA-SVC-FR-002",
+      "priority": "MUST",
+      "requirement": "Background Worker가 Employee browser token/refresh token을 복사 또는 재사용해서는 안 된다.",
+      "verification": "Security Test",
+      "parent": "09"
+    },
+    {
+      "id": "NEX-OA-SVC-FR-003",
+      "priority": "MUST",
+      "requirement": "Service Account는 mTLS, PRIVATE_KEY_JWT, WORKLOAD_IDENTITY 또는 제한적 CLIENT_SECRET credential policy를 지원할 수 있어야 한다.",
+      "verification": "Integration Test",
+      "parent": "26"
+    },
+    {
+      "id": "NEX-OA-SVC-FR-004",
+      "priority": "MUST",
+      "requirement": "Service token은 short-lived이고 audience/capability scope가 제한되어야 한다.",
+      "verification": "Security Test",
+      "parent": "09"
+    },
+    {
+      "id": "NEX-OA-SVC-FR-005",
+      "priority": "MUST",
+      "requirement": "Service credential은 secret_ref/certificate thumbprint로 관리하고 raw private key를 OA business DB에 저장해서는 안 된다.",
+      "verification": "Security Test",
+      "parent": "09"
+    },
+    {
+      "id": "NEX-OA-SVC-FR-006",
+      "priority": "MUST",
+      "requirement": "Service Account revoke/suspend가 신규 background execution과 Resume에 즉시 반영되어야 한다.",
+      "verification": "Security Test",
+      "parent": "09"
+    },
+    {
+      "id": "NEX-OA-EAC-FR-001",
+      "priority": "MUST",
+      "requirement": "OA는 authenticated principal, business actor, coworker profile, role binding, work item, capability, risk, org/project scope, auth context, policy snapshot을 결합한 EAC를 생성해야 한다.",
+      "verification": "Schema Test",
+      "parent": "09"
+    },
+    {
+      "id": "NEX-OA-EAC-FR-002",
+      "priority": "MUST",
+      "requirement": "EAC는 server-side에서 생성되며 client-supplied authority fields를 신뢰해서는 안 된다.",
+      "verification": "Security Test",
+      "parent": "09"
+    },
+    {
+      "id": "NEX-OA-EAC-FR-003",
+      "priority": "MUST",
+      "requirement": "EAC는 short-lived valid_until과 context_hash를 가져야 한다.",
+      "verification": "Schema/Security",
+      "parent": "26"
+    },
+    {
+      "id": "NEX-OA-EAC-FR-004",
+      "priority": "MUST",
+      "requirement": "EAC는 특정 Capability/WorkItem/RoleBinding에 bound되어 범용 user token처럼 사용되어서는 안 된다.",
+      "verification": "Security Test",
+      "parent": "09"
+    },
+    {
+      "id": "NEX-OA-EAC-FR-005",
+      "priority": "MUST",
+      "requirement": "Background EAC는 Service Principal 인증 + Employee Business Actor/RoleBinding을 함께 포함해야 한다.",
+      "verification": "Integration Test",
+      "parent": "09"
+    },
+    {
+      "id": "NEX-OA-EAC-FR-006",
+      "priority": "MUST",
+      "requirement": "Resume 시 EAC를 재사용하지 않고 RoleBinding/Capability/Scope/Kill Switch/Auth 상태를 재검증하여 rebuild해야 한다.",
+      "verification": "Fault/Security",
+      "parent": "12/09"
+    },
+    {
+      "id": "NEX-OA-PDP-FR-001",
+      "priority": "MUST",
+      "requirement": "OA는 logical PDP를 제공하고 NeX-AG가 Policy Administration을 담당해야 한다.",
+      "verification": "Architecture Test",
+      "parent": "09"
+    },
+    {
+      "id": "NEX-OA-PDP-FR-002",
+      "priority": "MUST",
+      "requirement": "Authorization은 RBAC RoleBinding과 ABAC Org/Project/Resource/Risk/AuthLevel/WorkItem/Time/KillSwitch를 결합해야 한다.",
+      "verification": "Policy Test",
+      "parent": "09"
+    },
+    {
+      "id": "NEX-OA-PDP-FR-003",
+      "priority": "MUST",
+      "requirement": "Capability Contract의 risk/exposure/human gate가 authorization input이어야 한다.",
+      "verification": "Integration Test",
+      "parent": "08/09"
+    },
+    {
+      "id": "NEX-OA-PDP-FR-004",
+      "priority": "MUST",
+      "requirement": "PDP Decision은 allowed, reason_codes, required_auth_level, step_up_required, human_gate_required, policy_ref를 반환해야 한다.",
+      "verification": "Contract Test",
+      "parent": "26"
+    },
+    {
+      "id": "NEX-OA-PDP-FR-005",
+      "priority": "MUST",
+      "requirement": "AE/WC/EOS/WA/MCP/A2A/Admin Adapter는 PEP로서 PDP 결과를 강제해야 한다.",
+      "verification": "Architecture Test",
+      "parent": "09"
+    },
+    {
+      "id": "NEX-OA-PDP-FR-006",
+      "priority": "MUST",
+      "requirement": "R3+ Side Effect 직전과 WAITING Resume 직후 Current Authorization을 재평가해야 한다.",
+      "verification": "Security Test",
+      "parent": "09/12"
+    },
+    {
+      "id": "NEX-OA-PDP-FR-007",
+      "priority": "MUST",
+      "requirement": "권한판단이 모호하거나 PIP 값이 누락된 중요 Write는 fail-closed해야 한다.",
+      "verification": "Negative Test",
+      "parent": "09"
+    },
+    {
+      "id": "NEX-OA-TOK-FR-001",
+      "priority": "MUST",
+      "requirement": "Refresh token rotation은 성공 시 이전 token을 revoke/replace해야 한다.",
+      "verification": "Fault Test",
+      "parent": "26"
+    },
+    {
+      "id": "NEX-OA-TOK-FR-002",
+      "priority": "MUST",
+      "requirement": "이미 rotate/revoke된 Refresh Token의 재사용은 compromise 신호로 간주하고 family revoke할 수 있어야 한다.",
+      "verification": "Security Test",
+      "parent": "26"
+    },
+    {
+      "id": "NEX-OA-TOK-FR-003",
+      "priority": "MUST",
+      "requirement": "Employee termination 또는 Principal disable은 모든 active Session/Refresh family revoke를 트리거해야 한다.",
+      "verification": "Lifecycle Test",
+      "parent": "26"
+    },
+    {
+      "id": "NEX-OA-TOK-FR-004",
+      "priority": "MUST",
+      "requirement": "RoleBinding revoke는 token 자체를 항상 즉시 폐기하지 않더라도 PDP/EAC 재평가에서 권한을 제거해야 한다.",
+      "verification": "Authorization Test",
+      "parent": "09"
+    },
+    {
+      "id": "NEX-OA-TOK-FR-005",
+      "priority": "MUST",
+      "requirement": "R4/R5 step-up 유효기간 종료 시 중요 capability는 다시 step-up을 요구해야 한다.",
+      "verification": "Security Test",
+      "parent": "26"
+    },
+    {
+      "id": "NEX-OA-TOK-FR-006",
+      "priority": "MUST",
+      "requirement": "Token/signing key rotation은 key ID/version을 사용해 운영 중 점진적으로 수행할 수 있어야 한다.",
+      "verification": "Security/Operation",
+      "parent": "Phase4"
+    },
+    {
+      "id": "NEX-OA-AUD-FR-001",
+      "priority": "MUST",
+      "requirement": "Login, MFA binding/use/failure, Session issue/revoke, Service credential use, PDP Decision을 audit해야 한다.",
+      "verification": "Audit Test",
+      "parent": "09"
+    },
+    {
+      "id": "NEX-OA-AUD-FR-002",
+      "priority": "MUST",
+      "requirement": "Audit에는 raw Password/TOTP seed/OTP/access token/refresh token/private key를 기록해서는 안 된다.",
+      "verification": "Security Scan",
+      "parent": "09"
+    },
+    {
+      "id": "NEX-OA-AUD-FR-003",
+      "priority": "MUST",
+      "requirement": "MFA Recovery는 identity proof/strong admin or recovery policy와 full audit를 요구해야 한다.",
+      "verification": "Security Test",
+      "parent": "NIST"
+    },
+    {
+      "id": "NEX-OA-AUD-FR-004",
+      "priority": "MUST",
+      "requirement": "Account Recovery가 기존 Human Approval/Business Authorization을 대신해서는 안 된다.",
+      "verification": "Architecture Test",
+      "parent": "18"
+    },
+    {
+      "id": "NEX-OA-AUD-FR-005",
+      "priority": "MUST",
+      "requirement": "Authentication telemetry는 security purpose로 수집하되 employee performance scoring input으로 직접 사용해서는 안 된다.",
+      "verification": "Policy Test",
+      "parent": "23"
+    },
+    {
+      "id": "NEX-OA-SEC-NFR-001",
+      "priority": "MUST",
+      "requirement": "Password local auth를 사용하는 경우 modern adaptive password hash(예: Argon2id)와 per-user salt 정책을 적용해야 한다.",
+      "verification": "Security Test",
+      "parent": "Best practice"
+    },
+    {
+      "id": "NEX-OA-SEC-NFR-002",
+      "priority": "MUST",
+      "requirement": "Authentication/MFA endpoint는 rate limiting, brute-force lockout/backoff, abuse monitoring을 지원해야 한다.",
+      "verification": "Security Test",
+      "parent": "NIST"
+    },
+    {
+      "id": "NEX-OA-SEC-NFR-003",
+      "priority": "MUST",
+      "requirement": "MFA Secret/Service key는 external Secret Store 또는 encrypted secret boundary에서 관리해야 한다.",
+      "verification": "Security Test",
+      "parent": "09"
+    },
+    {
+      "id": "NEX-OA-SEC-NFR-004",
+      "priority": "MUST",
+      "requirement": "Sensitive Admin/R5 workflow는 phishing-resistant Authenticator를 요구할 수 있어야 한다.",
+      "verification": "Security Test",
+      "parent": "NIST"
+    },
+    {
+      "id": "NEX-OA-SEC-NFR-005",
+      "priority": "MUST",
+      "requirement": "Auth cookie/session은 Secure/HttpOnly/SameSite 및 CSRF/session fixation 방어를 적용해야 한다.",
+      "verification": "Web Security Test",
+      "parent": "AE-WEB"
+    },
+    {
+      "id": "NEX-OA-SEC-NFR-006",
+      "priority": "MUST",
+      "requirement": "OIDC callback은 state/nonce/issuer/audience/expiry/signature validation을 수행해야 한다.",
+      "verification": "Integration Test",
+      "parent": "OIDC"
+    },
+    {
+      "id": "NEX-OA-REL-NFR-001",
+      "priority": "MUST",
+      "requirement": "OA Session/PDP/MFA state는 durable PostgreSQL store와 transactional audit/outbox를 사용해야 한다.",
+      "verification": "Fault Test",
+      "parent": "05/26"
+    },
+    {
+      "id": "NEX-OA-REL-NFR-002",
+      "priority": "MUST",
+      "requirement": "MFA Provider 장애 시 다른 등록 Authenticator로 fallback할 수 있어야 하되 required Auth Level을 낮춰서는 안 된다.",
+      "verification": "Fault Test",
+      "parent": "26"
+    },
+    {
+      "id": "NEX-OA-REL-NFR-003",
+      "priority": "MUST",
+      "requirement": "External OIDC/SMS/Kakao Provider timeout/failure가 local authority를 잘못 허용하게 해서는 안 된다.",
+      "verification": "Negative Test",
+      "parent": "26"
+    },
+    {
+      "id": "NEX-OA-REL-NFR-004",
+      "priority": "MUST",
+      "requirement": "Session revocation/Principal disable은 bounded propagation time 내 PEP에 반영되어야 한다.",
+      "verification": "Integration Test",
+      "parent": "26"
+    },
+    {
+      "id": "NEX-OA-REL-NFR-005",
+      "priority": "MUST",
+      "requirement": "OA 장애 시 high-risk Business Write를 fail-open해서는 안 된다.",
+      "verification": "Fault Test",
+      "parent": "09"
+    },
+    {
+      "id": "NEX-OA-PERF-NFR-001",
+      "priority": "MUST",
+      "requirement": "PDP decision은 Interactive Agent path에 적합한 low-latency 목표를 가져야 하고 hot RoleBinding/Policy metadata cache를 사용할 수 있어야 한다.",
+      "verification": "Performance Test",
+      "parent": "Phase4 SLA"
+    },
+    {
+      "id": "NEX-OA-PERF-NFR-002",
+      "priority": "MUST",
+      "requirement": "MFA/External Provider 호출은 PDP core transaction을 장시간 block하지 않도록 challenge workflow와 분리해야 한다.",
+      "verification": "Performance Test",
+      "parent": "26"
+    },
+    {
+      "id": "NEX-OA-PERF-NFR-003",
+      "priority": "SHOULD",
+      "requirement": "Session/RoleBinding lookup은 100명 규모 초기 운영에서 PostgreSQL index/cache로 충분한 구조를 우선해야 한다.",
+      "verification": "Load Test",
+      "parent": "ADR-051"
+    },
+    {
+      "id": "NEX-OA-TST-NFR-001",
+      "priority": "MUST",
+      "requirement": "Statement coverage 95% 이상, branch coverage 85% 이상 목표를 유지해야 한다.",
+      "verification": "Coverage",
+      "parent": "Project quality"
+    },
+    {
+      "id": "NEX-OA-TST-NFR-002",
+      "priority": "MUST",
+      "requirement": "Employee-Coworker 1:1, RoleBinding 1:N, revoked binding, suspended principal, terminated employee tests가 있어야 한다.",
+      "verification": "Unit/Integration",
+      "parent": "26"
+    },
+    {
+      "id": "NEX-OA-TST-NFR-003",
+      "priority": "MUST",
+      "requirement": "TOTP RFC test vector, expiry/window/replay/rate-limit tests를 포함해야 한다.",
+      "verification": "Unit Test",
+      "parent": "RFC6238"
+    },
+    {
+      "id": "NEX-OA-TST-NFR-004",
+      "priority": "MUST",
+      "requirement": "SMS/Kakao OOB provider timeout/duplicate/delivery failure/fallback tests를 포함해야 한다.",
+      "verification": "Fault Test",
+      "parent": "26"
+    },
+    {
+      "id": "NEX-OA-TST-NFR-005",
+      "priority": "MUST",
+      "requirement": "OIDC issuer/audience/nonce/signature/expired token negative tests를 포함해야 한다.",
+      "verification": "Security Test",
+      "parent": "Kakao OIDC/OIDC"
+    },
+    {
+      "id": "NEX-OA-TST-NFR-006",
+      "priority": "MUST",
+      "requirement": "Background Service Account가 browser token 없이 WorkItem/EAC/PDP를 통해 capability를 실행하는 E2E test가 있어야 한다.",
+      "verification": "E2E Test",
+      "parent": "09/12"
+    },
+    {
+      "id": "NEX-OA-TST-NFR-007",
+      "priority": "MUST",
+      "requirement": "R4/R5 step-up과 HumanGate가 독립적으로 모두 요구되는 시나리오를 테스트해야 한다.",
+      "verification": "E2E Test",
+      "parent": "18/26"
+    },
+    {
+      "id": "NEX-OA-TST-NFR-008",
+      "priority": "MUST",
+      "requirement": "Refresh-token replay family revocation, password/MFA reset session revoke, employee termination revoke 테스트가 있어야 한다.",
+      "verification": "Fault/Security",
+      "parent": "26"
+    }
+  ]
+}

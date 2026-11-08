@@ -5227,6 +5227,33 @@ def test_in_memory_artifact_operations_client_lists_retention_scheduled_jobs() -
     assert empty["metadata"]["system_of_record"] == AE_ARTIFACT_SOURCE_SERVICE_ID
 
 
+def test_retention_scheduled_job_filter_fails_closed_by_owner_scope() -> None:
+    job = {
+        "job_type": artifact_operations.AE_ARTIFACT_RETENTION_SCHEDULED_JOB_TYPE,
+        "status": "running",
+        "payload": {
+            "tenant_id": "tenant-0409",
+            "workspace_id": "workspace-0409",
+            "owner_user_id": "user-0409",
+        },
+    }
+    matches = artifact_operations._retention_scheduled_job_matches_filter
+    scope = {
+        "tenant_id": "tenant-0409",
+        "workspace_id": "workspace-0409",
+        "owner_user_id": "user-0409",
+    }
+
+    assert matches(job, **scope, status=None) is True
+    assert matches(job, **scope, status="RUNNING") is True
+    assert matches({**job, "job_type": "other"}, **scope, status=None) is False
+    assert matches({**job, "payload": "invalid"}, **scope, status=None) is False
+    for key in scope:
+        changed_payload = {**job["payload"], key: "other"}
+        assert matches({**job, "payload": changed_payload}, **scope, status=None) is False
+    assert matches(job, **scope, status="FAILED") is False
+
+
 def test_in_memory_artifact_operations_client_dispatches_retention_scheduled_job() -> (
     None
 ):

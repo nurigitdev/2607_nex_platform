@@ -1,0 +1,116 @@
+{
+  "schema_version": "1.0",
+  "agent_plan_id": "AP-0002",
+  "agent_plan_version": 1,
+  "execution_id": "AE-EXEC-0100",
+  "work_intent_id": "WI-INTENT-0100",
+  "plan_kind": "DYNAMIC",
+  "steps": [
+    {
+      "step_id": "S1",
+      "step_type": "DELEGATE_WORK",
+      "title": "구매팀 원가 확인 요청",
+      "depends_on": [],
+      "required_capability": "procurement.cost.review",
+      "delegated_work_contract": {
+        "goal": "A 프로젝트의 구매 원가 이상 여부를 검토한다.",
+        "completion_criteria": [
+          "검토 결과와 근거를 구조화된 결과로 반환한다."
+        ],
+        "priority_hint": "NORMAL",
+        "due_hint": null
+      },
+      "routing_scope": {
+        "org_scope_ref": "ORG:PROCUREMENT",
+        "project_scope_ref": "PROJECT_SELECTOR:E1"
+      },
+      "result_contract": {
+        "schema_ref": "contract://procurement/cost-review-result/v1",
+        "artifact_type": null,
+        "evidence_required": true
+      },
+      "input_bindings": {},
+      "output_contract": {
+        "schema_ref": "contract://procurement/cost-review-result/v1",
+        "artifact_type": null,
+        "evidence_required": true
+      }
+    },
+    {
+      "step_id": "S2",
+      "step_type": "AGGREGATE",
+      "title": "구매 검토 결과 집계",
+      "depends_on": [
+        "S1"
+      ],
+      "source_step_refs": [
+        "S1"
+      ],
+      "aggregation_mode": "STRUCTURED",
+      "synthesis_contract_ref": "contract://planning/procurement-summary/v1",
+      "input_bindings": {
+        "review": {
+          "source": "STEP_OUTPUT",
+          "step_id": "S1",
+          "output_path": "$"
+        }
+      },
+      "output_contract": {
+        "schema_ref": "contract://planning/procurement-summary/v1",
+        "artifact_type": null,
+        "evidence_required": true
+      }
+    },
+    {
+      "step_id": "S3",
+      "step_type": "REPORT",
+      "title": "사용자에게 검토 결과 보고",
+      "depends_on": [
+        "S2"
+      ],
+      "source_step_refs": [
+        "S2"
+      ],
+      "report_kind": "INTERACTIVE_RESPONSE",
+      "target_contract_ref": "contract://ae/interactive-result/v1",
+      "input_bindings": {
+        "summary": {
+          "source": "STEP_OUTPUT",
+          "step_id": "S2",
+          "output_path": "$"
+        }
+      },
+      "output_contract": {
+        "schema_ref": "contract://ae/interactive-result/v1",
+        "artifact_type": null,
+        "evidence_required": true
+      }
+    }
+  ],
+  "completion_criteria": [
+    {
+      "criterion_id": "C1",
+      "description": "구매 검토 결과가 집계되어 사용자에게 보고된다.",
+      "required_terminal_step_refs": [
+        "S3"
+      ]
+    }
+  ],
+  "planning_constraints": {
+    "max_plan_steps": 12,
+    "max_delegation_depth": 2,
+    "replan_allowed": true
+  },
+  "user_safe_rationale_summary": "구매 원가 검토가 필요한 업무를 구매 Capability Pool에 위임하고 결과를 집계합니다.",
+  "source_plan_template": null,
+  "supersedes_agent_plan_id": null,
+  "replan_reason": null,
+  "provenance": {
+    "builder_type": "DYNAMIC_BUILDER",
+    "prompt_template_ref": "prompt://ae/plan-builder/v1",
+    "model_profile": "PLAN_REASONING",
+    "model_ref": "model://example/planner",
+    "input_context_hash": "sha256:EXAMPLE_CONTEXT_HASH_2",
+    "routing_decision_ref": "ROUTE-0100"
+  }
+}

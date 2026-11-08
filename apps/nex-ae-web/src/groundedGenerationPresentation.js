@@ -4,6 +4,7 @@ import {
 } from "./groundedResponseQuality.js";
 import { createRepairedResponseDecisionState } from "./repairedResponseDecisionState.js";
 import { buildRetrievalQualityWarningSurface } from "./retrievalQualityWarnings.js";
+import { buildProjectMembershipBatchResultSurface } from "./projectMembershipBatchResult.js";
 
 export const AE_WEB_GROUNDED_GENERATION_PRESENTATION_SCHEMA_VERSION =
   "ae_web_grounded_generation_presentation.v1";
@@ -44,7 +45,10 @@ export async function buildGroundedGenerationPresentation({
   let repairedResponseReview = null;
   let artifactHandoffAllowed = false;
 
-  if (
+  if (workflow.agentExecutionAdmitted === true) {
+    displayMode = "AGENT_EXECUTION";
+    assistantText = "Agent가 요청을 처리하고 있습니다.";
+  } else if (
     workflow.status === "COMPLETED" &&
     nextAction === "PRESENT_RESPONSE" &&
     typeof state.response?.content === "string"
@@ -78,11 +82,17 @@ export async function buildGroundedGenerationPresentation({
     citationWorkflowStatus: citationQuality?.workflowStatus || "UNKNOWN",
     nextAction,
     artifactHandoffAllowed,
+    agentExecutionAdmitted: workflow.agentExecutionAdmitted === true,
     retrievalResult,
     retrievalQualityWarning: retrievalResult
       ? buildRetrievalQualityWarningSurface(retrievalResult)
       : null,
     groundedResponseQuality: qualitySurface,
+    projectMembershipBatchResult: state.response?.projectMembershipBatchResult
+      ? buildProjectMembershipBatchResultSurface(
+          state.response.projectMembershipBatchResult
+        )
+      : null,
     repairedResponseReview,
     metadata: {
       ownerVerifiedResponse: Boolean(state.response),
@@ -121,6 +131,7 @@ export function buildGroundedGenerationPresentationFailure(workflow, error) {
     retrievalResult: buildAdmissionRetrievalResult(workflow.admission),
     retrievalQualityWarning: null,
     groundedResponseQuality: qualitySurface,
+    projectMembershipBatchResult: null,
     repairedResponseReview: null,
     errorStatus: safeErrorStatus(error),
     metadata: {
@@ -201,6 +212,7 @@ export function buildGroundedGenerationPresentationSummary(presentation) {
     citation_workflow_status: presentation.citationWorkflowStatus,
     next_action: presentation.nextAction,
     artifact_handoff_allowed: presentation.artifactHandoffAllowed,
+    agent_execution_admitted: presentation.agentExecutionAdmitted === true,
     retrieval_available: Boolean(presentation.retrievalResult),
     repaired_response_review_available: Boolean(
       presentation.repairedResponseReview

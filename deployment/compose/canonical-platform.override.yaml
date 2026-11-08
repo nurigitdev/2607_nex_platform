@@ -1,0 +1,364 @@
+name: nex-platform-canonical
+
+x-canonical-platform-common-environment: &canonical-platform-common-environment
+  NEX_PROFILE: staging_live
+  NEX_DEPLOYMENT_BOUNDARY: CANONICAL_PLATFORM
+  NEX_PERSISTENCE_MODE: postgres
+  NEX_SERVICE_TOKEN_ROLLOUT_PROFILE: SIGNED_ONLY
+  NEX_SERVICE_TOKEN_BOOTSTRAP_PROFILE: STARTUP_24H
+  NEX_STARTUP_SERVICE_TOKEN_BOOTSTRAP: "true"
+  NEX_OPENBAO_ADDR: https://openbao:8200
+  NEX_OPENBAO_CA_CERT_FILE: /run/secrets/openbao_ca
+  NEX_OPENBAO_ROLE_ID_FILE: /run/secrets/openbao_role_id
+  NEX_OPENBAO_SECRET_ID_FILE: /run/secrets/openbao_secret_id
+  NEX_OPENBAO_SECRET_NAMESPACE: staging
+  NEX_OPENBAO_TIMEOUT_SECONDS: "10"
+  SSL_CERT_FILE: /run/secrets/platform_ca
+  REQUESTS_CA_BUNDLE: /run/secrets/platform_ca
+  NEX_CONFIG_GENERATION: config:canonical-platform.1
+  NEX_SECRET_GENERATION: ${NEX_CANONICAL_PLATFORM_SECRET_GENERATION:-secret:canonical-platform.1}
+  NEX_TLS_GENERATION: ${NEX_CANONICAL_PLATFORM_TLS_GENERATION:-tls:canonical-platform.1}
+  NEX_TLS_TERMINATION_POLICY_REF: tls://openbao/nex-platform/staging/policy@v1
+  NEX_TLS_CERTIFICATE_REF: tls://openbao/nex-platform/staging/certificate@v1
+  NEX_TLS_TRUST_BUNDLE_REF: tls://openbao/nex-platform/staging/trust-bundle@v1
+  NEX_OA_BASE_URL: https://oa.nex-staging.test:8443
+  NEX_AE_API_BASE_URL: https://ae-api.nex-staging.test:8443
+  NEX_WC_BASE_URL: https://wc.nex-staging.test:8443
+  NEX_EOS_BASE_URL: https://eos.nex-staging.test:8443
+  NEX_WA_BASE_URL: https://wa.nex-staging.test:8443
+
+x-canonical-platform-wc-environment: &canonical-platform-wc-environment
+  <<: *canonical-platform-common-environment
+  NEX_WC_DATABASE_URL_REF: secret://openbao/nex-platform/staging/nex-wc/NEX_WC_DATABASE_URL@${NEX_CANONICAL_PLATFORM_SECRET_VERSION:-v1}
+  NEX_WC_OA_BASE_URL: https://oa.nex-staging.test:8443
+  NEX_WC_AE_BASE_URL: https://ae-api.nex-staging.test:8443
+  NEX_WC_TO_OA_SERVICE_TOKEN_REF: secret://openbao/nex-platform/staging/nex-wc/NEX_WC_TO_OA_SERVICE_TOKEN@${NEX_CANONICAL_PLATFORM_SECRET_VERSION:-v1}
+  NEX_WC_TO_AE_SERVICE_TOKEN_REF: secret://openbao/nex-platform/staging/nex-wc/NEX_WC_TO_AE_SERVICE_TOKEN@${NEX_CANONICAL_PLATFORM_SECRET_VERSION:-v1}
+  NEX_SERVICE_CREDENTIAL_ID_REF: secret://openbao/nex-platform/staging/nex-wc/NEX_SERVICE_CREDENTIAL_ID@${NEX_CANONICAL_PLATFORM_SECRET_VERSION:-v1}
+  NEX_SERVICE_CLIENT_SECRET_REF: secret://openbao/nex-platform/staging/nex-wc/NEX_SERVICE_CLIENT_SECRET@${NEX_CANONICAL_PLATFORM_SECRET_VERSION:-v1}
+
+x-canonical-platform-eos-environment: &canonical-platform-eos-environment
+  <<: *canonical-platform-common-environment
+  NEX_EOS_DATABASE_URL_REF: secret://openbao/nex-platform/staging/nex-eos/NEX_EOS_DATABASE_URL@${NEX_CANONICAL_PLATFORM_SECRET_VERSION:-v1}
+  NEX_EOS_TO_WC_SERVICE_TOKEN_REF: secret://openbao/nex-platform/staging/nex-eos/NEX_EOS_TO_WC_SERVICE_TOKEN@${NEX_CANONICAL_PLATFORM_SECRET_VERSION:-v1}
+  NEX_EOS_TO_AE_SERVICE_TOKEN_REF: secret://openbao/nex-platform/staging/nex-eos/NEX_EOS_TO_AE_SERVICE_TOKEN@${NEX_CANONICAL_PLATFORM_SECRET_VERSION:-v1}
+  NEX_EOS_TO_OA_SERVICE_TOKEN_REF: secret://openbao/nex-platform/staging/nex-eos/NEX_EOS_TO_OA_SERVICE_TOKEN@${NEX_CANONICAL_PLATFORM_SECRET_VERSION:-v1}
+  NEX_SERVICE_CREDENTIAL_ID_REF: secret://openbao/nex-platform/staging/nex-eos/NEX_SERVICE_CREDENTIAL_ID@${NEX_CANONICAL_PLATFORM_SECRET_VERSION:-v1}
+  NEX_SERVICE_CLIENT_SECRET_REF: secret://openbao/nex-platform/staging/nex-eos/NEX_SERVICE_CLIENT_SECRET@${NEX_CANONICAL_PLATFORM_SECRET_VERSION:-v1}
+
+x-canonical-platform-wa-environment: &canonical-platform-wa-environment
+  <<: *canonical-platform-common-environment
+  NEX_WA_WORKER_ID: nex-wa-evidence-consumer-001
+  NEX_WA_DATABASE_URL_REF: secret://openbao/nex-platform/staging/nex-wa/NEX_WA_DATABASE_URL@${NEX_CANONICAL_PLATFORM_SECRET_VERSION:-v1}
+  NEX_WA_TO_AE_SERVICE_TOKEN_REF: secret://openbao/nex-platform/staging/nex-wa/NEX_WA_TO_AE_SERVICE_TOKEN@${NEX_CANONICAL_PLATFORM_SECRET_VERSION:-v1}
+  NEX_WA_TO_WC_SERVICE_TOKEN_REF: secret://openbao/nex-platform/staging/nex-wa/NEX_WA_TO_WC_SERVICE_TOKEN@${NEX_CANONICAL_PLATFORM_SECRET_VERSION:-v1}
+  NEX_WA_TO_OA_SERVICE_TOKEN_REF: secret://openbao/nex-platform/staging/nex-wa/NEX_WA_TO_OA_SERVICE_TOKEN@${NEX_CANONICAL_PLATFORM_SECRET_VERSION:-v1}
+  NEX_WA_TO_EOS_SERVICE_TOKEN_REF: secret://openbao/nex-platform/staging/nex-wa/NEX_WA_TO_EOS_SERVICE_TOKEN@${NEX_CANONICAL_PLATFORM_SECRET_VERSION:-v1}
+  NEX_SERVICE_CREDENTIAL_ID_REF: secret://openbao/nex-platform/staging/nex-wa/NEX_SERVICE_CREDENTIAL_ID@${NEX_CANONICAL_PLATFORM_SECRET_VERSION:-v1}
+  NEX_SERVICE_CLIENT_SECRET_REF: secret://openbao/nex-platform/staging/nex-wa/NEX_SERVICE_CLIENT_SECRET@${NEX_CANONICAL_PLATFORM_SECRET_VERSION:-v1}
+
+x-canonical-platform-service: &canonical-platform-service
+  restart: unless-stopped
+  read_only: true
+  tmpfs: [/tmp]
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  extra_hosts: [host.docker.internal:host-gateway]
+  networks: [service, control]
+  depends_on:
+    openbao:
+      condition: service_healthy
+    traefik:
+      condition: service_healthy
+    nex-oa:
+      condition: service_healthy
+
+services:
+  openbao:
+    restart: unless-stopped
+    networks: [control, admin, identity]
+
+  traefik:
+    restart: unless-stopped
+    volumes:
+      - ${NEX_CANONICAL_PLATFORM_TRAEFIK_DYNAMIC_FILE:-../compose/traefik/canonical-platform-dynamic.yaml}:/etc/traefik/dynamic.yaml:ro
+    networks:
+      edge: {}
+      service:
+        aliases:
+          - oa.nex-staging.test
+          - ag.nex-staging.test
+          - ae-api.nex-staging.test
+          - cx.nex-staging.test
+          - mo.nex-staging.test
+          - wc.nex-staging.test
+          - eos.nex-staging.test
+          - ae.nex-staging.test
+          - embedding.nex-staging.test
+          - reranker.nex-staging.test
+          - generation.nex-staging.test
+          - id.nex-staging.test
+          - object.nex-staging.test
+      identity: {}
+      object-storage: {}
+
+  rustfs:
+    restart: unless-stopped
+
+  nex-oa:
+    restart: unless-stopped
+    environment:
+      NEX_DEPLOYMENT_BOUNDARY: CANONICAL_PLATFORM
+      NEX_SERVICE_TOKEN_BOOTSTRAP_PROFILE: STARTUP_24H
+      NEX_OA_SIGNING_PROVIDER: OPENBAO_TRANSIT
+      NEX_OA_TRANSIT_ROLE_ID_FILE: /run/secrets/openbao_transit_role_id
+      NEX_OA_TRANSIT_SECRET_ID_FILE: /run/secrets/openbao_transit_secret_id
+    secrets:
+      - openbao_ca
+      - platform_ca
+      - source: oa_role_id
+        target: openbao_role_id
+      - source: oa_secret_id
+        target: openbao_secret_id
+      - source: oa_transit_role_id
+        target: openbao_transit_role_id
+      - source: oa_transit_secret_id
+        target: openbao_transit_secret_id
+
+  nex-ag:
+    restart: unless-stopped
+    environment:
+      NEX_DEPLOYMENT_BOUNDARY: CANONICAL_PLATFORM
+      NEX_SERVICE_TOKEN_BOOTSTRAP_PROFILE: STARTUP_24H
+      NEX_STARTUP_SERVICE_TOKEN_BOOTSTRAP: "true"
+      NEX_SERVICE_CREDENTIAL_ID_REF: secret://openbao/nex-platform/staging/nex-ag/NEX_SERVICE_CREDENTIAL_ID@${NEX_CANONICAL_PLATFORM_SECRET_VERSION:-v1}
+      NEX_SERVICE_CLIENT_SECRET_REF: secret://openbao/nex-platform/staging/nex-ag/NEX_SERVICE_CLIENT_SECRET@${NEX_CANONICAL_PLATFORM_SECRET_VERSION:-v1}
+    depends_on:
+      nex-oa:
+        condition: service_healthy
+
+  nex-ae-api:
+    restart: unless-stopped
+    environment:
+      NEX_DEPLOYMENT_BOUNDARY: CANONICAL_PLATFORM
+      NEX_SERVICE_TOKEN_BOOTSTRAP_PROFILE: STARTUP_24H
+      NEX_STARTUP_SERVICE_TOKEN_BOOTSTRAP: "true"
+      NEX_AE_AGENT_RUNTIME_MODE: required
+      NEX_AE_PLANNING_MODE: required
+      NEX_AE_FINANCE_GOLDEN_A_AUTHORITY_PROFILE_PATH: /app/deployment/product/config/finance-golden-a-vo00.v1.json
+      NEX_AE_PRODUCT_CAPABILITY_REGISTRY_PATH: /app/deployment/product/config/ae-product-capability-registry.v1.json
+      NEX_AE_P65_SEMANTIC_CALIBRATION_POLICIES_JSON: ${NEX_CANONICAL_PLATFORM_SEMANTIC_CALIBRATION_POLICIES_JSON:?semantic calibration policies are required}
+      NEX_AE_TO_MO_SERVICE_TOKEN_REF: secret://openbao/nex-platform/staging/nex-ae-api/NEX_AE_TO_MO_SERVICE_TOKEN@${NEX_CANONICAL_PLATFORM_SECRET_VERSION:-v1}
+      NEX_AE_TO_AG_SERVICE_TOKEN_REF: secret://openbao/nex-platform/staging/nex-ae-api/NEX_AE_TO_AG_SERVICE_TOKEN@${NEX_CANONICAL_PLATFORM_SECRET_VERSION:-v1}
+      NEX_WC_BASE_URL: https://wc.nex-staging.test:8443
+      NEX_EOS_BASE_URL: https://eos.nex-staging.test:8443
+      NEX_AE_TO_WC_SERVICE_TOKEN_REF: secret://openbao/nex-platform/staging/nex-ae-api/NEX_AE_TO_WC_SERVICE_TOKEN@${NEX_CANONICAL_PLATFORM_SECRET_VERSION:-v1}
+      NEX_AE_TO_EOS_SERVICE_TOKEN_REF: secret://openbao/nex-platform/staging/nex-ae-api/NEX_AE_TO_EOS_SERVICE_TOKEN@${NEX_CANONICAL_PLATFORM_SECRET_VERSION:-v1}
+      NEX_AE_TO_WA_SERVICE_TOKEN_REF: secret://openbao/nex-platform/staging/nex-ae-api/NEX_AE_TO_WA_SERVICE_TOKEN@${NEX_CANONICAL_PLATFORM_SECRET_VERSION:-v1}
+      NEX_SERVICE_CREDENTIAL_ID_REF: secret://openbao/nex-platform/staging/nex-ae-api/NEX_SERVICE_CREDENTIAL_ID@${NEX_CANONICAL_PLATFORM_SECRET_VERSION:-v1}
+      NEX_SERVICE_CLIENT_SECRET_REF: secret://openbao/nex-platform/staging/nex-ae-api/NEX_SERVICE_CLIENT_SECRET@${NEX_CANONICAL_PLATFORM_SECRET_VERSION:-v1}
+    depends_on:
+      nex-oa:
+        condition: service_healthy
+
+  nex-cx:
+    restart: unless-stopped
+    environment:
+      NEX_DEPLOYMENT_BOUNDARY: CANONICAL_PLATFORM
+      NEX_CX_ANSWER_SUPPORT_POLICY_MODE: ${NEX_CX_ANSWER_SUPPORT_POLICY_MODE:-CONTROLLED}
+      NEX_CX_ANSWER_SUPPORT_POLICY_AUTHORIZATION_PATH: /app/services/nex-cx/nex_cx/data/answer_support_policy_cutover_authorization.v1.json
+      NEX_CX_ANSWER_SUPPORT_POLICY_OPERATIONS_PATH: /app/services/nex-cx/nex_cx/data/answer_support_policy_cutover_operations.v1.json
+      NEX_CX_ANSWER_SUPPORT_POLICY_SUSTAINED_OPERATIONS_PATH: /app/services/nex-cx/nex_cx/data/answer_support_policy_sustained_operations.v1.json
+      NEX_CX_ANSWER_SUPPORT_STEADY_STATE_MODE: ${NEX_CX_ANSWER_SUPPORT_STEADY_STATE_MODE:-CONTROLLED}
+      NEX_CX_ANSWER_SUPPORT_STEADY_STATE_AUTHORIZATION_PATH: /app/services/nex-cx/nex_cx/data/answer_support_policy_steady_state_authorization.v1.json
+      NEX_CX_ANSWER_SUPPORT_STEADY_STATE_OPERATIONS_PATH: /app/services/nex-cx/nex_cx/data/answer_support_policy_steady_state_continuation.v1.json
+      NEX_CX_ANSWER_SUPPORT_SHADOW_MODE: ${NEX_CX_ANSWER_SUPPORT_SHADOW_MODE:-CONTROLLED}
+      NEX_CX_ANSWER_SUPPORT_ACTIVATION_BUNDLE_PATH: /app/services/nex-cx/nex_cx/data/answer_support_controlled_activation.v1.json
+      NEX_CX_ANSWER_SUPPORT_LIMITED_OPERATIONS_MODE: ${NEX_CX_ANSWER_SUPPORT_LIMITED_OPERATIONS_MODE:-ENABLED}
+      NEX_CX_ANSWER_SUPPORT_LIMITED_OPERATIONS_POLICY_PATH: /app/services/nex-cx/nex_cx/data/answer_support_extended_limited_operations.v2.json
+      NEX_SERVICE_TOKEN_BOOTSTRAP_PROFILE: STARTUP_24H
+      NEX_STARTUP_SERVICE_TOKEN_BOOTSTRAP: "true"
+      NEX_SERVICE_CREDENTIAL_ID_REF: secret://openbao/nex-platform/staging/nex-cx/NEX_SERVICE_CREDENTIAL_ID@${NEX_CANONICAL_PLATFORM_SECRET_VERSION:-v1}
+      NEX_SERVICE_CLIENT_SECRET_REF: secret://openbao/nex-platform/staging/nex-cx/NEX_SERVICE_CLIENT_SECRET@${NEX_CANONICAL_PLATFORM_SECRET_VERSION:-v1}
+    depends_on:
+      nex-oa:
+        condition: service_healthy
+
+  nex-mo:
+    restart: unless-stopped
+    environment:
+      NEX_DEPLOYMENT_BOUNDARY: CANONICAL_PLATFORM
+      NEX_SERVICE_TOKEN_BOOTSTRAP_PROFILE: STARTUP_24H
+      NEX_STARTUP_SERVICE_TOKEN_BOOTSTRAP: "true"
+      NEX_MO_REMOTE_EMBEDDING_MODEL: ${NEX_MO_REMOTE_EMBEDDING_MODEL:-Qwen3-Embedding-4B}
+      NEX_MO_REMOTE_EMBEDDING_MODEL_REVISION: ${NEX_MO_REMOTE_EMBEDDING_MODEL_REVISION:-Qwen3-Embedding-4B}
+      NEX_MO_LIVE_EXPECTED_EMBEDDING_MODELS: ${NEX_MO_LIVE_EXPECTED_EMBEDDING_MODELS:-Qwen3-Embedding-4B}
+      NEX_MO_REMOTE_RERANKER_MODEL: ${NEX_MO_REMOTE_RERANKER_MODEL:-Qwen3-Reranker-4B}
+      NEX_MO_REMOTE_RERANKER_MODEL_REVISION: ${NEX_MO_REMOTE_RERANKER_MODEL_REVISION:-Qwen3-Reranker-4B}
+      NEX_MO_LIVE_EXPECTED_RERANKER_MODELS: ${NEX_MO_LIVE_EXPECTED_RERANKER_MODELS:-Qwen3-Reranker-4B}
+      NEX_MO_VLLM_MODEL: ${NEX_MO_VLLM_MODEL:-Qwen3.5-4B}
+      NEX_MO_VLLM_MODEL_REVISION: ${NEX_MO_VLLM_MODEL_REVISION:-Qwen3.5-4B}
+      NEX_MO_VLLM_DEPLOYMENT_ID: ${NEX_MO_VLLM_DEPLOYMENT_ID:-vllm-generation-http}
+      NEX_MO_LIVE_EXPECTED_GENERATION_MODELS: ${NEX_MO_LIVE_EXPECTED_GENERATION_MODELS:-Qwen3.5-4B}
+      NEX_MO_VLLM_MODELS_URL: https://generation.nex-staging.test:8443/v1/models
+      NEX_MO_VLLM_CHAT_COMPLETIONS_URL: https://generation.nex-staging.test:8443/v1/chat/completions
+      NEX_MO_GENERATION_PROFILE: ${NEX_MO_GENERATION_PROFILE:-qwen3_5_4b_bf16}
+      NEX_MO_GENERATION_MODEL_NAME: ${NEX_MO_GENERATION_MODEL_NAME:-Qwen3.5-4B}
+      NEX_MO_GENERATION_MODEL_PRECISION: ${NEX_MO_GENERATION_MODEL_PRECISION:-BF16}
+      NEX_MO_GENERATION_REASONING_MODE: ${NEX_MO_GENERATION_REASONING_MODE:-disabled}
+      NEX_SERVICE_CREDENTIAL_ID_REF: secret://openbao/nex-platform/staging/nex-mo/NEX_SERVICE_CREDENTIAL_ID@${NEX_CANONICAL_PLATFORM_SECRET_VERSION:-v1}
+      NEX_SERVICE_CLIENT_SECRET_REF: secret://openbao/nex-platform/staging/nex-mo/NEX_SERVICE_CLIENT_SECRET@${NEX_CANONICAL_PLATFORM_SECRET_VERSION:-v1}
+    depends_on:
+      nex-oa:
+        condition: service_healthy
+
+  nex-ae-web:
+    restart: unless-stopped
+
+  nex-wa:
+    environment: *canonical-platform-wa-environment
+
+  nex-wa-evidence-consumer:
+    environment: *canonical-platform-wa-environment
+
+  nex-wc:
+    <<: *canonical-platform-service
+    image: ${NEX_WC_RUNTIME_IMAGE:?immutable WC image is required}
+    entrypoint: [python, -m, nex_runtime.production_container_bootstrap, --owner, nex-wc, --]
+    command: [python, -m, uvicorn, nex_wc.main:app, --host, 0.0.0.0, --port, "8106"]
+    environment: *canonical-platform-wc-environment
+    secrets:
+      - openbao_ca
+      - platform_ca
+      - source: wc_role_id
+        target: openbao_role_id
+      - source: wc_secret_id
+        target: openbao_secret_id
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8106/ready', timeout=2)"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+
+  nex-eos:
+    <<: *canonical-platform-service
+    image: ${NEX_EOS_RUNTIME_IMAGE:?immutable EOS image is required}
+    entrypoint: [python, -m, nex_runtime.production_container_bootstrap, --owner, nex-eos, --]
+    command: [python, -m, uvicorn, nex_eos.main:app, --host, 0.0.0.0, --port, "8107"]
+    environment: *canonical-platform-eos-environment
+    secrets:
+      - openbao_ca
+      - platform_ca
+      - source: eos_role_id
+        target: openbao_role_id
+      - source: eos_secret_id
+        target: openbao_secret_id
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8107/ready', timeout=2)"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+
+  nex-ae-agent-runtime-worker:
+    <<: *canonical-platform-service
+    image: ${NEX_AE_RUNTIME_IMAGE:?immutable AE image is required}
+    entrypoint: [python, -m, nex_runtime.production_container_bootstrap, --owner, nex-ae-api, --]
+    command: [python, -m, nex_ae_api.agent_runtime_process, --profile, staging_live]
+    environment:
+      <<: *canonical-platform-common-environment
+      NEX_AE_DATABASE_URL_REF: secret://openbao/nex-platform/staging/nex-ae-api/NEX_AE_DATABASE_URL@${NEX_CANONICAL_PLATFORM_SECRET_VERSION:-v1}
+      NEX_AE_TO_OA_SERVICE_TOKEN_REF: secret://openbao/nex-platform/staging/nex-ae-api/NEX_AE_TO_OA_SERVICE_TOKEN@${NEX_CANONICAL_PLATFORM_SECRET_VERSION:-v1}
+      NEX_AE_TO_CX_SERVICE_TOKEN_REF: secret://openbao/nex-platform/staging/nex-ae-api/NEX_AE_TO_CX_SERVICE_TOKEN@${NEX_CANONICAL_PLATFORM_SECRET_VERSION:-v1}
+      NEX_AE_TO_MO_SERVICE_TOKEN_REF: secret://openbao/nex-platform/staging/nex-ae-api/NEX_AE_TO_MO_SERVICE_TOKEN@${NEX_CANONICAL_PLATFORM_SECRET_VERSION:-v1}
+      NEX_AE_TO_AG_SERVICE_TOKEN_REF: secret://openbao/nex-platform/staging/nex-ae-api/NEX_AE_TO_AG_SERVICE_TOKEN@${NEX_CANONICAL_PLATFORM_SECRET_VERSION:-v1}
+      NEX_AE_TO_WC_SERVICE_TOKEN_REF: secret://openbao/nex-platform/staging/nex-ae-api/NEX_AE_TO_WC_SERVICE_TOKEN@${NEX_CANONICAL_PLATFORM_SECRET_VERSION:-v1}
+      NEX_AE_TO_EOS_SERVICE_TOKEN_REF: secret://openbao/nex-platform/staging/nex-ae-api/NEX_AE_TO_EOS_SERVICE_TOKEN@${NEX_CANONICAL_PLATFORM_SECRET_VERSION:-v1}
+      NEX_AE_TO_WA_SERVICE_TOKEN_REF: secret://openbao/nex-platform/staging/nex-ae-api/NEX_AE_TO_WA_SERVICE_TOKEN@${NEX_CANONICAL_PLATFORM_SECRET_VERSION:-v1}
+      NEX_AE_OBJECT_STORAGE_ACCESS_KEY_REF: secret://openbao/nex-platform/staging/nex-ae-api/NEX_AE_OBJECT_STORAGE_ACCESS_KEY@${NEX_CANONICAL_PLATFORM_SECRET_VERSION:-v1}
+      NEX_AE_OBJECT_STORAGE_SECRET_KEY_REF: secret://openbao/nex-platform/staging/nex-ae-api/NEX_AE_OBJECT_STORAGE_SECRET_KEY@${NEX_CANONICAL_PLATFORM_SECRET_VERSION:-v1}
+      NEX_AE_AGENT_WORKER_MODE: enabled
+      NEX_AE_AGENT_WORKER_ID: ae-product-agent-runtime-1
+      NEX_AE_AGENT_WORKER_EXECUTOR_KINDS: DETERMINISTIC_AGGREGATE,DETERMINISTIC_REPORT,LOCAL_SKILL,P4_CHAT_RAG_COMPATIBILITY
+      NEX_AE_AGENT_WORKER_BACKEND_PROFILES: NSL_V02_IN_PROCESS
+      NEX_AE_NSL_STATE_ROOT: /var/lib/nex-platform/ae-runtime/nsl
+      NEX_SERVICE_CREDENTIAL_ID_REF: secret://openbao/nex-platform/staging/nex-ae-api/NEX_SERVICE_CREDENTIAL_ID@${NEX_CANONICAL_PLATFORM_SECRET_VERSION:-v1}
+      NEX_SERVICE_CLIENT_SECRET_REF: secret://openbao/nex-platform/staging/nex-ae-api/NEX_SERVICE_CLIENT_SECRET@${NEX_CANONICAL_PLATFORM_SECRET_VERSION:-v1}
+    secrets:
+      - openbao_ca
+      - platform_ca
+      - source: ae_role_id
+        target: openbao_role_id
+      - source: ae_secret_id
+        target: openbao_secret_id
+    volumes:
+      - canonical_ae_runtime_state:/var/lib/nex-platform/ae-runtime
+    depends_on:
+      openbao:
+        condition: service_healthy
+      nex-ae-api:
+        condition: service_healthy
+      nex-oa:
+        condition: service_healthy
+
+  nex-wc-event-delivery-worker:
+    <<: *canonical-platform-service
+    image: ${NEX_WC_RUNTIME_IMAGE:?immutable WC image is required}
+    entrypoint: [python, -m, nex_runtime.production_container_bootstrap, --owner, nex-wc, --]
+    command: [python, -m, nex_wc.event_delivery_process, --profile, staging_live]
+    environment:
+      <<: *canonical-platform-wc-environment
+      NEX_WC_EVENT_DELIVERY_WORKER_ID: wc-event-delivery-worker-1
+    secrets:
+      - openbao_ca
+      - platform_ca
+      - source: wc_role_id
+        target: openbao_role_id
+      - source: wc_secret_id
+        target: openbao_secret_id
+    depends_on:
+      openbao:
+        condition: service_healthy
+      nex-wc:
+        condition: service_healthy
+
+  nex-eos-outbox-publisher:
+    <<: *canonical-platform-service
+    image: ${NEX_EOS_RUNTIME_IMAGE:?immutable EOS image is required}
+    entrypoint: [python, -m, nex_runtime.production_container_bootstrap, --owner, nex-eos, --]
+    command: [python, -m, nex_eos.outbox_publisher_process, --profile, staging_live]
+    environment:
+      <<: *canonical-platform-eos-environment
+      NEX_EOS_OUTBOX_PUBLISHER_WORKER_ID: eos-outbox-publisher-1
+    secrets:
+      - openbao_ca
+      - platform_ca
+      - source: eos_role_id
+        target: openbao_role_id
+      - source: eos_secret_id
+        target: openbao_secret_id
+    depends_on:
+      openbao:
+        condition: service_healthy
+      nex-eos:
+        condition: service_healthy
+
+secrets:
+  wc_role_id:
+    file: "${NEX_S143_RUNTIME_DIR:?runtime directory is required}/credentials/nex-wc.role-id"
+  wc_secret_id:
+    file: "${NEX_S143_RUNTIME_DIR:?runtime directory is required}/credentials/nex-wc.secret-id"
+  eos_role_id:
+    file: "${NEX_S143_RUNTIME_DIR:?runtime directory is required}/credentials/nex-eos.role-id"
+  eos_secret_id:
+    file: "${NEX_S143_RUNTIME_DIR:?runtime directory is required}/credentials/nex-eos.secret-id"
+  oa_transit_role_id:
+    file: "${NEX_S143_RUNTIME_DIR:?runtime directory is required}/credentials/nex-oa-transit.role-id"
+  oa_transit_secret_id:
+    file: "${NEX_S143_RUNTIME_DIR:?runtime directory is required}/credentials/nex-oa-transit.secret-id"
+
+networks:
+  identity:
+    internal: true
+
+volumes:
+  canonical_ae_runtime_state:

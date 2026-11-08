@@ -1,0 +1,113 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "EvidenceBundle v2.1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "tenant_id",
+    "bundle_id",
+    "query_id",
+    "authority_hash",
+    "policy_version",
+    "evidence_quality",
+    "items",
+    "bundle_hash"
+  ],
+  "properties": {
+    "tenant_id": {
+      "type": "string"
+    },
+    "bundle_id": {
+      "type": "string"
+    },
+    "query_id": {
+      "type": "string"
+    },
+    "authority_hash": {
+      "type": "string"
+    },
+    "policy_version": {
+      "type": "string"
+    },
+    "retrieval_profile": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "evidence_quality": {
+      "enum": [
+        "SUFFICIENT",
+        "PARTIAL",
+        "INSUFFICIENT",
+        "CONFLICT"
+      ]
+    },
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "document_id",
+          "chunk_id",
+          "citation_label",
+          "security_envelope_hash"
+        ],
+        "properties": {
+          "document_id": {
+            "type": "string"
+          },
+          "chunk_id": {
+            "type": "string"
+          },
+          "citation_label": {
+            "type": "string"
+          },
+          "source_locator": {
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "scores": {
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "metadata": {
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "text": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "security_envelope_hash": {
+            "type": "string"
+          },
+          "relation_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "relation_evidence_ref": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      }
+    },
+    "bundle_hash": {
+      "type": "string"
+    }
+  }
+}

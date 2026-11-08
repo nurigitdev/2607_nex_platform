@@ -1,0 +1,126 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/common/model_calibration_dataset.v4.schema.json",
+  "title": "Model Calibration Package Dataset v4",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "dataset_schema_version",
+    "dataset_id",
+    "cases",
+    "scenario_reviews"
+  ],
+  "properties": {
+    "dataset_schema_version": {"const": "model_calibration_dataset.v4"},
+    "dataset_id": {"const": "s136-retrieval-package-confidence-public-v4"},
+    "cases": {
+      "type": "array",
+      "minItems": 200,
+      "maxItems": 200,
+      "items": {"$ref": "#/$defs/case"}
+    },
+    "scenario_reviews": {
+      "type": "array",
+      "minItems": 100,
+      "maxItems": 100,
+      "items": {"$ref": "#/$defs/scenario_review"}
+    }
+  },
+  "$defs": {
+    "case": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "case_id",
+        "scenario_id",
+        "partition",
+        "language_profile",
+        "domain",
+        "expected_ready",
+        "query",
+        "candidates"
+      ],
+      "properties": {
+        "case_id": {"type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"},
+        "scenario_id": {"type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"},
+        "partition": {"enum": ["CALIBRATION", "HOLDOUT"]},
+        "language_profile": {
+          "enum": ["KOREAN", "KOREAN_ENGLISH_MIXED", "ENGLISH"]
+        },
+        "domain": {
+          "enum": [
+            "PROJECT",
+            "FINANCE",
+            "IDENTITY_AUTHORIZATION",
+            "GOVERNANCE_OPERATIONS",
+            "AI_RUNTIME"
+          ]
+        },
+        "expected_ready": {"type": "boolean"},
+        "query": {"type": "string", "minLength": 1},
+        "candidates": {
+          "type": "array",
+          "minItems": 4,
+          "maxItems": 4,
+          "items": {"$ref": "#/$defs/candidate"}
+        }
+      }
+    },
+    "candidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "candidate_id",
+        "evidence_role",
+        "expected_relevant",
+        "text"
+      ],
+      "properties": {
+        "candidate_id": {
+          "enum": [
+            "primary-answer",
+            "supporting-answer",
+            "hard-non-answer",
+            "related-non-answer",
+            "contradictory-non-answer",
+            "easy-non-answer"
+          ]
+        },
+        "evidence_role": {
+          "enum": [
+            "PRIMARY_ANSWER",
+            "SUPPORTING_ANSWER",
+            "HARD_NON_ANSWER",
+            "RELATED_NON_ANSWER",
+            "CONTRADICTORY_NON_ANSWER",
+            "EASY_NON_ANSWER"
+          ]
+        },
+        "expected_relevant": {"type": "boolean"},
+        "text": {"type": "string", "minLength": 1}
+      }
+    },
+    "scenario_review": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "scenario_id",
+        "author_ref",
+        "reviewer_ref",
+        "review_status",
+        "semantic_near_duplicate_status",
+        "model_score_guided_authoring",
+        "mechanical_paraphrase"
+      ],
+      "properties": {
+        "scenario_id": {"type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"},
+        "author_ref": {"type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"},
+        "reviewer_ref": {"type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"},
+        "review_status": {"const": "APPROVED"},
+        "semantic_near_duplicate_status": {"const": "REVIEWED_NO_CONFLICT"},
+        "model_score_guided_authoring": {"const": false},
+        "mechanical_paraphrase": {"const": false}
+      }
+    }
+  }
+}

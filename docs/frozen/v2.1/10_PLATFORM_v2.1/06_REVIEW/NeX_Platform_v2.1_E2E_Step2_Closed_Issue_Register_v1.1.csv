@@ -1,0 +1,4 @@
+﻿Issue,Class,Status,Closure
+E2E01-P1-01,P1,CLOSED,SkillExecutionRequest principal_context_ref/data_policy_ref required and deterministic resolver added
+E2E04-PCG-01,PCG,CLOSED,WorkResult v2.1 + WORK_RESULT_SUBMITTED Event v2.1 + WC result outbox/protocol added
+E2E05-PCG-01,PCG,CLOSED,required_agent_type added to WorkItem/RoutingDecision/RoutingContext; PA project constraints enforced

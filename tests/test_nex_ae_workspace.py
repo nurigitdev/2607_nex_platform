@@ -4,10 +4,6 @@ from types import SimpleNamespace
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine, text
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy.pool import StaticPool
-
 from nex_ae_api.workspace import (
     DEFAULT_TENANT_ID,
     DEFAULT_USER_ID,
@@ -29,7 +25,9 @@ from nex_runtime import (
     issue_mock_service_token,
     issue_mock_user_token,
 )
-
+from sqlalchemy import create_engine, text
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
 
 TRACE_ID = "4bf92f3577b34da6a3ce929d0e0e4736"
 REQUEST_ID = "0189f0ff-8f22-4f72-9b47-b481dc21bb21"
@@ -320,6 +318,15 @@ def test_workspace_routes_select_sql_repository_from_runtime() -> None:
                 activity_schema_version TEXT NOT NULL, activity_type TEXT NOT NULL,
                 trace_id TEXT NOT NULL, request_id TEXT NOT NULL, summary TEXT NOT NULL,
                 metadata TEXT NOT NULL, created_at TEXT NOT NULL
+            )
+        """))
+        connection.execute(text("""
+            CREATE TABLE ae_conversations (
+                conversation_id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL,
+                workspace_id TEXT NOT NULL, owner_user_id TEXT NOT NULL,
+                title TEXT NOT NULL, status TEXT NOT NULL,
+                next_journal_seq INTEGER NOT NULL, created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL, version INTEGER NOT NULL
             )
         """))
     factory = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)

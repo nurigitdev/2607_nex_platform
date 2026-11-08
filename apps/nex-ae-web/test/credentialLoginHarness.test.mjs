@@ -113,7 +113,7 @@ describe("AE Web credential login browser harness", () => {
     assert.equal(result.session_bootstrap.phase, "ready");
     assert.equal(result.session_bootstrap.active_client_mode, "fetch");
     assert.equal(result.route_guard.guard_status, "allowed");
-    assert.equal(result.route_guard.allowed_route_count, 4);
+    assert.equal(result.route_guard.allowed_route_count, 5);
     assert.equal(result.logout_session.status, "anonymous");
     assert.equal(result.login_request.route, "/api/v1/auth/session/login");
     assert.equal(result.login_request.password_submitted, true);

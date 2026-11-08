@@ -61,6 +61,65 @@ test("presents only an owner-verified response with validated citation quality",
   assert.equal(JSON.stringify(presentation.summary).includes("Grounded mock"), false);
 });
 
+test("presents a compiled semantic plan as an active Agent execution", async () => {
+  const workflow = {
+    ...(await completedWorkflow()),
+    status: "ACTIVE",
+    agentExecutionAdmitted: true,
+    groundingRequested: false
+  };
+  const presentation = await buildGroundedGenerationPresentation({ workflow });
+
+  assert.equal(presentation.displayMode, "AGENT_EXECUTION");
+  assert.equal(presentation.assistantText, "Agent가 요청을 처리하고 있습니다.");
+  assert.equal(presentation.agentExecutionAdmitted, true);
+  assert.equal(presentation.artifactHandoffAllowed, false);
+  assert.equal(presentation.summary.agent_execution_admitted, true);
+});
+
+test("projects an owner-verified batch result into the message presentation", async () => {
+  const workflow = await completedWorkflow();
+  const projection = {
+    schema_version: "p8.project_membership_batch_result_projection.v1",
+    operation_id: "PROJECT.MEMBERSHIP.ADD_MANY",
+    project_id: "project-batch",
+    member_role: "MEMBER",
+    overall_status: "PARTIALLY_APPLIED",
+    business_result_ref: "eos:batch",
+    summary: {
+      requested_count: 2,
+      admitted_count: 1,
+      applied_count: 1,
+      total_rejected_count: 1
+    },
+    items: [
+      {
+        stage: "OA_RESOLUTION",
+        input_index: 1,
+        subject_id: null,
+        normalized_employee_id: "emp-2",
+        outcome: "NAME_MISMATCH",
+        applied: false
+      },
+      {
+        stage: "EOS_COMMIT",
+        input_index: null,
+        subject_id: "subject-1",
+        normalized_employee_id: null,
+        outcome: "ADDED",
+        applied: true
+      }
+    ]
+  };
+  workflow.state.response.projectMembershipBatchResult = projection;
+
+  const presentation = await buildGroundedGenerationPresentation({ workflow });
+
+  assert.equal(presentation.projectMembershipBatchResult.appliedCount, 1);
+  assert.equal(presentation.projectMembershipBatchResult.rejectedCount, 1);
+  assert.equal("projectMembershipBatchResult" in presentation.summary, false);
+});
+
 test("blocks an original response when citation quality requires attention", async () => {
   const workflow = withCitationAction(
     await completedWorkflow(),

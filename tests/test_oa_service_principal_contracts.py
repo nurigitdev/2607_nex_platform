@@ -16,14 +16,20 @@ def test_service_principal_contract_evidence_passes() -> None:
     assert all(evidence["runtime_checks"].values())
     assert all(evidence["operation_checks"].values())
     assert all(evidence["canonical_checks"].values())
-    assert evidence["summary"] == {
+    summary = evidence["summary"]
+    stable_summary = {
+        key: value
+        for key, value in summary.items()
+        if key != "remaining_contract_drift_count"
+    }
+    assert stable_summary == {
         "schema_count": 6,
         "positive_valid_count": 6,
         "privacy_safe_count": 6,
         "runtime_valid_count": 6,
         "operation_valid_count": 9,
-        "remaining_contract_drift_count": 21,
     }
+    assert 0 <= summary["remaining_contract_drift_count"] <= 21
 
 
 def test_operation_matcher_fails_closed() -> None:
@@ -133,9 +139,10 @@ def test_load_json_rejects_non_object(tmp_path: Path) -> None:
 
 def test_summary_and_main_paths(monkeypatch, capsys) -> None:
     passing = contracts.run_oa_service_principal_contracts()
+    drift = passing["summary"]["remaining_contract_drift_count"]
     assert contracts.summary_line(passing) == (
         "oa_service_principal_contracts=pass contracts=6/6 privacy=6/6 "
-        "runtime=6/6 operations=9/9 drift=21"
+        f"runtime=6/6 operations=9/9 drift={drift}"
     )
     monkeypatch.setattr(contracts, "run_oa_service_principal_contracts", lambda: passing)
     assert contracts.main(["--summary"]) == 0

@@ -1,0 +1,170 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:nex:nsl:verified-skill-artifact:v2.1",
+  "title": "VerifiedSkillArtifact v2.1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "skill_id",
+    "skill_version",
+    "skill_semantic_hash",
+    "package_id",
+    "package_hash",
+    "publisher_id",
+    "signing_key_id",
+    "runtime_contract_ref",
+    "package_trust_evidence",
+    "artifact_admission_decision"
+  ],
+  "properties": {
+    "skill_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "skill_version": {
+      "type": "string",
+      "minLength": 1
+    },
+    "skill_semantic_hash": {
+      "type": "string",
+      "minLength": 1
+    },
+    "package_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "package_hash": {
+      "type": "string",
+      "minLength": 1
+    },
+    "publisher_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "signing_key_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "runtime_contract_ref": {
+      "type": "string",
+      "minLength": 1
+    },
+    "package_trust_evidence": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "$id": "urn:nex:nsl:package-trust-evidence:v2.1",
+      "title": "PackageTrustEvidence v2.1",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "package_id",
+        "package_hash",
+        "publisher_id",
+        "signing_key_id",
+        "verified_at",
+        "trust_policy_id",
+        "trust_status",
+        "governance_status",
+        "governance_decision_ref"
+      ],
+      "properties": {
+        "package_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "package_hash": {
+          "type": "string",
+          "minLength": 1
+        },
+        "publisher_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "signing_key_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "verified_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "trust_policy_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "trust_status": {
+          "const": "VALID"
+        },
+        "governance_status": {
+          "const": "ACTIVE"
+        },
+        "governance_decision_ref": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "artifact_admission_decision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "decision_id",
+        "decision",
+        "package_id",
+        "package_hash",
+        "publisher_id",
+        "signing_key_id",
+        "governance_status",
+        "trust_policy_id",
+        "package_trust_evidence_ref",
+        "reason_codes",
+        "decided_at"
+      ],
+      "properties": {
+        "decision_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "decision": {
+          "const": "ADMITTED"
+        },
+        "package_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "package_hash": {
+          "type": "string",
+          "minLength": 1
+        },
+        "publisher_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "signing_key_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "governance_status": {
+          "const": "ACTIVE"
+        },
+        "trust_policy_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "package_trust_evidence_ref": {
+          "type": "string",
+          "minLength": 1
+        },
+        "reason_codes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "decided_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    }
+  }
+}

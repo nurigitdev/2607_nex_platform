@@ -7,7 +7,7 @@ from typing import Any, Protocol
 
 import httpx
 
-from nex_runtime import SERVICE_SPECS
+from nex_runtime import SERVICE_RUNTIME_OPERATION_SPECS as SERVICE_SPECS
 from nex_ag.service_auth import resolve_ag_outbound_service_token
 
 
@@ -213,6 +213,7 @@ def ag_service_log_retention_token_env(service_id: str) -> str:
         "nex-ae-api": "AE",
         "nex-cx": "CX",
         "nex-mo": "MO",
+        "nex-wc": "WC",
     }
     return f"NEX_AG_TO_{suffix_by_service[service_id]}_SERVICE_TOKEN"
 

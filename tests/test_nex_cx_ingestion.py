@@ -4,22 +4,21 @@ import base64
 from io import BytesIO
 from pathlib import Path
 
+import nex_cx.ingestion as cx_ingestion
 import pytest
 from docx import Document
 from fastapi.testclient import TestClient
-from openpyxl import Workbook
-from pptx import Presentation
-from pptx.util import Inches
-
+from nex_cx.access_context import CxAccessContext
+from nex_cx.extractors import ExtractorOutput
 from nex_cx.ingestion import (
-    ContentIngestionStore,
     CX_SOURCE_FILE_MATERIALIZATION_RECEIPT_SCHEMA_VERSION,
-    CxStorageConfig,
-    IngestionError,
-    UPLOAD_OWNER_RESOLVER_DISABLED,
-    UPLOAD_OWNER_RESOLVER_VERIFY,
     SOURCE_READER_MATERIALIZED_LOCAL_FILE,
     SOURCE_READER_RUNTIME_MEMORY,
+    UPLOAD_OWNER_RESOLVER_DISABLED,
+    UPLOAD_OWNER_RESOLVER_VERIFY,
+    ContentIngestionStore,
+    CxStorageConfig,
+    IngestionError,
     build_ingestion_job,
     build_source_file_materialization_receipt,
     build_storage_config,
@@ -34,19 +33,17 @@ from nex_cx.ingestion import (
     register_ingestion_routes,
     resolve_upload_ownership,
     run_text_extraction_job,
-    sha256_bytes,
     sanitize_filename,
+    sha256_bytes,
     sha256_text,
-    source_content_from_payload,
     source_bytes_for_extraction,
+    source_content_from_payload,
     storage_date_partition,
     storage_paths_for_document,
     stored_extension_for,
     validate_upload_size,
     write_extracted_markdown,
 )
-import nex_cx.ingestion as cx_ingestion
-from nex_cx.extractors import ExtractorOutput
 from nex_cx.repository import CxContentRepositoryError, InMemoryCxContentRepository
 from nex_runtime import (
     SERVICE_SPECS,
@@ -54,6 +51,9 @@ from nex_runtime import (
     build_service_app,
     issue_mock_service_token,
 )
+from openpyxl import Workbook
+from pptx import Presentation
+from pptx.util import Inches
 
 TRACE_ID = "4bf92f3577b34da6a3ce929d0e0e4736"
 REQUEST_ID = "0189f0ff-8f22-4f72-9b47-b481dc21bb21"
@@ -370,7 +370,7 @@ def test_build_upload_registration_hashes_content_without_leaking_text(tmp_path:
 
     assert record["document_schema_version"] == "cx_upload_registration.v1"
     assert record["source_sha256"] == sha256_text("# MVP\nTraceable content")
-    assert record["size_bytes"] == len("# MVP\nTraceable content".encode("utf-8"))
+    assert record["size_bytes"] == len(b"# MVP\nTraceable content")
     assert record["retrieval_policy"]["chunk_policy"] == "chunk_1000_100"
     assert record["retrieval_policy"]["bm25_tokenizer_fallback"] == "korean_mixed_v1"
     assert record["ownership_ref"] == {
@@ -2673,3 +2673,106 @@ def test_document_and_job_reads_return_not_found(tmp_path: Path) -> None:
     assert document_response.json()["error_code"] == "cx.document_not_found"
     assert job_response.status_code == 404
     assert job_response.json()["error_code"] == "cx.ingestion_job_not_found"
+
+
+def test_retrieval_metadata_rejects_cross_owner_and_malformed_lineage() -> None:
+    store = ContentIngestionStore()
+    package = {
+        "retrieval_package_id": "package-edge",
+        "tenant_id": "tenant-a",
+        "owner_user_id": "user-a",
+    }
+    store.save_retrieval_package(package)
+    other_owner = CxAccessContext(
+        caller_service_id="nex-ae-api",
+        tenant_id="tenant-a",
+        subject_id="user-b",
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        scopes=(),
+    )
+    assert store.get_retrieval_package(
+        "package-edge", access_context=other_owner
+    ) is None
+
+    required = {
+        "created_at": "2026-11-01T00:00:00Z",
+        "evidence_items": "malformed",
+        "package_hash": "a" * 64,
+        "permission_snapshot": {},
+        "purpose": "grounded_answer",
+        "query_text": "safe",
+        "request_id": REQUEST_ID,
+        "retrieval_package_id": "package-malformed",
+        "retrieval_profile": {},
+        "score_summary": {},
+        "source_summary": {},
+        "status": "READY",
+        "trace_id": TRACE_ID,
+        "updated_at": "2026-11-01T00:00:00Z",
+    }
+    store.save_retrieval_package(required)
+    required["evidence_items"] = ["not-an-object"]
+    store.save_retrieval_package(required)
+    required["evidence_items"] = [{"content_object_id": "", "chunk_id": "chunk"}]
+    store.save_retrieval_package(required)
+    required["evidence_items"] = [
+        {"content_object_id": "missing-document", "chunk_id": "chunk"}
+    ]
+    store.save_retrieval_package(required)
+
+
+def test_ingestion_visibility_and_storage_metadata_fail_closed(tmp_path: Path) -> None:
+    store = ContentIngestionStore()
+    access = CxAccessContext(
+        caller_service_id="nex-ae-api",
+        tenant_id="tenant-a",
+        subject_id="user-a",
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        scopes=(),
+    )
+    assert cx_ingestion._job_visible_to_owner(store, None, access) is False
+    assert cx_ingestion._job_visible_to_owner(
+        store, {"subject_ref": {"type": "other", "id": "doc"}}, access
+    ) is False
+    assert cx_ingestion._document_visible_to_owner(store, None, access) is False
+
+    record = {
+        "content_type": "text/plain",
+        "storage": {"source_storage_path": "/private/path"},
+    }
+    aligned = cx_ingestion.align_upload_registration_to_source_file(
+        record,
+        {
+            "storage_backend": "s3_compatible",
+            "storage_key": "tenant-a/source",
+            "stored_filename": "source.txt",
+            "stored_extension": ".txt",
+            "content_type": "application/octet-stream",
+        },
+    )
+    assert aligned["storage"]["source_content_type"] == "application/octet-stream"
+    assert "source_storage_path" not in aligned["storage"]
+
+    bad_config = CxStorageConfig(
+        **{
+            **storage_config(tmp_path).__dict__,
+            "private_storage_mode": "unsupported",
+        }
+    )
+    with pytest.raises(IngestionError) as storage_mode:
+        cx_ingestion.storage_paths_for_document(
+            storage_config=bad_config,
+            document_id="document-a",
+            source_file_id="source-a",
+            source_sha256="a" * 64,
+            filename="source.txt",
+        )
+    assert storage_mode.value.error_code == "cx.private_storage_mode_invalid"
+
+    with pytest.raises(IngestionError) as subject_ref:
+        cx_ingestion._required_subject_ref(
+            "not-an-object", field_name="tenant_ref", expected_type="oa.tenant"
+        )
+    assert subject_ref.value.error_code == "cx.upload_owner_invalid"

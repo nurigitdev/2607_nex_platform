@@ -1,0 +1,7 @@
+﻿Issue,Class,Title,Status,Closure
+E2E02-P1-01,P1,ApprovalWorkItem domain-specific binding constraints,CLOSED,NSL_WRITE/AGENT_FORMAL conditional required bindings added.
+E2E02-P1-02,P1,ApprovalDecision OA evidence reference nullable,CLOSED,oa_decision_ref is now required and non-null.
+E2E02-P1-03,P1,RESUME mode conditional contract,CLOSED,mode=RESUME requires non-empty resume_token_ref + approval_evidence_ref.
+E2E02-PCG-01,PCG,NSL ApprovalEvidence / Resume bridge missing,CLOSED,approval-evidence-v2.1 + nsl-approval-resume-v2.1 added; typed binding validator added.
+E2E06-PCG-01,PCG,EA-Trust actual WRITE binding not typed,CLOSED,ProtectedOperationDescriptor / OperationTrustDecision / GovernedWriteAuthorization schemas + typed port/validator added.
+E2E07-PCG-01,PCG,PackageTrustEvidence / artifact admission missing,CLOSED,PackageTrustEvidence / ArtifactAdmissionDecision / VerifiedSkillArtifact schemas + typed gateway return/admission validator added.

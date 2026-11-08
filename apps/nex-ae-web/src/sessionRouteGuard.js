@@ -13,6 +13,7 @@ export const AE_WEB_SESSION_ROUTE_GUARD_SCHEMA_VERSION =
 
 export const AE_WEB_PROTECTED_ROUTE_IDS = [
   "auth_session",
+  "approval_inbox",
   "document_detail",
   "upload_handoff",
   "retrieval_context"
@@ -20,6 +21,7 @@ export const AE_WEB_PROTECTED_ROUTE_IDS = [
 
 const PROTECTED_ROUTE_TEMPLATES = {
   auth_session: "/api/v1/auth/session",
+  approval_inbox: "/api/v1/approval-gates",
   document_detail: "/api/v1/documents/{document_id}",
   upload_handoff: "/api/v1/uploads",
   retrieval_context: "/api/v1/retrieval/contexts"

@@ -1,0 +1,138 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:nex:transition:p5:step-result:1.1",
+  "title": "NeX P5 StepResult v1.1 Transition Contract",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "step_result_id",
+    "execution_id",
+    "executable_plan_id",
+    "executable_step_id",
+    "compiled_step_key",
+    "logical_step_ref",
+    "attempt_no",
+    "status",
+    "result_contract_ref",
+    "result_payload",
+    "external_refs",
+    "artifact_refs",
+    "evidence_refs",
+    "business_operation_id",
+    "operation_fingerprint",
+    "started_at",
+    "completed_at",
+    "result_hash"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "1.1"
+    },
+    "step_result_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "execution_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "executable_plan_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "executable_step_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "compiled_step_key": {
+      "type": "string",
+      "pattern": "^E[0-9]{1,3}$"
+    },
+    "logical_step_ref": {
+      "type": "string",
+      "pattern": "^S[0-9]{1,3}$"
+    },
+    "attempt_no": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "status": {
+      "enum": [
+        "SUCCEEDED",
+        "FAILED",
+        "BLOCKED",
+        "CANCELLED"
+      ]
+    },
+    "result_contract_ref": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256
+    },
+    "result_payload": {
+      "type": "object"
+    },
+    "external_refs": {
+      "type": "array",
+      "maxItems": 64,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 256
+      }
+    },
+    "artifact_refs": {
+      "type": "array",
+      "maxItems": 64,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 256
+      }
+    },
+    "evidence_refs": {
+      "type": "array",
+      "maxItems": 128,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 256
+      }
+    },
+    "error_ref": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "maxLength": 256
+    },
+    "business_operation_id": {
+      "const": null
+    },
+    "operation_fingerprint": {
+      "const": null
+    },
+    "started_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "completed_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "result_hash": {
+      "$ref": "#/$defs/semanticHash"
+    }
+  },
+  "$defs": {
+    "semanticHash": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "sha256Digest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    }
+  }
+}

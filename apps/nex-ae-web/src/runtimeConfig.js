@@ -6,6 +6,7 @@ export const AE_WEB_RUNTIME_CONFIG_SCHEMA_VERSION = "ae_web_runtime_config.v1";
 export const AE_WEB_RUNTIME_CONFIG_ELEMENT_ID = "ae-web-runtime-config";
 
 const DEFAULT_FEATURES = {
+  approval_inbox_enabled: true,
   document_detail_enabled: true,
   upload_submit_enabled: true,
   retrieval_submit_enabled: true,

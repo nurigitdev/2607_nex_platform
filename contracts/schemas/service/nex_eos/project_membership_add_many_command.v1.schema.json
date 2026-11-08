@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_eos/project_membership_add_many_command.v1.schema.json",
+  "title": "EOS Project Membership Add Many Command v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "tenant_id",
+    "business_operation_id",
+    "idempotency_key",
+    "payload_hash",
+    "requester_subject_id",
+    "project_id",
+    "target_subject_ids",
+    "member_role",
+    "resolution_evidence_hash"
+  ],
+  "properties": {
+    "schema_version": {"const": "eos_project_membership_add_many_command.v1"},
+    "tenant_id": {"$ref": "#/$defs/scoped_id"},
+    "business_operation_id": {"$ref": "#/$defs/uuid"},
+    "idempotency_key": {"type": "string", "minLength": 1, "maxLength": 256},
+    "payload_hash": {"$ref": "#/$defs/hash_ref"},
+    "requester_subject_id": {"$ref": "#/$defs/scoped_id"},
+    "requested_operation": {"const": "PROJECT.MEMBERSHIP.ADD_MANY"},
+    "project_id": {"$ref": "#/$defs/uuid"},
+    "target_subject_ids": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 50,
+      "uniqueItems": true,
+      "items": {"$ref": "#/$defs/scoped_id"}
+    },
+    "member_role": {"enum": ["OWNER", "MANAGER", "MEMBER", "VIEWER"]},
+    "resolution_evidence_hash": {"$ref": "#/$defs/hash_ref"}
+  },
+  "$defs": {
+    "scoped_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:@-]{0,127}$"
+    },
+    "uuid": {"type": "string", "format": "uuid"},
+    "hash_ref": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}
+  }
+}

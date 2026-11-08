@@ -79,7 +79,7 @@ def test_run_static_browser_smoke_passes_with_fake_server() -> None:
 def test_run_static_browser_smoke_reports_missing_anchor_without_server() -> None:
     result = ae_web_smoke.run_static_browser_smoke(
         start_server=False,
-        opener=lambda url: FakeResponse("Slice 0227"),
+        opener=lambda url: FakeResponse("NeX-Platform"),
         sleeper=lambda seconds: None,
     )
 

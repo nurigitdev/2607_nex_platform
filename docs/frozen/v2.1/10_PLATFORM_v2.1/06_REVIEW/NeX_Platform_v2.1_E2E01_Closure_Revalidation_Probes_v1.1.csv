@@ -1,0 +1,11 @@
+﻿Probe,Check,PASS,Detail
+E01-R01,SkillExecutionRequest with required security refs,True,
+E01-R02,Missing principal_context_ref rejected,True,'principal_context_ref' is a required property
+E01-R03,Missing data_policy_ref rejected,True,'data_policy_ref' is a required property
+E01-R04,Empty principal_context_ref rejected,True,'' should be non-empty
+E01-R05,Empty data_policy_ref rejected,True,'' should be non-empty
+E01-R06,Verified artifact ref valid,True,
+E01-R07,READ typed result valid,True,
+E01-X01,Exact skill/version and NSL identities preserved,True,
+E01-X02,READ has no approval/write state,True,
+E01-X03,NSLSecurityContextResolver present,True,

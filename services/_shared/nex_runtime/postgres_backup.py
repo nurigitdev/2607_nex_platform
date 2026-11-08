@@ -1,18 +1,17 @@
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
-from dataclasses import asdict, dataclass
-from datetime import datetime, timezone
 import hashlib
 import json
 import os
-from pathlib import Path
 import re
 import subprocess
+from collections.abc import Callable, Mapping
+from dataclasses import asdict, dataclass
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
 from .postgres_resilience import PostgresBackupTarget, PostgresResiliencePolicy
-
 
 BACKUP_MANIFEST_SCHEMA_VERSION = "postgres_logical_backup_manifest.v1"
 SAFE_ID = re.compile(r"^[a-z0-9][a-z0-9-]{0,62}$")
@@ -80,6 +79,39 @@ def build_logical_backup_plan(
     separate_mount_verified: bool = False,
 ) -> LogicalBackupPlan:
     _validate_target(policy, target)
+    return build_service_logical_backup_plan(
+        service_id=target.service_id,
+        libpq_service=target.libpq_service,
+        backup_id=backup_id,
+        backup_root=backup_root,
+        pg_dump_bin=pg_dump_bin,
+        service_file=service_file,
+        passfile=passfile,
+        compression=policy.compression,
+        postgres_major=policy.postgres_major,
+        parent_environ=parent_environ,
+        production=production,
+        separate_mount_verified=separate_mount_verified,
+    )
+
+
+def build_service_logical_backup_plan(
+    *,
+    service_id: str,
+    libpq_service: str,
+    backup_id: str,
+    backup_root: Path,
+    pg_dump_bin: Path,
+    service_file: Path,
+    passfile: Path,
+    compression: str,
+    postgres_major: int,
+    parent_environ: Mapping[str, str] | None = None,
+    production: bool = False,
+    separate_mount_verified: bool = False,
+) -> LogicalBackupPlan:
+    if not SAFE_ID.fullmatch(service_id):
+        raise PostgresBackupError("backup_service_id_invalid")
     if not SAFE_BACKUP_ID.fullmatch(backup_id):
         raise PostgresBackupError("backup_id_invalid")
     if not pg_dump_bin.is_absolute():
@@ -88,12 +120,14 @@ def build_logical_backup_plan(
         raise PostgresBackupError("credential_file_path_not_absolute")
     if production and (not backup_root.is_absolute() or not separate_mount_verified):
         raise PostgresBackupError("production_backup_mount_not_verified")
-    if target.libpq_service.startswith("service=") or not SAFE_ID.fullmatch(
-        target.libpq_service
-    ):
+    if libpq_service.startswith("service=") or not SAFE_ID.fullmatch(libpq_service):
         raise PostgresBackupError("libpq_service_invalid")
+    if not isinstance(compression, str) or not compression.startswith("gzip:"):
+        raise PostgresBackupError("backup_compression_invalid")
+    if isinstance(postgres_major, bool) or postgres_major < 1:
+        raise PostgresBackupError("backup_postgres_major_invalid")
 
-    service_directory = backup_root / target.service_id
+    service_directory = backup_root / service_id
     archive_name = f"{backup_id}.dump"
     environment = build_libpq_file_environment(
         parent_environ or os.environ,
@@ -102,16 +136,16 @@ def build_logical_backup_plan(
     )
     command = (
         str(pg_dump_bin),
-        f"--dbname=service={target.libpq_service}",
+        f"--dbname=service={libpq_service}",
         "--format=custom",
-        f"--compress={policy.compression}",
+        f"--compress={compression}",
         "--no-owner",
         "--no-privileges",
         "--serializable-deferrable",
         "--lock-wait-timeout=30000",
     )
     return LogicalBackupPlan(
-        service_id=target.service_id,
+        service_id=service_id,
         backup_id=backup_id,
         command=command,
         environment=environment,
@@ -119,8 +153,8 @@ def build_logical_backup_plan(
         partial_path=service_directory / f".{archive_name}.partial",
         archive_path=service_directory / archive_name,
         manifest_path=service_directory / f"{backup_id}.manifest.json",
-        compression=policy.compression,
-        postgres_major=policy.postgres_major,
+        compression=compression,
+        postgres_major=postgres_major,
     )
 
 
@@ -201,9 +235,7 @@ def build_libpq_file_environment(
     parent: Mapping[str, str], *, service_file: Path, passfile: Path
 ) -> dict[str, str]:
     environment = {
-        name: value
-        for name in SAFE_PARENT_ENV_NAMES
-        if (value := parent.get(name))
+        name: value for name in SAFE_PARENT_ENV_NAMES if (value := parent.get(name))
     }
     environment.update(
         {

@@ -1,0 +1,46 @@
+{
+  "design_schema_version": "cx_deferred_live_runner_reconciliation_design.v1",
+  "design_id": "gb2-ca00-s20ra-deferred-live-runner-runtime-reconciliation-v1",
+  "status": "FROZEN",
+  "design_hash": "sha256:b0e0c6a1db1b1d3f2a289703fcac663778c30a9032aa2f13201f45a509f56fc1",
+  "source_binding": {
+    "s20q_closure_document_hash": "sha256:47ad1cf68d789acba9b6b3fc7b157427b99eff15489a92edf15d7c7e1ce1aac7",
+    "s20q_closure_hash": "sha256:5a2cb9c019d78e55c12288903764b0421d69100a68f04788c82bb5fd7095f4e0",
+    "selected_policy_hash": "sha256:c81f7a0bf3d3d72d7bbc5de1f564ada3b415f2206689c1939fcb925f172168cb"
+  },
+  "runner_mapping": {
+    "s136": {
+      "historical_runner": "run_s136_permission_hybrid_live_postgres_smoke",
+      "replay_runner": "run_gb2_s20qpa_vector_near_tie_ordering",
+      "retired_v1_calibration_reexecution_permitted": false
+    },
+    "s137": {
+      "runner": "run_platform_grounded_generation_artifact_live_postgres_smoke",
+      "shared_product_runtime_composition_required": true,
+      "answer_support_primary_policy_required": true
+    }
+  },
+  "provider_binding": {
+    "embedding": {
+      "model": "Qwen3-Embedding-4B",
+      "revision": "hf:5cf2132abc99cad020ac570b19d031efec650f2b"
+    },
+    "reranking": {
+      "model": "Qwen3-Reranker-4B",
+      "revision": "hf:22e683669bc0f0bd69640a1354a6d0aebcfeede5"
+    },
+    "generation": {
+      "deployment_id": "dgx-qwen3-5-9b-9116",
+      "model": "Qwen3.5-9B",
+      "revision": "hf:c202236235762e1c871ad0ccb60c8ee5ba337b9a"
+    }
+  },
+  "safety": {
+    "holdout_access_permitted": false,
+    "holdout_reexecution_permitted": false,
+    "threshold_or_profile_reselection_permitted": false,
+    "database_migration_change_permitted": false,
+    "public_api_change_permitted": false,
+    "historical_evidence_mutation_permitted": false
+  }
+}

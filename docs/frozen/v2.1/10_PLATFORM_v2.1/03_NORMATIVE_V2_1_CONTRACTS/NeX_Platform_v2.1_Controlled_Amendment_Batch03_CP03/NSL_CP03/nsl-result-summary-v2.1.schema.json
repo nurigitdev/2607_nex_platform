@@ -1,0 +1,235 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:nex:ae:nsl:result-summary:v2.1",
+  "title": "NSLResultSummary v2.1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "nsl_execution_id",
+    "business_operation_id",
+    "execution_status"
+  ],
+  "properties": {
+    "nsl_execution_id": {
+      "type": "string"
+    },
+    "business_operation_id": {
+      "type": "string"
+    },
+    "skill_id": {
+      "type": "string"
+    },
+    "skill_version": {
+      "type": "string"
+    },
+    "skill_semantic_hash": {
+      "type": "string"
+    },
+    "execution_status": {
+      "enum": [
+        "CREATED",
+        "RUNNING",
+        "WAITING_FOR_APPROVAL",
+        "RECONCILIATION_REQUIRED",
+        "COMPLETED",
+        "FAILED",
+        "TOOL_ERROR",
+        "VALIDATION_ERROR",
+        "LIMIT_EXCEEDED",
+        "CANCELLED"
+      ]
+    },
+    "pre_write_eligibility": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "approval_request_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "commit_state": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "enum": [
+        "COMMITTED",
+        "NOT_COMMITTED",
+        "UNKNOWN_COMMIT_STATE",
+        null
+      ]
+    },
+    "verification_status": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "enum": [
+        "NOT_REQUESTED",
+        "VERIFIED",
+        "FAILED",
+        "UNKNOWN",
+        null
+      ]
+    },
+    "suspension_ref": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "idempotency_key_ref": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "payload_hash": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "write_intent_hash": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "business_reference": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "provider_transaction_ref": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "result_ref": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "evidence_refs": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "retry_safety": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "enum": [
+        "SAFE_TO_RETRY",
+        "UNSAFE_TO_RETRY",
+        "REQUIRES_RECONCILIATION",
+        null
+      ]
+    },
+    "retry_safety_evidence_ref": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "commit_state": {
+            "const": "UNKNOWN_COMMIT_STATE"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "execution_status": {
+            "const": "RECONCILIATION_REQUIRED"
+          },
+          "retry_safety": {
+            "const": "REQUIRES_RECONCILIATION"
+          },
+          "verification_status": {
+            "enum": [
+              "NOT_REQUESTED",
+              "UNKNOWN"
+            ]
+          }
+        },
+        "required": [
+          "verification_status",
+          "retry_safety"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "commit_state": {
+            "const": "COMMITTED"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "verification_status": {
+            "enum": [
+              "NOT_REQUESTED",
+              "VERIFIED",
+              "FAILED",
+              "UNKNOWN"
+            ]
+          },
+          "retry_safety": {
+            "const": "UNSAFE_TO_RETRY"
+          }
+        },
+        "required": [
+          "verification_status",
+          "retry_safety"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "commit_state": {
+            "const": "NOT_COMMITTED"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "verification_status": {
+            "enum": [
+              "NOT_REQUESTED",
+              "FAILED",
+              "UNKNOWN"
+            ]
+          },
+          "retry_safety": {
+            "enum": [
+              "SAFE_TO_RETRY",
+              "UNSAFE_TO_RETRY"
+            ]
+          }
+        },
+        "required": [
+          "verification_status",
+          "retry_safety"
+        ]
+      }
+    }
+  ]
+}

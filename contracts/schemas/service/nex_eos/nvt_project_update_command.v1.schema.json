@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_eos/nvt_project_update_command.v1.schema.json",
+  "title": "EOS NVTProject Update Command v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "tenant_id",
+    "business_operation_id",
+    "idempotency_key",
+    "payload_hash",
+    "requester_subject_id",
+    "nvt_project_id",
+    "expected_version",
+    "changes"
+  ],
+  "properties": {
+    "schema_version": {"const": "eos_nvt_project_update_command.v1"},
+    "tenant_id": {"$ref": "#/$defs/scoped_id"},
+    "business_operation_id": {"$ref": "#/$defs/uuid"},
+    "idempotency_key": {"type": "string", "minLength": 1, "maxLength": 256},
+    "payload_hash": {"$ref": "#/$defs/hash_ref"},
+    "requester_subject_id": {"$ref": "#/$defs/scoped_id"},
+    "requested_operation": {"const": "PROJECT.NVT_PROJECT.UPDATE"},
+    "nvt_project_id": {"$ref": "#/$defs/uuid"},
+    "expected_version": {"type": "integer", "minimum": 1},
+    "changes": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "maxProperties": 2,
+      "properties": {
+        "name": {"type": "string", "minLength": 1, "maxLength": 256},
+        "status": {"enum": ["ACTIVE", "INACTIVE"]}
+      }
+    }
+  },
+  "$defs": {
+    "scoped_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:@-]{0,127}$"
+    },
+    "uuid": {"type": "string", "format": "uuid"},
+    "hash_ref": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}
+  }
+}

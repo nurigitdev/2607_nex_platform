@@ -1,0 +1,109 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "NotificationView v2.1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "notification_id",
+    "type",
+    "target_ref",
+    "state",
+    "message"
+  ],
+  "properties": {
+    "notification_id": {
+      "type": "string"
+    },
+    "type": {
+      "type": "string"
+    },
+    "target_ref": {
+      "type": "string"
+    },
+    "state": {
+      "enum": [
+        "UNREAD",
+        "READ",
+        "HANDLED"
+      ]
+    },
+    "severity": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "message": {
+      "type": "string"
+    },
+    "source_type": {
+      "enum": [
+        "AGENT_RUNTIME",
+        "WC",
+        "NSL",
+        "EOS",
+        "OA",
+        "AG",
+        "SYSTEM"
+      ]
+    },
+    "source_ref": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "agent_execution_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "agent_type": {
+      "enum": [
+        "IA",
+        "CA",
+        "PA",
+        "EA",
+        null
+      ]
+    },
+    "project_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "approval_domain": {
+      "enum": [
+        "AGENT_FORMAL",
+        "NSL_WRITE",
+        null
+      ]
+    },
+    "action_refs": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "agent_result_ref": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "result_delivery_ref": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "publication_operation_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  }
+}

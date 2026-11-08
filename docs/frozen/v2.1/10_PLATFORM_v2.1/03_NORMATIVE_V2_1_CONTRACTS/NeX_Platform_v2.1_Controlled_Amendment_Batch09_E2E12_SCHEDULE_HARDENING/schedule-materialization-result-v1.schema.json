@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:nex:schema:wc:schedule-materialization-result:1.0",
+  "title": "ScheduleMaterializationResult v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "tenant_id",
+    "schedule_id",
+    "occurrence_id",
+    "schedule_version",
+    "materialization_key",
+    "work_item_payload_hash",
+    "work_item_id",
+    "outcome"
+  ],
+  "properties": {
+    "tenant_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "schedule_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "occurrence_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "schedule_version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "materialization_key": {
+      "type": "string",
+      "minLength": 1
+    },
+    "work_item_payload_hash": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "work_item_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "outcome": {
+      "enum": [
+        "CREATED",
+        "REUSED_EXISTING"
+      ]
+    },
+    "completed_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  }
+}

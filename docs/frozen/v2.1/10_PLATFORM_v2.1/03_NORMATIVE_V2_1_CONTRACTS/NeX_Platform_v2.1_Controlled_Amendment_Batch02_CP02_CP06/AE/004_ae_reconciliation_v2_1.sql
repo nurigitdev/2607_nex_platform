@@ -1,0 +1,26 @@
+-- NeX-AE Reconciliation control plane v2.1
+CREATE TABLE IF NOT EXISTS ae_reconciliation_case (
+    reconciliation_id        text        PRIMARY KEY,
+    tenant_id                text        NOT NULL,
+    agent_execution_id       text        NOT NULL,
+    executable_step_id       text        NOT NULL,
+    nsl_execution_id         text        NOT NULL,
+    business_operation_id    text        NOT NULL,
+    idempotency_key_ref      text        NOT NULL,
+    target_system            text        NOT NULL,
+    operation_ref            text        NULL,
+    business_object_ref      text        NULL,
+    reason                   text        NOT NULL,
+    state                    text        NOT NULL,
+    attempt_no               integer     NOT NULL DEFAULT 0,
+    first_detected_at        timestamptz NOT NULL DEFAULT now(),
+    next_check_at            timestamptz NULL,
+    deadline_at              timestamptz NULL,
+    evidence_ref             text        NOT NULL,
+    latest_outcome_ref       text        NULL,
+    correlation_id           text        NOT NULL,
+    causation_id             text        NULL,
+    created_at               timestamptz NOT NULL DEFAULT now(),
+    updated_at               timestamptz NOT NULL DEFAULT now(),
+    UNIQUE (tenant_id, agent_execution_id, executable_step_id, business_operation_id)
+);

@@ -164,6 +164,7 @@ def prepare_staging_runtime_directory(
     runtime_dir: Path,
     *,
     now: datetime | None = None,
+    owners: Sequence[str] = OWNERS,
 ) -> dict[str, Any]:
     if not runtime_dir.is_absolute():
         raise S143StagingError("S143 runtime directory must be absolute")
@@ -257,7 +258,8 @@ def prepare_staging_runtime_directory(
     )
     for name in ("platform.crt", "platform.key", "platform-ca.crt"):
         _write_bytes(tls_dir / name, b"pending\n", mode=0o644)
-    for owner in OWNERS:
+    admitted_owners = _owners(owners)
+    for owner in admitted_owners:
         _write_bytes(credential_dir / f"{owner}.role-id", b"pending\n", mode=0o644)
         _write_bytes(credential_dir / f"{owner}.secret-id", b"pending\n", mode=0o644)
     return {
@@ -414,13 +416,23 @@ def configure_openbao_staging(
     root: Path,
     runtime_dir: Path,
     secret_values: Mapping[str, str],
+    bindings: Sequence[Any] | None = None,
+    owners: Sequence[str] = OWNERS,
+    subject_alt_names: Sequence[str] = STAGING_HOSTS,
 ) -> dict[str, Any]:
-    bindings = tuple(
-        binding
-        for binding in load_production_configuration_manifest(root).bindings
-        if binding.input_kind == "external_secret_reference"
+    selected_bindings = (
+        tuple(bindings)
+        if bindings is not None
+        else tuple(
+            binding
+            for binding in load_production_configuration_manifest(root).bindings
+            if binding.input_kind == "external_secret_reference"
+        )
     )
-    expected = {binding.target_environment_name for binding in bindings}
+    admitted_owners = _owners(owners)
+    if {binding.owner for binding in selected_bindings} != set(admitted_owners):
+        raise S143StagingError("S143 staging binding owner coverage is invalid")
+    expected = {binding.target_environment_name for binding in selected_bindings}
     if set(secret_values) != expected or any(
         not _secret_value(value) for value in secret_values.values()
     ):
@@ -441,10 +453,10 @@ def configure_openbao_staging(
     versions = write_openbao_secret_generation(
         client,
         root_token=root_token,
-        bindings=bindings,
+        bindings=selected_bindings,
         secret_values=secret_values,
     )
-    for owner in OWNERS:
+    for owner in admitted_owners:
         policy_name = owner.replace("nex-", "nex-") + "-staging"
         policy = (
             f'path "kv/data/nex-platform/staging/{owner}/*" {{\n'
@@ -474,6 +486,7 @@ def configure_openbao_staging(
         client,
         root_token=root_token,
         runtime_dir=runtime_dir,
+        owners=admitted_owners,
     )
     client.request(
         "POST",
@@ -507,6 +520,7 @@ def configure_openbao_staging(
         client,
         root_token=root_token,
         runtime_dir=runtime_dir,
+        subject_alt_names=subject_alt_names,
     )
     ca_data = ca_response.get("data")
     if not isinstance(ca_data, Mapping) or not _pem(ca_data.get("certificate")):
@@ -514,8 +528,8 @@ def configure_openbao_staging(
     return {
         "schema_version": S143_STAGING_SCHEMA_VERSION,
         "status": "CONFIGURED",
-        "secret_count": len(bindings),
-        "owner_count": len(OWNERS),
+        "secret_count": len(selected_bindings),
+        "owner_count": len(admitted_owners),
         "secret_versions": sorted(set(versions.values())),
         "certificate_serial": certificate["serial_number"],
         "raw_secret_values_included": False,
@@ -552,9 +566,10 @@ def refresh_openbao_approle_credentials(
     *,
     root_token: str,
     runtime_dir: Path,
+    owners: Sequence[str] = OWNERS,
 ) -> None:
     credential_dir = runtime_dir / "credentials"
-    for owner in OWNERS:
+    for owner in _owners(owners):
         role_name = f"{owner}-staging"
         role_response = client.request(
             "GET",
@@ -677,3 +692,18 @@ def _secret_value(value: object) -> bool:
 
 def _pem(value: object) -> bool:
     return isinstance(value, str) and value.startswith("-----BEGIN ")
+
+
+def _owners(values: Sequence[str]) -> tuple[str, ...]:
+    owners = tuple(values)
+    if (
+        not owners
+        or len(owners) != len(set(owners))
+        or any(
+            not isinstance(owner, str)
+            or re.fullmatch(r"nex-[a-z][a-z0-9-]{1,31}", owner) is None
+            for owner in owners
+        )
+    ):
+        raise S143StagingError("S143 staging owner inventory is invalid")
+    return owners

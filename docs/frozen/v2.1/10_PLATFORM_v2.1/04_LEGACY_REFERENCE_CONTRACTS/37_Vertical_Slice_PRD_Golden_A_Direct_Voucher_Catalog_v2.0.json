@@ -1,0 +1,1257 @@
+{
+  "document": "37_Vertical_Slice_PRD_Golden_A_Direct_Voucher_v2.0",
+  "version": "v2.0",
+  "date": "2026-09-04",
+  "repository_evidence_status": "PENDING",
+  "scenario": {
+    "scenario_id": "GSA-DIRECT-VOUCHER-001",
+    "user_prompt": "A 프로젝트 출장비 84,000원을 전표로 등록해줘.",
+    "expected_intent": "ACCOUNTING_EXPENSE_VOUCHER_CREATE",
+    "selectors": {
+      "project": "A 프로젝트",
+      "expense_type": "출장비"
+    },
+    "amount": 84000,
+    "currency": "KRW",
+    "happy_path_policy_fixture": {
+      "human_confirmation_required": true,
+      "formal_approval_required": false,
+      "cx_required": false
+    },
+    "deterministic_fixture_rules": [
+      "employee/business actor comes from OA EAC, never prompt",
+      "project selector resolves via canonical resolver",
+      "expense account resolves via canonical account/capability mapping",
+      "currency/company defaults come from server policy, not LLM guess",
+      "if any mandatory field cannot be resolved deterministically, clarification is required before side effect"
+    ]
+  },
+  "counts": {
+    "MUST": 95,
+    "SHOULD": 9
+  },
+  "requirements": [
+    {
+      "section": "4.1 Slice Scope & Evidence Gate",
+      "id": "NEX-PRD37-SCP-FR-001",
+      "priority": "MUST",
+      "requirement": "PRD 37의 유일한 핵심 사용자 가치는 자연어로 A 프로젝트 출장비 84,000원 전표 등록을 요청하고 authoritative Voucher 결과를 확인하는 것이다.",
+      "verification": "Business Review",
+      "parent": "36/31/29/16/17"
+    },
+    {
+      "section": "4.1 Slice Scope & Evidence Gate",
+      "id": "NEX-PRD37-SCP-FR-002",
+      "priority": "MUST",
+      "requirement": "본 PRD는 36 INC-2 Golden Slice A를 구현하며 00~36 Architecture Baseline을 재정의하지 않아야 한다.",
+      "verification": "Traceability Review",
+      "parent": "36/31/29/16/17"
+    },
+    {
+      "section": "4.1 Slice Scope & Evidence Gate",
+      "id": "NEX-PRD37-SCP-FR-003",
+      "priority": "MUST",
+      "requirement": "Repository Evidence 미확인 상태에서 실제 repo/path/class/table/endpoint 이름을 확정하지 않고 논리 Component/Contract/Task 단위로 정의해야 한다.",
+      "verification": "Evidence Gate",
+      "parent": "36/31/29/16/17"
+    },
+    {
+      "section": "4.1 Slice Scope & Evidence Gate",
+      "id": "NEX-PRD37-SCP-FR-004",
+      "priority": "MUST",
+      "requirement": "기존 code modification/disposition은 repo/DB/API/Test evidence 확인 전 NOT ASSESSED를 유지해야 한다.",
+      "verification": "Governance Review",
+      "parent": "36/31/29/16/17"
+    },
+    {
+      "section": "4.1 Slice Scope & Evidence Gate",
+      "id": "NEX-PRD37-SCP-FR-005",
+      "priority": "MUST",
+      "requirement": "Happy Path는 CX가 unavailable/disabled여도 성공해야 한다.",
+      "verification": "Golden E2E",
+      "parent": "36/31/29/16/17"
+    },
+    {
+      "section": "4.1 Slice Scope & Evidence Gate",
+      "id": "NEX-PRD37-SCP-FR-006",
+      "priority": "MUST",
+      "requirement": "Formal Approval의 장기 WAIT/Resume 구현은 PRD 38 범위이며, PRD 37은 Structured Human Confirmation까지를 직접 구현한다.",
+      "verification": "Scope Review",
+      "parent": "36/31/29/16/17"
+    },
+    {
+      "section": "4.1 Slice Scope & Evidence Gate",
+      "id": "NEX-PRD37-SCP-FR-007",
+      "priority": "MUST",
+      "requirement": "현재 정책이 Formal Approval을 요구하면 PRD 37은 write를 우회하지 않고 WAITING_APPROVAL/BLOCKED 또는 명확한 handoff state를 반환해야 한다.",
+      "verification": "Security E2E",
+      "parent": "36/31/29/16/17"
+    },
+    {
+      "section": "4.1 Slice Scope & Evidence Gate",
+      "id": "NEX-PRD37-SCP-FR-008",
+      "priority": "MUST",
+      "requirement": "NSL 내부 Compiler/Runtime/Registry 구현을 AE에 복제하지 않고 existing NeX-NSL runtime을 SkillExecutionPort로 호출해야 한다.",
+      "verification": "Architecture Review",
+      "parent": "36/31/29/16/17"
+    },
+    {
+      "section": "4.2 User Input & Workspace",
+      "id": "NEX-PRD37-UX-FR-001",
+      "priority": "MUST",
+      "requirement": "AE Workspace는 natural language prompt `A 프로젝트 출장비 84,000원을 전표로 등록해줘.`를 제출할 수 있어야 한다.",
+      "verification": "Playwright",
+      "parent": "29/31/33"
+    },
+    {
+      "section": "4.2 User Input & Workspace",
+      "id": "NEX-PRD37-UX-FR-002",
+      "priority": "MUST",
+      "requirement": "요청 접수 직후 request_id/session_id/correlation_id를 생성 또는 전달하고 사용자에게 processing state를 표시해야 한다.",
+      "verification": "E2E Trace",
+      "parent": "29/31/33"
+    },
+    {
+      "section": "4.2 User Input & Workspace",
+      "id": "NEX-PRD37-UX-FR-003",
+      "priority": "MUST",
+      "requirement": "사용자 화면은 실행 전 structured review에 project, expense type/account label, amount, currency, actor, action type을 표시해야 한다.",
+      "verification": "UX Test",
+      "parent": "29/31/33"
+    },
+    {
+      "section": "4.2 User Input & Workspace",
+      "id": "NEX-PRD37-UX-FR-004",
+      "priority": "MUST",
+      "requirement": "Workspace는 LLM이 생성한 free-form 문장을 Formal Approval 또는 Confirmation result로 취급해서는 안 된다.",
+      "verification": "Security Test",
+      "parent": "29/31/33"
+    },
+    {
+      "section": "4.2 User Input & Workspace",
+      "id": "NEX-PRD37-UX-FR-005",
+      "priority": "MUST",
+      "requirement": "필수 parameter가 unresolved/ambiguous이면 write preview를 표시하지 않고 clarification을 요구해야 한다.",
+      "verification": "Boundary Test",
+      "parent": "29/31/33"
+    },
+    {
+      "section": "4.2 User Input & Workspace",
+      "id": "NEX-PRD37-UX-FR-006",
+      "priority": "MUST",
+      "requirement": "사용자 reject/cancel이 side-effect 이전이면 write를 실행하지 않고 terminal cancelled/rejected state를 표시해야 한다.",
+      "verification": "E2E Test",
+      "parent": "29/31/33"
+    },
+    {
+      "section": "4.2 User Input & Workspace",
+      "id": "NEX-PRD37-UX-FR-007",
+      "priority": "MUST",
+      "requirement": "사용자 reconnect/browser refresh 후 persisted execution/gate/result state를 복구하여 중복 business request를 만들지 않아야 한다.",
+      "verification": "Fault/Playwright",
+      "parent": "29/31/33"
+    },
+    {
+      "section": "4.2 User Input & Workspace",
+      "id": "NEX-PRD37-UX-FR-008",
+      "priority": "SHOULD",
+      "requirement": "Structured Review는 테스트/감사를 위해 machine-readable payload hash 또는 review_ref를 내부 provenance에 연결할 수 있어야 한다.",
+      "verification": "Audit Test",
+      "parent": "29/31/33"
+    },
+    {
+      "section": "4.3 Intent, Routing & Canonical Plan",
+      "id": "NEX-PRD37-PLAN-FR-001",
+      "priority": "MUST",
+      "requirement": "Intent Interpreter는 prompt를 schema-bounded WorkIntent로 변환하고 goal/work_class/entity selectors/parameter candidates를 구조화해야 한다.",
+      "verification": "Contract Test",
+      "parent": "11/12/29/36"
+    },
+    {
+      "section": "4.3 Intent, Routing & Canonical Plan",
+      "id": "NEX-PRD37-PLAN-FR-002",
+      "priority": "MUST",
+      "requirement": "LLM/Intent 단계는 Project ID, Account ID, Employee ID, approval result를 생성하거나 authority로 사용할 수 없어야 한다.",
+      "verification": "Adversarial Test",
+      "parent": "11/12/29/36"
+    },
+    {
+      "section": "4.3 Intent, Routing & Canonical Plan",
+      "id": "NEX-PRD37-PLAN-FR-003",
+      "priority": "MUST",
+      "requirement": "ACCOUNTING_EXPENSE_VOUCHER_CREATE에 exact Direct Binding이 존재하면 Plan Router는 DIRECT 경로를 우선할 수 있어야 한다.",
+      "verification": "Unit/Integration",
+      "parent": "11/12/29/36"
+    },
+    {
+      "section": "4.3 Intent, Routing & Canonical Plan",
+      "id": "NEX-PRD37-PLAN-FR-004",
+      "priority": "MUST",
+      "requirement": "Direct Binding이 없거나 invalid/stale이면 arbitrary skill을 선택하지 말고 bounded Known/Dynamic/Clarification 정책을 따라야 한다.",
+      "verification": "Negative Test",
+      "parent": "11/12/29/36"
+    },
+    {
+      "section": "4.3 Intent, Routing & Canonical Plan",
+      "id": "NEX-PRD37-PLAN-FR-005",
+      "priority": "MUST",
+      "requirement": "Happy Path AgentPlan은 범용 장기 Workflow가 아니라 하나의 protected voucher-create capability와 result/report 목표로 최소화해야 한다.",
+      "verification": "Plan Inspection",
+      "parent": "11/12/29/36"
+    },
+    {
+      "section": "4.3 Intent, Routing & Canonical Plan",
+      "id": "NEX-PRD37-PLAN-FR-006",
+      "priority": "MUST",
+      "requirement": "Plan Validator는 unknown step type/raw SQL/raw HTTP/raw script/actual approval result/actual assignee 같은 forbidden binding을 거부해야 한다.",
+      "verification": "Semantic Test",
+      "parent": "11/12/29/36"
+    },
+    {
+      "section": "4.3 Intent, Routing & Canonical Plan",
+      "id": "NEX-PRD37-PLAN-FR-007",
+      "priority": "MUST",
+      "requirement": "Plan Compiler는 stable IDs, exact capability/skill version, required Human Gate, idempotency/commit policy를 immutable ExecutablePlan에 고정해야 한다.",
+      "verification": "Compiler Test",
+      "parent": "11/12/29/36"
+    },
+    {
+      "section": "4.3 Intent, Routing & Canonical Plan",
+      "id": "NEX-PRD37-PLAN-FR-008",
+      "priority": "MUST",
+      "requirement": "Compiler는 protected write 앞에 HUMAN_CONFIRMATION step을 policy 결과에 따라 삽입해야 한다.",
+      "verification": "Security Test",
+      "parent": "11/12/29/36"
+    },
+    {
+      "section": "4.3 Intent, Routing & Canonical Plan",
+      "id": "NEX-PRD37-PLAN-FR-009",
+      "priority": "MUST",
+      "requirement": "ExecutablePlan은 current access token/raw secret을 포함하지 않고 policy/capability/skill/resolver refs 또는 hash를 provenance에 남겨야 한다.",
+      "verification": "Security/Audit",
+      "parent": "11/12/29/36"
+    },
+    {
+      "section": "4.3 Intent, Routing & Canonical Plan",
+      "id": "NEX-PRD37-PLAN-FR-010",
+      "priority": "SHOULD",
+      "requirement": "Direct Voucher Plan Summary는 사용자에게 목표/검토/확인/등록/결과 정도만 표시하고 내부 schema/secret/routing detail을 노출하지 않아야 한다.",
+      "verification": "UX Test",
+      "parent": "11/12/29/36"
+    },
+    {
+      "section": "4.4 Canonical Entity & Parameter Resolution",
+      "id": "NEX-PRD37-RES-FR-001",
+      "priority": "MUST",
+      "requirement": "`A 프로젝트` selector는 Canonical Resolver를 통해 하나의 stable project_ref로 결정되어야 한다.",
+      "verification": "Resolver Test",
+      "parent": "07/11/12/26/36"
+    },
+    {
+      "section": "4.4 Canonical Entity & Parameter Resolution",
+      "id": "NEX-PRD37-RES-FR-002",
+      "priority": "MUST",
+      "requirement": "동일/유사한 프로젝트가 복수 매칭되면 LLM 추측으로 선택하지 않고 clarification을 요구해야 한다.",
+      "verification": "Ambiguity Test",
+      "parent": "07/11/12/26/36"
+    },
+    {
+      "section": "4.4 Canonical Entity & Parameter Resolution",
+      "id": "NEX-PRD37-RES-FR-003",
+      "priority": "MUST",
+      "requirement": "`출장비`는 approved accounting/capability mapping을 통해 stable account/category ref로 결정되어야 한다.",
+      "verification": "Contract Test",
+      "parent": "07/11/12/26/36"
+    },
+    {
+      "section": "4.4 Canonical Entity & Parameter Resolution",
+      "id": "NEX-PRD37-RES-FR-004",
+      "priority": "MUST",
+      "requirement": "84,000원은 integer monetary amount 84000 + currency KRW로 type validation되어야 한다.",
+      "verification": "Unit Test",
+      "parent": "07/11/12/26/36"
+    },
+    {
+      "section": "4.4 Canonical Entity & Parameter Resolution",
+      "id": "NEX-PRD37-RES-FR-005",
+      "priority": "MUST",
+      "requirement": "business actor/employee_ref는 OA current EAC에서 가져오며 prompt의 사용자명/ID를 신뢰해서는 안 된다.",
+      "verification": "Security Test",
+      "parent": "07/11/12/26/36"
+    },
+    {
+      "section": "4.4 Canonical Entity & Parameter Resolution",
+      "id": "NEX-PRD37-RES-FR-006",
+      "priority": "MUST",
+      "requirement": "회사/통화/사업일자 같은 default는 server-side policy가 명시적으로 허용하는 값만 사용하고 LLM이 임의 보완해서는 안 된다.",
+      "verification": "Policy Test",
+      "parent": "07/11/12/26/36"
+    },
+    {
+      "section": "4.4 Canonical Entity & Parameter Resolution",
+      "id": "NEX-PRD37-RES-FR-007",
+      "priority": "MUST",
+      "requirement": "Canonical Voucher API가 요구하는 mandatory field가 deterministic하게 채워지지 않으면 side-effect 전에 clarification 또는 validation failure로 종료해야 한다.",
+      "verification": "Boundary Test",
+      "parent": "07/11/12/26/36"
+    },
+    {
+      "section": "4.4 Canonical Entity & Parameter Resolution",
+      "id": "NEX-PRD37-RES-FR-008",
+      "priority": "SHOULD",
+      "requirement": "Resolution 결과는 selector→stable ref→source/version을 trace evidence로 남길 수 있어야 한다.",
+      "verification": "Trace Test",
+      "parent": "07/11/12/26/36"
+    },
+    {
+      "section": "4.5 OA Authorization & Human Gate",
+      "id": "NEX-PRD37-AUTH-FR-001",
+      "priority": "MUST",
+      "requirement": "Protected voucher create flow는 OA가 server-side 생성한 current EAC/PDP decision을 사용해야 한다.",
+      "verification": "Security E2E",
+      "parent": "26/11/12/29/36"
+    },
+    {
+      "section": "4.5 OA Authorization & Human Gate",
+      "id": "NEX-PRD37-AUTH-FR-002",
+      "priority": "MUST",
+      "requirement": "PDP input에는 principal/business actor/RoleBinding/Org Scope/Project Scope/capability/risk/auth context/kill switch를 포함해야 한다.",
+      "verification": "Contract Test",
+      "parent": "26/11/12/29/36"
+    },
+    {
+      "section": "4.5 OA Authorization & Human Gate",
+      "id": "NEX-PRD37-AUTH-FR-003",
+      "priority": "MUST",
+      "requirement": "PDP deny 또는 required scope mismatch 시 NSL/Canonical API를 호출하지 않아야 한다.",
+      "verification": "Negative Security",
+      "parent": "26/11/12/29/36"
+    },
+    {
+      "section": "4.5 OA Authorization & Human Gate",
+      "id": "NEX-PRD37-AUTH-FR-004",
+      "priority": "MUST",
+      "requirement": "Project Scope가 resolved project_ref를 포함하지 않으면 fail-closed해야 한다.",
+      "verification": "Authorization Test",
+      "parent": "26/11/12/29/36"
+    },
+    {
+      "section": "4.5 OA Authorization & Human Gate",
+      "id": "NEX-PRD37-AUTH-FR-005",
+      "priority": "MUST",
+      "requirement": "PDP의 step_up_required와 human_gate_required를 별도 상태/UX로 처리해야 한다.",
+      "verification": "Security/UI",
+      "parent": "26/11/12/29/36"
+    },
+    {
+      "section": "4.5 OA Authorization & Human Gate",
+      "id": "NEX-PRD37-AUTH-FR-006",
+      "priority": "MUST",
+      "requirement": "Structured Confirmation은 resolved project/account/amount/currency/action과 예상 business effect를 사용자에게 보여준 뒤 explicit action으로 수집해야 한다.",
+      "verification": "Playwright",
+      "parent": "26/11/12/29/36"
+    },
+    {
+      "section": "4.5 OA Authorization & Human Gate",
+      "id": "NEX-PRD37-AUTH-FR-007",
+      "priority": "MUST",
+      "requirement": "Confirmation proof는 execution_id/plan_step_id/skill ref/payload hash/actor/expiry를 current request와 연결해야 한다.",
+      "verification": "Gate Contract Test",
+      "parent": "26/11/12/29/36"
+    },
+    {
+      "section": "4.5 OA Authorization & Human Gate",
+      "id": "NEX-PRD37-AUTH-FR-008",
+      "priority": "MUST",
+      "requirement": "Confirmation이 reject/expire/revoke되면 write provider call count가 0이어야 한다.",
+      "verification": "Fault/Security",
+      "parent": "26/11/12/29/36"
+    },
+    {
+      "section": "4.5 OA Authorization & Human Gate",
+      "id": "NEX-PRD37-AUTH-FR-009",
+      "priority": "MUST",
+      "requirement": "R3+ side-effect 직전에 OA current authorization/kill switch/business context를 다시 평가해야 한다.",
+      "verification": "Security/Fault",
+      "parent": "26/11/12/29/36"
+    },
+    {
+      "section": "4.5 OA Authorization & Human Gate",
+      "id": "NEX-PRD37-AUTH-FR-010",
+      "priority": "MUST",
+      "requirement": "Formal Approval이 current policy에서 요구되면 PRD 37은 bypass하지 않고 PRD 38-compatible waiting/handoff state를 생성해야 한다.",
+      "verification": "Policy E2E",
+      "parent": "26/11/12/29/36"
+    },
+    {
+      "section": "4.6 NSL Certified Skill Integration",
+      "id": "NEX-PRD37-NSL-FR-001",
+      "priority": "MUST",
+      "requirement": "ExecutablePlan LOCAL_SKILL은 `accounting.expense_voucher.create`와 같은 capability-bound Certified Skill을 exact version으로 참조해야 한다.",
+      "verification": "Integration Test",
+      "parent": "16/17/29/32/36"
+    },
+    {
+      "section": "4.6 NSL Certified Skill Integration",
+      "id": "NEX-PRD37-NSL-FR-002",
+      "priority": "MUST",
+      "requirement": "Compile 이후 Runtime은 `latest`를 재해석하지 않고 exact skill_id/version을 실행해야 한다.",
+      "verification": "Preflight Test",
+      "parent": "16/17/29/32/36"
+    },
+    {
+      "section": "4.6 NSL Certified Skill Integration",
+      "id": "NEX-PRD37-NSL-FR-003",
+      "priority": "MUST",
+      "requirement": "AE LocalSkillExecutor는 NSL ExecutionContext v1에 execution/work/plan step/authority/scope/trace/typed inputs/gate refs/idempotency를 전달해야 한다.",
+      "verification": "Contract Test",
+      "parent": "16/17/29/32/36"
+    },
+    {
+      "section": "4.6 NSL Certified Skill Integration",
+      "id": "NEX-PRD37-NSL-FR-004",
+      "priority": "MUST",
+      "requirement": "NSL Runtime은 source/NSO/Manifest hash, signature, status, runtime compatibility, current capability contract/PDP를 preflight해야 한다.",
+      "verification": "NSL E2E",
+      "parent": "16/17/29/32/36"
+    },
+    {
+      "section": "4.6 NSL Certified Skill Integration",
+      "id": "NEX-PRD37-NSL-FR-005",
+      "priority": "MUST",
+      "requirement": "NSL-0.2-STRICT write Skill은 최대 하나의 controlled WRITE만 수행하고 arbitrary UPDATE/DELETE/POST/FINALIZE semantics를 추가해서는 안 된다.",
+      "verification": "Static/Runtime Test",
+      "parent": "16/17/29/32/36"
+    },
+    {
+      "section": "4.6 NSL Certified Skill Integration",
+      "id": "NEX-PRD37-NSL-FR-006",
+      "priority": "MUST",
+      "requirement": "Human Gate proof가 current payload/write_intent_hash와 일치하지 않으면 provider WRITE call count는 0이어야 한다.",
+      "verification": "Security Test",
+      "parent": "16/17/29/32/36"
+    },
+    {
+      "section": "4.6 NSL Certified Skill Integration",
+      "id": "NEX-PRD37-NSL-FR-007",
+      "priority": "MUST",
+      "requirement": "동일 PlanStep retry/resume은 동일 stable business idempotency key를 사용해야 한다.",
+      "verification": "Fault Test",
+      "parent": "16/17/29/32/36"
+    },
+    {
+      "section": "4.6 NSL Certified Skill Integration",
+      "id": "NEX-PRD37-NSL-FR-008",
+      "priority": "MUST",
+      "requirement": "같은 idempotency key와 다른 semantic payload는 IDEMPOTENCY_CONFLICT로 fail-closed해야 한다.",
+      "verification": "Robustness Test",
+      "parent": "16/17/29/32/36"
+    },
+    {
+      "section": "4.6 NSL Certified Skill Integration",
+      "id": "NEX-PRD37-NSL-FR-009",
+      "priority": "MUST",
+      "requirement": "NSL RuntimeResult는 commit state/operation_ref/business refs/evidence refs를 AE에 구조적으로 반환해야 한다.",
+      "verification": "Schema Test",
+      "parent": "16/17/29/32/36"
+    },
+    {
+      "section": "4.6 NSL Certified Skill Integration",
+      "id": "NEX-PRD37-NSL-FR-010",
+      "priority": "MUST",
+      "requirement": "NSL 내부 compiler/runtime/journal/replay data는 NSL SoR에 유지하고 AE DB에는 invocation/result reference만 저장해야 한다.",
+      "verification": "Data Ownership Test",
+      "parent": "16/17/29/32/36"
+    },
+    {
+      "section": "4.7 Canonical Voucher API & Enterprise OS",
+      "id": "NEX-PRD37-EOS-FR-001",
+      "priority": "MUST",
+      "requirement": "Business write는 Canonical Voucher command/capability를 통해서만 수행하고 AE/NSL이 Enterprise OS DB를 직접 write해서는 안 된다.",
+      "verification": "Architecture Test",
+      "parent": "18~23/16/17/31/32/36"
+    },
+    {
+      "section": "4.7 Canonical Voucher API & Enterprise OS",
+      "id": "NEX-PRD37-EOS-FR-002",
+      "priority": "MUST",
+      "requirement": "Voucher create command는 stable project/account/actor refs, amount/currency, correlation/causation, idempotency key를 포함해야 한다.",
+      "verification": "Contract Test",
+      "parent": "18~23/16/17/31/32/36"
+    },
+    {
+      "section": "4.7 Canonical Voucher API & Enterprise OS",
+      "id": "NEX-PRD37-EOS-FR-003",
+      "priority": "MUST",
+      "requirement": "Canonical API는 동일 idempotency key와 동일 payload 재호출에 대해 동일 business effect/result를 보장하거나 명시적 prior-result semantics를 제공해야 한다.",
+      "verification": "Idempotency Test",
+      "parent": "18~23/16/17/31/32/36"
+    },
+    {
+      "section": "4.7 Canonical Voucher API & Enterprise OS",
+      "id": "NEX-PRD37-EOS-FR-004",
+      "priority": "MUST",
+      "requirement": "Canonical API는 COMMITTED/NOT_COMMITTED/UNKNOWN_COMMIT_STATE 또는 동등한 명시적 commit semantics를 반환해야 한다.",
+      "verification": "Contract/Fault",
+      "parent": "18~23/16/17/31/32/36"
+    },
+    {
+      "section": "4.7 Canonical Voucher API & Enterprise OS",
+      "id": "NEX-PRD37-EOS-FR-005",
+      "priority": "MUST",
+      "requirement": "COMMITTED 결과에는 authoritative voucher_ref와 verification/read-back에 필요한 stable business ref를 포함해야 한다.",
+      "verification": "E2E Test",
+      "parent": "18~23/16/17/31/32/36"
+    },
+    {
+      "section": "4.7 Canonical Voucher API & Enterprise OS",
+      "id": "NEX-PRD37-EOS-FR-006",
+      "priority": "MUST",
+      "requirement": "UNKNOWN_COMMIT_STATE는 자동 success/failure로 축약하지 않고 operation_ref/idempotency evidence를 보존해야 한다.",
+      "verification": "Fault Test",
+      "parent": "18~23/16/17/31/32/36"
+    },
+    {
+      "section": "4.7 Canonical Voucher API & Enterprise OS",
+      "id": "NEX-PRD37-EOS-FR-007",
+      "priority": "MUST",
+      "requirement": "Voucher create 이후 Ledger/P&L 반영 여부와 lifecycle은 Enterprise OS의 실제 canonical accounting contract를 따른다.",
+      "verification": "Contract Review",
+      "parent": "18~23/16/17/31/32/36"
+    },
+    {
+      "section": "4.7 Canonical Voucher API & Enterprise OS",
+      "id": "NEX-PRD37-EOS-FR-008",
+      "priority": "MUST",
+      "requirement": "NSL v0.2 strict가 지원하지 않는 POST/FINALIZE가 Ledger/P&L 반영에 필요하면 PRD 37에서 임의 구현하지 않고 별도 capability/후속 PRD Open Decision으로 남겨야 한다.",
+      "verification": "Architecture Gate",
+      "parent": "18~23/16/17/31/32/36"
+    },
+    {
+      "section": "4.7 Canonical Voucher API & Enterprise OS",
+      "id": "NEX-PRD37-EOS-FR-009",
+      "priority": "SHOULD",
+      "requirement": "Committed voucher에 대해 authoritative read-back verification이 제공되면 amount/project/account/status를 비교 검증해야 한다.",
+      "verification": "Verification Test",
+      "parent": "18~23/16/17/31/32/36"
+    },
+    {
+      "section": "4.7 Canonical Voucher API & Enterprise OS",
+      "id": "NEX-PRD37-EOS-FR-010",
+      "priority": "MUST",
+      "requirement": "Enterprise OS 장애/timeout이 AE local transaction과 distributed 2PC로 묶여 있다고 가정해서는 안 된다.",
+      "verification": "Reliability Review",
+      "parent": "18~23/16/17/31/32/36"
+    },
+    {
+      "section": "4.8 Result, Ledger/P&L & User Feedback",
+      "id": "NEX-PRD37-RESOUT-FR-001",
+      "priority": "MUST",
+      "requirement": "성공 Result는 authoritative voucher_ref, amount, project label/ref, expense account label/ref, commit/verification state를 포함해야 한다.",
+      "verification": "Business Acceptance",
+      "parent": "29/31/33/36"
+    },
+    {
+      "section": "4.8 Result, Ledger/P&L & User Feedback",
+      "id": "NEX-PRD37-RESOUT-FR-002",
+      "priority": "MUST",
+      "requirement": "Ledger/P&L projection이 비동기이면 voucher COMMITTED와 projection READY를 서로 다른 상태로 표시해야 한다.",
+      "verification": "State Test",
+      "parent": "29/31/33/36"
+    },
+    {
+      "section": "4.8 Result, Ledger/P&L & User Feedback",
+      "id": "NEX-PRD37-RESOUT-FR-003",
+      "priority": "MUST",
+      "requirement": "Ledger/P&L projection 지연을 voucher 등록 실패로 오인하거나 projection 미완료를 숨기지 않아야 한다.",
+      "verification": "E2E Test",
+      "parent": "29/31/33/36"
+    },
+    {
+      "section": "4.8 Result, Ledger/P&L & User Feedback",
+      "id": "NEX-PRD37-RESOUT-FR-004",
+      "priority": "MUST",
+      "requirement": "Result formatting LLM이 authoritative amount/project/account/voucher/status를 재계산하거나 변경해서는 안 된다.",
+      "verification": "Safety Test",
+      "parent": "29/31/33/36"
+    },
+    {
+      "section": "4.8 Result, Ledger/P&L & User Feedback",
+      "id": "NEX-PRD37-RESOUT-FR-005",
+      "priority": "MUST",
+      "requirement": "사용자 UI는 voucher 등록 완료, projection pending, reconciliation required, denied/rejected를 구분해 표시해야 한다.",
+      "verification": "Playwright",
+      "parent": "29/31/33/36"
+    },
+    {
+      "section": "4.8 Result, Ledger/P&L & User Feedback",
+      "id": "NEX-PRD37-RESOUT-FR-006",
+      "priority": "MUST",
+      "requirement": "Artifact/receipt/citation이 존재하는 경우 business object와 generated artifact를 명확히 구분해야 한다.",
+      "verification": "UX Test",
+      "parent": "29/31/33/36"
+    },
+    {
+      "section": "4.8 Result, Ledger/P&L & User Feedback",
+      "id": "NEX-PRD37-RESOUT-FR-007",
+      "priority": "MUST",
+      "requirement": "AgentExecution SUCCEEDED와 voucher COMMITTED, Ledger/P&L projected, optional WorkItem CLOSED를 동일 상태로 간주해서는 안 된다.",
+      "verification": "State Ownership Test",
+      "parent": "29/31/33/36"
+    },
+    {
+      "section": "4.8 Result, Ledger/P&L & User Feedback",
+      "id": "NEX-PRD37-RESOUT-FR-008",
+      "priority": "SHOULD",
+      "requirement": "성공 Result는 관련 audit/trace detail을 일반 사용자에게 과도하게 노출하지 않으면서 관리자 drill-down ref를 가질 수 있어야 한다.",
+      "verification": "UX/Audit",
+      "parent": "29/31/33/36"
+    },
+    {
+      "section": "4.9 Reliability, Duplicate & Reconciliation",
+      "id": "NEX-PRD37-REL-FR-001",
+      "priority": "MUST",
+      "requirement": "사용자 double-click/browser retry/network retry가 동일 business request를 중복 voucher로 생성하지 않도록 request/business idempotency를 적용해야 한다.",
+      "verification": "Fault Test",
+      "parent": "32/33/34/36"
+    },
+    {
+      "section": "4.9 Reliability, Duplicate & Reconciliation",
+      "id": "NEX-PRD37-REL-FR-002",
+      "priority": "MUST",
+      "requirement": "AE Job/Worker retry와 business voucher idempotency를 서로 다른 identity/semantics로 관리해야 한다.",
+      "verification": "Reliability Test",
+      "parent": "32/33/34/36"
+    },
+    {
+      "section": "4.9 Reliability, Duplicate & Reconciliation",
+      "id": "NEX-PRD37-REL-FR-003",
+      "priority": "MUST",
+      "requirement": "NSL/Canonical API timeout 후 commit 여부가 불명확하면 RECONCILIATION_REQUIRED로 전환해야 한다.",
+      "verification": "Fault E2E",
+      "parent": "32/33/34/36"
+    },
+    {
+      "section": "4.9 Reliability, Duplicate & Reconciliation",
+      "id": "NEX-PRD37-REL-FR-004",
+      "priority": "MUST",
+      "requirement": "RECONCILIATION_REQUIRED에서 blind automatic WRITE retry를 금지해야 한다.",
+      "verification": "Negative Test",
+      "parent": "32/33/34/36"
+    },
+    {
+      "section": "4.9 Reliability, Duplicate & Reconciliation",
+      "id": "NEX-PRD37-REL-FR-005",
+      "priority": "MUST",
+      "requirement": "Reconciliation은 authoritative Enterprise OS를 operation_ref/idempotency_key로 조회하여 CONFIRMED_COMMITTED/CONFIRMED_NOT_COMMITTED/STILL_UNKNOWN/CONFLICT 중 하나로 결론내릴 수 있어야 한다.",
+      "verification": "Recovery Test",
+      "parent": "32/33/34/36"
+    },
+    {
+      "section": "4.9 Reliability, Duplicate & Reconciliation",
+      "id": "NEX-PRD37-REL-FR-006",
+      "priority": "MUST",
+      "requirement": "COMMITTED 확인 후 AE local result 저장이 crash한 경우 새 idempotency key로 재등록하지 않고 기존 effect/result를 복원해야 한다.",
+      "verification": "Crash-window Test",
+      "parent": "32/33/34/36"
+    },
+    {
+      "section": "4.9 Reliability, Duplicate & Reconciliation",
+      "id": "NEX-PRD37-REL-FR-007",
+      "priority": "MUST",
+      "requirement": "권한/Skill/kill switch가 Confirmation 이후 write 직전 변경되면 current recheck가 write를 차단해야 한다.",
+      "verification": "Revocation Test",
+      "parent": "32/33/34/36"
+    },
+    {
+      "section": "4.9 Reliability, Duplicate & Reconciliation",
+      "id": "NEX-PRD37-REL-FR-008",
+      "priority": "MUST",
+      "requirement": "projection event가 duplicate delivery되어도 Ledger/P&L 또는 사용자 result가 duplicate effect를 만들지 않아야 한다.",
+      "verification": "Event Dedup Test",
+      "parent": "32/33/34/36"
+    },
+    {
+      "section": "4.9 Reliability, Duplicate & Reconciliation",
+      "id": "NEX-PRD37-REL-FR-009",
+      "priority": "MUST",
+      "requirement": "reconciliation backlog/age와 unknown commit count를 운영 metric으로 노출해야 한다.",
+      "verification": "Monitoring Test",
+      "parent": "32/33/34/36"
+    },
+    {
+      "section": "4.9 Reliability, Duplicate & Reconciliation",
+      "id": "NEX-PRD37-REL-FR-010",
+      "priority": "SHOULD",
+      "requirement": "retryable read/technical 단계에는 bounded backoff+jitter policy를 적용할 수 있어야 한다.",
+      "verification": "Fault/Load Test",
+      "parent": "32/33/34/36"
+    },
+    {
+      "section": "4.10 Optional CX Evidence Variant",
+      "id": "NEX-PRD37-CX-FR-001",
+      "priority": "MUST",
+      "requirement": "Happy Path는 CX 호출 없이 통과해야 하며 CX provider/network 장애가 Direct Voucher 기본 기능을 차단해서는 안 된다.",
+      "verification": "Golden E2E",
+      "parent": "27/29/31/33/36"
+    },
+    {
+      "section": "4.10 Optional CX Evidence Variant",
+      "id": "NEX-PRD37-CX-FR-002",
+      "priority": "MUST",
+      "requirement": "증빙 파일/출장 규정/정책 문서/비정형 근거가 필요하다고 명시된 variant에서만 CX AE Context/Evidence Bundle을 요청해야 한다.",
+      "verification": "Variant Test",
+      "parent": "27/29/31/33/36"
+    },
+    {
+      "section": "4.10 Optional CX Evidence Variant",
+      "id": "NEX-PRD37-CX-FR-003",
+      "priority": "MUST",
+      "requirement": "CX Evidence가 사용되더라도 Project/Account stable ID와 Business Authority는 CX/LLM이 결정하지 않아야 한다.",
+      "verification": "Security Test",
+      "parent": "27/29/31/33/36"
+    },
+    {
+      "section": "4.10 Optional CX Evidence Variant",
+      "id": "NEX-PRD37-CX-FR-004",
+      "priority": "MUST",
+      "requirement": "Evidence quality가 INSUFFICIENT/CONFLICT이면 이를 무시하고 protected write를 진행하지 않도록 해당 variant policy를 적용할 수 있어야 한다.",
+      "verification": "E2E Test",
+      "parent": "27/29/31/33/36"
+    },
+    {
+      "section": "4.10 Optional CX Evidence Variant",
+      "id": "NEX-PRD37-CX-FR-005",
+      "priority": "MUST",
+      "requirement": "Graph-lite relation은 supporting evidence 없이 사실 근거로 사용하지 않아야 한다.",
+      "verification": "Evidence Test",
+      "parent": "27/29/31/33/36"
+    },
+    {
+      "section": "4.10 Optional CX Evidence Variant",
+      "id": "NEX-PRD37-CX-FR-006",
+      "priority": "SHOULD",
+      "requirement": "CX variant의 evidence_bundle_ref/citation은 final result provenance에 연결할 수 있어야 한다.",
+      "verification": "Trace Test",
+      "parent": "27/29/31/33/36"
+    },
+    {
+      "section": "4.11 Trace, Audit & Work Activity Hook",
+      "id": "NEX-PRD37-OBS-FR-001",
+      "priority": "MUST",
+      "requirement": "request/session/execution/work_intent/plan/step/skill/operation/voucher refs를 correlation_id로 연결할 수 있어야 한다.",
+      "verification": "Trace Test",
+      "parent": "11/29/31/32/36"
+    },
+    {
+      "section": "4.11 Trace, Audit & Work Activity Hook",
+      "id": "NEX-PRD37-OBS-FR-002",
+      "priority": "MUST",
+      "requirement": "PDP decision, Confirmation decision, NSL invocation, Canonical API commit result를 privacy-safe audit로 남겨야 한다.",
+      "verification": "Audit Test",
+      "parent": "11/29/31/32/36"
+    },
+    {
+      "section": "4.11 Trace, Audit & Work Activity Hook",
+      "id": "NEX-PRD37-OBS-FR-003",
+      "priority": "MUST",
+      "requirement": "raw token/secret/private key를 interaction/runtime/audit payload에 저장해서는 안 된다.",
+      "verification": "Security Scan",
+      "parent": "11/29/31/32/36"
+    },
+    {
+      "section": "4.11 Trace, Audit & Work Activity Hook",
+      "id": "NEX-PRD37-OBS-FR-004",
+      "priority": "MUST",
+      "requirement": "Golden A core path는 NeX-WA를 hard dependency로 두지 않아야 한다.",
+      "verification": "Architecture Test",
+      "parent": "11/29/31/32/36"
+    },
+    {
+      "section": "4.11 Trace, Audit & Work Activity Hook",
+      "id": "NEX-PRD37-OBS-FR-005",
+      "priority": "SHOULD",
+      "requirement": "Work Activity integration seam이 존재하면 voucher execution/result event를 asynchronous WA activity projection으로 전달할 수 있어야 한다.",
+      "verification": "Integration Test",
+      "parent": "11/29/31/32/36"
+    },
+    {
+      "section": "4.11 Trace, Audit & Work Activity Hook",
+      "id": "NEX-PRD37-OBS-FR-006",
+      "priority": "MUST",
+      "requirement": "WA projection 실패/지연이 already committed voucher를 rollback하거나 사용자에게 duplicate write를 유발해서는 안 된다.",
+      "verification": "Fault Test",
+      "parent": "11/29/31/32/36"
+    },
+    {
+      "section": "4.12 Test, Acceptance & Release Gate",
+      "id": "NEX-PRD37-TST-FR-001",
+      "priority": "MUST",
+      "requirement": "Changed code는 statement 95%/branch 85% target과 coverage regression gate를 적용해야 한다.",
+      "verification": "Coverage Gate",
+      "parent": "33/34/36"
+    },
+    {
+      "section": "4.12 Test, Acceptance & Release Gate",
+      "id": "NEX-PRD37-TST-FR-002",
+      "priority": "MUST",
+      "requirement": "PostgreSQL integration test는 격리 test DB를 초기화하여 반복 가능하게 실행해야 한다.",
+      "verification": "Test Inspection",
+      "parent": "33/34/36"
+    },
+    {
+      "section": "4.12 Test, Acceptance & Release Gate",
+      "id": "NEX-PRD37-TST-FR-003",
+      "priority": "MUST",
+      "requirement": "AE Workspace prompt/review/confirm/result는 Playwright E2E로 자동화해야 한다.",
+      "verification": "Playwright",
+      "parent": "33/34/36"
+    },
+    {
+      "section": "4.12 Test, Acceptance & Release Gate",
+      "id": "NEX-PRD37-TST-FR-004",
+      "priority": "MUST",
+      "requirement": "Golden Happy Path는 CX disabled, confirmation-required, formal-approval-not-required test policy fixture로 반복 실행 가능해야 한다.",
+      "verification": "Golden Test",
+      "parent": "33/34/36"
+    },
+    {
+      "section": "4.12 Test, Acceptance & Release Gate",
+      "id": "NEX-PRD37-TST-FR-005",
+      "priority": "MUST",
+      "requirement": "Mandatory fault suite는 ambiguous project, unauthorized scope, confirmation reject/expire, duplicate submit, worker crash after commit, unknown commit, projection lag를 포함해야 한다.",
+      "verification": "Fault Suite",
+      "parent": "33/34/36"
+    },
+    {
+      "section": "4.12 Test, Acceptance & Release Gate",
+      "id": "NEX-PRD37-TST-FR-006",
+      "priority": "MUST",
+      "requirement": "NSL test는 exact skill pin, signature/hash/preflight, gate proof mismatch, idempotency conflict, unknown commit mapping을 포함해야 한다.",
+      "verification": "NSL Integration",
+      "parent": "33/34/36"
+    },
+    {
+      "section": "4.12 Test, Acceptance & Release Gate",
+      "id": "NEX-PRD37-TST-FR-007",
+      "priority": "MUST",
+      "requirement": "Security acceptance에서 unauthorized Canonical API/NSL WRITE provider call count가 0임을 검증해야 한다.",
+      "verification": "Security Acceptance",
+      "parent": "33/34/36"
+    },
+    {
+      "section": "4.12 Test, Acceptance & Release Gate",
+      "id": "NEX-PRD37-TST-FR-008",
+      "priority": "MUST",
+      "requirement": "Business acceptance에서 authoritative voucher_ref와 amount/project/account가 expected fixture와 일치해야 한다.",
+      "verification": "Business Acceptance",
+      "parent": "33/34/36"
+    },
+    {
+      "section": "4.12 Test, Acceptance & Release Gate",
+      "id": "NEX-PRD37-TST-FR-009",
+      "priority": "MUST",
+      "requirement": "Release Candidate는 critical security/reliability blocker 0, Golden A normal+fault variants PASS, trace evidence complete를 만족해야 한다.",
+      "verification": "Release Gate",
+      "parent": "33/34/36"
+    },
+    {
+      "section": "4.12 Test, Acceptance & Release Gate",
+      "id": "NEX-PRD37-TST-FR-010",
+      "priority": "SHOULD",
+      "requirement": "PRD 37 완료 후 해당 test set은 permanent regression contract로 33 suite에 편입해야 한다.",
+      "verification": "Regression Review",
+      "parent": "33/34/36"
+    }
+  ],
+  "implementation_tasks": [
+    {
+      "id": "T37-01",
+      "owner": "Program/Test",
+      "title": "Golden A Fixture & Contract Freeze",
+      "work": "prompt/expected intent/selectors/test clock/test policy/expected refs를 fixture로 고정",
+      "depends": "36",
+      "evidence": "fixture schema + review"
+    },
+    {
+      "id": "T37-02",
+      "owner": "AE-WEB",
+      "title": "Prompt Submit & Execution UX",
+      "work": "prompt submit, request/execution state, reconnect-safe UI",
+      "depends": "T37-01",
+      "evidence": "Playwright prompt flow"
+    },
+    {
+      "id": "T37-03",
+      "owner": "AE-API",
+      "title": "WorkIntent Structured Output",
+      "work": "ACCOUNTING_EXPENSE_VOUCHER_CREATE schema + clarification state",
+      "depends": "T37-01",
+      "evidence": "schema/intent tests"
+    },
+    {
+      "id": "T37-04",
+      "owner": "AE-API",
+      "title": "Direct Routing Binding",
+      "work": "exact work class/capability direct path + invalid/stale fallback",
+      "depends": "T37-03",
+      "evidence": "router tests"
+    },
+    {
+      "id": "T37-05",
+      "owner": "AE-API",
+      "title": "Canonical Resolution Adapter",
+      "work": "project/account/actor stable refs, ambiguity handling",
+      "depends": "T37-03",
+      "evidence": "resolver integration"
+    },
+    {
+      "id": "T37-06",
+      "owner": "AE-API",
+      "title": "Canonical Plan Compiler",
+      "work": "pin IDs/skill/gate/idempotency/commit policy into ExecutablePlan",
+      "depends": "T37-04,T37-05",
+      "evidence": "compiler golden hash"
+    },
+    {
+      "id": "T37-07",
+      "owner": "NeX-OA",
+      "title": "Voucher Pre-Authorization Contract",
+      "work": "capability/project scope/risk/kill-switch decision + EAC",
+      "depends": "T37-05",
+      "evidence": "PDP contract tests"
+    },
+    {
+      "id": "T37-08",
+      "owner": "NeX-OA/AE",
+      "title": "Pre-side-effect Reauthorization",
+      "work": "confirmation 후 write 직전 current PDP/kill switch recheck",
+      "depends": "T37-07,T37-09",
+      "evidence": "revocation tests"
+    },
+    {
+      "id": "T37-09",
+      "owner": "AE-WEB/AE",
+      "title": "Structured Confirmation",
+      "work": "payload preview, explicit confirm/reject, proof binding",
+      "depends": "T37-06,T37-07",
+      "evidence": "Playwright + gate schema"
+    },
+    {
+      "id": "T37-10",
+      "owner": "NeX-NSL Repo",
+      "title": "Certified Voucher Skill Asset",
+      "work": "v0.2 strict exact CertifiedSkillVersion 준비/검증; NSL 내부 구현 중복 없음",
+      "depends": "T37-01",
+      "evidence": "manifest/NSO/signature/golden tests"
+    },
+    {
+      "id": "T37-11",
+      "owner": "AE-API",
+      "title": "NSL Execution Adapter",
+      "work": "LOCAL_SKILL→ExecutionContext v1, exact skill, typed input, gate/idempotency refs",
+      "depends": "T37-06,T37-10",
+      "evidence": "contract integration"
+    },
+    {
+      "id": "T37-12",
+      "owner": "Enterprise OS",
+      "title": "Canonical Voucher Create Command",
+      "work": "stable refs+amount+idempotency+commit-state contract 구현/확인",
+      "depends": "T37-01",
+      "evidence": "API/schema/idempotency tests"
+    },
+    {
+      "id": "T37-13",
+      "owner": "Enterprise OS",
+      "title": "Voucher Verification / Projection",
+      "work": "voucher read-back + Ledger/P&L lifecycle/status contract 확인",
+      "depends": "T37-12",
+      "evidence": "business integration"
+    },
+    {
+      "id": "T37-14",
+      "owner": "AE-API",
+      "title": "Commit Mapping & Reconciliation",
+      "work": "COMMITTED/NOT/UNKNOWN mapping + reconciliation workflow",
+      "depends": "T37-11,T37-12",
+      "evidence": "fault injection"
+    },
+    {
+      "id": "T37-15",
+      "owner": "AE-WEB/AE",
+      "title": "Result Rendering",
+      "work": "authoritative voucher fields, projection pending, denied/reconcile UX",
+      "depends": "T37-13,T37-14",
+      "evidence": "Playwright result tests"
+    },
+    {
+      "id": "T37-16",
+      "owner": "Observability",
+      "title": "Trace / Audit / Metrics",
+      "work": "correlation chain + PDP/gate/skill/API evidence + metrics",
+      "depends": "T37-07~15",
+      "evidence": "trace reconstruction"
+    },
+    {
+      "id": "T37-17",
+      "owner": "CX/AE",
+      "title": "Optional CX Variant Seam",
+      "work": "CX disabled happy path; attachment/policy evidence variant only",
+      "depends": "T37-03",
+      "evidence": "CX-off + CX-variant tests"
+    },
+    {
+      "id": "T37-18",
+      "owner": "Test/CI",
+      "title": "Golden Happy + Fault Automation",
+      "work": "unit/contract/integration/fault/Playwright Golden A suite",
+      "depends": "T37-02~17",
+      "evidence": "33 Acceptance Package"
+    },
+    {
+      "id": "T37-19",
+      "owner": "Ops/Release",
+      "title": "RC Deploy / Smoke / Rollback",
+      "work": "release manifest, canary/smoke, rollback/forward-fix readiness",
+      "depends": "T37-18",
+      "evidence": "34 operational acceptance"
+    },
+    {
+      "id": "T37-20",
+      "owner": "Program",
+      "title": "Baseline Tag & Regression Adoption",
+      "work": "AC signoff, trace matrix, permanent regression inclusion",
+      "depends": "T37-19",
+      "evidence": "baseline tag + acceptance package"
+    }
+  ],
+  "acceptance_criteria": [
+    {
+      "id": "AC-PRD37-001",
+      "category": "Business",
+      "title": "Direct Voucher happy path",
+      "condition": "Prompt 1회로 resolved A project/출장비/84000 KRW voucher create가 COMMITTED되고 authoritative voucher_ref가 반환된다.",
+      "evidence": "EOS read-back + Result Envelope",
+      "critical": true
+    },
+    {
+      "id": "AC-PRD37-002",
+      "category": "Business",
+      "title": "No CX dependency",
+      "condition": "CX disabled/unavailable 상태에서도 happy path가 PASS한다.",
+      "evidence": "E2E run with CX off",
+      "critical": true
+    },
+    {
+      "id": "AC-PRD37-003",
+      "category": "Business",
+      "title": "Field correctness",
+      "condition": "voucher amount/project/account/actor가 canonical fixture와 정확히 일치한다.",
+      "evidence": "Business assert",
+      "critical": true
+    },
+    {
+      "id": "AC-PRD37-004",
+      "category": "Business",
+      "title": "Projection semantics",
+      "condition": "Ledger/P&L이 async이면 voucher success와 projection pending/ready가 분리 표시된다.",
+      "evidence": "EOS projection evidence",
+      "critical": true
+    },
+    {
+      "id": "AC-PRD37-005",
+      "category": "UX",
+      "title": "Structured review",
+      "condition": "write 전에 project/account/amount/action이 표시되고 explicit confirmation 없이는 write되지 않는다.",
+      "evidence": "Playwright",
+      "critical": true
+    },
+    {
+      "id": "AC-PRD37-006",
+      "category": "UX",
+      "title": "Clarification",
+      "condition": "project/account/mandatory field ambiguity 시 clarification 후에만 compile/write 가능하다.",
+      "evidence": "Boundary E2E",
+      "critical": true
+    },
+    {
+      "id": "AC-PRD37-007",
+      "category": "UX",
+      "title": "Reject/cancel",
+      "condition": "사용자 reject/cancel 시 provider write call count=0이다.",
+      "evidence": "Playwright + mock spy",
+      "critical": true
+    },
+    {
+      "id": "AC-PRD37-008",
+      "category": "Security",
+      "title": "Current OA authority",
+      "condition": "resolved project scope/capability/risk/kill switch로 current PDP allow를 받아야 한다.",
+      "evidence": "PDP audit evidence",
+      "critical": true
+    },
+    {
+      "id": "AC-PRD37-009",
+      "category": "Security",
+      "title": "Scope denial",
+      "condition": "권한 없는 project 또는 revoked role이면 NSL/API write call count=0이다.",
+      "evidence": "Negative security run",
+      "critical": true
+    },
+    {
+      "id": "AC-PRD37-010",
+      "category": "Security",
+      "title": "Gate proof binding",
+      "condition": "wrong/expired/revoked actor/payload proof는 write call count=0이다.",
+      "evidence": "Gate proof fault tests",
+      "critical": true
+    },
+    {
+      "id": "AC-PRD37-011",
+      "category": "Security",
+      "title": "No guessed authority",
+      "condition": "LLM output이 stable ID/approval/authority를 주입해도 compiler/PDP가 거부한다.",
+      "evidence": "Adversarial test",
+      "critical": true
+    },
+    {
+      "id": "AC-PRD37-012",
+      "category": "NSL",
+      "title": "Exact skill version",
+      "condition": "ExecutablePlan과 Runtime이 동일 exact CertifiedSkillVersion을 사용하고 latest resolution이 없다.",
+      "evidence": "plan + runtime provenance",
+      "critical": true
+    },
+    {
+      "id": "AC-PRD37-013",
+      "category": "NSL",
+      "title": "Strict v0.2 boundary",
+      "condition": "voucher skill은 max one controlled WRITE; forbidden update/post/finalize를 포함하지 않는다.",
+      "evidence": "static safety + runtime test",
+      "critical": true
+    },
+    {
+      "id": "AC-PRD37-014",
+      "category": "Reliability",
+      "title": "Duplicate request",
+      "condition": "double click/network retry가 voucher 1개만 만든다.",
+      "evidence": "idempotency test",
+      "critical": true
+    },
+    {
+      "id": "AC-PRD37-015",
+      "category": "Reliability",
+      "title": "Crash after commit",
+      "condition": "commit 후 AE crash 시 새 write 없이 existing voucher result를 복원한다.",
+      "evidence": "fault injection",
+      "critical": true
+    },
+    {
+      "id": "AC-PRD37-016",
+      "category": "Reliability",
+      "title": "Unknown commit",
+      "condition": "UNKNOWN_COMMIT_STATE는 success UI가 아니며 RECONCILIATION_REQUIRED, blind retry=0이다.",
+      "evidence": "fault + reconciliation evidence",
+      "critical": true
+    },
+    {
+      "id": "AC-PRD37-017",
+      "category": "Reliability",
+      "title": "Reconciliation outcome",
+      "condition": "operation_ref/key 조회로 confirmed committed/not/still unknown/conflict 상태를 기록한다.",
+      "evidence": "reconciliation record",
+      "critical": true
+    },
+    {
+      "id": "AC-PRD37-018",
+      "category": "Trace",
+      "title": "End-to-end trace",
+      "condition": "session→execution→plan→skill→operation→voucher까지 correlation chain을 재구성할 수 있다.",
+      "evidence": "trace query/export",
+      "critical": true
+    },
+    {
+      "id": "AC-PRD37-019",
+      "category": "Trace",
+      "title": "Audit completeness",
+      "condition": "PDP, confirmation, NSL, canonical command, commit outcome이 audit refs로 연결된다.",
+      "evidence": "audit package",
+      "critical": true
+    },
+    {
+      "id": "AC-PRD37-020",
+      "category": "Architecture",
+      "title": "No cross-service DB write",
+      "condition": "AE/NSL은 EOS DB를 직접 쓰지 않고 canonical contract만 사용한다.",
+      "evidence": "architecture/integration test",
+      "critical": true
+    },
+    {
+      "id": "AC-PRD37-021",
+      "category": "Architecture",
+      "title": "Formal approval fail-safe",
+      "condition": "policy가 formal approval을 요구하면 PRD38-compatible wait/block로 전환하고 write를 bypass하지 않는다.",
+      "evidence": "policy variant",
+      "critical": true
+    },
+    {
+      "id": "AC-PRD37-022",
+      "category": "Architecture",
+      "title": "Repository evidence hold",
+      "condition": "실제 file/class/table/endpoint mapping은 evidence 확인 전 provisional로 유지된다.",
+      "evidence": "implementation record",
+      "critical": true
+    },
+    {
+      "id": "AC-PRD37-023",
+      "category": "Operations",
+      "title": "Observability",
+      "condition": "success/deny/gate reject/unknown commit/reconcile latency가 metric/audit에 보인다.",
+      "evidence": "monitoring snapshot",
+      "critical": false
+    },
+    {
+      "id": "AC-PRD37-024",
+      "category": "Operations",
+      "title": "Release gate",
+      "condition": "Golden normal+mandatory fault PASS, critical blocker=0, canary/smoke/rollback readiness가 있다.",
+      "evidence": "Acceptance Evidence Package",
+      "critical": true
+    },
+    {
+      "id": "AC-PRD37-025",
+      "category": "Regression",
+      "title": "Permanent contract",
+      "condition": "PRD37 suite가 33 regression suite에 편입된다.",
+      "evidence": "CI config / test catalog",
+      "critical": false
+    }
+  ],
+  "open_decisions": [
+    {
+      "id": "OD-37-01",
+      "topic": "Voucher registration semantic",
+      "decision": "NSL v0.2 strict에서 CREATE/CREATE_DRAFT 중 실제 EOS capability가 무엇인지 Repository/API evidence 확인 후 고정",
+      "status": "OPEN - blocks exact command mapping"
+    },
+    {
+      "id": "OD-37-02",
+      "topic": "Ledger/P&L update point",
+      "decision": "voucher create 시 즉시 projection인지 approval/posting 후 projection인지 EOS accounting contract 확인 후 고정",
+      "status": "OPEN - does not block basic voucher_ref acceptance if status explicit"
+    },
+    {
+      "id": "OD-37-03",
+      "topic": "Formal Approval policy",
+      "decision": "Golden happy fixture는 confirmation-only. Production approval rule은 OA/EOS policy baseline에 따름",
+      "status": "OPEN - PRD38 owns wait/resume"
+    },
+    {
+      "id": "OD-37-04",
+      "topic": "Physical endpoint/schema names",
+      "decision": "Actual AE/OA/NSL/EOS repo evidence 전 logical contract만 사용",
+      "status": "OPEN - INC-0 evidence gate"
+    }
+  ]
+}

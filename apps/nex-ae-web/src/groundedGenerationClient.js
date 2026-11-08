@@ -198,6 +198,7 @@ export function buildInteractionResult(
       groundedResponseQuality: objectOrNull(
         record.generation?.grounded_response_quality
       ),
+      semanticPlanning: objectOrNull(record.generation?.semantic_planning),
       citationWorkflow: objectOrNull(record.generation?.citation_workflow),
       artifactRefs: Array.isArray(record.artifact_refs) ? record.artifact_refs : [],
       retryable: Boolean(asyncGeneration?.retryable),
@@ -302,6 +303,9 @@ export function buildGeneratedResponseResult(
       contentSha256: stringOrNull(record.content_sha256),
       sizeBytes: Number.isInteger(record.size_bytes) ? record.size_bytes : null,
       lineage: objectOrNull(record.lineage),
+      projectMembershipBatchResult: objectOrNull(
+        record.project_membership_batch_result
+      ),
       ownerScopeEnforced: record.owner_scope_enforced === true
     },
     { clientMode, route, contentIncluded: true }

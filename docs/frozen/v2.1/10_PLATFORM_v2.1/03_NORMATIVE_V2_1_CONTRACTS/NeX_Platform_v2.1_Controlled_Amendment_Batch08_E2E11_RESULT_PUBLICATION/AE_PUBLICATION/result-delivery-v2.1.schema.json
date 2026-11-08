@@ -1,0 +1,242 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:nex:ae:result-delivery:v2.1",
+  "title": "AE ResultDelivery v2.1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "tenant_id",
+    "delivery_id",
+    "result_id",
+    "agent_execution_id",
+    "target_type",
+    "target_ref",
+    "required",
+    "state",
+    "publication_operation_id",
+    "idempotency_key_ref",
+    "attempt_no",
+    "correlation_id",
+    "created_at",
+    "updated_at"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "2.1"
+    },
+    "tenant_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "delivery_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "result_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "agent_execution_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "target_type": {
+      "enum": [
+        "WORKSPACE_RESULT",
+        "WC_WORK_RESULT",
+        "ARTIFACT_STORE",
+        "NOTIFICATION",
+        "EMAIL",
+        "MESSENGER",
+        "WA_PROJECTION",
+        "METRICS",
+        "ANALYTICS",
+        "DASHBOARD_CACHE"
+      ]
+    },
+    "target_ref": {
+      "type": "string",
+      "minLength": 1
+    },
+    "required": {
+      "type": "boolean"
+    },
+    "state": {
+      "enum": [
+        "PENDING",
+        "SENDING",
+        "ACKNOWLEDGED",
+        "RETRY_PENDING",
+        "UNKNOWN_DELIVERY",
+        "FAILED",
+        "CANCELLED"
+      ]
+    },
+    "publication_operation_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "idempotency_key_ref": {
+      "type": "string",
+      "minLength": 1
+    },
+    "attempt_no": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "external_delivery_ref": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "latest_preflight_ref": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "publication_reconciliation_ref": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "correlation_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "causation_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "acknowledged_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "state": {
+            "const": "ACKNOWLEDGED"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "acknowledged_at"
+        ],
+        "properties": {
+          "acknowledged_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "state": {
+            "enum": [
+              "SENDING",
+              "RETRY_PENDING",
+              "UNKNOWN_DELIVERY",
+              "ACKNOWLEDGED"
+            ]
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "latest_preflight_ref"
+        ],
+        "properties": {
+          "latest_preflight_ref": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "state": {
+            "const": "UNKNOWN_DELIVERY"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "publication_reconciliation_ref"
+        ],
+        "properties": {
+          "publication_reconciliation_ref": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "target_type": {
+            "enum": [
+              "NOTIFICATION",
+              "EMAIL",
+              "MESSENGER",
+              "WA_PROJECTION",
+              "METRICS",
+              "ANALYTICS",
+              "DASHBOARD_CACHE"
+            ]
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "required": {
+            "const": false
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "target_type": {
+            "const": "WC_WORK_RESULT"
+          }
+        },
+        "required": [
+          "target_type"
+        ]
+      },
+      "then": {
+        "properties": {
+          "required": {
+            "const": true
+          }
+        }
+      }
+    }
+  ]
+}

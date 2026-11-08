@@ -32,9 +32,14 @@ class OaSignedTokenValidationService:
         *,
         signing_key_service: OaSigningKeyService,
         principal_service: OaServicePrincipalService,
+        accepted_service_token_profiles: Sequence[str] = ("service_access",),
     ) -> None:
         self.signing_key_service = signing_key_service
         self.principal_service = principal_service
+        profiles = tuple(accepted_service_token_profiles)
+        if not profiles or any(not isinstance(item, str) or not item for item in profiles):
+            raise ValueError("accepted service-token profiles are invalid")
+        self.accepted_service_token_profiles = profiles
 
     def validate(
         self,
@@ -50,6 +55,7 @@ class OaSignedTokenValidationService:
         decoded = decode_and_verify_service_token(
             token,
             jwks=self.signing_key_service.jwks(at_epoch=now),
+            accepted_service_token_profiles=self.accepted_service_token_profiles,
         )
         claims = decoded["claims"]
         _validate_runtime_claims(
@@ -115,6 +121,7 @@ def decode_and_verify_service_token(
     token: object,
     *,
     jwks: Mapping[str, Any],
+    accepted_service_token_profiles: Sequence[str] = ("service_access",),
 ) -> dict[str, dict[str, Any]]:
     compact = _nonempty_string(token, "token")
     parts = compact.split(".")
@@ -136,8 +143,11 @@ def decode_and_verify_service_token(
         )
     except InvalidSignature as exc:
         raise _unauthorized("oa.token_signature_invalid", "access token signature is invalid") from exc
+    token_profile = claims.get("token_use")
+    if token_profile not in tuple(accepted_service_token_profiles):
+        raise _unauthorized("oa.token_use_invalid", "access token use is invalid")
     shape_errors = validate_production_token_shape(
-        "service_access",
+        str(token_profile),
         headers=headers,
         claims=claims,
     )

@@ -1,0 +1,6 @@
+﻿IssueId,Classification,Title,Status,FinalDisposition
+STEP8-P0-01,E2E-P0,Residual pre-Frozen NSL Approval / Package Trust semantics,CLOSED,CLOSED before Final Freeze
+STEP8-P1-01,E2E-P1,Work Intake vocabulary conflicts with ExecutionTrigger,CLOSED,CLOSED before Final Freeze
+STEP8-PCG-01,E2E-PCG,Background WC_WORK_RESULT required delivery/claim fencing not structurally enforced,CLOSED,CLOSED before Final Freeze
+STEP8-P2-01,E2E-P2,Final baseline manifest/review metadata stale,CLOSED,CLOSED before Final Freeze
+FINAL-OPEN-ISSUES,SUMMARY,Open P0/P1/PCG/P2 at Final Freeze,0,No remaining open issue

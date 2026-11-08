@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:nex:nsl:verified-skill-artifact-ref:v2.1",
+  "title": "VerifiedSkillArtifactRef v2.1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "skill_id",
+    "skill_version",
+    "skill_semantic_hash",
+    "package_id",
+    "package_hash",
+    "package_trust_evidence_ref",
+    "publisher_id",
+    "signing_key_id",
+    "artifact_admission_decision_ref"
+  ],
+  "properties": {
+    "skill_id": {
+      "type": "string"
+    },
+    "skill_version": {
+      "type": "string"
+    },
+    "skill_semantic_hash": {
+      "type": "string"
+    },
+    "package_id": {
+      "type": "string"
+    },
+    "package_hash": {
+      "type": "string"
+    },
+    "publisher_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "signing_key_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "package_trust_evidence_ref": {
+      "type": "string",
+      "minLength": 1
+    },
+    "runtime_contract_ref": {
+      "type": "string"
+    },
+    "artifact_admission_decision_ref": {
+      "type": "string",
+      "minLength": 1
+    }
+  }
+}

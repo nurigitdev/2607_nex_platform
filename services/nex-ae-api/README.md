@@ -57,6 +57,101 @@ Prompt registry seed:
 - `ae.grounded_chat.default` records the grounded chat system prompt for debug
   and later prompt analytics lineage.
 
+P6.5 semantic generation boundary:
+
+- `nex_ae_api.mo_generation_client.HttpAeMoGenerationClient` is the thin
+  AE-to-MO port for semantic candidate generation. It calls only
+  `POST /api/v1/generations` and `GET /api/v1/provider-route-health`; AE never
+  receives a provider endpoint, model path, or provider API key.
+- The client fixes structured output, disabled reasoning, zero temperature,
+  non-streaming execution, correlation headers, OA service-token audience
+  `nex-mo`, and bounded stage limits. S1 does not wire this port into the
+  existing Chat/RAG route; S2-S5 own semantic-stage orchestration.
+- Required-mode readiness accepts only the configured generation alias with a
+  live `READY` route backed by `active_preflight` evidence. Configure the
+  logical alias with `NEX_AE_MO_GENERATION_ALIAS` and keep
+  `NEX_AE_MO_GENERATION_TIMEOUT_SECONDS` at or above MO's complete retry
+  budget.
+- `scripts/smoke/run_p65_s1_ae_mo_generation_live_smoke.py` is opt-in through
+  `NEX_AE_P65_S1_LIVE_SMOKE=1`. It records safe model/route lineage and an
+  output digest, never the prompt, output text, service token, provider URL,
+  or API key.
+
+P6.5 live INTENT candidate boundary:
+
+- `nex_ae_api.intent_candidate_generation.LiveIntentCandidateService` resolves
+  the exact `ae.intent_resolution.default` binding, sends the untrusted user
+  input through the thin MO client, validates the closed
+  `p65.intent_candidate.v1` payload, and delegates canonical decision creation
+  to `IntentPolicy` before building a WorkIntent.
+- Candidate fields cannot establish tenant, principal, project, role,
+  permission, capability-version, provider, or execution authority. Candidate
+  selectors and parameters remain suggestions and are not copied into the
+  WorkIntent.
+- `shadow` mode never creates a WorkIntent. `required` mode needs an exact
+  calibration selected by semantic stage, MO alias, and model revision from
+  `NEX_AE_P65_SEMANTIC_CALIBRATION_POLICIES_JSON`; missing calibration fails
+  closed.
+- `authorized_resource_context_available` is a boolean trusted input only. It
+  communicates that an admitted resource set exists without disclosing or
+  granting a project/resource identity; S3 remains responsible for trusted
+  context resolution.
+- `scripts/smoke/run_p65_s2_live_intent_candidate_smoke.py` is opt-in through
+  `NEX_AE_P65_S2_LIVE_SMOKE=1` and records only hashes, bounded model lineage,
+  confidence/threshold, directive, and deterministic WorkIntent evidence.
+
+P6.5 live CONTEXT candidate boundary:
+
+- `nex_ae_api.context_candidate_generation.LiveContextCandidateService`
+  resolves the exact `ae.context_candidate_extraction.default` binding, sends
+  only the closed WorkIntent/base-context projection through the thin MO
+  client, and validates `p65.context_candidate_set.v1` before any hint reaches
+  context resolution.
+- Context candidates are untrusted suggestions. They may provide bounded
+  entity, retrieval, resource-selector, and parameter hints, but cannot set
+  tenant, principal, owner, project, role, permission, classification, or
+  resource-admission authority.
+- `TrustedContextResolver` remains the sole canonical resolution boundary. It
+  receives a normalized `ContextCandidateHints` projection while the resulting
+  AgentContext contains only trusted resolution output and never embeds the
+  candidate payload or candidate hash.
+- `shadow` mode records `SHADOW_ONLY` without creating AgentContext. Required
+  mode needs exact `CONTEXT + model_profile + model_ref` calibration, maps low
+  confidence to `CONTEXT_REFRESH_REQUIRED`, and fails closed on malformed
+  output, model-lineage drift, or trusted-resolver failure.
+- S3 introduces no migration or route orchestration. Candidate persistence,
+  resume, and chat-route composition remain assigned to P6.5-S5.
+- `scripts/smoke/run_p65_s3_live_context_candidate_smoke.py` is opt-in through
+  `NEX_AE_P65_S3_LIVE_SMOKE=1` and records only safe hashes, prompt/model
+  lineage, confidence/threshold, directive, and trusted-resolution checks.
+
+P6.5 live PLAN candidate boundary:
+
+- `nex_ae_api.plan_candidate_generation.LivePlanCandidateService` resolves the
+  exact `ae.plan_builder.default/v1` binding and sends only bounded WorkIntent,
+  AgentContext summary, and capability-catalog projections through the thin MO
+  client. Exact capability versions, executor kinds, package trust, identity,
+  and authority are never model inputs.
+- The model returns only closed `p65.plan_candidate.v1` logical steps. AE
+  rejects unknown fields, private or authority-bearing data, prompt-control
+  language, invalid or parallel dependency graphs, non-terminal completion
+  mappings, unsupported plan kinds, and unknown or ambiguous capabilities.
+- The trusted binder resolves each `LOCAL_CAPABILITY` hint to exactly one
+  version from the captured CapabilitySnapshot, resolves `REPORT` to the
+  deterministic report capability, preserves exact WorkIntent/AgentContext/
+  CapabilitySnapshot lineage, and emits a canonical immutable AgentPlan.
+- `LOCAL_SKILL` remains an executor kind, never an LLM-authored logical step.
+  An exact P6 Skill descriptor may be selected through its capability ID and
+  is then bound by AE. `AGGREGATE` remains schema-known but fails closed until
+  a deterministic aggregate capability is admitted by the P5 validator.
+- `shadow` mode never creates AgentPlan. Required mode needs exact
+  `PLAN + model_profile + model_ref` calibration and maps low confidence to
+  `REPLAN_REQUIRED`. S4 adds no migration or chat-route orchestration; S5 owns
+  persistence, resume, PlanValidation/compile composition, and runtime wiring.
+- `scripts/smoke/run_p65_s4_live_plan_candidate_smoke.py` is opt-in through
+  `NEX_AE_P65_S4_LIVE_SMOKE=1` and records only safe hashes, prompt/model
+  lineage, calibration, exact-binding checks, plan kind/count, and directive.
+
 Workspace state:
 
 - AE owns workspace state, default runtime controls, chat document identity, and
@@ -1159,3 +1254,14 @@ Artifact library management:
   server-selected acceptance projection. Service principals and admin users may
   read normalized gate states; viewer users, posted evidence, and raw runtime
   material are rejected.
+- P8-S44/S44A adds the AE-owned protected NSL `ApprovalRequest` store. Exact
+  canonical request bytes are stored in the private AE PostgreSQL
+  `ae_nsl_approval_request.approval_request_bytes` `BYTEA` column together with
+  their opaque reference, hash, size, media type, classification, and bounded
+  lineage. Same-identity replay is idempotent, changed semantics fail closed,
+  and the actual `nex_ae_test` smoke verifies exact BYTEA persistence without
+  exposing request bytes through the repository metadata projection.
+- P8-S45 generalizes the durable AE wait registry without replacing its P7
+  source of record. `external_ref` is a bounded string, `wait_type` admits both
+  `WORK_RESULT` and `NSL_APPROVAL`, and the default repository behavior remains
+  compatible with historical P7 WorkResult waits.

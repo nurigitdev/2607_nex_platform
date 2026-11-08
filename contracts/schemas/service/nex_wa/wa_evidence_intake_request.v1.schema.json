@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_wa/wa_evidence_intake_request.v1.schema.json",
+  "title": "NeX-WA Evidence Intake Request v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "tenant_id",
+    "source_type",
+    "source_ref",
+    "source_revision_ref",
+    "source_hash",
+    "occurred_at",
+    "correlation_id"
+  ],
+  "properties": {
+    "schema_version": {"const": "wa_evidence_intake_request.v1"},
+    "tenant_id": {"$ref": "#/$defs/scoped_id"},
+    "source_type": {"enum": ["AE_AGENT_RESULT", "AE_ARTIFACT"]},
+    "source_ref": {"type": "string", "minLength": 1, "maxLength": 512},
+    "source_revision_ref": {"type": "string", "minLength": 1, "maxLength": 256},
+    "source_hash": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "occurred_at": {"type": "string", "format": "date-time", "maxLength": 64},
+    "correlation_id": {"$ref": "#/$defs/scoped_id"},
+    "request_id": {"$ref": "#/$defs/scoped_id"},
+    "trace_id": {"$ref": "#/$defs/scoped_id"}
+  },
+  "$defs": {
+    "scoped_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$"
+    }
+  }
+}

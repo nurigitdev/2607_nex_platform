@@ -1,0 +1,47 @@
+﻿ID,Filename,Status,Review Note
+00,00_NeX_Enterprise_AX_Architecture_Re-Baselining_Plan_v2.1_CP01.docx,PASS_WITH_P2,Re-baseline plan contains historical terminology/old E2E labels; not semantic authority conflict.
+01,01_NeX_Terminology_and_Naming_Standard_v2.1_FINAL_BACKPROP.docx,PASS,"Terminology back-propagated to IA/CA/PA/EA, PA, WA, approval/schedule terms."
+02,02_NeX_As_Is_Document_and_Source_Code_Inventory_v1.0-#Uc18c#Uc2a4#Ucf54#Ub4dc#Ud655#Uc778#Ud544#Uc694.docx,REFERENCE,"As-Is/source-code inventory; source inspection pending, excluded from semantic freeze gate."
+03,03_NeX_Product_Vision_Scope_and_System_Context_v2.1_FINAL_BACKPROP.docx,PASS,System context corrected for Agent v2.1 identities/SoR.
+04,04_NeX_Platform_System_Software_Requirements_Specification_v2.1_FINAL_BACKPROP.docx,PASS,Consolidated v2.1 SRS back-propagated through CP01~09.
+05,05_NeX_Master_System_Architecture_v2.1_FINAL_BACKPROP.docx,PASS,Target architecture responsibility map consolidated.
+06,06_NeX_Architecture_Decision_Record_Pack_v2.1_FINAL_BACKPROP.docx,PASS,ADR closure includes accepted v2.1 decisions.
+07,07_NeX_Canonical_Domain_and_Data_Model_v2.1_FINAL_BACKPROP.docx,PASS,"Canonical domain/SoR updated for AgentIdentity, ApprovalWorkItem, Schedule, NSP."
+08,08_NeX_Canonical_API_Event_MCP_A2A_Contract_v2.1_FINAL_BACKPROP.docx,PASS,"Canonical API/Event updated for identity, approval, NSL, schedule."
+09,09_NeX_Security_Identity_and_Governance_Architecture_v2.1_FINAL_BACKPROP.docx,PASS,Security boundary aligned with generic Agent identity/Tenant/OA.
+10,10_NeX_Architecture_Gap_Analysis_and_Migration_Matrix_v2.0-#Uc18c#Uc2a4#Ucf54#Ub4dc#Ud655#Uc778#Ud544#Uc694.docx,REFERENCE,Migration/source-code gap analysis; excluded from semantic freeze gate.
+11,11_NeX_Coworker_Agent_Runtime_SRS_v2.0_HISTORICAL_SUPERSEDED.docx,HISTORICAL,Superseded by NeX Agent v2.1 Final Frozen.
+12,12_NeX_Coworker_Agent_Semi_Autonomous_Detailed_Design_v2.0_HISTORICAL_SUPERSEDED.docx,HISTORICAL,Superseded by NeX Agent v2.1 Final Frozen.
+13,13_NeX_Coworker_Agent_Representative_Workflows_v2.0_HISTORICAL_SUPERSEDED.docx,HISTORICAL,Superseded by NeX Agent v2.1 Final Frozen.
+14,14_NeX_Work_Coordination_SRS_v2.1_CP05.docx,PASS_WITH_P2,WC semantics aligned; some traceability references still point to historical 11/12.
+15,15_NeX_Work_Coordination_Detailed_Design_v2.1_CP05.docx,PASS_WITH_P2,WC claim/schedule/approval model aligned; some old parent refs remain.
+16,16_NeX_NSL_Language_Specification_v0.2_PLATFORM_REBASELINE_v2.1_CP03.docx,P0,Language spec body still contains pre-Frozen proof-before-NSL / External Human Gate / Signed NSO requirements.
+17,17_NeX_NSL_Runtime_and_Certified_Skill_Detailed_Design_v2.1_CP07.docx,P0,Runtime body still contains caller HumanGateProof/idempotency and raw NSO/manifest signature structures despite later v2.1 sections.
+18,18_NeX_Approval_and_Human_Gate_Detailed_Design_v2.1_CP08.docx,PASS_WITH_P2,Canonical CP04/CP08 flow is correct; legacy HumanGateProof/events explicitly retained as migration reference.
+19,19_NeX_Enterprise_OS_System_SRS_v2.1_CP04.docx,PASS,EOS business SoR/domain approval role aligned.
+20,20_NeX_Enterprise_OS_Core_Domain_Detailed_Design_v2.0.docx,PASS,EOS core domain semantics preserved.
+21,21_NeX_NVT_Project_Financial_Ledger_and_PL_Design_v2.0.docx,PASS,Ledger/P&L semantics unaffected.
+22,22_NeX_Voucher_Accounting_Procurement_Transaction_Design_v2.0.docx,PASS,Voucher/procurement domain semantics unaffected.
+23,23_NeX_Work_Asset_Human_Effort_and_Labor_Allocation_Design_v2.0.docx,PASS,WA work-asset semantics preserved.
+24,24_NeX_Enterprise_Business_Core_End_to_End_Golden_Slice_and_Reconciliation_Design_v2.1_CP03.docx,PASS,Commit/reconciliation model aligned; existing Golden taxonomy retained.
+25,25_NeX_Enterprise_Business_Core_Operational_Acceptance_and_Migration_Cutover_Baseline_v2.0.docx,PASS,Operational/migration baseline not contradicted by frozen semantics.
+26,26_NeX_OA_SRS_and_Detailed_Design_v2.1_CP05.docx,PASS,OA Tenant/generic Agent/approval/schedule authority aligned.
+27,27_NeX_CX_SRS_and_Detailed_Design_v2.1_CP09.docx,PASS,CX Tenant/EvidenceContext boundary aligned.
+28,28_NeX_MO_SRS_and_Detailed_Design_v2.0.docx,PASS_WITH_P2,MO core aligned; a few historical “AE Context/Job Agent” forward-reference labels remain.
+29A,29A_NeX_AE_WEB_SRS_and_Detailed_Design_v2.1_CP08.docx,PASS_WITH_P2,UX canonical section aligned; residual historical parent refs/labels remain.
+29,29_NeX_AE_SRS_and_Detailed_Design_v2.1_CP05.docx,P0,"AE normative requirements still reference Document17 ExecutionContext v1, agent-supplied idempotency key, and old NSL integration baseline."
+30,30_NeX_AG_SRS_and_Detailed_Design_v2.1_CP07.docx,PASS_WITH_P2,Governance semantics aligned; traceability parent refs to 11/12 remain.
+31,31_Cross_System_End_to_End_Flow_Design_v2.1_CP05.docx,P1,Integrated E2E still uses Coworker-era flow names and historical 11/12 authority refs.
+32,32_Reliability_JobQueue_Worker_Recovery_Design_v2.1_CP05.docx,PASS_WITH_P2,Reliability semantics aligned; parent references need current Agent v2.1 IDs.
+33,33_Integrated_Test_and_Acceptance_Strategy_v2.0.docx,P1,Test strategy validates old ExecutionContext/RuntimeResult and old 11/12 parent baseline.
+34,34_Deployment_Operation_Backup_Recovery_Design_v2.0.docx,PASS,Deployment/backup/recovery does not conflict with new semantics.
+35,35_Legacy_Coexistence_and_SoR_Migration_Plan_v2.0.docx,PASS,Legacy coexistence/migration architecture remains compatible.
+36,36_Implementation_Master_PRD_v2.0.docx,P1,Implementation Master PRD still uses Coworker-centric taxonomy and old 11/12 baseline.
+37,37_Vertical_Slice_PRD_Golden_A_Direct_Voucher_v2.1_CP04.docx,P0,Golden A requirements still compile HUMAN_CONFIRMATION before protected write and use NSL ExecutionContext v1/gate/idempotency old contract.
+38,38_Vertical_Slice_PRD_Approval_Suspend_Resume_v2.1_CP04.docx,P0,Approval vertical slice still requires compiler FORMAL_APPROVAL step and EOS APPROVAL_APPROVED as canonical wait event despite v2.1 CP04 appendix.
+39,39_Vertical_Slice_PRD_Golden_B_Semi_Autonomous_Collaboration_v2.0.docx,P1,Golden B still uses Background Coworker and old NSL ExecutionContext/idempotency integration.
+40,40_Vertical_Slice_PRD_Evidence_Grounded_Business_Work_v2.0.docx,P1,Evidence slice uses old AE Context/11/12 terminology; CX Evidence Context→AgentContext boundary not back-propagated.
+41,41_Vertical_Slice_PRD_Work_Activity_and_Periodic_Reporting_v2.1_CP05.docx,PASS,WA periodic reporting vs WC Schedule boundary aligned.
+42,42_Vertical_Slice_PRD_Governance_and_Recovery_Pilot_v2.0.docx,PASS,Governance/recovery pilot compatible with v2.1 control plane.
+43,43_Vertical_Slice_PRD_Legacy_Coexistence_and_Cutover_Pilot_v2.0.docx,PASS_WITH_P2,Legacy pilot mostly compatible; one Coworker-era actor label remains.
+44,44_NeX_WC_Recurring_Work_and_Schedule_Detailed_Design_v2.1_CP05.docx,PASS,New WC recurring work/schedule detailed design aligned.

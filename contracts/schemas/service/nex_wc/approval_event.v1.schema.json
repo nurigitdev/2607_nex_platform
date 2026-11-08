@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_wc/approval_event.v1.schema.json",
+  "title": "WC Approval Decision Event v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "tenant_id", "event_id", "event_type",
+    "approval_work_item_id", "decision_id", "approval_domain", "decision",
+    "decided_by", "oa_decision_ref", "occurred_at", "correlation_id",
+    "causation_id"
+  ],
+  "properties": {
+    "schema_version": {"const": "wc_approval_event.v1"},
+    "tenant_id": {"$ref": "#/$defs/scoped_id"},
+    "event_id": {"$ref": "#/$defs/uuid"},
+    "event_type": {"enum": ["NSL_APPROVAL_DECIDED", "BUSINESS_FORMAL_APPROVAL_DECIDED", "AGENT_FORMAL_APPROVAL_DECIDED"]},
+    "approval_work_item_id": {"$ref": "#/$defs/uuid"},
+    "decision_id": {"$ref": "#/$defs/uuid"},
+    "approval_domain": {"enum": ["AGENT_FORMAL", "NSL_WRITE", "BUSINESS_FORMAL"]},
+    "decision": {"enum": ["APPROVE", "REJECT"]},
+    "decided_by": {"$ref": "#/$defs/scoped_id"},
+    "oa_decision_ref": {"$ref": "#/$defs/scoped_id"},
+    "occurred_at": {"type": "string", "format": "date-time"},
+    "correlation_id": {"$ref": "#/$defs/scoped_id"},
+    "causation_id": {"$ref": "#/$defs/scoped_id"}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"approval_domain": {"const": "NSL_WRITE"}}, "required": ["approval_domain"]},
+      "then": {"properties": {"event_type": {"const": "NSL_APPROVAL_DECIDED"}}}
+    },
+    {
+      "if": {"properties": {"approval_domain": {"const": "BUSINESS_FORMAL"}}, "required": ["approval_domain"]},
+      "then": {"properties": {"event_type": {"const": "BUSINESS_FORMAL_APPROVAL_DECIDED"}}}
+    },
+    {
+      "if": {"properties": {"approval_domain": {"const": "AGENT_FORMAL"}}, "required": ["approval_domain"]},
+      "then": {"properties": {"event_type": {"const": "AGENT_FORMAL_APPROVAL_DECIDED"}}}
+    }
+  ],
+  "$defs": {
+    "scoped_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$"},
+    "uuid": {"type": "string", "format": "uuid"}
+  }
+}

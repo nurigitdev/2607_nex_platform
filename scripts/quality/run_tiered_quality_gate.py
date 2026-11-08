@@ -2,15 +2,15 @@
 from __future__ import annotations
 
 import argparse
-from dataclasses import asdict, dataclass
 import json
 import os
-from pathlib import Path
 import re
 import subprocess
 import sys
 import time
-from typing import Callable, Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
+from dataclasses import asdict, dataclass
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 FULL_GATE_PATH = "scripts/quality/run_quality_gate.sh"
@@ -36,7 +36,10 @@ SERVICE_PROFILES = {
         coverage_targets=("services/nex-ag/nex_ag",),
     ),
     "nex-ae-api": ServiceProfile(
-        test_patterns=("test_nex_ae_*.py", "test_ae_*.py"),
+        test_patterns=(
+            "test_nex_ae_*.py",
+            "test_ae_*.py",
+        ),
         coverage_targets=("services/nex-ae-api/nex_ae_api",),
     ),
     "nex-ae-web": ServiceProfile(
@@ -50,6 +53,23 @@ SERVICE_PROFILES = {
     "nex-mo": ServiceProfile(
         test_patterns=("test_nex_mo_*.py", "test_mo_*.py", "test_*provider*.py"),
         coverage_targets=("services/nex-mo/nex_mo",),
+    ),
+    "nex-wc": ServiceProfile(
+        test_patterns=(
+            "test_nex_wc_*.py",
+            "test_wc_*.py",
+            "test_ae_wc_*.py",
+            "test_nex_ae_wc_*.py",
+        ),
+        coverage_targets=("services/nex-wc/nex_wc",),
+    ),
+    "nex-eos": ServiceProfile(
+        test_patterns=("test_nex_eos_*.py", "test_eos_*.py"),
+        coverage_targets=("services/nex-eos/nex_eos",),
+    ),
+    "nex-wa": ServiceProfile(
+        test_patterns=("test_nex_wa_*.py", "test_wa_*.py"),
+        coverage_targets=("services/nex-wa/nex_wa",),
     ),
     "nex-runtime": ServiceProfile(
         test_patterns=(
@@ -304,6 +324,20 @@ def _common_post_pytest_commands(
             )
         )
     commands.append((python_bin, "scripts/quality/validate_contracts.py"))
+    commands.append(
+        (
+            python_bin,
+            "scripts/quality/run_golden_journey_transition_audit.py",
+            "--summary",
+        )
+    )
+    commands.append(
+        (
+            python_bin,
+            "scripts/quality/run_demo_product_dependency_audit.py",
+            "--summary",
+        )
+    )
     return tuple(commands)
 
 

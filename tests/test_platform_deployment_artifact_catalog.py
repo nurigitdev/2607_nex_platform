@@ -48,4 +48,3 @@ def test_summary_and_main_branches(monkeypatch, capsys) -> None:
         lambda: {"status": "FAIL"},
     )
     assert smoke.main([]) == 1
-

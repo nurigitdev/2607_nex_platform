@@ -1,0 +1,27 @@
+{
+  "schema_version": "nsl_voucher_read_artifact_admission.v1",
+  "status": "PASS",
+  "repository": "nurigitdev/2608_nsl",
+  "artifact_source_revision": "2b88f2f8d097a0aa121e01db5290a650f15b10c8",
+  "artifact_manifest_path": "examples/voucher_operations/artifact_manifest.json",
+  "artifact_manifest_sha256": "sha256:3d4223990993e7d2b634d746cde5b89cc9335c266717bcb055db863590b428a9",
+  "runtime_wheel": {
+    "package_version": "0.2.1",
+    "source_revision": "d53658ec2ab0b42e995fe0ebe80badd53218feec",
+    "wheel_sha256": "sha256:a89ce5fde1a32749565ba0906a2f1faf1d440ff6db2dfc07c0b2a581378507cb"
+  },
+  "skills": [
+    {
+      "skill_id": "FINANCE.VOUCHER_DRAFT.GET",
+      "skill_version": "1.0.0",
+      "source_sha256": "sha256:930840da7f9485cf1c2d0bf2a4b56fb380371162bebb9864d20a641f702c7100",
+      "semantic_hash": "sha256:dc4fc1ad3604e609139a3d2f681726fb050e1157e09993de140538d2b841235b"
+    },
+    {
+      "skill_id": "FINANCE.VOUCHER_DRAFT.LIST",
+      "skill_version": "1.0.0",
+      "source_sha256": "sha256:2ab6f8aff9e732c3ed67a3f46128bbbc7326cea40dcd832e9f697bba9aefd5f6",
+      "semantic_hash": "sha256:09fd09c73c428b7f60731a769f3f627c259dda68165a37935f3c43d676d23521"
+    }
+  ]
+}

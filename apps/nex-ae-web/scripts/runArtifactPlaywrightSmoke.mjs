@@ -4,6 +4,7 @@ import { pathToFileURL } from "node:url";
 import {
   PLAYWRIGHT_CHROMIUM_EXECUTABLE_ENV
 } from "./runCredentialLoginPlaywrightReadiness.mjs";
+import { activateAuthenticatedView } from "./authenticatedShellNavigation.mjs";
 
 export const AE_WEB_ARTIFACT_PLAYWRIGHT_SMOKE_SCHEMA_VERSION =
   "ae_web_artifact_playwright_smoke.v1";
@@ -79,6 +80,7 @@ export async function runArtifactPlaywrightSmoke({
       waitUntil: "domcontentloaded",
       timeout: timeoutMs
     });
+    await activateAuthenticatedView(page, "artifacts", { timeoutMs });
     await page.waitForSelector("#artifact-panel", { timeout: timeoutMs });
 
     const browserResult = await page.evaluate(

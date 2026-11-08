@@ -1,0 +1,694 @@
+#!/usr/bin/env node
+import { randomUUID } from "node:crypto";
+import { mkdir } from "node:fs/promises";
+import path from "node:path";
+import { pathToFileURL } from "node:url";
+
+import { PLAYWRIGHT_CHROMIUM_EXECUTABLE_ENV } from "./runCredentialLoginPlaywrightReadiness.mjs";
+
+export const P8_DEMO_S11_PLAYWRIGHT_SCHEMA_VERSION =
+  "p8_demo_s11_chairman_golden_journey_playwright.v1";
+
+const ENV = {
+  webUrl: "NEX_P8_DEMO_S11_WEB_URL",
+  tenantId: "NEX_P8_DEMO_S11_TENANT_ID",
+  requesterEmployeeId: "NEX_P8_DEMO_S11_REQUESTER_EMPLOYEE_ID",
+  requesterPassword: "NEX_P8_DEMO_S11_REQUESTER_PASSWORD",
+  approverEmployeeId: "NEX_P8_DEMO_S11_APPROVER_EMPLOYEE_ID",
+  approverPassword: "NEX_P8_DEMO_S11_APPROVER_PASSWORD",
+  prompt: "NEX_P8_DEMO_S11_PROMPT",
+  recoveryInteractionId: "NEX_P8_DEMO_S11_RECOVERY_INTERACTION_ID",
+  screenshotDir: "NEX_P8_DEMO_S11_SCREENSHOT_DIR",
+  timeoutMs: "NEX_P8_DEMO_S11_TIMEOUT_MS"
+};
+const REQUIRED_ENV = [
+  ENV.webUrl,
+  ENV.tenantId,
+  ENV.requesterEmployeeId,
+  ENV.requesterPassword,
+  ENV.approverEmployeeId,
+  ENV.approverPassword,
+  ENV.prompt
+];
+const RECOVERY_REQUIRED_ENV = [
+  ENV.webUrl,
+  ENV.tenantId,
+  ENV.requesterEmployeeId,
+  ENV.requesterPassword,
+  ENV.recoveryInteractionId
+];
+const REDACTED_ENV = [
+  ENV.requesterPassword,
+  ENV.approverPassword,
+  ENV.prompt
+];
+const DEFAULT_TIMEOUT_MS = 300_000;
+
+export function p8DemoS11RuntimeConfig() {
+  return {
+    runtime_config_schema_version: "ae_web_runtime_config.v1",
+    client_mode: "fetch",
+    ae_base_url: "/ae-api",
+    features: {
+      approval_inbox_enabled: true,
+      document_detail_enabled: true,
+      upload_submit_enabled: true,
+      retrieval_submit_enabled: true,
+      fetch_clients_enabled: true
+    }
+  };
+}
+
+export async function runP8DemoS11ChairmanGoldenJourney({
+  environ = process.env,
+  importPlaywright = () => import("playwright")
+} = {}) {
+  const missing = REQUIRED_ENV.filter(name => !environ[name]);
+  if (missing.length > 0) return failure("required_env_missing", { missing_count: missing.length });
+
+  const timeout = positiveTimeout(environ[ENV.timeoutMs]);
+  const journeyId = randomUUID();
+  let interactionId = null;
+  let browser = null;
+  let requesterContext = null;
+  let approverContext = null;
+  let stage = "launch";
+  let decisionRequest = null;
+  let problemCode = null;
+  let problemStage = null;
+  let problemDirective = null;
+  const responses = [];
+  const screenCapture = createScreenCapture(environ, "journey");
+  try {
+    const playwright = await importPlaywright();
+    browser = await launchBrowser(playwright, environ);
+    requesterContext = await browser.newContext(browserContextOptions());
+    const requesterPage = await configuredPage(requesterContext);
+    observeApiResponses(requesterPage, responses);
+
+    stage = "anonymous_shell";
+    await requesterPage.goto(environ[ENV.webUrl], {
+      waitUntil: "domcontentloaded",
+      timeout
+    });
+    const anonymousProtectedSurfaceHidden =
+      (await requesterPage.isHidden("#authenticated-shell")) &&
+      (await requesterPage.isHidden("#approval-panel"));
+    await screenCapture.capture(requesterPage, "login");
+
+    stage = "requester_login";
+    await login(requesterPage, {
+      tenantId: environ[ENV.tenantId],
+      employeeId: environ[ENV.requesterEmployeeId],
+      password: environ[ENV.requesterPassword],
+      timeout
+    });
+    stage = "workspace_create";
+    const workspace = await browserJson(requesterPage, "/ae-api/api/v1/workspaces", {
+      method: "POST",
+      body: {
+        title: `P8 Demo S11 ${journeyId.slice(0, 8)}`,
+        runtime_defaults: {
+          locale: "ko-KR",
+          execution_mode: "GENERAL_ANSWER",
+          generation_alias: "general-llm-default"
+        }
+      }
+    });
+    if (workspace.status !== 200) throw new Error(`WorkspaceCreateStatus${workspace.status}`);
+
+    await installWorkspaceBootstrap(requesterPage, workspace.payload);
+    await requesterPage.reload({ waitUntil: "domcontentloaded", timeout });
+    await requesterPage.waitForSelector("#authenticated-shell:not([hidden])", { timeout });
+    const promptFirstWorkspace = await inspectPromptFirstWorkspace(requesterPage);
+    await screenCapture.capture(requesterPage, "requester-workspace-empty");
+
+    stage = "voucher_prompt_entry";
+    await requesterPage.uncheck("#retrieval-toggle");
+    await requesterPage.fill("#prompt", environ[ENV.prompt]);
+    const voucherPromptReady = await inspectPromptFirstWorkspace(requesterPage);
+    await screenCapture.capture(requesterPage, "voucher-prompt-ready");
+
+    stage = "live_plan_admission";
+    const admissionResponsePromise = requesterPage.waitForResponse(response => {
+      const route = new URL(response.url()).pathname;
+      return (
+        response.request().method() === "POST" &&
+        route === "/ae-api/api/v1/chat/interactions"
+      );
+    }, { timeout });
+    await requesterPage.click("#composer button[type='submit']");
+    await requesterPage.waitForSelector("#message-list .message.user", { timeout });
+    const voucherPromptSubmitted = await inspectPromptFirstWorkspace(requesterPage);
+    await screenCapture.capture(requesterPage, "voucher-prompt-submitted");
+    const admissionResponse = await admissionResponsePromise;
+    const admission = {
+      status: admissionResponse.status(),
+      payload: await admissionResponse.json()
+    };
+    if (
+      admission.status !== 202 ||
+      admission.payload?.generation?.semantic_planning?.status !== "COMPILED"
+    ) {
+      problemCode = publicProblemCode(admission.payload);
+      problemStage = publicProblemValue(admission.payload?.details?.semantic_stage);
+      problemDirective = publicProblemValue(admission.payload?.details?.directive);
+      throw new Error(`LivePlanAdmissionStatus${admission.status}`);
+    }
+    interactionId = admission.payload.interaction_id;
+    if (!interactionId) throw new Error("LivePlanInteractionIdMissing");
+    const semanticStages = admission.payload.generation.semantic_planning.stages || [];
+
+    stage = "approver_login";
+    approverContext = await browser.newContext(browserContextOptions());
+    const approverPage = await configuredPage(approverContext);
+    observeApiResponses(approverPage, responses);
+    approverPage.on("request", request => {
+      const route = new URL(request.url()).pathname;
+      if (request.method() === "POST" && route.endsWith("/decisions")) {
+        decisionRequest = { route, payload: request.postDataJSON() };
+      }
+    });
+    await approverPage.goto(environ[ENV.webUrl], {
+      waitUntil: "domcontentloaded",
+      timeout
+    });
+    await login(approverPage, {
+      tenantId: environ[ENV.tenantId],
+      employeeId: environ[ENV.approverEmployeeId],
+      password: environ[ENV.approverPassword],
+      timeout
+    });
+    await screenCapture.capture(approverPage, "approver-workspace");
+
+    stage = "approval_wait";
+    const gateId = await waitForNslWriteGate(approverPage, timeout);
+    await approverPage.click('[data-shell-view="approvals"]');
+    await approverPage.waitForSelector('.approval-feedback[data-phase="READY"]', { timeout });
+    await approverPage.waitForSelector(`[data-approval-gate-id="${gateId}"]`, { timeout });
+    await screenCapture.capture(approverPage, "approval-inbox");
+
+    stage = "approval_decision";
+    await approverPage.click(`[data-approval-gate-id="${gateId}"]`);
+    await approverPage.waitForSelector('.approval-feedback[data-phase="DETAIL_READY"]', { timeout });
+    await screenCapture.capture(approverPage, "approval-detail");
+    await approverPage.fill("#approval-decision-comment", "P8-DEMO-S11 protected acceptance");
+    await approverPage.click('[data-approval-decision="APPROVE"]');
+    await approverPage.waitForSelector('.approval-feedback[data-phase="DECIDED"]', { timeout });
+    await screenCapture.capture(approverPage, "approval-decided");
+    if (!decisionRequest) throw new Error("ApprovalDecisionRequestMissing");
+
+    stage = "approval_replay";
+    const replay = await browserJson(approverPage, decisionRequest.route, {
+      method: "POST",
+      body: decisionRequest.payload
+    });
+
+    stage = "result_wait";
+    const resultProjection = await waitForAgentResult(
+      requesterPage,
+      interactionId,
+      timeout
+    );
+    await requesterPage.waitForSelector(
+      ".agent-result[data-agent-result-state='SUCCEEDED']",
+      { timeout }
+    );
+    const rendered = await inspectRenderedAgentResult(requesterPage);
+    await screenCapture.capture(requesterPage, "requester-result");
+
+    stage = "logout";
+    await logout(approverPage, timeout);
+    await screenCapture.capture(approverPage, "approver-logged-out");
+    await logout(requesterPage, timeout);
+    await screenCapture.capture(requesterPage, "requester-logged-out");
+    const checks = {
+      chromium_launched: true,
+      anonymous_protected_surface_hidden: anonymousProtectedSurfaceHidden,
+      requester_authenticated: true,
+      approver_authenticated: true,
+      workspace_created: true,
+      prompt_first_workspace_empty: promptFirstWorkspace.messageCount === 0,
+      prompt_first_timeline_idle: promptFirstWorkspace.timelineEventCount === 1,
+      prompt_first_composer_empty: promptFirstWorkspace.promptEmpty === true,
+      voucher_prompt_entered_in_composer: voucherPromptReady.promptEmpty === false,
+      voucher_prompt_submitted_via_composer:
+        voucherPromptSubmitted.messageCount === 1 &&
+        voucherPromptSubmitted.promptEmpty === true,
+      retrieval_disabled_for_voucher:
+        voucherPromptReady.retrievalEnabled === false &&
+        voucherPromptSubmitted.retrievalEnabled === false,
+      live_plan_compiled: true,
+      all_semantic_stages_admitted:
+        semanticStages.length === 3 &&
+        semanticStages.every(item => item.directive === "CONTINUE"),
+      nsl_write_gate_rendered: true,
+      approval_committed: true,
+      exact_decision_replay_idempotent: replay.status === 200,
+      agent_result_terminal: resultProjection.terminal === true,
+      agent_result_succeeded: resultProjection.result?.status === "SUCCEEDED",
+      result_delivery_acknowledged:
+        resultProjection.result?.delivery?.state === "ACKNOWLEDGED",
+      eos_business_reference_visible: (resultProjection.result?.business_refs || []).some(
+        value => value.startsWith("EOS:BUSINESS_OPERATION:")
+      ),
+      browser_result_presented: rendered,
+      browser_generation_state_succeeded:
+        (await requesterPage.textContent("#generation-stage")) === "완료",
+      requester_logout_returned_to_login:
+        await requesterPage.isVisible("#credential-login-panel"),
+      approver_logout_returned_to_login:
+        await approverPage.isVisible("#credential-login-panel")
+    };
+    const evidence = {
+      smoke_schema_version: P8_DEMO_S11_PLAYWRIGHT_SCHEMA_VERSION,
+      status: Object.values(checks).every(Boolean) ? "PASS" : "FAIL",
+      runner: {
+        tool: "Playwright",
+        browser: "chromium",
+        headless: true,
+        client_mode: "fetch",
+        session_count: 2
+      },
+      observations: {
+        semantic_stage_count: semanticStages.length,
+        initial_message_count: promptFirstWorkspace.messageCount,
+        initial_timeline_event_count: promptFirstWorkspace.timelineEventCount,
+        submitted_message_count: voucherPromptSubmitted.messageCount,
+        approval_gate_count: 1,
+        approval_replay_status: replay.status,
+        authenticated_http_response_count: responses.length,
+        result_business_ref_count:
+          resultProjection.result?.business_refs?.length || 0,
+        result_external_ref_count:
+          resultProjection.result?.external_refs?.length || 0
+      },
+      screen_capture: screenCapture.evidence(),
+      checks,
+      runtime: {
+        interaction_id: interactionId,
+        workspace_id: workspace.payload.workspace_id,
+        chat_document_id: workspace.payload.chat_document_id,
+        result_projection: resultProjection
+      }
+    };
+    assertP8DemoS11EvidenceRedacted(evidence, environ);
+    return evidence;
+  } catch (error) {
+    const evidence = failure(safeFailureCode(error), {
+      stage,
+      response_count: responses.length,
+      recent_api_responses: responses.slice(-5),
+      problem_code: problemCode,
+      failed_stage: problemStage,
+      failure_directive: problemDirective
+    });
+    evidence.screen_capture = screenCapture.evidence();
+    assertP8DemoS11EvidenceRedacted(evidence, environ);
+    return evidence;
+  } finally {
+    if (approverContext) await approverContext.close();
+    if (requesterContext) await requesterContext.close();
+    if (browser) await browser.close();
+  }
+}
+
+export async function runP8DemoS11PostRestartRecovery({
+  environ = process.env,
+  importPlaywright = () => import("playwright")
+} = {}) {
+  const missing = RECOVERY_REQUIRED_ENV.filter(name => !environ[name]);
+  if (missing.length > 0) return failure("recovery_env_missing", { missing_count: missing.length });
+  const timeout = positiveTimeout(environ[ENV.timeoutMs]);
+  let browser = null;
+  let context = null;
+  let stage = "launch";
+  const responses = [];
+  const screenCapture = createScreenCapture(environ, "recovery");
+  try {
+    const playwright = await importPlaywright();
+    browser = await launchBrowser(playwright, environ);
+    context = await browser.newContext(browserContextOptions());
+    const page = await configuredPage(context);
+    observeApiResponses(page, responses);
+    stage = "requester_login";
+    await page.goto(environ[ENV.webUrl], { waitUntil: "domcontentloaded", timeout });
+    await login(page, {
+      tenantId: environ[ENV.tenantId],
+      employeeId: environ[ENV.requesterEmployeeId],
+      password: environ[ENV.requesterPassword],
+      timeout
+    });
+    await screenCapture.capture(page, "requester-workspace");
+    stage = "authoritative_result_read";
+    const projection = await waitForAgentResult(
+      page,
+      environ[ENV.recoveryInteractionId],
+      timeout
+    );
+    stage = "result_render";
+    const rendered = await renderRecoveredAgentResult(page, projection);
+    await screenCapture.capture(page, "requester-result");
+    const checks = {
+      authenticated_after_restart: true,
+      authoritative_result_recovered: projection.terminal === true,
+      recovered_result_succeeded: projection.result?.status === "SUCCEEDED",
+      recovered_delivery_acknowledged:
+        projection.result?.delivery?.state === "ACKNOWLEDGED",
+      browser_result_presented_after_restart: rendered
+    };
+    const evidence = {
+      smoke_schema_version: P8_DEMO_S11_PLAYWRIGHT_SCHEMA_VERSION,
+      status: Object.values(checks).every(Boolean) ? "PASS" : "FAIL",
+      recovery_mode: true,
+      observations: {
+        result_business_ref_count: projection.result?.business_refs?.length || 0,
+        result_external_ref_count: projection.result?.external_refs?.length || 0
+      },
+      screen_capture: screenCapture.evidence(),
+      checks,
+      runtime: {
+        interaction_id: environ[ENV.recoveryInteractionId],
+        result_projection: projection
+      }
+    };
+    assertP8DemoS11EvidenceRedacted(evidence, environ);
+    return evidence;
+  } catch (error) {
+    const evidence = failure(safeFailureCode(error), {
+      stage,
+      recovery_mode: true,
+      response_count: responses.length,
+      recent_api_responses: responses.slice(-5)
+    });
+    evidence.screen_capture = screenCapture.evidence();
+    assertP8DemoS11EvidenceRedacted(evidence, environ);
+    return evidence;
+  } finally {
+    if (context) await context.close();
+    if (browser) await browser.close();
+  }
+}
+
+function createScreenCapture(environ, prefix) {
+  const directory = environ[ENV.screenshotDir] || null;
+  const captures = [];
+  let index = 0;
+  return {
+    async capture(page, stage) {
+      if (!directory) return;
+      await mkdir(directory, { recursive: true });
+      index += 1;
+      const filename = [
+        "p8-demo-s11",
+        prefix,
+        String(index).padStart(2, "0"),
+        stage
+      ].join("-") + ".png";
+      await page.screenshot({
+        path: path.join(directory, filename),
+        fullPage: true,
+        animations: "disabled"
+      });
+      captures.push({ stage, file: filename });
+    },
+    evidence() {
+      return {
+        enabled: Boolean(directory),
+        count: captures.length,
+        captures: [...captures]
+      };
+    }
+  };
+}
+
+async function launchBrowser(playwright, environ) {
+  return playwright.chromium.launch({
+    headless: true,
+    args: ["--host-resolver-rules=MAP ae.nex-staging.test 127.0.0.1"],
+    ...(environ[PLAYWRIGHT_CHROMIUM_EXECUTABLE_ENV]
+      ? { executablePath: environ[PLAYWRIGHT_CHROMIUM_EXECUTABLE_ENV] }
+      : {})
+  });
+}
+
+function browserContextOptions() {
+  return {
+    ignoreHTTPSErrors: true,
+    viewport: { width: 1440, height: 1000 }
+  };
+}
+
+async function configuredPage(context) {
+  const page = await context.newPage();
+  await page.addInitScript(config => {
+    globalThis.__NEX_AE_WEB_CONFIG__ = config;
+  }, p8DemoS11RuntimeConfig());
+  return page;
+}
+
+async function installWorkspaceBootstrap(page, workspace) {
+  await page.addInitScript(value => {
+    globalThis.__NEX_AE_WEB_WORKSPACE_BOOTSTRAP__ = value;
+  }, {
+    schema_version: "ae_web_workspace_bootstrap.v1",
+    workspace_id: workspace.workspace_id,
+    chat_document_id: workspace.chat_document_id
+  });
+}
+
+async function inspectPromptFirstWorkspace(page) {
+  return page.evaluate(() => ({
+    messageCount: document.querySelectorAll("#message-list .message").length,
+    timelineEventCount: document.querySelectorAll("#progress-timeline li").length,
+    promptEmpty: document.querySelector("#prompt")?.value === "",
+    retrievalEnabled: document.querySelector("#retrieval-toggle")?.checked === true
+  }));
+}
+
+function observeApiResponses(page, responses) {
+  page.on("response", response => {
+    const route = new URL(response.url()).pathname;
+    if (route.startsWith("/ae-api/api/v1/")) {
+      responses.push({ route: publicRouteClass(route), status: response.status() });
+    }
+  });
+}
+
+async function login(page, { tenantId, employeeId, password, timeout }) {
+  await page.fill("#credential-tenant-id", tenantId);
+  await page.fill("#credential-employee-id", employeeId);
+  await page.fill("#credential-password", password);
+  const responsePromise = page.waitForResponse(response => {
+    const route = new URL(response.url()).pathname;
+    return (
+      response.request().method() === "POST" &&
+      route === "/ae-api/api/v1/auth/session/login"
+    );
+  }, { timeout });
+  await page.click("#credential-login-submit-button");
+  const response = await responsePromise;
+  if (response.status() !== 200) {
+    throw new Error(`CredentialLoginStatus${response.status()}`);
+  }
+  await page.waitForSelector("#authenticated-shell:not([hidden])", { timeout });
+}
+
+async function logout(page, timeout) {
+  await page.waitForSelector(
+    "#credential-logout-button:not([hidden]):not([disabled])",
+    { timeout }
+  );
+  const responsePromise = page.waitForResponse(response => {
+    const route = new URL(response.url()).pathname;
+    return (
+      response.request().method() === "POST" &&
+      route === "/ae-api/api/v1/auth/session/logout"
+    );
+  }, { timeout });
+  await page.click("#credential-logout-button", { timeout });
+  const response = await responsePromise;
+  if (response.status() !== 200) {
+    throw new Error(`CredentialLogoutStatus${response.status()}`);
+  }
+  await page.waitForSelector("#authentication-shell:not([hidden])", { timeout });
+}
+
+async function waitForNslWriteGate(page, timeout) {
+  const deadline = Date.now() + timeout;
+  while (Date.now() < deadline) {
+    const response = await browserJson(page, "/ae-api/api/v1/approval-gates?limit=50");
+    if (response.status === 200) {
+      const gates = (response.payload?.gates || []).filter(
+        item => item.approval_domain === "NSL_WRITE" && item.state === "PENDING"
+      );
+      if (gates.length > 1) throw new Error("ApprovalGateAmbiguous");
+      if (gates[0]?.gate_id) return gates[0].gate_id;
+    }
+    await page.waitForTimeout(500);
+  }
+  throw new Error("ApprovalGateTimeout");
+}
+
+async function waitForAgentResult(page, interactionId, timeout) {
+  const route = `/ae-api/api/v1/chat/interactions/${encodeURIComponent(
+    interactionId
+  )}/agent-result`;
+  const deadline = Date.now() + timeout;
+  let transientFetchFailures = 0;
+  while (Date.now() < deadline) {
+    let response;
+    try {
+      response = await browserJson(page, route);
+    } catch (error) {
+      if (!isTransientBrowserFetchFailure(error)) throw error;
+      transientFetchFailures += 1;
+      await page.waitForTimeout(750);
+      continue;
+    }
+    if (response.status === 200 && response.payload?.terminal === true) {
+      return response.payload;
+    }
+    if (![200, 404].includes(response.status)) {
+      throw new Error(`AgentResultStatus${response.status}`);
+    }
+    await page.waitForTimeout(750);
+  }
+  if (transientFetchFailures > 0) throw new Error("AgentResultTransportTimeout");
+  throw new Error("AgentResultTimeout");
+}
+
+function isTransientBrowserFetchFailure(error) {
+  const value = String(error?.message || error || "");
+  return /Failed to fetch|NetworkError|ERR_(?:CONNECTION|NETWORK|HTTP2)/i.test(value);
+}
+
+async function inspectRenderedAgentResult(page) {
+  return page.evaluate(() => {
+    const card = document.querySelector(
+      ".agent-result[data-agent-result-state='SUCCEEDED']"
+    );
+    return Boolean(card && card.textContent.includes("업무 처리 결과"));
+  });
+}
+
+async function renderRecoveredAgentResult(page, projection) {
+  return page.evaluate(async value => {
+    const module = await import("/src/interactionAgentResultClient.js");
+    const projected = module.projectInteractionAgentResult(value, {
+      clientMode: "fetch",
+      route: "owner-scoped-agent-result"
+    });
+    const container = document.querySelector("#message-list");
+    container.insertAdjacentHTML(
+      "beforeend",
+      module.renderInteractionAgentResult(projected)
+    );
+    const card = container.querySelector(
+      ".agent-result[data-agent-result-state='SUCCEEDED']"
+    );
+    return Boolean(card && card.textContent.includes("업무 처리 결과"));
+  }, projection);
+}
+
+async function browserJson(page, route, { method = "GET", body = null } = {}) {
+  return page.evaluate(async request => {
+    const response = await fetch(request.route, {
+      method: request.method,
+      credentials: "same-origin",
+      headers: request.body == null ? undefined : { "content-type": "application/json" },
+      body: request.body == null ? undefined : JSON.stringify(request.body)
+    });
+    let payload = null;
+    try {
+      payload = await response.json();
+    } catch {
+      payload = null;
+    }
+    return { status: response.status, payload };
+  }, { route, method, body });
+}
+
+function publicRouteClass(route) {
+  if (route.includes("/auth/session")) return "auth_session";
+  if (route.includes("/approval-gates")) return "approval";
+  if (route.includes("/agent-result")) return "agent_result";
+  if (route.includes("/chat/interactions")) return "chat";
+  if (route.includes("/workspaces")) return "workspace";
+  return "other";
+}
+
+function publicProblemCode(payload) {
+  return publicProblemValue(payload?.error_code);
+}
+
+function publicProblemValue(value) {
+  return typeof value === "string" && /^[A-Za-z0-9._:-]{1,128}$/.test(value)
+    ? value
+    : null;
+}
+
+function positiveTimeout(value) {
+  const parsed = Number(value || DEFAULT_TIMEOUT_MS);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_TIMEOUT_MS;
+}
+
+function safeFailureCode(error) {
+  const value = String(error?.message || error?.constructor?.name || "playwright_failed");
+  if (/Failed to fetch|NetworkError|ERR_(?:CONNECTION|NETWORK|HTTP2)/i.test(value)) {
+    return "BrowserFetchFailed";
+  }
+  return /^[A-Za-z][A-Za-z0-9]{0,95}$/.test(value) ? value : "playwright_failed";
+}
+
+function failure(failureCode, observations = {}) {
+  return {
+    smoke_schema_version: P8_DEMO_S11_PLAYWRIGHT_SCHEMA_VERSION,
+    status: "FAIL",
+    failure_code: failureCode,
+    observations,
+    checks: {}
+  };
+}
+
+export function publicP8DemoS11PlaywrightEvidence(evidence) {
+  const { runtime: _runtime, ...publicEvidence } = evidence;
+  return publicEvidence;
+}
+
+export function assertP8DemoS11EvidenceRedacted(evidence, environ = process.env) {
+  const serialized = JSON.stringify(evidence);
+  for (const name of REDACTED_ENV) {
+    const value = environ[name];
+    if (value && value.length >= 8 && serialized.includes(value)) {
+      throw new Error(`P8-DEMO-S11 evidence leaked ${name}`);
+    }
+  }
+  for (const fragment of ["access_token", "api_key", "database_url", "password_hash", "service_token"]) {
+    if (serialized.toLowerCase().includes(fragment)) {
+      throw new Error("P8-DEMO-S11 evidence leaked protected material");
+    }
+  }
+}
+
+export function formatP8DemoS11Summary(evidence) {
+  return evidence.status === "PASS"
+    ? `p8_demo_s11_playwright=pass checks=${Object.keys(evidence.checks).length}`
+    : `p8_demo_s11_playwright=fail reason=${evidence.failure_code || "checks_failed"}`;
+}
+
+export async function main(argv = process.argv.slice(2), output = console.log) {
+  const evidence = argv.includes("--recovery")
+    ? await runP8DemoS11PostRestartRecovery()
+    : await runP8DemoS11ChairmanGoldenJourney();
+  output(
+    argv.includes("--summary")
+      ? formatP8DemoS11Summary(evidence)
+      : JSON.stringify(evidence)
+  );
+  return evidence.status === "PASS" ? 0 : 1;
+}
+
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  process.exitCode = await main();
+}

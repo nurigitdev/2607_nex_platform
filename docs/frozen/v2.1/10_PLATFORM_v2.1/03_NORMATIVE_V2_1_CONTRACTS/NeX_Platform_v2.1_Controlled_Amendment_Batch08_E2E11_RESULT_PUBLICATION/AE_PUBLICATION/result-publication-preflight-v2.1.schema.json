@@ -1,0 +1,227 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:nex:ae:result-publication-preflight:v2.1",
+  "title": "AE ResultPublicationPreflight v2.1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "preflight_id",
+    "tenant_id",
+    "agent_execution_id",
+    "result_id",
+    "delivery_id",
+    "target_type",
+    "target_ref",
+    "authorization_time_semantics",
+    "oa_decision_ref",
+    "project_scope_checked",
+    "org_scope_checked",
+    "data_classification_checked",
+    "recipient_visibility_checked",
+    "resource_visibility_checked",
+    "decision",
+    "reason_codes",
+    "correlation_id",
+    "evaluated_at"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "2.1"
+    },
+    "preflight_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "tenant_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "agent_execution_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "result_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "delivery_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "target_type": {
+      "enum": [
+        "WORKSPACE_RESULT",
+        "WC_WORK_RESULT",
+        "ARTIFACT_STORE",
+        "NOTIFICATION",
+        "EMAIL",
+        "MESSENGER",
+        "WA_PROJECTION",
+        "METRICS",
+        "ANALYTICS",
+        "DASHBOARD_CACHE"
+      ]
+    },
+    "target_ref": {
+      "type": "string",
+      "minLength": 1
+    },
+    "authorization_time_semantics": {
+      "const": "AS_OF_NOW"
+    },
+    "oa_decision_ref": {
+      "type": "string",
+      "minLength": 1
+    },
+    "project_scope_checked": {
+      "type": "boolean"
+    },
+    "org_scope_checked": {
+      "type": "boolean"
+    },
+    "data_classification_checked": {
+      "type": "boolean"
+    },
+    "recipient_visibility_checked": {
+      "type": "boolean"
+    },
+    "resource_visibility_checked": {
+      "type": "boolean"
+    },
+    "work_claim_lineage_ref": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "decision": {
+      "enum": [
+        "ALLOW",
+        "DENY"
+      ]
+    },
+    "reason_codes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "correlation_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "evaluated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "claim_status_checked": {
+      "type": "boolean"
+    },
+    "claim_generation_current": {
+      "type": "boolean"
+    },
+    "claimant_matches": {
+      "type": "boolean"
+    },
+    "assignment_matches": {
+      "type": "boolean"
+    },
+    "execution_matches": {
+      "type": "boolean"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "decision": {
+            "const": "ALLOW"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "project_scope_checked": {
+            "const": true
+          },
+          "org_scope_checked": {
+            "const": true
+          },
+          "data_classification_checked": {
+            "const": true
+          },
+          "recipient_visibility_checked": {
+            "const": true
+          },
+          "resource_visibility_checked": {
+            "const": true
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "target_type": {
+            "const": "WC_WORK_RESULT"
+          }
+        },
+        "required": [
+          "target_type"
+        ]
+      },
+      "then": {
+        "required": [
+          "work_claim_lineage_ref",
+          "claim_status_checked",
+          "claim_generation_current",
+          "claimant_matches",
+          "assignment_matches",
+          "execution_matches"
+        ],
+        "properties": {
+          "work_claim_lineage_ref": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "target_type": {
+            "const": "WC_WORK_RESULT"
+          },
+          "decision": {
+            "const": "ALLOW"
+          }
+        },
+        "required": [
+          "target_type",
+          "decision"
+        ]
+      },
+      "then": {
+        "properties": {
+          "claim_status_checked": {
+            "const": true
+          },
+          "claim_generation_current": {
+            "const": true
+          },
+          "claimant_matches": {
+            "const": true
+          },
+          "assignment_matches": {
+            "const": true
+          },
+          "execution_matches": {
+            "const": true
+          }
+        }
+      }
+    }
+  ]
+}

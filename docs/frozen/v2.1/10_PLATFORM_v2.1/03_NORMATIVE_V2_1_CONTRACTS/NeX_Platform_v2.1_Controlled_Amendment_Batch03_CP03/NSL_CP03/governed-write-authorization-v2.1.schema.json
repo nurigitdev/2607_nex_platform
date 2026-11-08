@@ -1,0 +1,206 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:nex:ae:nsl:governed-write-authorization:v2.1",
+  "title": "GovernedWriteAuthorization v2.1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "tenant_id",
+    "business_operation_id",
+    "oa_decision_ref",
+    "oa_allowed",
+    "protected_operation",
+    "operation_trust_decision",
+    "required_assurance_level"
+  ],
+  "properties": {
+    "tenant_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "business_operation_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "oa_decision_ref": {
+      "type": "string",
+      "minLength": 1
+    },
+    "oa_allowed": {
+      "const": true
+    },
+    "protected_operation": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "$id": "urn:nex:agent:protected-operation-descriptor:v2.1",
+      "title": "ProtectedOperationDescriptor v2.1",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "tenant_id",
+        "agent_execution_id",
+        "executable_step_id",
+        "business_operation_id",
+        "project_ref",
+        "capability",
+        "operation_class",
+        "business_object_type",
+        "typed_parameters",
+        "operation_fingerprint"
+      ],
+      "properties": {
+        "tenant_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "agent_execution_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "executable_step_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "business_operation_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "actor_ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "agent_ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "org_scope_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "project_ref": {
+          "type": "string",
+          "minLength": 1
+        },
+        "resource_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "capability": {
+          "type": "string",
+          "minLength": 1
+        },
+        "operation_class": {
+          "type": "string",
+          "minLength": 1
+        },
+        "data_classification": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "typed_parameters": {
+          "type": "object"
+        },
+        "business_object_type": {
+          "type": "string",
+          "minLength": 1
+        },
+        "operation_fingerprint": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "operation_trust_decision": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "$id": "urn:nex:agent:operation-trust-decision:v2.1",
+      "title": "OperationTrustDecision v2.1",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "decision",
+        "decision_mode",
+        "assurance_level",
+        "operation_fingerprint",
+        "facts_hash",
+        "decision_hash",
+        "evaluated_at",
+        "expires_at"
+      ],
+      "properties": {
+        "decision": {
+          "enum": [
+            "ALLOW",
+            "DENY",
+            "REVIEW",
+            "INDETERMINATE"
+          ]
+        },
+        "decision_mode": {
+          "type": "string",
+          "minLength": 1
+        },
+        "assurance_level": {
+          "type": "string",
+          "minLength": 1
+        },
+        "operation_fingerprint": {
+          "type": "string",
+          "minLength": 1
+        },
+        "rule_set_ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "rule_set_version": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "facts_hash": {
+          "type": "string",
+          "minLength": 1
+        },
+        "proof_ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "reason_code": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "evaluated_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "expires_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "decision_hash": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "required_assurance_level": {
+      "type": "string",
+      "minLength": 1
+    }
+  }
+}

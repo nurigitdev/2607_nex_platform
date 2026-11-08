@@ -1,0 +1,2 @@
+﻿Scenario,Title,Verdict,Summary
+E2E-12,Scheduled PA Recurring Work,PASS,"WC Schedule SoR, deterministic time/misfire, atomic exactly-one WorkItem materialization, PA project binding, current authorization/audit, Claim-only Agent start and WA projection-only boundary are normative."

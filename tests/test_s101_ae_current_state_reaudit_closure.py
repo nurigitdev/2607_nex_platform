@@ -8,6 +8,9 @@ import run_s101_ae_current_state_reaudit_closure as closure
 
 def test_repository_s101_closure_passes_with_confirmed_gaps() -> None:
     result = closure.run_s101_ae_current_state_reaudit_closure()
+    current_contract_drift_count = len(
+        closure.run_contract_drift(closure.ROOT)["drift_items"]
+    )
 
     assert result["status"] == "PASS"
     assert result["closure_readiness"] == "READY_FOR_TARGETED_S102_HARDENING"
@@ -20,7 +23,7 @@ def test_repository_s101_closure_passes_with_confirmed_gaps() -> None:
         "high_risk_ownership_gap_count": 1,
         "required_refactoring_count": 7,
         "database_identifier_drift_count": 8,
-        "contract_drift_count": 33,
+        "contract_drift_count": current_contract_drift_count,
         "web_refactor_count": 3,
         "missing_file_count": 0,
         "missing_token_count": 0,
@@ -96,9 +99,11 @@ def test_closure_helpers_fail_closed(tmp_path: Path) -> None:
 
 def test_summary_and_main_paths(monkeypatch, capsys) -> None:
     passing = closure.run_s101_ae_current_state_reaudit_closure()
+    current_contract_drift_count = passing["summary"]["contract_drift_count"]
     assert closure.summary_line(passing) == (
         "s101_ae_current_state_reaudit_closure=pass audits=8/8 "
-        "persistence_gaps=7 ownership_gaps=1 contract_drift=33 next=S102"
+        "persistence_gaps=7 ownership_gaps=1 "
+        f"contract_drift={current_contract_drift_count} next=S102"
     )
     assert "next=blocked" in closure.summary_line({"status": "FAIL"})
 

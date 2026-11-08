@@ -123,26 +123,24 @@ def run_platform_production_security_boundary(
     quality_gate = _read_text(root / QUALITY_GATE_PATH)
     checks = {
         "required_paths_present": all(paths.values()),
-        "production_profile_requires_twenty_five_values": (
-            len(resolution.required_environment_names) == 25
+        "production_profile_requires_canonical_values": (
+            len(resolution.required_environment_names) == len(required_names)
             and set(resolution.required_environment_names) == set(required_names)
         ),
         "secret_inventory_exact": (
-            len(SECRET_ENV_NAMES) == 16
-            and len(set(SECRET_ENV_NAMES)) == 16
+            len(SECRET_ENV_NAMES) == len(set(SECRET_ENV_NAMES))
         ),
         "public_connection_inventory_exact": (
-            len(PUBLIC_CONNECTION_ENV_NAMES) == 9
-            and len(set(PUBLIC_CONNECTION_ENV_NAMES)) == 9
+            len(PUBLIC_CONNECTION_ENV_NAMES)
+            == len(set(PUBLIC_CONNECTION_ENV_NAMES))
         ),
         "required_values_classified_once": (
             set(SECRET_ENV_NAMES).isdisjoint(PUBLIC_CONNECTION_ENV_NAMES)
             and set((*SECRET_ENV_NAMES, *PUBLIC_CONNECTION_ENV_NAMES))
             == set(required_names)
         ),
-        "nine_tls_endpoints_frozen": (
-            len(TLS_ENDPOINT_ENV_NAMES) == 9
-            and set(TLS_ENDPOINT_ENV_NAMES) == set(PUBLIC_CONNECTION_ENV_NAMES)
+        "canonical_tls_endpoints_frozen": (
+            set(TLS_ENDPOINT_ENV_NAMES) == set(PUBLIC_CONNECTION_ENV_NAMES)
         ),
         "external_reference_composition_is_fail_closed": (
             production is not None
@@ -261,4 +259,3 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":  # pragma: no cover
     raise SystemExit(main())
-

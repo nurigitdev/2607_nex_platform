@@ -18,7 +18,9 @@ from nex_runtime.service_token_admission import (
     HttpOaTokenIntrospector,
     ServiceTokenAdmissionError,
     ServiceTokenAdmissionRuntime,
+    admit_test_mock_service_token,
     build_service_token_admission_runtime,
+    register_service_token_admission_routes,
 )
 from nex_runtime.signed_token_verifier import (
     BoundedJwksCache,
@@ -739,6 +741,28 @@ def test_request_helper_uses_attached_runtime_and_propagates_context(
     assert response.json()["token_kind"] == "SIGNED"
 
 
+def test_request_helper_propagates_attached_runtime_rejection() -> None:
+    from nex_runtime import admit_service_token_from_request
+
+    app = FastAPI()
+    app.state.service_token_admission = ServiceTokenAdmissionRuntime(
+        expected_audience="nex-cx", rollout_profile="TEST_MOCK"
+    )
+
+    @app.get("/guard")
+    def guard(request: Request):
+        return admit_service_token_from_request(
+            request,
+            None,
+            expected_audience="nex-cx",
+            required_scopes=("service:call",),
+        )
+
+    response = TestClient(app).get("/guard")
+    assert response.status_code == 401
+    assert response.json()["error_code"] == "nex.authorization_missing"
+
+
 def test_request_helper_fallback_rejects_invalid_mock_token() -> None:
     from nex_runtime import admit_service_token_from_request
 
@@ -891,3 +915,22 @@ def test_protected_runtime_route_uses_same_admission_and_safe_projection() -> No
         "introspected": 0,
     }
     assert token.access_token not in accepted.text
+
+
+def test_protected_runtime_route_fails_closed_without_attached_runtime() -> None:
+    app = FastAPI()
+    register_service_token_admission_routes(app, spec=SERVICE_SPECS["nex-ag"])
+
+    response = TestClient(app).get("/internal/v1/auth/service-token-runtime")
+
+    assert response.status_code == 503
+    assert response.json()["error_code"] == "nex.service_token_admission_unavailable"
+
+
+def test_direct_mock_admission_rejects_signed_only_profile() -> None:
+    with pytest.raises(ValueError, match="TEST_MOCK or DUAL_READ"):
+        admit_test_mock_service_token(
+            "Bearer value",
+            expected_audience="nex-ag",
+            rollout_profile="SIGNED_ONLY",
+        )

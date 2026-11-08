@@ -233,7 +233,9 @@ def protected_dgx_vllm_profile_defaults() -> dict[str, str]:
         "NEX_MO_LIVE_EXPECTED_EMBEDDING_MODELS": "Qwen3-Embedding-4B",
         "NEX_MO_REMOTE_RERANKER_REQUEST_SHAPE": "rerank",
         "NEX_MO_REMOTE_RERANKER_MODEL": "Qwen3-Reranker-4B",
-        "NEX_MO_REMOTE_RERANKER_MODEL_REVISION": "Qwen3-Reranker-4B",
+        "NEX_MO_REMOTE_RERANKER_MODEL_REVISION": (
+            "hf:22e683669bc0f0bd69640a1354a6d0aebcfeede5"
+        ),
         "NEX_MO_REMOTE_RERANKER_DEPLOYMENT_ID": "vllm-reranker-http",
         "NEX_MO_LIVE_EXPECTED_RERANKER_MODELS": "Qwen3-Reranker-4B",
         "NEX_MO_VLLM_MODEL": "Qwen3.5-4B",

@@ -1,0 +1,89 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:nex:transition:p6:skill-execution-request:1.0",
+  "title": "NeX P6 SkillExecutionRequest v1 Transition Contract",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "tenant_id",
+    "agent_execution_id",
+    "executable_plan_id",
+    "executable_step_id",
+    "nsl_execution_id",
+    "business_operation_id",
+    "skill_id",
+    "exact_skill_version",
+    "expected_semantic_hash",
+    "runtime_contract_ref",
+    "compiled_inputs",
+    "input_provenance",
+    "explicit_resource_refs",
+    "principal_context_ref",
+    "data_policy_ref",
+    "context_projection_ref",
+    "context_projection_hash",
+    "correlation_id",
+    "causation_id",
+    "agent_context_ref",
+    "agent_context_hash",
+    "mode"
+  ],
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "tenant_id": {"$ref": "#/$defs/boundedText"},
+    "agent_execution_id": {"$ref": "#/$defs/uuid"},
+    "executable_plan_id": {"$ref": "#/$defs/uuid"},
+    "executable_step_id": {"$ref": "#/$defs/uuid"},
+    "nsl_execution_id": {"$ref": "#/$defs/uuid"},
+    "business_operation_id": {"$ref": "#/$defs/uuid"},
+    "skill_id": {"$ref": "#/$defs/selector"},
+    "exact_skill_version": {"$ref": "#/$defs/selector"},
+    "expected_semantic_hash": {"$ref": "#/$defs/hashRef"},
+    "runtime_contract_ref": {"$ref": "#/$defs/ref"},
+    "compiled_inputs": {
+      "type": "object",
+      "maxProperties": 128,
+      "propertyNames": {"$ref": "#/$defs/safeName"}
+    },
+    "input_provenance": {
+      "type": "object",
+      "maxProperties": 128,
+      "propertyNames": {"$ref": "#/$defs/safeName"},
+      "additionalProperties": {"enum": ["USER", "CONTEXT", "DEFAULT"]}
+    },
+    "explicit_resource_refs": {
+      "type": "array",
+      "maxItems": 64,
+      "uniqueItems": true,
+      "items": {"$ref": "#/$defs/ref"}
+    },
+    "principal_context_ref": {"$ref": "#/$defs/ref"},
+    "data_policy_ref": {"$ref": "#/$defs/ref"},
+    "context_projection_ref": {"$ref": "#/$defs/ref"},
+    "context_projection_hash": {"$ref": "#/$defs/hashRef"},
+    "correlation_id": {"$ref": "#/$defs/boundedText"},
+    "causation_id": {"anyOf": [{"$ref": "#/$defs/boundedText"}, {"type": "null"}]},
+    "agent_context_ref": {"$ref": "#/$defs/ref"},
+    "agent_context_hash": {"$ref": "#/$defs/hashRef"},
+    "mode": {"const": "NEW"}
+  },
+  "$defs": {
+    "uuid": {"type": "string", "format": "uuid"},
+    "boundedText": {"type": "string", "minLength": 1, "maxLength": 256},
+    "ref": {"type": "string", "minLength": 1, "maxLength": 512},
+    "selector": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256,
+      "pattern": "^[\\x21-\\x7e]+$"
+    },
+    "safeName": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z][A-Za-z0-9_]*$"
+    },
+    "hashRef": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "tenant_id": "tenant-demo",
+  "candidates": [
+    {
+      "input_index": 0,
+      "employee_id": "EMP-1001",
+      "password": "must-not-be-admitted"
+    }
+  ]
+}

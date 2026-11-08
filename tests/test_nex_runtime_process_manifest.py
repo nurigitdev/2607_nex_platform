@@ -3,7 +3,6 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-
 from nex_runtime.process_manifest import (
     BACKGROUND_PROCESS_IDS,
     _command_target,
@@ -18,7 +17,6 @@ from nex_runtime.topology import (
     runtime_manifest_public_projection,
 )
 from nex_runtime.topology_graph import build_runtime_startup_plan
-
 
 ROOT = Path(__file__).resolve().parents[1]
 

@@ -1,0 +1,137 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:nex:ae:publication-reconciliation-outcome:v2.1",
+  "title": "AE PublicationReconciliationOutcome v2.1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "outcome_id",
+    "publication_reconciliation_id",
+    "tenant_id",
+    "status",
+    "authoritative_query_ref",
+    "next_action",
+    "evidence_refs",
+    "checked_at"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "2.1"
+    },
+    "outcome_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "publication_reconciliation_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "tenant_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "status": {
+      "enum": [
+        "CONFIRMED_ACKNOWLEDGED",
+        "CONFIRMED_NOT_DELIVERED",
+        "STILL_UNKNOWN",
+        "CONFLICT"
+      ]
+    },
+    "authoritative_query_ref": {
+      "type": "string",
+      "minLength": 1
+    },
+    "external_delivery_ref": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "next_action": {
+      "enum": [
+        "MARK_ACKNOWLEDGED",
+        "RETRY_SAME_IDENTITY",
+        "CHECK_LATER",
+        "ESCALATE"
+      ]
+    },
+    "evidence_refs": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "checked_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "CONFIRMED_ACKNOWLEDGED"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "next_action": {
+            "const": "MARK_ACKNOWLEDGED"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "CONFIRMED_NOT_DELIVERED"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "next_action": {
+            "const": "RETRY_SAME_IDENTITY"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "STILL_UNKNOWN"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "next_action": {
+            "const": "CHECK_LATER"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "CONFLICT"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "next_action": {
+            "const": "ESCALATE"
+          }
+        }
+      }
+    }
+  ]
+}

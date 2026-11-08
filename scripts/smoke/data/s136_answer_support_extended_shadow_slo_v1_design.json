@@ -1,0 +1,39 @@
+{
+  "design_id": "cx-answer-support-extended-shadow-slo-v1",
+  "design_schema_version": "cx_answer_support_extended_shadow_slo_design.v1",
+  "latency_slo": {
+    "async_isolation_required": true,
+    "background_provider_p95_latency_ms": 45000,
+    "interactive_e2e_p95_latency_ms": 8000,
+    "minimum_completed_shadow_samples": 30,
+    "provider_timeout_ms": 60000,
+    "synchronous_inline_provider_call_permitted": false
+  },
+  "rollout_boundary": {
+    "candidate_mode": "SHADOW_ONLY",
+    "current_runtime_policy": "CURRENT_ACTIVE_RETRIEVAL_CONFIDENCE_POLICY",
+    "latency_slo_source": "S149_PROTECTED_LIVE_AND_S20QPT_SHADOW_BUDGET",
+    "next_boundary": "ASYNC_SHADOW_EXECUTION_AND_CAPACITY_HARDENING",
+    "production_cutover_requires_new_operator_decision": true
+  },
+  "safety": {
+    "database_call_permitted": false,
+    "disagreement_is_observation_only": true,
+    "holdout_access_permitted": false,
+    "private_text_persistence_permitted": false,
+    "production_cutover_permitted": false,
+    "runtime_activation_permitted": false
+  },
+  "source_binding": {
+    "cutover_decision_manifest_hash": "sha256:d7612e54e3406c14c05ab8261b6d4f8fa132eec3fa3677069aa0bc25ae14dedb",
+    "cutover_decision_receipt_document_hash": "sha256:ed2fe320eb127c7a27eb8ec6f4e33bfcc75cdf6394bc8d6eb8e6a76c4e06a9fb",
+    "cutover_decision_receipt_hash": "sha256:12d8794439ca80a0642132e87f6b37da2ae00080f7633a4f0aec97fbbb2c19a0",
+    "extended_case_set_hash": "sha256:8042f8a80ba559a123f874d02ca290aab78c8e2c3d6a18b613f40f219c408474",
+    "extended_shadow_policy_hash": "sha256:0e34d08d7e674d24965f853d2116d673622bd93071fd0f1aa68e51ab92ce0d82",
+    "operator_decision_hash": "sha256:54896e582c88e59211d6311b087b25649a83099ad9c4e5c0396afb34f3706dcb",
+    "provider_binding_hash": "sha256:e16f1c5a52d8a423383a82b6afab80561a4de376b574f3a1b91b9d139dde3012",
+    "readiness_manifest_hash": "sha256:77fb8be58e0c06cc91e9397a2f7d0d32787de1e9b7d844dc45942035e635bf8b",
+    "runtime_profile_hash": "sha256:ffaa4cac784d4b2e22a37e6f590655f7908cfeca518cc5cf65d32149e075daa6"
+  },
+  "status": "FROZEN_PRE_OBSERVATION"
+}

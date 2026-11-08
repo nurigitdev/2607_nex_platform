@@ -87,6 +87,16 @@ def load_negative_example_index(root: Path) -> list[dict[str, str]]:
     )
 
 
+def contract_inventory_counts(root: Path) -> dict[str, int]:
+    """Return the current contract inventory independently of validation results."""
+    return {
+        "schemas": len(iter_schema_files(root)),
+        "examples": len(load_example_index(root)),
+        "negative_examples": len(load_negative_example_index(root)),
+        "openapi": len(iter_openapi_files(root)),
+    }
+
+
 def validate_payload(schema: dict[str, Any], payload: Any) -> None:
     Draft202012Validator(schema).validate(payload)
 

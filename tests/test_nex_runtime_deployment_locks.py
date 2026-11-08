@@ -25,6 +25,7 @@ from nex_runtime.deployment_locks import (
     canonical_deployment_build_inputs,
     deployment_build_inputs_digest,
     deployment_build_inputs_projection,
+    python_lock_package_versions,
     validate_deployment_build_inputs,
 )
 
@@ -44,8 +45,11 @@ def test_repository_build_inputs_are_locked_and_deterministic() -> None:
         "python-production",
     ]
     assert projection["locks"][0]["package_count"] == 4
-    assert projection["locks"][1]["package_count"] == 52
+    python_versions = python_lock_package_versions(ROOT / PYTHON_LOCK_PATH)
+    assert projection["locks"][1]["package_count"] == len(python_versions)
     assert projection["locks"][1]["integrity_count"] > 1000
+    assert python_versions["cryptography"] == "46.0.7"
+    assert "packaging" in python_versions
     assert deployment_build_inputs_digest(inputs).startswith("sha256:")
 
     reversed_inputs = replace(inputs, locks=tuple(reversed(inputs.locks)))
@@ -106,6 +110,22 @@ def test_python_lock_parser_accepts_exact_hashed_packages(tmp_path: Path) -> Non
     assert record.package_count == 1
     assert record.integrity_count == 1
     assert len(record.sha256) == 64
+
+    assert python_lock_package_versions(path) == {"alpha": "1.0"}
+
+
+def test_python_lock_version_inventory_rejects_duplicates_and_empty_file(
+    tmp_path: Path,
+) -> None:
+    duplicate = tmp_path / "duplicate.lock"
+    duplicate.write_text("alpha==1.0 \\\nalpha==2.0 \\\n", encoding="utf-8")
+    with pytest.raises(DeploymentLockError, match="duplicate package: alpha"):
+        python_lock_package_versions(duplicate)
+
+    empty = tmp_path / "empty.lock"
+    empty.write_text("# no packages\n", encoding="utf-8")
+    with pytest.raises(DeploymentLockError, match="no exact packages"):
+        python_lock_package_versions(empty)
 
 
 @pytest.mark.parametrize(

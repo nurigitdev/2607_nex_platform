@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:nex:ae:runtime-job-attempt:v2.1",
+  "title": "AE RuntimeJobAttempt v2.1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "attempt_id",
+    "tenant_id",
+    "runtime_job_id",
+    "attempt_no",
+    "worker_id",
+    "lease_token",
+    "started_at",
+    "outcome"
+  ],
+  "properties": {
+    "attempt_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "tenant_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "runtime_job_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "attempt_no": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "worker_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "lease_token": {
+      "type": "string",
+      "minLength": 1
+    },
+    "started_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "ended_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time"
+    },
+    "outcome": {
+      "enum": [
+        "RUNNING",
+        "DONE",
+        "FAILED",
+        "LEASE_EXPIRED",
+        "CANCELLED"
+      ]
+    },
+    "error_ref": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "retry_disposition_ref": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  }
+}

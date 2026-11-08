@@ -1,0 +1,41 @@
+{
+  "schema_version": "ae.product_capability_registry.v1",
+  "registry_id": "ae-product-capabilities-golden-a",
+  "registry_version": 1,
+  "registrations": [
+    {
+      "capability": {
+        "capability_id": "FINANCE.CREATE_VOUCHER_DRAFT",
+        "capability_version": "1.1.0",
+        "status": "ACTIVE",
+        "allowed_logical_step_types": [
+          "LOCAL_CAPABILITY"
+        ],
+        "executable_step_type": "LOCAL_SKILL",
+        "executor_kind": "LOCAL_SKILL",
+        "input_contract_ref": "contract://nex/eos/create-voucher-draft-command/v1",
+        "output_contract_ref": "contract://nex/eos/create-voucher-draft-result/v1",
+        "operation_semantics": "WRITE",
+        "local_skill_binding": {
+          "skill_id": "FINANCE.VOUCHER_DRAFT_CREATE",
+          "exact_skill_version": "1.1.0",
+          "skill_semantic_hash": "sha256:b6ba60f6ae681dc754b6d304fcf7c99794a48e88429c698afd9d12afcb90a8fc",
+          "runtime_contract_ref": "contract://nex/nsl/write-runtime/v0.2",
+          "trust_policy_id": "policy://nex/ae/governed-write/golden-a/v1",
+          "backend_profile": "NSL_V02_IN_PROCESS",
+          "package_requirement": "SIGNED_TRUSTED_ACTIVE",
+          "capability_id": "FINANCE.CREATE_VOUCHER_DRAFT"
+        }
+      },
+      "skill_artifact": {
+        "bundle_manifest_ref": "deployment-lock://ae-product-nsl-runtime-bundle.v1",
+        "bundle_id": "nex-product-nsl-v0.2.1-finance-voucher-draft-v1",
+        "skill_id": "FINANCE.VOUCHER_DRAFT_CREATE",
+        "exact_skill_version": "1.1.0",
+        "skill_semantic_hash": "sha256:b6ba60f6ae681dc754b6d304fcf7c99794a48e88429c698afd9d12afcb90a8fc"
+      },
+      "registration_hash": "sha256:45b4c07317f9e78e1f23e793c1cdd29026f7b035d4287a2c00ed4c66c123b7dc"
+    }
+  ],
+  "registry_hash": "sha256:4ec6072f169c437116ee435213dc9f8a695be6661937bd0b117d1c74dd8c1938"
+}

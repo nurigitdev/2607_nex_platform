@@ -180,6 +180,7 @@ from nex_runtime import (
     OperationalEventEmitter,
     OperationalEventError,
     RUNNING,
+    SERVICE_RUNTIME_OPERATION_SPECS,
     SERVICE_SPECS,
     SUCCEEDED,
     ServiceLogError,
@@ -1350,7 +1351,9 @@ def test_ag_operations_source_config_helpers_normalize_runtime_inputs() -> None:
         "nex-ae-api",
         "nex-cx",
     )
-    assert select_ag_operations_source_service_ids(None) == tuple(sorted(SERVICE_SPECS))
+    assert select_ag_operations_source_service_ids(None) == tuple(
+        sorted(SERVICE_RUNTIME_OPERATION_SPECS)
+    )
 
 
 def test_operation_query_options_normalize_sort_cursor_and_timestamps() -> None:
@@ -2659,6 +2662,35 @@ def test_summarize_operations_rollup_metrics_counts_empty() -> None:
             "logs": {},
         },
     }
+
+
+def test_remediation_execution_issue_guidance_covers_failure_and_sync_states() -> None:
+    items = [
+        {
+            "execution_status": "FAILED",
+            "task_status": "ASSIGNED",
+            "status_sync_state": "SYNC_REQUIRED",
+        },
+        {"status_sync_state": "TERMINAL_TASK_DIVERGED"},
+        {"status_sync_state": "UNKNOWN_EXECUTION_STATUS"},
+        {"status_sync_state": "ORPHAN_EXECUTION"},
+        {"status_sync_state": "NO_EXECUTION"},
+    ]
+
+    assert ag_operations._remediation_execution_issue_runbook_ids(items) == [
+        "ag.remediation_execution.failed_execution_triage.v1",
+        "ag.remediation_execution.missing_execution_followup.v1",
+        "ag.remediation_execution.orphan_execution_review.v1",
+        "ag.remediation_execution.status_sync_review.v1",
+        "ag.remediation_execution.unknown_status_review.v1",
+    ]
+    assert ag_operations._remediation_execution_issue_operator_actions(items) == [
+        "follow_up_missing_remediation_execution",
+        "inspect_unknown_remediation_execution_status",
+        "reconcile_remediation_task_status",
+        "review_orphan_remediation_execution",
+        "triage_failed_remediation_execution",
+    ]
 
 
 def test_operations_rollup_metrics_route_requires_auth_returns_projection() -> None:
@@ -7197,7 +7229,7 @@ def test_operations_dashboard_snapshot_reports_degraded_sources_and_failure_even
     }
     assert projection["rollup_summary"]["source_statuses"]["jobs"] == {
         "READY": 2,
-        "NOT_CONFIGURED": 3,
+        "NOT_CONFIGURED": 4,
     }
     assert projection["log_source_statuses"]["nex-cx"] == {
         "status": "READY",
@@ -9728,6 +9760,7 @@ def test_service_log_query_policy_projection_reports_query_and_retention_contrac
         "nex-cx",
         "nex-mo",
         "nex-oa",
+        "nex-wc",
     ]
     assert policy["query"]["default_limit"] == 50
     assert policy["query"]["max_limit"] == 500
@@ -9850,7 +9883,7 @@ def test_service_log_retention_dry_run_projection_reports_degraded_sources() -> 
     assert projection["source_statuses"]["nex-cx"]["candidate_count"] == 0
     assert projection["source_statuses"]["nex-ag"]["status"] == "NOT_CONFIGURED"
     assert projection["summary"]["source_statuses"] == {
-        "NOT_CONFIGURED": 4,
+        "NOT_CONFIGURED": 5,
         "READY": 1,
     }
     assert projection["retention_candidates"] == []
@@ -9947,7 +9980,7 @@ def test_service_log_retention_history_projection_reports_degraded_sources() -> 
     }
     assert projection["source_statuses"]["nex-ag"]["status"] == "NOT_CONFIGURED"
     assert projection["summary"]["source_statuses"] == {
-        "NOT_CONFIGURED": 4,
+        "NOT_CONFIGURED": 5,
         "READY": 1,
     }
     assert projection["summary"]["scanned_history_count"] == 2

@@ -1,0 +1,108 @@
+{
+  "actual_postgres": true,
+  "actual_remote_provider": true,
+  "captured_at": "2026-10-19",
+  "checks": {
+    "actual_database_identity": true,
+    "actual_live_provider_ready": true,
+    "ae_migration_current": true,
+    "agent_result_persisted": true,
+    "atomic_idempotent_restart": true,
+    "background_plan_compiled": true,
+    "background_plan_uses_existing_runtime": true,
+    "canonical_cardinality": true,
+    "child_success_only_after_ack": true,
+    "claimed_execution_admitted": true,
+    "cleanup_complete": true,
+    "delegate_runtime_cleanup_complete": true,
+    "delegate_worker_waited": true,
+    "delivery_remains_pending": true,
+    "dependency_states": true,
+    "dependent_deterministic_step_completed": true,
+    "deterministic_result_separates_runtime_content": true,
+    "dispatcher_worker_consumed_local_skill": true,
+    "duplicate_result_event_idempotent": true,
+    "exact_live_semantic_stages": true,
+    "exact_source_backed_read_completed": true,
+    "finalization_restart_idempotent": true,
+    "identity_lineage_preserved": true,
+    "local_skill_lineage": true,
+    "migrations_recorded": true,
+    "parent_resume_event_matched": true,
+    "parent_waiting_dependency": true,
+    "private_prompt_absent": true,
+    "provider_not_required": true,
+    "publication_restart_idempotent": true,
+    "result_publish_phase_reached": true,
+    "s_e_uuid_lineage": true,
+    "selected_backend_profile_exact": true,
+    "semantic_hash_deterministic": true,
+    "stable_external_identity": true,
+    "timeline_contains_publication_boundary": true,
+    "timeline_restart_deterministic": true,
+    "wait_persisted_before_completion": true,
+    "wc_database_identity": true,
+    "wc_migration_current": true,
+    "wc_result_exact_ack": true,
+    "wc_work_item_created_once": true,
+    "worker_restart_deduplicated": true
+  },
+  "checks_passed": 43,
+  "checks_total": 43,
+  "cleanup": {
+    "delegate_runtime_remaining": 0,
+    "owned_rows_remaining": 0
+  },
+  "migration": {
+    "ae_applied_this_run": 0,
+    "ae_latest": "2405_ae_claimed_planning_source",
+    "wc_applied_this_run": 0,
+    "wc_latest": "1002_wc_work_result"
+  },
+  "nsl_revision": "3b4cb198888570a857e6fb0d3aa077930bb23504",
+  "profile": "test",
+  "provider": {
+    "deployment_id": "vllm-generation-http",
+    "mode": "live",
+    "model_ref": "Qwen3.5-4B",
+    "model_profile": "general-llm-default",
+    "semantic_stages": [
+      "INTENT",
+      "CONTEXT",
+      "PLAN"
+    ]
+  },
+  "quality_gates": {
+    "ae": {
+      "branch_coverage": 96.23,
+      "passed": 4527,
+      "skipped_protected_historical_smokes": 11,
+      "statement_coverage": 98.32
+    },
+    "wc": {
+      "branch_coverage": 94.23,
+      "passed": 173,
+      "statement_coverage": 96.67
+    }
+  },
+  "row_counts": {
+    "ae_agent_result": 1,
+    "ae_nsl_artifact": 1,
+    "ae_nsl_backend_run": 1,
+    "ae_nsl_step_execution": 1,
+    "ae_result_delivery": 1,
+    "ae_result_event": 1,
+    "ae_runtime_job": 3,
+    "ae_runtime_job_attempt": 3,
+    "ae_step_result": 2,
+    "background_semantic_stages": 3,
+    "executable_plan": 2,
+    "executable_step": 4,
+    "wait_registration": 1,
+    "wc_work_item": 1,
+    "wc_work_result": 1
+  },
+  "slice": "P7-S7",
+  "smoke_schema_version": "p7_s7_postgres_live_e2e.v1",
+  "status": "PASS"
+}

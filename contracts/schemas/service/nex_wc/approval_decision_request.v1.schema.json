@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_wc/approval_decision_request.v1.schema.json",
+  "title": "WC Approval Decision Request v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "decision", "decision_comment",
+    "correlation_id", "causation_id"
+  ],
+  "properties": {
+    "schema_version": {"const": "wc_approval_decision_request.v1"},
+    "decision": {"enum": ["APPROVE", "REJECT"]},
+    "decision_comment": {
+      "oneOf": [
+        {"type": "string", "minLength": 1, "maxLength": 2000},
+        {"type": "null"}
+      ]
+    },
+    "correlation_id": {
+      "oneOf": [{"$ref": "#/$defs/scoped_id"}, {"type": "null"}]
+    },
+    "causation_id": {
+      "oneOf": [{"$ref": "#/$defs/scoped_id"}, {"type": "null"}]
+    }
+  },
+  "$defs": {
+    "scoped_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$"
+    }
+  }
+}

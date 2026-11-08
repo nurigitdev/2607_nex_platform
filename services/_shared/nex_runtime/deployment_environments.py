@@ -10,16 +10,18 @@ import yaml
 from .background_process import ENABLED_BACKGROUND_PROFILES
 from .deployment_artifacts import (
     DeploymentArtifactCatalog,
+    build_current_deployment_artifact_catalog,
     build_default_deployment_artifact_catalog,
     immutable_image_reference,
 )
 from .runtime_profiles import (
     RuntimeProfileError,
+    current_runtime_profile_required_environment_names,
+    resolve_current_runtime_profile,
     resolve_runtime_profile,
     runtime_profile_required_environment_names,
 )
 from .topology import RUNTIME_PROFILES
-
 
 ENVIRONMENT_COMPOSITION_SCHEMA_VERSION = "environment_composition.v1"
 ENVIRONMENT_CLASSES = ("development", "test", "staging", "production")
@@ -30,6 +32,12 @@ ARTIFACT_REFERENCE_ENVIRONMENTS = {
     "nex-mo-runtime": "NEX_MO_RUNTIME_IMAGE",
     "nex-ag-runtime": "NEX_AG_RUNTIME_IMAGE",
     "nex-ae-web": "NEX_AE_WEB_IMAGE",
+}
+CURRENT_ARTIFACT_REFERENCE_ENVIRONMENTS = {
+    **ARTIFACT_REFERENCE_ENVIRONMENTS,
+    "nex-wc-runtime": "NEX_WC_RUNTIME_IMAGE",
+    "nex-eos-runtime": "NEX_EOS_RUNTIME_IMAGE",
+    "nex-wa-runtime": "NEX_WA_RUNTIME_IMAGE",
 }
 COMPOSITION_STATUSES = ("LIMITED", "BLOCKED")
 
@@ -110,7 +118,9 @@ DEFAULT_ENVIRONMENT_COMPOSITIONS = (
 )
 
 
-def build_default_environment_compositions() -> tuple[EnvironmentCompositionDefinition, ...]:
+def build_default_environment_compositions() -> tuple[
+    EnvironmentCompositionDefinition, ...
+]:
     validate_environment_compositions(DEFAULT_ENVIRONMENT_COMPOSITIONS)
     return DEFAULT_ENVIRONMENT_COMPOSITIONS
 
@@ -186,9 +196,7 @@ def validate_environment_compositions(
     profiles: list[str] = []
     for definition in definitions:
         if definition.environment_class not in ENVIRONMENT_CLASSES:
-            errors.append(
-                f"unknown environment class: {definition.environment_class}"
-            )
+            errors.append(f"unknown environment class: {definition.environment_class}")
         if definition.environment_class in class_ids:
             errors.append(
                 f"duplicate environment class: {definition.environment_class}"
@@ -203,7 +211,9 @@ def validate_environment_compositions(
                 f"invalid artifact reference policy: {definition.environment_class}"
             )
         if not definition.runtime_profiles:
-            errors.append(f"environment profiles are empty: {definition.environment_class}")
+            errors.append(
+                f"environment profiles are empty: {definition.environment_class}"
+            )
         if not set(definition.admitted_background_profiles).issubset(
             set(definition.runtime_profiles).intersection(ENABLED_BACKGROUND_PROFILES)
         ):
@@ -238,24 +248,65 @@ def resolve_environment_composition(
     definitions: tuple[EnvironmentCompositionDefinition, ...] | None = None,
     catalog: DeploymentArtifactCatalog | None = None,
 ) -> EnvironmentCompositionResolution:
+    return _resolve_environment_composition(
+        profile,
+        environ=environ,
+        definitions=definitions,
+        catalog=catalog,
+        current=False,
+    )
+
+
+def resolve_current_environment_composition(
+    profile: str,
+    *,
+    environ: Mapping[str, str],
+    definitions: tuple[EnvironmentCompositionDefinition, ...] | None = None,
+    catalog: DeploymentArtifactCatalog | None = None,
+) -> EnvironmentCompositionResolution:
+    return _resolve_environment_composition(
+        profile,
+        environ=environ,
+        definitions=definitions,
+        catalog=catalog,
+        current=True,
+    )
+
+
+def _resolve_environment_composition(
+    profile: str,
+    *,
+    environ: Mapping[str, str],
+    definitions: tuple[EnvironmentCompositionDefinition, ...] | None,
+    catalog: DeploymentArtifactCatalog | None,
+    current: bool,
+) -> EnvironmentCompositionResolution:
     compositions = definitions or build_default_environment_compositions()
     validate_environment_compositions(compositions)
-    artifact_catalog = catalog or build_default_deployment_artifact_catalog()
+    if catalog is not None:
+        artifact_catalog = catalog
+    elif current:
+        artifact_catalog = build_current_deployment_artifact_catalog()
+    else:
+        artifact_catalog = build_default_deployment_artifact_catalog()
+    resolver = resolve_current_runtime_profile if current else resolve_runtime_profile
     try:
-        runtime = resolve_runtime_profile(profile, environ=environ)
+        runtime = resolver(profile, environ=environ)
     except RuntimeProfileError as exc:
         raise EnvironmentCompositionError(str(exc)) from exc
     definition = next(
         item for item in compositions if runtime.profile in item.runtime_profiles
     )
     artifact_names = tuple(
-        ARTIFACT_REFERENCE_ENVIRONMENTS[artifact.artifact_id]
+        CURRENT_ARTIFACT_REFERENCE_ENVIRONMENTS[artifact.artifact_id]
         for artifact in artifact_catalog.artifacts
     )
     references: list[tuple[str, str]] = []
     if definition.immutable_artifacts_required:
         for artifact in artifact_catalog.artifacts:
-            environment_name = ARTIFACT_REFERENCE_ENVIRONMENTS[artifact.artifact_id]
+            environment_name = CURRENT_ARTIFACT_REFERENCE_ENVIRONMENTS[
+                artifact.artifact_id
+            ]
             reference = str(environ.get(environment_name) or "").strip()
             if not reference:
                 raise EnvironmentCompositionError(
@@ -322,14 +373,18 @@ def environment_composition_manifest_projection(
         "allow_local_storage": definition.allow_local_storage,
         "secret_source": definition.secret_source,
         "production_contact_allowed": definition.production_contact_allowed,
-        "admitted_background_profiles": list(
-            definition.admitted_background_profiles
-        ),
+        "admitted_background_profiles": list(definition.admitted_background_profiles),
     }
 
 
 def required_environment_names_for_composition(profile: str) -> tuple[str, ...]:
     return runtime_profile_required_environment_names(profile)
+
+
+def current_required_environment_names_for_composition(
+    profile: str,
+) -> tuple[str, ...]:
+    return current_runtime_profile_required_environment_names(profile)
 
 
 def _validated_image_reference(reference: str) -> str:

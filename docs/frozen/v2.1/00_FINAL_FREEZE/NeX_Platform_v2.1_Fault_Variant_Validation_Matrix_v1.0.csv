@@ -1,0 +1,11 @@
+﻿FaultVariant,Scenario,ExpectedInvariant,Verdict,v1.8 Final Evidence
+FV-01,Unauthorized Approver,OA DENY → Decision persistence denied → Resume=0,PASS,v1.8 replay: authorized_by_oa=false rejected
+FV-02,Approval Replay / Hash Mismatch,ApprovalRequestId / BusinessOperationId / PayloadHash / WriteIntentHash mismatch → WRITE=0,PASS,v1.8 replay: all four mismatch probes fail closed
+FV-03,Package Revoked after Plan,Execution-time package governance/trust check → BLOCK,PASS,v1.8 replay: REVOKED + ADMITTED rejected
+FV-04,Kill-switch after WAIT,Resume preflight → BLOCK,PASS,v1.8 semantic replay: current Resume/KillSwitch checks retained
+FV-05,Duplicate Approval Decision Event,One active wait → one Resume Job,PASS,v1.8 replay: RESUME requires wait_id + RuntimeJob tenant/dedup uniqueness
+FV-06,Duplicate Schedule Scanner,One nominal occurrence → one ScheduleOccurrence → one WorkItem,PASS,v1.8 replay: occurrence/materialization/work-item uniqueness retained
+FV-07,Schedule Misfire,SKIP / CATCH_UP / LATEST_ONLY deterministic,PASS,v1.8 replay: exact enum + CRON5/IANA/DST/UTC time semantics
+FV-08,Tenant Mismatch,Cross-tenant reference → fail closed,PASS,v1.8 replay: cross-tenant NSL approval-resume binding false
+FV-09,CX Authority Changed,Old evidence context does not override current OA/execute authorization,PASS,v1.8 replay: CX context bounded input; OA rebuilds current RoleBinding/Scope/Policy
+FV-10,Publication ACK Lost,Publication retry only; Business WRITE count remains 1,PASS,v1.8 replay: UNKNOWN_DELIVERY requires reconciliation; RECONCILE_FIRST

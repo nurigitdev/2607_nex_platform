@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_eos/voucher_draft_list_request.v1.schema.json",
+  "title": "EOS Voucher Draft List Request v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["tenant_id", "project_id", "requester_subject_id", "limit", "offset"],
+  "properties": {
+    "tenant_id": {"type": "string", "minLength": 1, "maxLength": 128},
+    "project_id": {"type": "string", "format": "uuid"},
+    "requester_subject_id": {"type": "string", "minLength": 1, "maxLength": 128},
+    "limit": {"type": "integer", "minimum": 1, "maximum": 100},
+    "offset": {"type": "integer", "minimum": 0}
+  }
+}

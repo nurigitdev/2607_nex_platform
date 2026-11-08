@@ -3,6 +3,10 @@ from __future__ import annotations
 from pathlib import Path
 
 import run_s129_federated_auth_ag_integration_closure as closure
+from validate_contracts import contract_inventory_counts
+
+
+CONTRACT_ROOT = Path(__file__).resolve().parents[1] / "contracts"
 
 
 def test_repository_s129_closure_passes(monkeypatch) -> None:
@@ -26,7 +30,9 @@ def test_repository_s129_closure_passes(monkeypatch) -> None:
         "component_count": 5,
         "closed_component_count": 5,
         "federation_table_count": 2,
-        "canonical_schema_count": 174,
+        "canonical_schema_count": contract_inventory_counts(CONTRACT_ROOT)[
+            "schemas"
+        ],
         "postgres_migration_count": 17,
         "postgres_tls_request_count": 2,
         "postgres_cleanup_residue_count": 0,

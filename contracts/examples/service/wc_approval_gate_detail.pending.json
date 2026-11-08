@@ -1,0 +1,19 @@
+{
+  "schema_version": "wc_approval_gate_detail.v1",
+  "gate": {
+    "schema_version": "human_gate_view.p8.v1",
+    "gate_id": "40000000-0000-4000-8000-000000000001",
+    "approval_domain": "NSL_WRITE",
+    "state": "PENDING",
+    "title": "Approve protected WRITE",
+    "summary": "Create an approved draft voucher.",
+    "action_ref": "/api/v1/approval-gates/40000000-0000-4000-8000-000000000001",
+    "approval_provider_type": "NSL",
+    "approval_target_ref": "approval-request-p8-001",
+    "business_operation_id": "business-operation-p8-001",
+    "expires_at": "2026-10-23T09:00:00Z"
+  },
+  "created_at": "2026-10-22T09:00:00Z",
+  "version": 1,
+  "decision_options": ["APPROVE", "REJECT"]
+}

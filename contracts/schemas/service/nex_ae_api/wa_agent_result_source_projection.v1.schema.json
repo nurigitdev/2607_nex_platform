@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_ae_api/wa_agent_result_source_projection.v1.schema.json",
+  "title": "WA AgentResult Source Projection",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "projection_schema_version",
+    "tenant_id",
+    "result_id",
+    "agent_execution_id",
+    "agent_id",
+    "agent_type",
+    "project_id",
+    "status",
+    "result_hash",
+    "artifact_refs",
+    "evidence_refs",
+    "business_refs",
+    "source_work_item_ref",
+    "source_claim_ref",
+    "source_claim_generation",
+    "source_assignment_ref",
+    "created_at",
+    "agent_execution_state",
+    "required_delivery_target_type",
+    "required_delivery_state",
+    "required_delivery_ref",
+    "delivery_acknowledged_at"
+  ],
+  "properties": {
+    "projection_schema_version": {"const": "wa_agent_result_source_projection.v1"},
+    "tenant_id": {"type": "string", "minLength": 1},
+    "result_id": {"type": "string", "minLength": 1},
+    "agent_execution_id": {"type": "string", "minLength": 1},
+    "agent_id": {"type": "string", "minLength": 1},
+    "agent_type": {"enum": ["IA", "CA", "PA", "EA"]},
+    "project_id": {"type": ["string", "null"]},
+    "status": {"enum": ["SUCCEEDED", "PARTIAL", "BLOCKED", "FAILED", "CANCELLED"]},
+    "result_hash": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "artifact_refs": {"$ref": "#/$defs/refs"},
+    "evidence_refs": {"$ref": "#/$defs/refs"},
+    "business_refs": {"$ref": "#/$defs/refs"},
+    "source_work_item_ref": {"type": ["string", "null"]},
+    "source_claim_ref": {"type": ["string", "null"]},
+    "source_claim_generation": {"type": ["integer", "null"], "minimum": 1},
+    "source_assignment_ref": {"type": ["string", "null"]},
+    "created_at": {"type": "string", "format": "date-time"},
+    "agent_execution_state": {"enum": ["QUEUED", "RUNNING", "WAITING_INPUT", "WAITING_CONFIRMATION", "WAITING_APPROVAL", "WAITING_DEPENDENCY", "RECONCILIATION_REQUIRED", "SUCCEEDED", "FAILED", "BLOCKED", "ESCALATED", "CANCELLED"]},
+    "required_delivery_target_type": {"enum": ["WORKSPACE_RESULT", "WC_WORK_RESULT"]},
+    "required_delivery_state": {"enum": ["PENDING", "SENDING", "ACKNOWLEDGED", "RETRY_PENDING", "UNKNOWN_DELIVERY", "FAILED", "CANCELLED"]},
+    "required_delivery_ref": {"type": "string", "minLength": 1},
+    "delivery_acknowledged_at": {"type": ["string", "null"], "format": "date-time"}
+  },
+  "$defs": {
+    "refs": {
+      "type": "array",
+      "maxItems": 100,
+      "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1}
+    }
+  }
+}

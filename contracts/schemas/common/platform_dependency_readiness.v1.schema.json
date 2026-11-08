@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/common/platform_dependency_readiness.v1.schema.json",
+  "title": "NeX Platform Dependency Readiness",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "dependency_id",
+    "dependency_type",
+    "owner",
+    "required",
+    "configured",
+    "provisioned",
+    "reachable",
+    "authorized",
+    "ready",
+    "evidence_hash",
+    "checked_at"
+  ],
+  "allOf": [
+    {
+      "if": {
+        "properties": {"ready": {"const": true}},
+        "required": ["ready"]
+      },
+      "then": {
+        "properties": {
+          "configured": {"const": true},
+          "provisioned": {"const": true},
+          "reachable": {"const": true},
+          "authorized": {"const": true}
+        }
+      },
+      "else": {
+        "anyOf": [
+          {"properties": {"configured": {"const": false}}},
+          {"properties": {"provisioned": {"const": false}}},
+          {"properties": {"reachable": {"const": false}}},
+          {"properties": {"authorized": {"const": false}}}
+        ]
+      }
+    }
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "platform_dependency_readiness.v1"
+    },
+    "dependency_id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9._:-]{0,127}$"
+    },
+    "dependency_type": {
+      "type": "string",
+      "enum": ["OPENBAO", "OBJECT_STORAGE", "MODEL_PROVIDER"]
+    },
+    "owner": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9._-]{0,63}$"
+    },
+    "required": {"type": "boolean"},
+    "configured": {"type": "boolean"},
+    "provisioned": {"type": "boolean"},
+    "reachable": {"type": "boolean"},
+    "authorized": {"type": "boolean"},
+    "ready": {"type": "boolean"},
+    "evidence_hash": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "checked_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  }
+}

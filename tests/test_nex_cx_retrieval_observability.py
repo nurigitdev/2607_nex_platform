@@ -17,8 +17,10 @@ from nex_cx.hybrid_retrieval_package import HybridRetrievalPackageError
 from nex_cx.ingestion import ContentIngestionStore
 from nex_cx.retrieval import register_retrieval_routes
 from nex_cx.retrieval_observability import (
+    CX_ANSWER_SUPPORT_SHADOW_EVENT,
     CX_RETRIEVAL_PACKAGE_FAILED_EVENT,
     CX_RETRIEVAL_PACKAGE_OBSERVED_EVENT,
+    OperationalAnswerSupportShadowSink,
     _failure_provider_role,
     _failure_event_id,
     _outcome_event_id,
@@ -193,6 +195,47 @@ def test_observability_store_failure_never_fails_retrieval() -> None:
 
     assert response.status_code == 200
     assert response.json()["retrieval_package_id"] == "package-0948"
+
+
+def test_answer_support_shadow_sink_emits_only_sanitized_metadata() -> None:
+    events = InMemoryOperationalEventStore()
+    emitter = OperationalEventEmitter(service_id="nex-cx", store=events)
+    sink = OperationalAnswerSupportShadowSink(emitter)
+
+    sink.record(
+        {
+            "outcome_schema_version": "cx_answer_support_shadow_outcome.v1",
+            "status": "OBSERVED",
+            "shadow_decision": "READY",
+            "primary_status": "READY",
+            "primary_shadow_agree": True,
+            "retrieval_package_id": "package-shadow",
+            "request_id": "request-shadow",
+            "trace_id": TRACE_ID,
+            "profile_id": "answer-support-contradiction-aware-v2",
+            "profile_hash": "sha256:" + "a" * 64,
+            "shadow_score": 0.8,
+            "threshold": 0.46375,
+            "candidate_count": 2,
+            "elapsed_ms": 10.2,
+            "provider_called": True,
+            "usage": {"input_tokens": 20, "output_tokens": 10},
+            "outcome_hash": "sha256:" + "b" * 64,
+            "private_query": PRIVATE_QUERY,
+            "private_evidence": PRIVATE_EVIDENCE,
+        }
+    )
+
+    event = events.list_events(event_type=CX_ANSWER_SUPPORT_SHADOW_EVENT)[0]
+    assert event["severity"] == "INFO"
+    assert event["details"]["shadow_decision"] == "READY"
+    assert event["details"]["primary_shadow_agree"] is True
+    assert event["details"]["provider_input_unit_count"] == 20
+    assert event["details"]["provider_output_unit_count"] == 10
+    assert event["details"]["user_visible"] is False
+    serialized = json.dumps(event)
+    assert PRIVATE_QUERY not in serialized
+    assert PRIVATE_EVIDENCE not in serialized
 
 
 def test_observability_helpers_normalize_sparse_metadata_and_warning_severity() -> None:

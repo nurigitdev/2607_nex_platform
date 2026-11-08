@@ -1,0 +1,50 @@
+{
+  "acceptance_requirements": {
+    "actual_cx_postgresql_required": true,
+    "actual_remote_embedding_required": true,
+    "actual_remote_reranking_required": true,
+    "frozen_policy_untouched_holdout_required": true,
+    "immutable_profile_and_runtime_bindings_required": true,
+    "one_shot_authorization_consumed_required": true,
+    "permission_filtered_hybrid_package_required": true,
+    "steady_state_and_maintenance_closure_required": true
+  },
+  "closure_contract": {
+    "closure_status": "CLOSED_PASS",
+    "corrective_chain_closed": true,
+    "decision": "MULTI_SIGNAL_LIVE_HOLDOUT_ACCEPTANCE_CLOSED",
+    "holdout_reexecution_permitted": false,
+    "next_boundary": "GB2_CA00_S20R_CALIBRATION_CLOSURE_AND_DEFERRED_LIVE_MATRIX_REPLAY",
+    "threshold_or_profile_reselection_permitted": false
+  },
+  "design_hash": "sha256:de349cf242997046aca75d7e10c83a519f9383d115035b8f4be84bd0b7bfd0df",
+  "design_id": "gb2-ca00-s20q-multi-signal-live-holdout-acceptance-closure-v1",
+  "design_schema_version": "cx_multi_signal_live_holdout_acceptance_closure_design.v1",
+  "safety": {
+    "database_call_permitted": false,
+    "holdout_access_permitted": false,
+    "production_cutover_permitted": false,
+    "provider_call_permitted": false,
+    "runtime_mutation_permitted": false
+  },
+  "scope_evolution": {
+    "admitted_extension": "PROVIDER_BACKED_ANSWER_SUPPORT_AND_CONTRADICTION_SIGNAL",
+    "backward_retrieval_contract_preserved": true,
+    "change_control": "SEPARATE_CALIBRATION_ONE_SHOT_HOLDOUT_AND_STAGED_RUNTIME_ADOPTION",
+    "original_scope": "PERMISSION_FILTERED_HYBRID_RETRIEVAL_EMBEDDING_AND_RERANKING"
+  },
+  "source_binding": {
+    "holdout_evaluation_hash": "sha256:e3696095c0fb198ce35d65b291e3121d8a099e6a4fafb993d28be265f3c9a28c",
+    "holdout_receipt_document_hash": "sha256:003ecfe1800021c1b88c64bd15ed6b722ecd953d4d0b0dc930162b386433fb25",
+    "holdout_receipt_hash": "sha256:1bbfa3983dcad9b0aa39ace9be8eca57dfbd4a7bc1484b2f01366c8ccf5caa68",
+    "holdout_report_document_hash": "sha256:2fe99617c64d25d2c500f065e2c53db38069a8696f37588feaf44c78e9cbe998",
+    "maintenance_hash": "sha256:e1a09694fb93b8b3d955bb7fb9e7ad6ebc949aeb3938e120e418fb64390b42ce",
+    "maintenance_policy_hash": "sha256:b91c6e1558f42491c71bdab7d8071bf049280d53510ff617ec17300e1125d146",
+    "maintenance_report_document_hash": "sha256:6ffeaef8f14ad2ae658275e27af3c8ba8279f214a534bdf75a45c1a9c9fb41ef",
+    "operations_closure_hash": "sha256:85409ddcb64b30381366fd2e38386529908c51968a5f91eca060174e1288047b",
+    "operations_closure_report_document_hash": "sha256:9b192a2c333729efd35e6b9339e5e7771281b5bc828f3de7c3d4062068235fa0",
+    "retrieval_live_report_document_hash": "sha256:0d751565b83161867eeddcc4644e4d80e88dfb2464891724591287128213ea00",
+    "selected_policy_hash": "sha256:c81f7a0bf3d3d72d7bbc5de1f564ada3b415f2206689c1939fcb925f172168cb"
+  },
+  "status": "FROZEN_CLOSURE"
+}

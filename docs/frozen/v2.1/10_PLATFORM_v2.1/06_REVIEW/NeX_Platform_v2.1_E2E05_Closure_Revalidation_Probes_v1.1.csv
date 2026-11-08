@@ -1,0 +1,8 @@
+﻿Probe,Check,PASS,Detail
+E05-R01,PA-targeted project WorkItem,True,
+E05-R02,PA-targeted WorkItem without project scope/ref rejected,True,None is not of type 'string'; None is not of type 'object'
+E05-R03,PA candidate accepted for PA work,True,
+E05-R04,CA candidate rejected for PA work,True,'PA' was expected
+E05-R05,EA candidate rejected for PA work,True,'PA' was expected
+E05-R06,PA routing without project_scope_ref rejected,True,None is not of type 'string'
+E05-X01,RoutingContextV21 carries required_agent_type,True,

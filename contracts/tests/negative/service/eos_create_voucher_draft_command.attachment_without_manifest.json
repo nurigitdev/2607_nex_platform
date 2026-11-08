@@ -1,0 +1,46 @@
+{
+  "schema_version": "eos_create_voucher_draft_command.v1",
+  "tenant_id": "tenant-a",
+  "business_operation_id": "86000000-0000-4000-8000-000000000001",
+  "idempotency_key": "golden-a-voucher-attachment-invalid",
+  "payload_hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "requester_ref": {"type": "oa.user", "id": "employee-1001"},
+  "project_ref": {"type": "eos.project", "id": "82000000-0000-4000-8000-000000000001"},
+  "voucher_type": "GENERAL",
+  "transaction_date": "2026-10-21",
+  "currency": "KRW",
+  "description": "Attachment without manifest lineage",
+  "lines": [
+    {
+      "line_no": 1,
+      "account_ref": {"type": "eos.account", "id": "83000000-0000-4000-8000-000000000001"},
+      "signed_amount": "10000.00",
+      "economic_category": "TRAVEL",
+      "evidence_refs": []
+    },
+    {
+      "line_no": 2,
+      "account_ref": {"type": "eos.account", "id": "83000000-0000-4000-8000-000000000002"},
+      "signed_amount": "-10000.00",
+      "economic_category": "CASH",
+      "evidence_refs": []
+    }
+  ],
+  "nsl_approval_request_id": "approval-request-1001",
+  "nsl_approval_evidence_ref": "approval-evidence-1001",
+  "attachments": [
+    {
+      "attachment_id": "85000000-0000-4000-8000-000000000001",
+      "object_ref": "objref:ae-voucher-evidence-0001",
+      "display_name": "receipt.pdf",
+      "media_type": "application/pdf",
+      "size_bytes": 84210,
+      "content_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    }
+  ],
+  "trace": {
+    "trace_id": "trace-golden-a-1001",
+    "correlation_id": "correlation-golden-a-1001",
+    "causation_id": "nsl-write-node-1001"
+  }
+}

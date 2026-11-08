@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "WorkspaceAgentProjection v2.1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "agent_id",
+    "agent_type",
+    "display_name",
+    "status"
+  ],
+  "properties": {
+    "agent_id": {
+      "type": "string"
+    },
+    "agent_type": {
+      "enum": [
+        "IA",
+        "CA",
+        "PA",
+        "EA"
+      ]
+    },
+    "display_name": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string"
+    },
+    "project_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "current_execution_ref": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "current_work_ref": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "result_refs": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "user_visible_role": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  }
+}

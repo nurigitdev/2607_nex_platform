@@ -1,0 +1,23 @@
+{
+  "schema_version": "1.0",
+  "delegation_id": "delegate-p7-golden-001",
+  "tenant_id": "tenant-a",
+  "parent_agent_execution_id": "execution-parent-001",
+  "parent_executable_plan_id": "plan-parent-001",
+  "parent_executable_step_id": "step-delegate-001",
+  "delegation_revision": 1,
+  "goal": "Read the admitted project budget data and produce a bounded analysis.",
+  "work_class": "ANALYSIS",
+  "required_agent_type": "PA",
+  "required_capability": "FINANCE.PROJECT_BUDGET_CHECK",
+  "project_ref": {
+    "entity_type": "PROJECT",
+    "entity_id": "project-alpha",
+    "version": 1
+  },
+  "project_scope_ref": "project-alpha",
+  "result_contract_ref": "contract://nex/wc/project-budget-analysis/v1",
+  "completion_policy": "OWNER_SUBMITS",
+  "correlation_id": "corr-p7-golden-001",
+  "causation_id": "execution-parent-001"
+}

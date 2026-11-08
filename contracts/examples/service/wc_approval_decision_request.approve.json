@@ -1,0 +1,7 @@
+{
+  "schema_version": "wc_approval_decision_request.v1",
+  "decision": "APPROVE",
+  "decision_comment": "Reviewed and approved.",
+  "correlation_id": "conversation-p8-001",
+  "causation_id": "interaction-p8-001"
+}

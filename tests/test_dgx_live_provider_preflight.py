@@ -4,7 +4,6 @@ import json
 
 import httpx
 import pytest
-
 import run_dgx_live_provider_preflight as dgx_preflight
 
 
@@ -44,7 +43,7 @@ def test_dgx_preflight_passes_when_expected_models_are_observed() -> None:
     evidence = dgx_preflight.run_dgx_live_provider_preflight(
         {
             **live_env(),
-            "NEX_MO_LIVE_TIMEOUT_SECONDS": "7",
+            "NEX_MO_LIVE_TIMEOUT_SECONDS": "30",
             "NEX_MO_VLLM_API_KEY": "secret-key",
         },
         requester=requester,
@@ -69,7 +68,7 @@ def test_dgx_preflight_passes_when_expected_models_are_observed() -> None:
         "Accept": "application/json",
         "Authorization": "Bearer secret-key",
     }
-    assert [call["timeout"] for call in calls] == [7.0, 7.0, 7.0]
+    assert [call["timeout"] for call in calls] == [30.0, 30.0, 30.0]
     assert "dgx.local" not in json.dumps(evidence)
     assert "secret-key" not in json.dumps(evidence)
 
@@ -225,6 +224,32 @@ def test_dgx_preflight_main_returns_failure_when_enabled_without_urls(monkeypatc
     monkeypatch.delenv("NEX_MO_VLLM_BASE_URL", raising=False)
 
     assert dgx_preflight.main(["--summary"]) == 1
+
+
+def test_dgx_preflight_bounds_canonical_admission_failure(monkeypatch) -> None:
+    monkeypatch.setattr(
+        dgx_preflight,
+        "admit_model_provider_readiness",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            dgx_preflight.ModelProviderAdmissionError("private provider detail")
+        ),
+    )
+
+    evidence = dgx_preflight.run_dgx_live_provider_preflight(
+        {"NEX_MO_LIVE_PREFLIGHT": "1"}
+    )
+
+    assert evidence["status"] == "FAIL"
+    assert evidence["checks"] == []
+    assert evidence["canonical_admission"] == {
+        "schema_version": None,
+        "admission_status": "BLOCKED",
+        "readiness_status": "NOT_READY",
+        "profile": None,
+        "dependency_readiness": [],
+        "failure_code": "model_provider_admission_evaluation_failed",
+    }
+    assert "private provider detail" not in json.dumps(evidence)
 
 
 @pytest.mark.parametrize(

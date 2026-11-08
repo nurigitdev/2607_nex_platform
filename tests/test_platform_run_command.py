@@ -1,10 +1,9 @@
 from __future__ import annotations
 
-from io import StringIO
 import json
+from io import StringIO
 
 import pytest
-
 import run_platform as command
 from nex_runtime.runtime_orchestrator import RuntimeOrchestrationError
 
@@ -59,13 +58,16 @@ def test_finite_platform_session_checks_runtime_and_stops() -> None:
     runner = Orchestrator()
     output = StringIO()
 
-    assert command.run_platform_session(
-        runner,
-        run_seconds=0.5,
-        out=output,
-        sleeper=clock.sleep,
-        clock=clock,
-    ) == 0
+    assert (
+        command.run_platform_session(
+            runner,
+            run_seconds=0.5,
+            out=output,
+            sleeper=clock.sleep,
+            clock=clock,
+        )
+        == 0
+    )
 
     assert runner.check_count == 2
     assert runner.stop_count == 1
@@ -81,13 +83,16 @@ def test_orchestration_error_returns_safe_failure(start_error, check_error) -> N
     runner = Orchestrator(start_error=start_error, check_error=check_error)
     output = StringIO()
 
-    assert command.run_platform_session(
-        runner,
-        run_seconds=0.1,
-        out=output,
-        sleeper=clock.sleep,
-        clock=clock,
-    ) == 1
+    assert (
+        command.run_platform_session(
+            runner,
+            run_seconds=0.1,
+            out=output,
+            sleeper=clock.sleep,
+            clock=clock,
+        )
+        == 1
+    )
 
     assert runner.stop_count == 1
     assert "failed" not in output.getvalue()
@@ -98,12 +103,15 @@ def test_keyboard_interrupt_and_invalid_duration_paths() -> None:
     with pytest.raises(ValueError, match="non-negative"):
         command.run_platform_session(runner, run_seconds=-1, out=StringIO())
 
-    assert command.run_platform_session(
-        runner,
-        run_seconds=None,
-        out=StringIO(),
-        sleeper=lambda seconds: (_ for _ in ()).throw(KeyboardInterrupt),
-    ) == 130
+    assert (
+        command.run_platform_session(
+            runner,
+            run_seconds=None,
+            out=StringIO(),
+            sleeper=lambda seconds: (_ for _ in ()).throw(KeyboardInterrupt),
+        )
+        == 130
+    )
 
 
 def test_build_orchestrator_and_main_config_projection(monkeypatch, capsys) -> None:
@@ -114,8 +122,17 @@ def test_build_orchestrator_and_main_config_projection(monkeypatch, capsys) -> N
     )
     assert built.manifest.profile == "local_mock"
 
+    current = command.build_current_platform_orchestrator(
+        "local_mock",
+        environ={},
+        launcher=object(),
+    )
+    assert len(current.manifest.processes) == 20
+
     runner = Orchestrator()
-    monkeypatch.setattr(command, "build_platform_orchestrator", lambda profile: runner)
+    monkeypatch.setattr(
+        command, "build_current_platform_orchestrator", lambda profile: runner
+    )
     output = StringIO()
     assert command.main(["--check-config"], out=output) == 0
     assert json.loads(output.getvalue())["profile"] == "local_mock"
@@ -125,12 +142,17 @@ def test_build_orchestrator_and_main_config_projection(monkeypatch, capsys) -> N
 
     monkeypatch.setattr(
         command,
-        "build_platform_orchestrator",
+        "build_current_platform_orchestrator",
         lambda profile: (_ for _ in ()).throw(ValueError("private")),
     )
     output = StringIO()
     assert command.main([], out=output) == 2
     assert json.loads(output.getvalue())["failure_code"] == "ValueError"
+
+    monkeypatch.setattr(command, "build_platform_orchestrator", lambda profile: runner)
+    output = StringIO()
+    assert command.main(["--topology", "historical", "--check-config"], out=output) == 0
+    assert len(json.loads(output.getvalue())["processes"]) == 13
 
 
 def test_stop_signal_is_normalized_to_keyboard_interrupt() -> None:

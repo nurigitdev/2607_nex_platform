@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
 import math
+from collections.abc import Mapping, Sequence
 from typing import Any
 
 from nex_cx.access_context import CxAccessContext
@@ -10,12 +10,12 @@ from nex_cx.retrieval_permissions import (
     build_evidence_permission_result,
 )
 from nex_cx.vector_index_repository import VectorIndexRepository
+from nex_cx.vector_ordering import order_vector_candidates
 from nex_cx.vector_retrieval_guard import (
     VectorRetrievalError,
     VectorSearchAdapter,
     search_fresh_vector_index,
 )
-
 
 VECTOR_CANDIDATE_RESULT_SCHEMA_VERSION = "cx_vector_candidate_result.v1"
 VECTOR_CANDIDATE_SCHEMA_VERSION = "cx_vector_candidate.v1"
@@ -78,14 +78,9 @@ def collect_fresh_vector_candidates(
             if current is None or _candidate_precedes(candidate, current):
                 candidates_by_chunk[key] = candidate
 
-    ordered = sorted(
-        candidates_by_chunk.values(),
-        key=lambda item: (
-            -item["vector_score"],
-            item["content_object_id"],
-            item["chunk_id"],
-            item["vector_index_id"],
-        ),
+    ordered = order_vector_candidates(
+        tuple(candidates_by_chunk.values()),
+        score_field="vector_score",
     )[:limit]
     ranked = [
         {**candidate, "candidate_rank": rank}

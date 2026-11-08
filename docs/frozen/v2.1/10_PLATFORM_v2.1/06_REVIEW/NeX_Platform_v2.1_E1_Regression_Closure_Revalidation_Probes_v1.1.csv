@@ -1,0 +1,3 @@
+﻿Probe,Check,PASS,Detail
+E1-RG01,PA identity still valid,True,
+E1-RG02,Generic agent pool remains valid with required_agent_type=null,True,

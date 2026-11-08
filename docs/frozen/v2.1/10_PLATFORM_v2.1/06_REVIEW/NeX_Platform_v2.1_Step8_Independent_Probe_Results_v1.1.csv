@@ -1,0 +1,33 @@
+﻿Probe,Expected,Actual,Result,Issue
+JSON Schema structural validation,61/61,61/61,PASS,[]
+Duplicate Schema $id,0,0,PASS,
+Duplicate Schema title,0,0,PASS,
+Python protocol compile,12/12,12/12,PASS,[]
+YAML/OpenAPI parse,1/1,1/1,PASS,
+Direct Schedule new AgentExecution trigger,REJECT,REJECT,PASS,
+Direct Event new AgentExecution trigger,REJECT,REJECT,PASS,
+PA AgentResult without claim lineage,REJECT,REJECT,PASS,STEP8-PCG-01
+PA AgentResult with full claim lineage,VALID,VALID,PASS,
+WC_WORK_RESULT required=false,REJECT,REJECT,PASS,STEP8-PCG-01
+WC_WORK_RESULT required=true,VALID,VALID,PASS,
+WC_WORK_RESULT preflight without claim lineage,REJECT,REJECT,PASS,STEP8-PCG-01
+WC_WORK_RESULT preflight current lineage,VALID,VALID,PASS,
+WC_WORK_RESULT preflight claim_status_checked=false,REJECT,REJECT,PASS,STEP8-PCG-01
+WC_WORK_RESULT preflight claim_generation_current=false,REJECT,REJECT,PASS,STEP8-PCG-01
+WC_WORK_RESULT preflight claimant_matches=false,REJECT,REJECT,PASS,STEP8-PCG-01
+WC_WORK_RESULT preflight assignment_matches=false,REJECT,REJECT,PASS,STEP8-PCG-01
+WC_WORK_RESULT preflight execution_matches=false,REJECT,REJECT,PASS,STEP8-PCG-01
+Delivery planner missing WC target,false,false,PASS,
+Delivery planner exactly one required WC target,true,true,PASS,
+Delivery planner duplicate WC targets,false,false,PASS,
+WC preflight protocol current lineage,true,true,PASS,
+WC preflight protocol stale generation,false,false,PASS,
+Required WC ACK allows finalization,true,true,PASS,
+Required WC non-ACK blocks finalization,false,false,PASS,
+Optional WA cannot substitute required WC ACK,false,false,PASS,
+SQL background lineage persistence,present,present,PASS,
+SQL WC_WORK_RESULT required,present,present,PASS,
+SQL current-lineage ALLOW fence,present,present,PASS,
+SQL exactly-at-most-one WC result delivery,present,present,PASS,
+NeX_Agent_v2.1_NSL_v0.2_Integration_Contract_v1.0.md frozen identity,byte-identical,byte-identical,PASS,
+NeX_Agent_v2.1_NSL_v0.2_Final_Freeze_Declaration_v1.0.md frozen identity,byte-identical,byte-identical,PASS,

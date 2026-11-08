@@ -13,7 +13,6 @@ export const GOLDEN_JOURNEY_REGION_SELECTORS = Object.freeze({
   summary: "#workspace-summary",
   content: "#golden-content",
   workspace_column: "#golden-workspace-column",
-  context_pane: "#golden-context-pane",
   chat: "#golden-chat",
   timeline: "#golden-timeline"
 });
@@ -22,7 +21,6 @@ export const GOLDEN_JOURNEY_NON_OVERLAP_PAIRS = Object.freeze([
   Object.freeze(["sidebar", "workspace"]),
   Object.freeze(["topbar", "summary"]),
   Object.freeze(["summary", "content"]),
-  Object.freeze(["workspace_column", "context_pane"]),
   Object.freeze(["chat", "timeline"])
 ]);
 

@@ -14,6 +14,9 @@ models or domain ownership.
 | `nex-ae-api` | `nex_ae_api` | 8103 | `NEX_AE_DATABASE_URL` |
 | `nex-cx` | `nex_cx` | 8104 | `NEX_CX_DATABASE_URL` |
 | `nex-mo` | `nex_mo` | 8105 | `NEX_MO_DATABASE_URL` |
+| `nex-wc` | `nex_wc` | 8106 | `NEX_WC_DATABASE_URL` |
+| `nex-eos` | `nex_eos` | 8107 | `NEX_EOS_DATABASE_URL` |
+| `nex-wa` | `nex_wa` | 8108 | `NEX_WA_DATABASE_URL` |
 
 Run one service:
 

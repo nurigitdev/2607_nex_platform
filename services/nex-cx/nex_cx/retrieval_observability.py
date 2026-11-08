@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from dataclasses import dataclass
 from typing import Any
 from uuid import NAMESPACE_URL, uuid5
 
@@ -13,7 +14,16 @@ from nex_runtime import (
 
 CX_RETRIEVAL_PACKAGE_OBSERVED_EVENT = "cx.retrieval.package_observed"
 CX_RETRIEVAL_PACKAGE_FAILED_EVENT = "cx.retrieval.package_failed"
+CX_ANSWER_SUPPORT_SHADOW_EVENT = "cx.retrieval.answer_support_shadow"
 RETRIEVAL_OBSERVABILITY_SCHEMA_VERSION = "cx_retrieval_observability.v2"
+
+
+@dataclass(frozen=True)
+class OperationalAnswerSupportShadowSink:
+    emitter: OperationalEventEmitter
+
+    def record(self, outcome: Mapping[str, Any]) -> None:
+        observe_answer_support_shadow(self.emitter, outcome)
 
 
 def observe_retrieval_package(
@@ -144,6 +154,53 @@ def observe_retrieval_failure(
             runtime_mode=safe_runtime_mode,
             trace_id=trace_id,
             request_id=request_id,
+        ),
+    )
+
+
+def observe_answer_support_shadow(
+    emitter: OperationalEventEmitter,
+    outcome: Mapping[str, Any],
+) -> OperationalEventEmitResult:
+    package_id = _safe_string(outcome.get("retrieval_package_id"), "unknown")
+    status = _safe_string(outcome.get("status"), "FAILED").upper()
+    usage = _mapping(outcome.get("usage"))
+    return emitter.safe_emit(
+        event_type=CX_ANSWER_SUPPORT_SHADOW_EVENT,
+        severity="INFO" if status in {"OBSERVED", "SKIPPED"} else "WARNING",
+        message="CX answer-support shadow outcome was observed.",
+        trace_id=_optional_string(outcome.get("trace_id")),
+        request_id=_optional_string(outcome.get("request_id")),
+        subject_ref=build_subject_ref("cx.retrieval_package", package_id),
+        details={
+            "observability_schema_version": RETRIEVAL_OBSERVABILITY_SCHEMA_VERSION,
+            "shadow_outcome_schema_version": _optional_string(
+                outcome.get("outcome_schema_version")
+            ),
+            "shadow_status": status,
+            "shadow_decision": _optional_string(outcome.get("shadow_decision")),
+            "primary_status": _optional_string(outcome.get("primary_status")),
+            "primary_shadow_agree": outcome.get("primary_shadow_agree"),
+            "profile_id": _optional_string(outcome.get("profile_id")),
+            "profile_hash": _optional_string(outcome.get("profile_hash")),
+            "shadow_score": _safe_number(outcome.get("shadow_score")),
+            "threshold": _safe_number(outcome.get("threshold")),
+            "candidate_count": _safe_int(outcome.get("candidate_count")),
+            "elapsed_ms": _safe_number(outcome.get("elapsed_ms")),
+            "provider_called": outcome.get("provider_called") is True,
+            "provider_input_unit_count": _safe_int(usage.get("input_tokens")),
+            "provider_output_unit_count": _safe_int(usage.get("output_tokens")),
+            "error_code": _optional_string(outcome.get("error_code")),
+            "skip_reason": _optional_string(outcome.get("skip_reason")),
+            "user_visible": False,
+            "primary_decision_mutated": False,
+        },
+        event_id=str(
+            uuid5(
+                NAMESPACE_URL,
+                "cx-answer-support-shadow:"
+                f"{package_id}:{outcome.get('outcome_hash', 'unknown')}",
+            )
         ),
     )
 

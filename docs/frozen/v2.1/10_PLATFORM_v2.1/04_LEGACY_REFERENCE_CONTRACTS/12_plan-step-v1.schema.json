@@ -1,0 +1,400 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex.local/schemas/plan-step-v1.schema.json",
+  "title": "NeX PlanStep v1",
+  "description": "Logical PlanStep. Human gates, actual assignee, exact skill version and authoritative stable entity IDs are compiler/runtime concerns.",
+  "oneOf": [
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "step_id",
+        "step_type",
+        "title",
+        "depends_on",
+        "required_capability",
+        "input_bindings",
+        "output_contract"
+      ],
+      "properties": {
+        "step_id": {
+          "type": "string",
+          "pattern": "^S[1-9][0-9]*$"
+        },
+        "step_type": {
+          "const": "LOCAL_CAPABILITY"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 300
+        },
+        "depends_on": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^S[1-9][0-9]*$"
+          }
+        },
+        "input_bindings": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/inputBinding"
+          }
+        },
+        "output_contract": {
+          "$ref": "#/$defs/outputContract"
+        },
+        "required_capability": {
+          "type": "string",
+          "minLength": 1
+        },
+        "operation_semantics": {
+          "enum": [
+            "READ",
+            "CHECK",
+            "COMMAND_CANDIDATE",
+            "UNSPECIFIED"
+          ]
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "step_id",
+        "step_type",
+        "title",
+        "depends_on",
+        "required_capability",
+        "delegated_work_contract",
+        "routing_scope",
+        "result_contract"
+      ],
+      "properties": {
+        "step_id": {
+          "type": "string",
+          "pattern": "^S[1-9][0-9]*$"
+        },
+        "step_type": {
+          "const": "DELEGATE_WORK"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 300
+        },
+        "depends_on": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^S[1-9][0-9]*$"
+          }
+        },
+        "input_bindings": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/inputBinding"
+          }
+        },
+        "output_contract": {
+          "$ref": "#/$defs/outputContract"
+        },
+        "required_capability": {
+          "type": "string",
+          "minLength": 1
+        },
+        "delegated_work_contract": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "goal",
+            "completion_criteria"
+          ],
+          "properties": {
+            "goal": {
+              "type": "string",
+              "minLength": 1
+            },
+            "completion_criteria": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "priority_hint": {
+              "enum": [
+                "LOW",
+                "NORMAL",
+                "HIGH",
+                "URGENT"
+              ]
+            },
+            "due_hint": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        },
+        "routing_scope": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "org_scope_ref": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "project_scope_ref": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        },
+        "result_contract": {
+          "$ref": "#/$defs/outputContract"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "step_id",
+        "step_type",
+        "title",
+        "depends_on",
+        "source_step_refs",
+        "aggregation_mode",
+        "output_contract"
+      ],
+      "properties": {
+        "step_id": {
+          "type": "string",
+          "pattern": "^S[1-9][0-9]*$"
+        },
+        "step_type": {
+          "const": "AGGREGATE"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 300
+        },
+        "depends_on": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^S[1-9][0-9]*$"
+          }
+        },
+        "input_bindings": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/inputBinding"
+          }
+        },
+        "output_contract": {
+          "$ref": "#/$defs/outputContract"
+        },
+        "source_step_refs": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^S[1-9][0-9]*$"
+          }
+        },
+        "aggregation_mode": {
+          "enum": [
+            "DETERMINISTIC",
+            "STRUCTURED",
+            "LLM_SYNTHESIS"
+          ]
+        },
+        "synthesis_contract_ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "step_id",
+        "step_type",
+        "title",
+        "depends_on",
+        "source_step_refs",
+        "report_kind",
+        "target_contract_ref",
+        "output_contract"
+      ],
+      "properties": {
+        "step_id": {
+          "type": "string",
+          "pattern": "^S[1-9][0-9]*$"
+        },
+        "step_type": {
+          "const": "REPORT"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 300
+        },
+        "depends_on": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^S[1-9][0-9]*$"
+          }
+        },
+        "input_bindings": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/inputBinding"
+          }
+        },
+        "output_contract": {
+          "$ref": "#/$defs/outputContract"
+        },
+        "source_step_refs": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^S[1-9][0-9]*$"
+          }
+        },
+        "report_kind": {
+          "enum": [
+            "INTERACTIVE_RESPONSE",
+            "WORK_RESULT",
+            "ARTIFACT"
+          ]
+        },
+        "target_contract_ref": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "inputBinding": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "source",
+            "parameter_name"
+          ],
+          "properties": {
+            "source": {
+              "const": "WORK_INTENT_PARAMETER"
+            },
+            "parameter_name": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "source",
+            "selector_id"
+          ],
+          "properties": {
+            "source": {
+              "const": "ENTITY_SELECTOR"
+            },
+            "selector_id": {
+              "type": "string",
+              "pattern": "^E[1-9][0-9]*$"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "source",
+            "step_id",
+            "output_path"
+          ],
+          "properties": {
+            "source": {
+              "const": "STEP_OUTPUT"
+            },
+            "step_id": {
+              "type": "string",
+              "pattern": "^S[1-9][0-9]*$"
+            },
+            "output_path": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "source",
+            "value"
+          ],
+          "properties": {
+            "source": {
+              "const": "LITERAL"
+            },
+            "value": {}
+          }
+        }
+      ]
+    },
+    "outputContract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_ref"
+      ],
+      "properties": {
+        "schema_ref": {
+          "type": "string",
+          "minLength": 1
+        },
+        "artifact_type": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "evidence_required": {
+          "type": "boolean",
+          "default": false
+        }
+      }
+    }
+  }
+}

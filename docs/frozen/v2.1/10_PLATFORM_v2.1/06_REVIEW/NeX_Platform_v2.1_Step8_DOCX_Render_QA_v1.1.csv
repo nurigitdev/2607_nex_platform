@@ -1,0 +1,19 @@
+﻿Document,RenderedPages,Status,QA Note
+01_ARCHITECTURE/01_NeX_Terminology_and_Naming_Standard_v2.1_FINAL_BACKPROP.docx,13,PASS,Render/diff + visual QA PASS
+01_ARCHITECTURE/04_NeX_Platform_System_Software_Requirements_Specification_v2.1_FINAL_BACKPROP.docx,29,PASS,Render/diff + visual QA PASS
+01_ARCHITECTURE/05_NeX_Master_System_Architecture_v2.1_FINAL_BACKPROP.docx,22,PASS,Render/diff + visual QA PASS
+01_ARCHITECTURE/07_NeX_Canonical_Domain_and_Data_Model_v2.1_FINAL_BACKPROP.docx,16,PASS,Render/diff + visual QA PASS
+01_ARCHITECTURE/08_NeX_Canonical_API_Event_MCP_A2A_Contract_v2.1_FINAL_BACKPROP.docx,21,PASS,Render/diff + visual QA PASS
+02_DETAILED_DESIGN/14_NeX_Work_Coordination_SRS_v2.1_CP05_FINAL_HYGIENE.docx,33,PASS,Render/diff + visual QA PASS
+02_DETAILED_DESIGN/15_NeX_Work_Coordination_Detailed_Design_v2.1_CP05_FINAL_HYGIENE.docx,20,PASS,Render/diff + visual QA PASS
+02_DETAILED_DESIGN/16_NeX_NSL_Language_Specification_v0.2_PLATFORM_REBASELINE_v2.1_FINAL_CONSISTENCY_CLOSURE.docx,16,PASS,Render/diff + visual QA PASS; semantic diagrams re-rendered after final cleanup
+02_DETAILED_DESIGN/17_NeX_NSL_Runtime_and_Certified_Skill_Detailed_Design_v2.1_FINAL_CONSISTENCY_CLOSURE.docx,20,PASS,Render/diff + visual QA PASS; semantic diagrams re-rendered after final cleanup
+02_DETAILED_DESIGN/18_NeX_Approval_and_Human_Gate_Detailed_Design_v2.1_CP08.docx,19,PASS,Render/diff + visual QA PASS; semantic diagrams re-rendered after final cleanup
+02_DETAILED_DESIGN/29A_NeX_AE_WEB_SRS_and_Detailed_Design_v2.1_CP08_FINAL_HYGIENE.docx,26,PASS,Render/diff + visual QA PASS
+02_DETAILED_DESIGN/29_NeX_AE_SRS_and_Detailed_Design_v2.1_FINAL_CONSISTENCY_CLOSURE.docx,40,PASS,Render/diff + visual QA PASS
+02_DETAILED_DESIGN/31_Cross_System_End_to_End_Flow_Design_v2.1_FINAL_CONSISTENCY_CLOSURE.docx,35,PASS,Render/diff + visual QA PASS
+02_DETAILED_DESIGN/33_Integrated_Test_and_Acceptance_Strategy_v2.1_FINAL_CONSISTENCY_CLOSURE.docx,22,PASS,Render/diff + visual QA PASS
+02_DETAILED_DESIGN/36_Implementation_Master_PRD_v2.1_FINAL_CONSISTENCY_CLOSURE.docx,19,PASS,Render/diff + visual QA PASS
+02_DETAILED_DESIGN/37_Vertical_Slice_PRD_Golden_A_Direct_Voucher_v2.1_FINAL_CONSISTENCY_CLOSURE.docx,25,PASS,Render/diff + visual QA PASS
+02_DETAILED_DESIGN/38_Vertical_Slice_PRD_Approval_Suspend_Resume_v2.1_FINAL_CONSISTENCY_CLOSURE.docx,27,PASS,Render/diff + visual QA PASS
+02_DETAILED_DESIGN/44_NeX_WC_Recurring_Work_and_Schedule_Detailed_Design_v2.1_CP05.docx,6,PASS,Render/diff + visual QA PASS

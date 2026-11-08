@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 
 import run_ae_prompt_registry_sqlite as smoke
+from nex_ae_api.prompts import AE_PROMPT_SEEDS
 
 
 def test_sqlite_smoke_passes() -> None:
@@ -10,7 +11,7 @@ def test_sqlite_smoke_passes() -> None:
 
     assert result["status"] == "PASS"
     assert all(result["checks"].values())
-    assert result["binding_count"] == 4
+    assert result["binding_count"] == len(AE_PROMPT_SEEDS)
     assert result["render_event_count"] == 1
     assert result["actual_postgres"] is False
     assert result["next_slice"] == "1025"
@@ -19,7 +20,8 @@ def test_sqlite_smoke_passes() -> None:
 def test_summary_and_main_paths(monkeypatch, capsys) -> None:
     passing = smoke.run_ae_prompt_registry_sqlite()
     assert smoke.summary_line(passing) == (
-        "ae_prompt_registry_sqlite=pass checks=6/6 bindings=4 events=1 next=1025"
+        "ae_prompt_registry_sqlite=pass checks=6/6 "
+        f"bindings={len(AE_PROMPT_SEEDS)} events=1 next=1025"
     )
     assert len(smoke._schema_statements()) == 4
 

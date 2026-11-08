@@ -7,6 +7,8 @@ import pytest
 
 import run_s136_model_calibration_live as smoke
 
+RERANKER_REVISION = "hf:22e683669bc0f0bd69640a1354a6d0aebcfeede5"
+
 
 def _env(**overrides: str) -> dict[str, str]:
     return {
@@ -18,7 +20,7 @@ def _env(**overrides: str) -> dict[str, str]:
     }
 
 
-def _response(scores: list[float], *, model: str = "Qwen3-Reranker-4B") -> dict:
+def _response(scores: list[float], *, model: str = RERANKER_REVISION) -> dict:
     return {
         "model_revision": model,
         "results": [
@@ -47,7 +49,7 @@ def test_skip_and_successful_candidate_profile(monkeypatch) -> None:
     assert result["candidate_profile"]["status"] == "CANDIDATE"
     assert result["candidate_profile"]["binding"] == {
         "capability": "reranking",
-        "model_revision": "Qwen3-Reranker-4B",
+        "model_revision": RERANKER_REVISION,
         "request_shape": "rerank",
         "score_semantics": smoke.SCORE_SEMANTICS,
         "policy_id": smoke.POLICY_ID,
@@ -75,7 +77,7 @@ def test_live_evaluation_fails_closed_for_bad_distribution_and_model_drift(
     def drifting(payload, **_kwargs):
         nonlocal calls
         calls += 1
-        model = "Qwen3-Reranker-4B" if calls == 1 else "other-model"
+        model = RERANKER_REVISION if calls == 1 else "other-model"
         return _response([0.9, 0.3, 0.1], model=model)
 
     monkeypatch.setattr(smoke, "execute_remote_rerank_request", drifting)

@@ -1,0 +1,59 @@
+{
+  "schema_version": "nex_v1_manual_screenshots.v1",
+  "source_tag": "v1.0",
+  "source_revision": "ab7af0fc3b42225d1d71d20d517889d694a01c03",
+  "source_date": "2026-10-09T17:59:56+09:00",
+  "runtime": "deterministic_mock",
+  "browser": "chromium",
+  "locale": "ko-KR",
+  "viewport": {
+    "width": 1600,
+    "height": 1000
+  },
+  "private_data_included": false,
+  "capture_count": 7,
+  "captures": [
+    {
+      "filename": "01_workspace_login.png",
+      "description": "NeX AE Korean workspace and employee login",
+      "sha256": "e6afdeb5f4c585508d557f813e5960475e657a69d8a21344cc3e74f70ecbd06a",
+      "size_bytes": 134858
+    },
+    {
+      "filename": "02_service_runtime.png",
+      "description": "Service readiness and browser runtime diagnostics",
+      "sha256": "6d6d750199628cfbc1aee957073508c4f47402f6a573d20977757b0bccb37ff2",
+      "size_bytes": 35652
+    },
+    {
+      "filename": "03_document_upload.png",
+      "description": "Owner-scoped document upload",
+      "sha256": "a920b8d0aab7d2b415d4bbe6048f6a60f11a295cc61901f24c335358d277922b",
+      "size_bytes": 62574
+    },
+    {
+      "filename": "04_grounded_chat.png",
+      "description": "Grounded chat result and citation-quality surface",
+      "sha256": "8d6b6006df4fd7ffa55c1bbc4a470b99aa48e6467bc63f27cee4312d3e304169",
+      "size_bytes": 47020
+    },
+    {
+      "filename": "05_generation_timeline.png",
+      "description": "Generation progress timeline",
+      "sha256": "4ebe81cca872753ac790ce11e2a5d99babada721630787c800c740ad706e6e25",
+      "size_bytes": 48172
+    },
+    {
+      "filename": "06_artifact_preview.png",
+      "description": "Generated artifact preview and download state",
+      "sha256": "f83abf1fb413bda9cad3dabf90b70b372a2a1b5f7276f11654ca55cda52bc476",
+      "size_bytes": 42901
+    },
+    {
+      "filename": "07_ag_audit.png",
+      "description": "AG audit correlation summary",
+      "sha256": "ccd0c72191484c9f59cc410a4bc0d63befef1c7222a6098b2340ca41f4495d55",
+      "size_bytes": 15135
+    }
+  ]
+}

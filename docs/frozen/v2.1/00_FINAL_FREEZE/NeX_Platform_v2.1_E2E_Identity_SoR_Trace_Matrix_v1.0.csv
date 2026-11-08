@@ -1,0 +1,20 @@
+﻿Identity,Authoritative Owner / SoR,Contract Surface,Trace Invariant
+tenant_id,OA / platform tenant boundary,All flows,Hard partition; not OrgScope/ProjectScope
+correlation_id,Cross-cutting trace,AE/WC/NSL/Publication,End-to-end correlation
+WorkItemId,WC,WC WorkItem,Work source / routing / assignment SoR
+ClaimId / ClaimGeneration,WC,Atomic Claim,Actual assignee / background execution gate
+AgentExecutionId,AE-API Unified Agent Runtime,AgentExecution,Logical execution identity
+RuntimeJobId,AE-API Reliability,RuntimeJob,Durable worker/retry/resume/reconcile job identity
+ExecutableStepId,AE-API Agent Runtime,Compiled/Executable Step,Step execution identity
+NSLExecutionId,NSL,NSL Runtime,Atomic skill execution identity
+BusinessOperationId,Agent/Platform supplies; NSL consumes stable identity,Agent↔NSL Integration,Business WRITE approval/idempotency/reconciliation correlation
+ApprovalWorkItemId,WC,ApprovalWorkItem,Human workflow identity
+ApprovalRequestId,NSL,NSL WRITE Approval,Frozen WriteIntent approval identity
+ScheduleId,WC,ScheduleSpec,Recurring work policy identity
+ScheduleOccurrenceId,WC,ScheduleOccurrence,Nominal recurrence identity
+WriteNodeId,NSL,WRITE node,Actual WRITE idempotency derivation input
+ToolInvocationId,NSL,Tool invocation / write evidence,Tool-level execution trace
+BusinessReference,EOS business transaction SoR; carried by NSL evidence,EOS/NSL result evidence,Canonical business effect reference
+StepResultId,Agent/NSL integration trace,StepResult,Step-level result trace
+AgentResultId,AE-API,AgentResult,Immutable agent completion result
+PublicationOperationId,AE-API Result Publication,ResultDelivery,Stable publication identity distinct from BusinessOperationId

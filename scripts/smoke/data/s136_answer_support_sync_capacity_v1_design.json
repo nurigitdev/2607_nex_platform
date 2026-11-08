@@ -1,0 +1,63 @@
+{
+  "capacity_experiment": {
+    "baseline_concurrency": 1,
+    "baseline_receipt_reuse_required": true,
+    "co_resident_evidence_level": "BOUND_ENDPOINT_REACHABILITY_PROXY",
+    "co_resident_provider_ports": [
+      9112,
+      9113,
+      9116
+    ],
+    "concurrency_profiles": [
+      1,
+      2,
+      4
+    ],
+    "execution_mode": "SYNCHRONOUS",
+    "live_profiles_to_execute": [
+      2,
+      4
+    ],
+    "maximum_additional_provider_calls": 60,
+    "operator_declared_vllm_max_num_seqs": 4,
+    "provider_timeout_ms": 60000,
+    "sample_count_per_profile": 30
+  },
+  "decision_policy": {
+    "background_provider_p95_latency_ms": 45000,
+    "interactive_e2e_p95_latency_ms": 8000,
+    "maximum_error_count_per_profile": 0,
+    "maximum_profile_p95_latency_ms": 60000,
+    "recommended_profile_rule": "HIGHEST_THROUGHPUT_AMONG_ZERO_ERROR_TIMEOUT_BOUND_PROFILES",
+    "runtime_activation_from_this_evidence_permitted": false
+  },
+  "design_id": "cx-answer-support-sync-capacity-v1",
+  "design_schema_version": "cx_answer_support_sync_capacity_design.v1",
+  "rollout_boundary": {
+    "asynchronous_execution_preselected": false,
+    "current_runtime_policy": "CURRENT_ACTIVE_RETRIEVAL_CONFIDENCE_POLICY",
+    "next_boundary": "EXECUTION_MODE_OPERATOR_DECISION",
+    "production_cutover_requires_new_operator_decision": true,
+    "synchronous_execution_preselected": false
+  },
+  "safety": {
+    "database_call_permitted": false,
+    "holdout_access_permitted": false,
+    "private_text_persistence_permitted": false,
+    "production_cutover_permitted": false,
+    "runtime_activation_permitted": false
+  },
+  "source_binding": {
+    "artifact_evidence_hash": "sha256:50135139c4271768dde60328dd46ddceab663b8e66928746e21affe82ff7955e",
+    "case_set_hash": "sha256:8042f8a80ba559a123f874d02ca290aab78c8e2c3d6a18b613f40f219c408474",
+    "extended_shadow_design_hash": "sha256:9cf3a234bea295b7f46d8accd6d244a11f39060eae4a0665227919b7e83d99d5",
+    "extended_shadow_receipt_hash": "sha256:f9c500c947714c0c2bee6a367c6c1fd7823a47dbab34b322f255d7f02bbae13b",
+    "latency_slo_receipt_hash": "sha256:97815dd4111632e6628d40553e7dbc1016d3bed802773054f262c6f8c6aecfd1",
+    "provider_binding_hash": "sha256:e16f1c5a52d8a423383a82b6afab80561a4de376b574f3a1b91b9d139dde3012",
+    "readiness_manifest_hash": "sha256:77fb8be58e0c06cc91e9397a2f7d0d32787de1e9b7d844dc45942035e635bf8b",
+    "request_profile_hash": "sha256:220bdc921d545a4d24a0db9a2dc4e99cefb23c73418f9f790063c665cb2126da",
+    "runtime_profile_hash": "sha256:ffaa4cac784d4b2e22a37e6f590655f7908cfeca518cc5cf65d32149e075daa6",
+    "signal_design_hash": "sha256:ff37680fed7d1964c0d674fbcca7796fe6954f6dbe4970bc84f80e1d7761ea10"
+  },
+  "status": "FROZEN_PRE_OBSERVATION"
+}

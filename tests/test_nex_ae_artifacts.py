@@ -187,6 +187,7 @@ from nex_runtime import (
     issue_mock_service_token,
     issue_mock_user_token,
 )
+from nex_runtime.object_storage import ObjectStorageError
 
 
 TRACE_ID = "4bf92f3577b34da6a3ce929d0e0e4736"
@@ -1148,6 +1149,43 @@ def test_html_preview_materializer_escapes_markdown_and_lists() -> None:
     assert "<script>" not in html_preview
     assert "&lt;script&gt;bad&lt;/script&gt;" in html_preview
     assert html_preview.endswith("</html>\n")
+
+
+@pytest.mark.parametrize(
+    ("error", "status_code", "error_code", "retryable"),
+    (
+        (
+            ObjectStorageError("OBJECT_STORAGE_UNAVAILABLE", "private", retryable=True),
+            503,
+            "ae.artifact_storage_unavailable",
+            True,
+        ),
+        (
+            ObjectStorageError("OBJECT_STORAGE_INTEGRITY_MISMATCH", "private"),
+            409,
+            "ae.artifact_storage_integrity_failed",
+            False,
+        ),
+        (
+            ObjectStorageError("OBJECT_STORAGE_FORBIDDEN", "private"),
+            500,
+            "ae.artifact_storage_failed",
+            False,
+        ),
+    ),
+)
+def test_artifact_object_storage_errors_are_safely_classified(
+    error: ObjectStorageError,
+    status_code: int,
+    error_code: str,
+    retryable: bool,
+) -> None:
+    classified = ae_artifacts._artifact_object_storage_error(error)
+
+    assert classified.status_code == status_code
+    assert classified.error_code == error_code
+    assert classified.retryable is retryable
+    assert "private" not in classified.detail
 
 
 def test_markdown_render_result_materializes_html_preview_file() -> None:

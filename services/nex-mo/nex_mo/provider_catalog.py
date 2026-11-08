@@ -177,7 +177,7 @@ def build_generation_model_profiles(
                 model_name=env.get(
                     "NEX_MO_GENERATION_MODEL_NAME", selected_generation_profile
                 ),
-                precision="NVFP4",
+                precision=env.get("NEX_MO_GENERATION_MODEL_PRECISION", "NVFP4"),
                 runtime_engine="vllm",
                 model_path=env.get(
                     "NEX_MO_GENERATION_MODEL_PATH",

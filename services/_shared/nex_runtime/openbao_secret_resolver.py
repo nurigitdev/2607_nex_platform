@@ -22,7 +22,7 @@ OPENBAO_KV_MOUNT = "kv"
 _VERSION = re.compile(r"^v([1-9][0-9]*)$")
 _RESOURCE = re.compile(
     r"^/nex-platform/(?P<namespace>staging|production)/"
-    r"(?P<owner>nex-(?:oa|ae-api|cx|mo|ag))/"
+    r"(?P<owner>nex-(?:oa|ae-api|cx|mo|ag|wc|eos))/"
     r"(?P<target>NEX_[A-Z0-9_]+)@(?P<version>v[1-9][0-9]*)$"
 )
 

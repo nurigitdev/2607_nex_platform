@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_wc/delegation_policy.v1.schema.json",
+  "title": "WC Delegation Guard Policy v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "policy_ref",
+    "max_delegation_depth",
+    "max_children_per_work_item",
+    "max_descendants_per_root",
+    "cycle_detection",
+    "governance_controlled",
+    "llm_overridable"
+  ],
+  "properties": {
+    "schema_version": {"const": "wc_delegation_policy.v1"},
+    "policy_ref": {"type": "string", "pattern": "^wc\\.delegation\\.guard\\.[a-z0-9._-]{1,96}$"},
+    "max_delegation_depth": {"const": 10},
+    "max_children_per_work_item": {"const": 5},
+    "max_descendants_per_root": {"const": 50},
+    "cycle_detection": {"const": true},
+    "governance_controlled": {"const": true},
+    "llm_overridable": {"const": false}
+  }
+}

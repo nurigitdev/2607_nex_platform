@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ScheduleHistoryEntry v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "history_id",
+    "tenant_id",
+    "schedule_id",
+    "event_type",
+    "recorded_at"
+  ],
+  "properties": {
+    "history_id": {
+      "type": "string"
+    },
+    "tenant_id": {
+      "type": "string"
+    },
+    "schedule_id": {
+      "type": "string"
+    },
+    "occurrence_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "event_type": {
+      "enum": [
+        "CREATED",
+        "UPDATED",
+        "ENABLED",
+        "DISABLED",
+        "OCCURRENCE_MATERIALIZED",
+        "OCCURRENCE_SKIPPED",
+        "OCCURRENCE_FAILED"
+      ]
+    },
+    "actor_ref": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "details": {
+      "type": "object"
+    },
+    "recorded_at": {
+      "type": "string"
+    }
+  }
+}

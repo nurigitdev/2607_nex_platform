@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_ae_api/project_membership_batch_intake.v1.schema.json",
+  "title": "NeX AE Project Membership Batch Intake",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "tenant_id",
+    "requester_subject_id",
+    "project_id",
+    "candidates"
+  ],
+  "properties": {
+    "tenant_id": {"type": "string", "minLength": 1, "maxLength": 128},
+    "requester_subject_id": {"type": "string", "minLength": 1, "maxLength": 128},
+    "project_id": {"type": "string", "minLength": 1, "maxLength": 128},
+    "member_role": {
+      "enum": ["OWNER", "MANAGER", "MEMBER", "VIEWER"],
+      "default": "MEMBER"
+    },
+    "candidates": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 50,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["input_index", "employee_id"],
+        "properties": {
+          "input_index": {"type": "integer", "minimum": 0},
+          "employee_id": {},
+          "expected_name": {"type": "string", "minLength": 1, "maxLength": 256}
+        }
+      }
+    }
+  }
+}

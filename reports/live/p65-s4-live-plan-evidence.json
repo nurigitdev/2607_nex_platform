@@ -1,0 +1,63 @@
+{
+  "checks": {
+    "agent_plan_created_by_trusted_binder": true,
+    "bare_provider_digest_recorded": true,
+    "candidate_has_no_execution_authority": true,
+    "candidate_hash_recorded_in_plan_provenance": true,
+    "candidate_payload_not_copied_to_agent_plan": true,
+    "candidate_vocabulary_is_closed": true,
+    "canonical_agent_plan_hash_valid": true,
+    "exact_capability_versions_bound_by_ae": true,
+    "exact_prompt_binding_captured": true,
+    "exact_source_lineage_preserved": true,
+    "model_specific_calibration_selected": true,
+    "plan_candidate_schema_valid": true,
+    "required_mode_continues_only_after_binding": true
+  },
+  "context": {
+    "admission_policy_ref": "semantic-admission://plan/general-llm-default/p65.s4-smoke.1",
+    "agent_plan_hash": "sha256:185c9431eccd90fa55a51377e31965b29f7fd1a6fb52a0253eb4492f880a904f",
+    "candidate_confidence": 0.95,
+    "candidate_hash": "sha256:a63aa234d60e3285fe150ebabb890758fcff74994d08bff8635a1e6ca632ce7c",
+    "candidate_schema_version": "p65.plan_candidate.v1",
+    "deployment_id": "vllm-generation-http",
+    "directive": "CONTINUE",
+    "model_profile": "general-llm-default",
+    "model_ref": "Qwen3.5-4B",
+    "plan_kind": "DIRECT",
+    "prompt_binding_key": "ae.plan_builder.default",
+    "prompt_template_version": "v1",
+    "provider_output_sha256": "2e9a87fd16e7a4f319ea9e629abbd0ef6c0367da9b7e310f7df4433ae9123d7e",
+    "selected_threshold": 0.5,
+    "step_count": 1
+  },
+  "evidence_generated_at": "2026-10-16T11:57:02.353141Z",
+  "evidence_schema_version": "ae_p65_s4_live_plan_evidence.v1",
+  "issues": [],
+  "next_slice": "P6.5-S5",
+  "phase": "P6.5",
+  "redaction": {
+    "excluded": [
+      "provider_url",
+      "provider_endpoint",
+      "api_key",
+      "service_token",
+      "raw_prompt",
+      "raw_provider_output",
+      "raw_candidate",
+      "hidden_reasoning",
+      "tenant_id",
+      "owner_subject_id"
+    ],
+    "status": "PASS"
+  },
+  "slice": "P6.5-S4",
+  "stages": {
+    "activation": "PASS",
+    "configuration": "PASS",
+    "plan_generation": "PASS",
+    "prompt_resolution": "PASS",
+    "trusted_binding": "PASS"
+  },
+  "status": "PASS"
+}

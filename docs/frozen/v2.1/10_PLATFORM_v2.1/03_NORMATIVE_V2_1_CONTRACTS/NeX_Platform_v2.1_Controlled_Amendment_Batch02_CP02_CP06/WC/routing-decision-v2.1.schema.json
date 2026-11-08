@@ -1,0 +1,332 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:nex:schema:wc:routing-decision:2.1",
+  "title": "NeX Work Routing Decision v2.1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "routing_decision_id",
+    "work_item_id",
+    "tenant_id",
+    "required_capability",
+    "required_agent_type",
+    "target_type",
+    "candidate_set",
+    "decision",
+    "policy_version",
+    "decided_at"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "2.1"
+    },
+    "routing_decision_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "work_item_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "required_capability": {
+      "type": "string",
+      "minLength": 1
+    },
+    "organization_scope_ref": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "project_scope_ref": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "candidate_set": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "candidate_type",
+          "candidate_ref",
+          "eligible"
+        ],
+        "properties": {
+          "candidate_type": {
+            "enum": [
+              "HUMAN",
+              "AGENT",
+              "EXTERNAL_AGENT"
+            ]
+          },
+          "candidate_ref": {
+            "type": "string"
+          },
+          "eligible": {
+            "type": "boolean"
+          },
+          "reason_codes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "load_score": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "availability": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "agent_type": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "CA",
+              "PA",
+              "EA",
+              null
+            ]
+          }
+        },
+        "allOf": [
+          {
+            "if": {
+              "required": [
+                "candidate_type"
+              ],
+              "properties": {
+                "candidate_type": {
+                  "const": "AGENT"
+                }
+              }
+            },
+            "then": {
+              "required": [
+                "agent_type"
+              ],
+              "properties": {
+                "agent_type": {
+                  "enum": [
+                    "CA",
+                    "PA",
+                    "EA"
+                  ]
+                }
+              }
+            }
+          }
+        ]
+      }
+    },
+    "target_type": {
+      "enum": [
+        "PERSON",
+        "ORG_UNIT",
+        "ROLE",
+        "CAPABILITY_POOL",
+        "EXTERNAL_AGENT"
+      ]
+    },
+    "target_ref": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "decision": {
+      "enum": [
+        "ROUTED",
+        "UNROUTABLE",
+        "ESCALATED"
+      ]
+    },
+    "reason_codes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "policy_version": {
+      "type": "string",
+      "minLength": 1
+    },
+    "decided_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "tenant_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "required_agent_type": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "enum": [
+        "CA",
+        "PA",
+        "EA",
+        null
+      ]
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "required": [
+          "required_agent_type"
+        ],
+        "properties": {
+          "required_agent_type": {
+            "const": "CA"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "candidate_set": {
+            "items": {
+              "if": {
+                "required": [
+                  "candidate_type"
+                ],
+                "properties": {
+                  "candidate_type": {
+                    "const": "AGENT"
+                  }
+                }
+              },
+              "then": {
+                "required": [
+                  "agent_type"
+                ],
+                "properties": {
+                  "agent_type": {
+                    "const": "CA"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "required_agent_type"
+        ],
+        "properties": {
+          "required_agent_type": {
+            "const": "PA"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "candidate_set": {
+            "items": {
+              "if": {
+                "required": [
+                  "candidate_type"
+                ],
+                "properties": {
+                  "candidate_type": {
+                    "const": "AGENT"
+                  }
+                }
+              },
+              "then": {
+                "required": [
+                  "agent_type"
+                ],
+                "properties": {
+                  "agent_type": {
+                    "const": "PA"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "required_agent_type"
+        ],
+        "properties": {
+          "required_agent_type": {
+            "const": "EA"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "candidate_set": {
+            "items": {
+              "if": {
+                "required": [
+                  "candidate_type"
+                ],
+                "properties": {
+                  "candidate_type": {
+                    "const": "AGENT"
+                  }
+                }
+              },
+              "then": {
+                "required": [
+                  "agent_type"
+                ],
+                "properties": {
+                  "agent_type": {
+                    "const": "EA"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "required_agent_type"
+        ],
+        "properties": {
+          "required_agent_type": {
+            "const": "PA"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "project_scope_ref"
+        ],
+        "properties": {
+          "project_scope_ref": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    }
+  ]
+}

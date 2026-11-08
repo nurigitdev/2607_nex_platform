@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_wa/wa_work_evidence.v1.schema.json",
+  "title": "NeX-WA WorkEvidence v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "tenant_id", "work_evidence_id", "source_owner",
+    "source_type", "source_ref", "source_revision_ref", "source_hash",
+    "evidence_kind", "actor_type", "actor_ref", "agent_type_snapshot",
+    "project_ref", "occurred_at", "observed_at", "classification",
+    "evidence_status", "evidence_hash", "supersedes_evidence_id", "created_at"
+  ],
+  "properties": {
+    "schema_version": {"const": "wa_work_evidence.v1"},
+    "tenant_id": {"$ref": "#/$defs/id"},
+    "work_evidence_id": {"type": "string", "format": "uuid"},
+    "source_owner": {"$ref": "#/$defs/id"},
+    "source_type": {"enum": ["AE_AGENT_RESULT", "AE_ARTIFACT", "WC_WORK_RESULT"]},
+    "source_ref": {"$ref": "#/$defs/id"},
+    "source_revision_ref": {"$ref": "#/$defs/id"},
+    "source_hash": {"$ref": "#/$defs/hash"},
+    "evidence_kind": {"$ref": "#/$defs/id"},
+    "actor_type": {"enum": ["HUMAN", "AGENT"]},
+    "actor_ref": {"$ref": "#/$defs/id"},
+    "agent_type_snapshot": {"type": ["string", "null"], "enum": ["IA", "CA", "PA", "EA", null]},
+    "project_ref": {"type": ["string", "null"], "format": "uuid"},
+    "occurred_at": {"type": "string", "format": "date-time"},
+    "observed_at": {"type": "string", "format": "date-time"},
+    "classification": {"enum": ["INTERNAL", "CONFIDENTIAL", "RESTRICTED"]},
+    "evidence_status": {"enum": ["ACTIVE", "SUPERSEDED", "INVALIDATED"]},
+    "evidence_hash": {"$ref": "#/$defs/hash"},
+    "supersedes_evidence_id": {"type": ["string", "null"], "format": "uuid"},
+    "created_at": {"type": "string", "format": "date-time"}
+  },
+  "$defs": {
+    "id": {"type": "string", "minLength": 1, "maxLength": 512},
+    "hash": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}
+  }
+}

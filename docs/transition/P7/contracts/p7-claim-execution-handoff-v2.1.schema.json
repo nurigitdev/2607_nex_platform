@@ -1,0 +1,79 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:nex:schema:wc:claim-execution-handoff:2.1",
+  "title": "NeX WC ClaimExecutionHandoff v2.1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "handoff_id",
+    "tenant_id",
+    "work_item_ref",
+    "claim_ref",
+    "claim_generation",
+    "claimant_agent_ref",
+    "claimant_agent_type",
+    "project_id",
+    "assignment_ref",
+    "correlation_id",
+    "occurred_at"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "2.1"
+    },
+    "handoff_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "tenant_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "work_item_ref": {
+      "type": "string",
+      "minLength": 1
+    },
+    "claim_ref": {
+      "type": "string",
+      "minLength": 1
+    },
+    "claim_generation": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "claimant_agent_ref": {
+      "type": "string",
+      "minLength": 1
+    },
+    "claimant_agent_type": {
+      "enum": [
+        "CA",
+        "PA",
+        "EA"
+      ]
+    },
+    "project_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "assignment_ref": {
+      "type": "string",
+      "minLength": 1
+    },
+    "correlation_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "causation_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "occurred_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "schema_version": "wa_source_reconciliation_page.v1",
+  "source_type": "AE_AGENT_RESULT",
+  "created_after": "2026-10-27T00:00:00Z",
+  "created_before": "2026-10-28T00:00:00Z",
+  "items": [
+    {
+      "schema_version": "wa_evidence_intake_request.v1",
+      "tenant_id": "VO00",
+      "source_type": "AE_AGENT_RESULT",
+      "source_ref": "agent-execution-9001",
+      "source_revision_ref": "result-1",
+      "source_hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "occurred_at": "2026-10-27T09:00:00Z",
+      "correlation_id": "agent-execution-9001"
+    }
+  ],
+  "pagination": {
+    "limit": 50,
+    "returned": 1,
+    "has_more": false,
+    "next_cursor": null
+  }
+}

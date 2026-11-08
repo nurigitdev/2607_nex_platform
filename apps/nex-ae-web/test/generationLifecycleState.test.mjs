@@ -119,6 +119,26 @@ test("accepts verified response and citation quality before artifact handoff", a
   assert.equal(JSON.stringify(summary).includes("Grounded mock response"), false);
 });
 
+test("verified response carries the batch result without exposing it in summaries", async () => {
+  let state = await activeState();
+  const projection = {
+    schema_version: "p8.project_membership_batch_result_projection.v1",
+    operation_id: "PROJECT.MEMBERSHIP.ADD_MANY"
+  };
+  state = applyVerifiedGeneratedResponse(state, {
+    ...(await createMockGroundedGenerationClient().getResponse(state.interactionId)),
+    projectMembershipBatchResult: projection
+  });
+
+  assert.deepEqual(state.response.projectMembershipBatchResult, projection);
+  assert.equal(
+    JSON.stringify(buildGenerationLifecycleSummary(state)).includes(
+      "PROJECT.MEMBERSHIP.ADD_MANY"
+    ),
+    false
+  );
+});
+
 test("applies completed refresh content only after AE persistence", async () => {
   const client = createMockGroundedGenerationClient();
   const state = await activeState();

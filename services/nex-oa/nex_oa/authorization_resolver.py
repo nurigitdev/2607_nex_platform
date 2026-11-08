@@ -1,17 +1,21 @@
 from __future__ import annotations
 
+import json
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from hashlib import sha256
-import json
 from typing import Any
 
 from nex_oa.authorization import OaAuthorizationError
 from nex_oa.authorization_repository import OaAuthorizationRepository
 from nex_oa.subjects import normalize_registry_id
 
-
 OA_EFFECTIVE_AUTHORIZATION_SCHEMA_VERSION = "oa_effective_authorization.v1"
+OA_APPROVAL_READ_SCOPE = "approval:read"
+OA_APPROVAL_DECIDE_SCOPE = "approval:decide"
+OA_APPROVAL_SCOPES = frozenset(
+    {OA_APPROVAL_READ_SCOPE, OA_APPROVAL_DECIDE_SCOPE}
+)
 
 
 @dataclass
@@ -126,6 +130,18 @@ def require_effective_scopes(
             error_code="oa.authorization_scope_not_granted",
             detail=f"required scope is not granted: {missing[0]}",
         )
+
+
+def require_approval_scope(
+    authorization: Mapping[str, Any], *, required_scope: str
+) -> None:
+    if required_scope not in OA_APPROVAL_SCOPES:
+        raise OaAuthorizationError(
+            status_code=400,
+            error_code="oa.approval_scope_invalid",
+            detail="required approval scope is not recognized.",
+        )
+    require_effective_scopes(authorization, [required_scope])
 
 
 def _membership_record(membership: Mapping[str, Any]) -> Mapping[str, Any]:

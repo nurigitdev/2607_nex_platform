@@ -7,8 +7,10 @@ from hashlib import sha256
 import pytest
 
 from nex_oa.service_auth import (
+    _p8_demo_profile_enabled,
     authenticated_oa_service_claims,
     authorize_oa_service_request,
+    build_oa_local_service_token_admission,
 )
 from nex_oa.token_signing import InMemoryOaRsaSigningProvider, encode_signed_jwt
 from nex_runtime import (
@@ -150,3 +152,28 @@ def test_authenticated_claims_requires_prior_admission() -> None:
         return {"ok": True}
 
     assert TestClient(app).get("/claims").json() == {"ok": True}
+
+
+def test_demo_profile_activation_is_exact_and_test_mock_builder_is_unchanged() -> None:
+    exact = {
+        "NEX_PROFILE": "staging_live",
+        "NEX_DEPLOYMENT_BOUNDARY": "P8_DEMO",
+        "NEX_P8_DEMO_SERVICE_TOKEN_PROFILE": "STARTUP_24H",
+    }
+    assert _p8_demo_profile_enabled({}) is False
+    assert _p8_demo_profile_enabled(exact) is True
+    with pytest.raises(ValueError, match="unsupported"):
+        _p8_demo_profile_enabled(
+            {"NEX_P8_DEMO_SERVICE_TOKEN_PROFILE": "one-year"}
+        )
+    with pytest.raises(ValueError, match="boundary"):
+        _p8_demo_profile_enabled(
+            {**exact, "NEX_DEPLOYMENT_BOUNDARY": "PRODUCTION"}
+        )
+
+    runtime = build_oa_local_service_token_admission(
+        signing_key_service=object(),  # type: ignore[arg-type]
+        validation_service=object(),  # type: ignore[arg-type]
+        environ={"NEX_SERVICE_TOKEN_ROLLOUT_PROFILE": "TEST_MOCK"},
+    )
+    assert runtime.rollout_profile == "TEST_MOCK"

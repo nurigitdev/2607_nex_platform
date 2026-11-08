@@ -1,0 +1,51 @@
+{
+  "drift_trigger_map": {
+    "continuation_policy_hash": "CALIBRATION_DATASET_OR_SELECTED_POLICY_CHANGED",
+    "operations_profile_hash": "OPERATIONS_PROFILE_OR_SLO_CHANGED",
+    "selected_policy_hash": "CALIBRATION_DATASET_OR_SELECTED_POLICY_CHANGED",
+    "source_closure_design_hash": "EXPLICIT_OPERATOR_REOPEN_DECISION",
+    "source_closure_hash": "EXPLICIT_OPERATOR_REOPEN_DECISION",
+    "source_closure_report_document_hash": "EXPLICIT_OPERATOR_REOPEN_DECISION"
+  },
+  "maintenance_contract": {
+    "automatic_reopen_permitted": false,
+    "maintenance_mode": "PASSIVE_GUARDRAIL",
+    "maintenance_status": "ACTIVE_CONTROLLED_BASELINE_MAINTENANCE",
+    "max_review_interval_days": 30,
+    "next_boundary": "ANSWER_SUPPORT_POLICY_CONTROLLED_STEADY_STATE_BASELINE_PERIODIC_REVIEW",
+    "periodic_review_required": true,
+    "provider_backed_revalidation_automatic": false,
+    "reopen_requires_explicit_admission": true,
+    "review_mode": "EVENT_DRIVEN_WITH_MAX_INTERVAL",
+    "runtime_disposition": "CONTINUE_CONTROLLED_STEADY_STATE_OPERATIONS"
+  },
+  "policy_hash": "sha256:b91c6e1558f42491c71bdab7d8071bf049280d53510ff617ec17300e1125d146",
+  "policy_id": "cx-answer-support-policy-controlled-steady-state-baseline-maintenance-v1",
+  "policy_schema_version": "cx_answer_support_policy_controlled_steady_state_baseline_maintenance.v1",
+  "reopen_triggers": [
+    "MODEL_OR_PROVIDER_REVISION_CHANGED",
+    "REQUEST_PROFILE_OR_SCORE_SEMANTICS_CHANGED",
+    "CALIBRATION_DATASET_OR_SELECTED_POLICY_CHANGED",
+    "OPERATIONS_PROFILE_OR_SLO_CHANGED",
+    "PERMISSION_OR_TENANT_BOUNDARY_CHANGED",
+    "FALLBACK_RESTART_OR_ROLLBACK_GUARANTEE_DRIFTED",
+    "EXPLICIT_OPERATOR_REOPEN_DECISION"
+  ],
+  "safety": {
+    "database_call_permitted": false,
+    "holdout_access_permitted": false,
+    "production_cutover_permitted": false,
+    "provider_call_permitted": false,
+    "rollback_weakening_permitted": false,
+    "runtime_mutation_permitted": false
+  },
+  "source_binding": {
+    "continuation_policy_hash": "sha256:7fc019a786ce1ad7e6022f6a2e11daab8829d6ff32e0b4034048406f2a176b97",
+    "operations_profile_hash": "sha256:a7332978f9779253959c555bf9e4186ff59020363431d0962b9442d4712d5376",
+    "selected_policy_hash": "sha256:c81f7a0bf3d3d72d7bbc5de1f564ada3b415f2206689c1939fcb925f172168cb",
+    "source_closure_design_hash": "sha256:2d74b85bff9322e33fa5b03a7eb6729da2a85ddb1eeaf7f2096a46ae80ade41b",
+    "source_closure_hash": "sha256:85409ddcb64b30381366fd2e38386529908c51968a5f91eca060174e1288047b",
+    "source_closure_report_document_hash": "sha256:9b192a2c333729efd35e6b9339e5e7771281b5bc828f3de7c3d4062068235fa0"
+  },
+  "status": "FROZEN_CONTROLLED_BASELINE_MAINTENANCE"
+}

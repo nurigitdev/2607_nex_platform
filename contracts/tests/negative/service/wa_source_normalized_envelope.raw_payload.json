@@ -1,0 +1,12 @@
+{
+  "schema_version": "wa_source_normalized_envelope.v1",
+  "tenant_id": "VO00",
+  "source_owner": "nex-ae-api",
+  "source_type": "AE_AGENT_RESULT",
+  "source_ref": "agent-execution-9200",
+  "source_revision_ref": "result-1",
+  "source_hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "occurred_at": "2026-10-27T11:00:00Z",
+  "inspection_status": "SOURCE_AVAILABLE",
+  "raw_payload": "must not cross the adapter boundary"
+}

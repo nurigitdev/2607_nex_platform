@@ -18,6 +18,7 @@ for path in (ROOT / "services" / "nex-ae-api", ROOT / "services" / "_shared"):
 from nex_ae_api.prompt_persistence import SqlAlchemyAePromptRegistryStore  # noqa: E402
 from nex_ae_api.prompts import (  # noqa: E402
     AE_GENERAL_ANSWER_BINDING,
+    AE_PROMPT_SEEDS,
     seed_ae_prompt_registry,
 )
 from nex_runtime.prompts import render_prompt_from_binding  # noqa: E402
@@ -44,11 +45,14 @@ def run_ae_prompt_registry_sqlite() -> dict[str, Any]:
     loaded = restarted.get_render_event(
         rendered["render_event"]["prompt_render_event_id"]
     )
+    expected_binding_count = len(AE_PROMPT_SEEDS)
     checks = {
-        "four_bindings_seeded": len(first) == 4,
+        "configured_bindings_seeded": len(first) == expected_binding_count,
         "seed_is_idempotent": [item["prompt_binding_id"] for item in first]
         == [item["prompt_binding_id"] for item in second],
-        "restart_lists_bindings": len(restarted.list_bindings()) == 4,
+        "restart_lists_bindings": (
+            len(restarted.list_bindings()) == expected_binding_count
+        ),
         "general_binding_available": (
             restarted.get_binding(AE_GENERAL_ANSWER_BINDING) is not None
         ),

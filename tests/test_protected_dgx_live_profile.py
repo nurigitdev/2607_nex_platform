@@ -182,6 +182,9 @@ def test_protected_dgx_live_profile_uses_vllm_defaults() -> None:
     assert defaults["NEX_MO_REMOTE_EMBEDDING_MODEL"] == "Qwen3-Embedding-4B"
     assert defaults["NEX_MO_REMOTE_RERANKER_REQUEST_SHAPE"] == "rerank"
     assert defaults["NEX_MO_REMOTE_RERANKER_MODEL"] == "Qwen3-Reranker-4B"
+    assert defaults["NEX_MO_REMOTE_RERANKER_MODEL_REVISION"] == (
+        "hf:22e683669bc0f0bd69640a1354a6d0aebcfeede5"
+    )
 
 
 def test_protected_dgx_live_profile_keeps_legacy_pcx_defaults_separate() -> None:

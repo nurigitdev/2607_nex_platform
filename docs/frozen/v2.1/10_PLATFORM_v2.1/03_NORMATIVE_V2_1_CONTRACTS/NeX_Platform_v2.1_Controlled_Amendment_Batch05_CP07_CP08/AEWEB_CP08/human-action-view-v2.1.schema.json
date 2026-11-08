@@ -1,0 +1,87 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "HumanActionView v2.1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "action_id",
+    "action_domain",
+    "state",
+    "title",
+    "summary",
+    "submit_target_ref"
+  ],
+  "properties": {
+    "action_id": {
+      "type": "string"
+    },
+    "action_domain": {
+      "enum": [
+        "HUMAN_CONFIRMATION",
+        "AGENT_FORMAL",
+        "NSL_WRITE",
+        "STEP_UP"
+      ]
+    },
+    "state": {
+      "type": "string"
+    },
+    "title": {
+      "type": "string"
+    },
+    "summary": {
+      "type": "string"
+    },
+    "provider_type": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "provider_target_ref": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "agent_execution_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "nsl_execution_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "business_operation_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "approval_request_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "expires_at": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "submit_target_ref": {
+      "type": "string"
+    },
+    "actions": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    }
+  }
+}

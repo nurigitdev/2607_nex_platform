@@ -10,6 +10,9 @@ from typing import Any
 
 
 MODEL_CALIBRATION_EVALUATION_SCHEMA_VERSION = "model_calibration_evaluation.v1"
+MODEL_CALIBRATION_THRESHOLD_EVALUATION_SCHEMA_VERSION = (
+    "model_calibration_threshold_evaluation.v1"
+)
 MODEL_CALIBRATION_PROFILE_SCHEMA_VERSION = "model_calibration_profile.v1"
 SUPPORTED_CAPABILITIES = frozenset({"embedding", "reranking", "generation"})
 SUPPORTED_PROFILE_STATUSES = frozenset({"CANDIDATE", "ACTIVE", "RETIRED"})
@@ -125,6 +128,74 @@ def evaluate_binary_score_calibration(
         "selected_metrics": selected,
         "candidate_count": len(candidates),
         "best_effort_metrics": best_effort,
+    }
+
+
+def evaluate_binary_score_threshold(
+    samples: Sequence[Mapping[str, Any]],
+    *,
+    dataset_id: str,
+    threshold: float,
+    constraints: BinaryCalibrationConstraints = BinaryCalibrationConstraints(),
+) -> dict[str, Any]:
+    """Evaluate a previously frozen threshold without selecting a new one."""
+    normalized = _normalize_samples(samples)
+    numeric_threshold = _bounded_score(threshold, "threshold")
+    positive_count = sum(sample["expected_ready"] for sample in normalized)
+    negative_count = len(normalized) - positive_count
+    base = {
+        "evaluation_schema_version": (
+            MODEL_CALIBRATION_THRESHOLD_EVALUATION_SCHEMA_VERSION
+        ),
+        "dataset_id": _required_string(dataset_id, "dataset_id"),
+        "dataset_sha256": _sha256_json(normalized),
+        "sample_count": len(normalized),
+        "positive_count": positive_count,
+        "negative_count": negative_count,
+        "threshold": numeric_threshold,
+        "score_distribution": _score_distribution(normalized),
+        "score_overlap": _score_overlap(normalized),
+        "constraints": _constraints_payload(constraints),
+    }
+    if (
+        len(normalized) < constraints.minimum_sample_count
+        or positive_count < constraints.minimum_positive_count
+        or negative_count < constraints.minimum_negative_count
+    ):
+        return {
+            **base,
+            "status": "INSUFFICIENT_SAMPLES",
+            "metrics": None,
+            "confidence_intervals": None,
+        }
+
+    raw_metrics = _threshold_metrics(normalized, numeric_threshold)
+    true_ready = int(raw_metrics["true_ready"])
+    false_ready = int(raw_metrics["false_ready"])
+    true_low = int(raw_metrics["true_low_confidence"])
+    metrics = {
+        **raw_metrics,
+        "ready_f1": _f1(
+            float(raw_metrics["ready_precision"]),
+            float(raw_metrics["ready_recall"]),
+        ),
+        "low_specificity": _ratio(true_low, negative_count),
+        "accuracy": _ratio(true_ready + true_low, len(normalized)),
+    }
+    passed = (
+        metrics["false_ready_rate"] <= constraints.maximum_false_ready_rate
+        and metrics["ready_recall"] >= constraints.minimum_ready_recall
+    )
+    return {
+        **base,
+        "status": "PASSED" if passed else "REJECTED",
+        "metrics": metrics,
+        "confidence_intervals": {
+            "method": "WILSON_SCORE",
+            "confidence_level": 0.95,
+            "false_ready_rate": _wilson_interval(false_ready, negative_count),
+            "ready_recall": _wilson_interval(true_ready, positive_count),
+        },
     }
 
 
@@ -374,6 +445,29 @@ def _score_distribution(samples: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
     }
 
 
+def _score_overlap(samples: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    positive = [float(item["score"]) for item in samples if item["expected_ready"]]
+    negative = [float(item["score"]) for item in samples if not item["expected_ready"]]
+    if not positive or not negative:
+        return {
+            "positive_min": None,
+            "negative_max": None,
+            "separation_margin": None,
+            "overlap_width": None,
+            "overlap_detected": None,
+        }
+    positive_min = min(positive)
+    negative_max = max(negative)
+    separation_margin = positive_min - negative_max
+    return {
+        "positive_min": positive_min,
+        "negative_max": negative_max,
+        "separation_margin": round(separation_margin, 8),
+        "overlap_width": round(max(0.0, -separation_margin), 8),
+        "overlap_detected": negative_max >= positive_min,
+    }
+
+
 def _distribution_summary(values: Sequence[float]) -> dict[str, float] | None:
     if not values:
         return None
@@ -393,6 +487,45 @@ def _sha256_json(value: object) -> str:
 
 def _ratio(numerator: int, denominator: int) -> float:
     return round(numerator / denominator, 8) if denominator else 0.0
+
+
+def _f1(precision: float, recall: float) -> float:
+    return (
+        round(2.0 * precision * recall / (precision + recall), 8)
+        if (precision + recall)
+        else 0.0
+    )
+
+
+def _wilson_interval(successes: int, total: int) -> dict[str, Any]:
+    if total <= 0 or successes < 0 or successes > total:
+        raise ModelCalibrationError(
+            "model_calibration.confidence_interval_invalid",
+            "Confidence interval counts are invalid.",
+        )
+    z = 1.959963984540054
+    proportion = successes / total
+    z_squared = z * z
+    denominator = 1.0 + z_squared / total
+    center = (proportion + z_squared / (2.0 * total)) / denominator
+    margin = (
+        z
+        * (
+            (
+                proportion * (1.0 - proportion) / total
+                + z_squared / (4.0 * total * total)
+            )
+            ** 0.5
+        )
+        / denominator
+    )
+    return {
+        "numerator": successes,
+        "denominator": total,
+        "estimate": round(proportion, 8),
+        "lower": round(max(0.0, center - margin), 8),
+        "upper": round(min(1.0, center + margin), 8),
+    }
 
 
 def _mapping(value: object) -> Mapping[str, Any]:

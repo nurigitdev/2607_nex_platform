@@ -1,0 +1,1231 @@
+{
+  "document": "29_NeX_AE_SRS_and_Detailed_Design_v2.0",
+  "version": "v2.0",
+  "date": "2026-09-03",
+  "frozen_parents": [
+    "11_NeX_Coworker_Agent_Runtime_SRS_v2.0 (171 requirements)",
+    "12_NeX_Coworker_Agent_Semi_Autonomous_Detailed_Design_v2.0"
+  ],
+  "counts": {
+    "MUST": 134,
+    "SHOULD": 18
+  },
+  "requirements": [
+    {
+      "section": "4.1 Frozen Runtime Baseline & Ownership",
+      "id": "NEX-AE-BASE-FR-001",
+      "priority": "MUST",
+      "requirement": "NeX-AE는 Document 11의 171개 Unified Coworker Agent Runtime 요구사항을 Frozen Parent Baseline으로 상속하고 상충하는 별도 Runtime 규칙을 정의해서는 안 된다.",
+      "verification": "Architecture/Trace",
+      "parent": "11"
+    },
+    {
+      "section": "4.1 Frozen Runtime Baseline & Ownership",
+      "id": "NEX-AE-BASE-FR-002",
+      "priority": "MUST",
+      "requirement": "NeX-AE는 Document 12의 WorkIntent/AgentPlan/ExecutablePlan/Router/Validator/Compiler/Executor/Checkpoint/JobQueue 구현 Blueprint를 Runtime Core로 사용해야 한다.",
+      "verification": "Architecture Test",
+      "parent": "12"
+    },
+    {
+      "section": "4.1 Frozen Runtime Baseline & Ownership",
+      "id": "NEX-AE-BASE-FR-003",
+      "priority": "MUST",
+      "requirement": "INTERACTIVE와 BACKGROUND_COWORKER는 동일 Unified Runtime Kernel을 사용하되 독립 execution_id와 execution_mode를 가져야 한다.",
+      "verification": "E2E Test",
+      "parent": "11/12"
+    },
+    {
+      "section": "4.1 Frozen Runtime Baseline & Ownership",
+      "id": "NEX-AE-BASE-FR-004",
+      "priority": "MUST",
+      "requirement": "과거 Job Agent 용어를 신규 AE contract/UI/schema에서 사용하지 않고 Coworker Agent로 통일해야 한다.",
+      "verification": "Terminology Scan",
+      "parent": "29"
+    },
+    {
+      "section": "4.1 Frozen Runtime Baseline & Ownership",
+      "id": "NEX-AE-BASE-FR-005",
+      "priority": "MUST",
+      "requirement": "AE는 Frozen Runtime object의 의미와 state transition을 UI 편의를 위해 재정의하거나 축약 저장소를 authoritative SoR로 승격해서는 안 된다.",
+      "verification": "Architecture Test",
+      "parent": "11/12"
+    },
+    {
+      "section": "4.1 Frozen Runtime Baseline & Ownership",
+      "id": "NEX-AE-BASE-FR-006",
+      "priority": "MUST",
+      "requirement": "AE 배포는 Runtime contract/schema compatibility version을 검증하고 incompatible migration 상태에서는 신규 execution을 fail-closed해야 한다.",
+      "verification": "Migration Test",
+      "parent": "12"
+    },
+    {
+      "section": "4.1 Frozen Runtime Baseline & Ownership",
+      "id": "NEX-AE-BASE-FR-007",
+      "priority": "MUST",
+      "requirement": "AE Runtime integration은 OA/CX/MO/WC/NSL/Enterprise OS의 서비스 소유권 경계를 유지하고 타 서비스 DB를 직접 접근해서는 안 된다.",
+      "verification": "Architecture Test",
+      "parent": "26~28"
+    },
+    {
+      "section": "4.1 Frozen Runtime Baseline & Ownership",
+      "id": "NEX-AE-BASE-FR-008",
+      "priority": "SHOULD",
+      "requirement": "Frozen Runtime Core 변경은 별도 version/change control을 거쳐 Document 11/12 baseline 갱신 후 AE에 반영하도록 운영할 수 있어야 한다.",
+      "verification": "Governance Inspection",
+      "parent": "11/12"
+    },
+    {
+      "section": "4.2 AE-WEB Unified Workspace",
+      "id": "NEX-AE-WEB-FR-001",
+      "priority": "MUST",
+      "requirement": "AE-WEB은 직무별 별도 화면 대신 공통 Unified Workspace를 제공해야 한다.",
+      "verification": "Playwright",
+      "parent": "Product"
+    },
+    {
+      "section": "4.2 AE-WEB Unified Workspace",
+      "id": "NEX-AE-WEB-FR-002",
+      "priority": "MUST",
+      "requirement": "Unified Workspace는 최소 Left Project/Document/Conversation, Center My Work+Prompt/Progress/Result, Right Artifact/Evidence/Human Gate 영역을 제공해야 한다.",
+      "verification": "Playwright",
+      "parent": "Prior UX"
+    },
+    {
+      "section": "4.2 AE-WEB Unified Workspace",
+      "id": "NEX-AE-WEB-FR-003",
+      "priority": "MUST",
+      "requirement": "Center 영역은 Interactive Prompt와 WC WorkItem 기반 Background Coworker 상태를 동일 사용자 경험에서 탐색 가능해야 한다.",
+      "verification": "E2E Test",
+      "parent": "11/WC"
+    },
+    {
+      "section": "4.2 AE-WEB Unified Workspace",
+      "id": "NEX-AE-WEB-FR-004",
+      "priority": "MUST",
+      "requirement": "현재 Coworker Profile과 Active Role Context를 사용자에게 식별 가능하게 표시하되 client가 authority를 임의 변경하는 control로 사용해서는 안 된다.",
+      "verification": "Security/UI Test",
+      "parent": "26"
+    },
+    {
+      "section": "4.2 AE-WEB Unified Workspace",
+      "id": "NEX-AE-WEB-FR-005",
+      "priority": "MUST",
+      "requirement": "프로젝트/문서/대화 Context 전환은 AgentSession에 반영되고 다음 request의 Context Builder input으로 server-side 검증되어야 한다.",
+      "verification": "E2E Test",
+      "parent": "11"
+    },
+    {
+      "section": "4.2 AE-WEB Unified Workspace",
+      "id": "NEX-AE-WEB-FR-006",
+      "priority": "MUST",
+      "requirement": "사용자는 현재 execution의 user-safe Intent/Plan Summary, current step, wait reason, progress, result를 확인할 수 있어야 한다.",
+      "verification": "Playwright",
+      "parent": "12"
+    },
+    {
+      "section": "4.2 AE-WEB Unified Workspace",
+      "id": "NEX-AE-WEB-FR-007",
+      "priority": "MUST",
+      "requirement": "Runtime 내부 private reasoning/raw hidden prompt를 사용자 UI에 노출하거나 저장을 요구해서는 안 된다.",
+      "verification": "Security Inspection",
+      "parent": "11"
+    },
+    {
+      "section": "4.2 AE-WEB Unified Workspace",
+      "id": "NEX-AE-WEB-FR-008",
+      "priority": "MUST",
+      "requirement": "Responsive desktop layout을 기본으로 하되 주요 Human Gate/Notification/Result action은 작은 viewport에서도 접근 가능해야 한다.",
+      "verification": "Playwright",
+      "parent": "AE-WEB"
+    },
+    {
+      "section": "4.2 AE-WEB Unified Workspace",
+      "id": "NEX-AE-WEB-FR-009",
+      "priority": "SHOULD",
+      "requirement": "사용자는 개인화된 panel width/collapse/view preference를 저장할 수 있어야 하며 권한/보안 동작에는 영향을 주지 않아야 한다.",
+      "verification": "UI Test",
+      "parent": "AE"
+    },
+    {
+      "section": "4.2 AE-WEB Unified Workspace",
+      "id": "NEX-AE-WEB-FR-010",
+      "priority": "MUST",
+      "requirement": "Workspace에서 보여주는 WorkItem/Artifact/Evidence deep link는 현재 사용자 권한으로 다시 검증되어야 한다.",
+      "verification": "Security Test",
+      "parent": "26/27/WC"
+    },
+    {
+      "section": "4.3 AgentSession & Conversation",
+      "id": "NEX-AE-SES-FR-001",
+      "priority": "MUST",
+      "requirement": "AgentSession은 OA 인증 Session과 별개의 AE application context object로 정의해야 한다.",
+      "verification": "Architecture Test",
+      "parent": "26/29"
+    },
+    {
+      "section": "4.3 AgentSession & Conversation",
+      "id": "NEX-AE-SES-FR-002",
+      "priority": "MUST",
+      "requirement": "AgentSession은 session_id, principal/business actor refs, coworker_profile_ref, active_role_context_ref, current project/document/conversation refs를 관리해야 한다.",
+      "verification": "Schema Test",
+      "parent": "11/26"
+    },
+    {
+      "section": "4.3 AgentSession & Conversation",
+      "id": "NEX-AE-SES-FR-003",
+      "priority": "MUST",
+      "requirement": "AgentSession은 authorization grant 자체를 저장하지 않고 request/execution 시 current OA authority를 사용해야 한다.",
+      "verification": "Security Test",
+      "parent": "26"
+    },
+    {
+      "section": "4.3 AgentSession & Conversation",
+      "id": "NEX-AE-SES-FR-004",
+      "priority": "MUST",
+      "requirement": "하나의 AgentSession은 복수 Interactive AgentExecution을 생성할 수 있고 각 execution은 immutable correlation/causation trace를 가져야 한다.",
+      "verification": "E2E Test",
+      "parent": "11/12"
+    },
+    {
+      "section": "4.3 AgentSession & Conversation",
+      "id": "NEX-AE-SES-FR-005",
+      "priority": "MUST",
+      "requirement": "Conversation Thread와 AgentExecution을 분리하여 한 대화에서 여러 독립 실행/재질의를 추적할 수 있어야 한다.",
+      "verification": "Data Test",
+      "parent": "29"
+    },
+    {
+      "section": "4.3 AgentSession & Conversation",
+      "id": "NEX-AE-SES-FR-006",
+      "priority": "MUST",
+      "requirement": "Role Context 전환은 server-side eligible RoleBinding 확인 후 새로운 context version으로 반영되어야 한다.",
+      "verification": "Security Test",
+      "parent": "26"
+    },
+    {
+      "section": "4.3 AgentSession & Conversation",
+      "id": "NEX-AE-SES-FR-007",
+      "priority": "MUST",
+      "requirement": "Session idle/close가 Background Coworker execution을 취소하지 않아야 하며 background 상태는 WorkItem/AgentExecution으로 지속되어야 한다.",
+      "verification": "E2E Test",
+      "parent": "11/12"
+    },
+    {
+      "section": "4.3 AgentSession & Conversation",
+      "id": "NEX-AE-SES-FR-008",
+      "priority": "MUST",
+      "requirement": "Session resume 시 UI state는 복원할 수 있으나 stale Evidence/authority를 자동 신뢰해서는 안 된다.",
+      "verification": "Security/E2E",
+      "parent": "26/27"
+    },
+    {
+      "section": "4.3 AgentSession & Conversation",
+      "id": "NEX-AE-SES-FR-009",
+      "priority": "SHOULD",
+      "requirement": "사용자는 복수 browser/device AgentSession을 가질 수 있으나 profile/role/high-risk concurrency policy를 준수해야 한다.",
+      "verification": "Concurrency Test",
+      "parent": "11/26"
+    },
+    {
+      "section": "4.4 Work Intake & Launch UX",
+      "id": "NEX-AE-IN-FR-001",
+      "priority": "MUST",
+      "requirement": "AE는 PROMPT 입력을 Frozen Runtime의 INTERACTIVE Work Source로 전달해야 한다.",
+      "verification": "Contract Test",
+      "parent": "11"
+    },
+    {
+      "section": "4.4 Work Intake & Launch UX",
+      "id": "NEX-AE-IN-FR-002",
+      "priority": "MUST",
+      "requirement": "AE는 NeX-WC WorkItem을 Frozen Runtime의 BACKGROUND_COWORKER Work Source로 시작할 수 있어야 한다.",
+      "verification": "Integration Test",
+      "parent": "11/WC"
+    },
+    {
+      "section": "4.4 Work Intake & Launch UX",
+      "id": "NEX-AE-IN-FR-003",
+      "priority": "MUST",
+      "requirement": "사용자 prompt submit 시 request_id/correlation_id/session_id를 생성 또는 전파하고 생성된 execution_id를 즉시 연결해야 한다.",
+      "verification": "Trace Test",
+      "parent": "11/12"
+    },
+    {
+      "section": "4.4 Work Intake & Launch UX",
+      "id": "NEX-AE-IN-FR-004",
+      "priority": "MUST",
+      "requirement": "WorkItem launch는 WC eligibility/assignment/claim 결과를 우회하는 수동 강제 실행을 제공해서는 안 된다.",
+      "verification": "Security Test",
+      "parent": "11/WC"
+    },
+    {
+      "section": "4.4 Work Intake & Launch UX",
+      "id": "NEX-AE-IN-FR-005",
+      "priority": "MUST",
+      "requirement": "Interactive clarification request는 원 질문/required field/allowed input contract를 사용자에게 구조적으로 표시해야 한다.",
+      "verification": "E2E Test",
+      "parent": "11"
+    },
+    {
+      "section": "4.4 Work Intake & Launch UX",
+      "id": "NEX-AE-IN-FR-006",
+      "priority": "MUST",
+      "requirement": "Background clarification은 Human Action Required notification과 WorkItem deep link를 통해 전달해야 한다.",
+      "verification": "E2E Test",
+      "parent": "11/WC"
+    },
+    {
+      "section": "4.4 Work Intake & Launch UX",
+      "id": "NEX-AE-IN-FR-007",
+      "priority": "MUST",
+      "requirement": "Prompt/WorkItem intake에서 첨부 Artifact/Document는 CX/Artifact ref로 연결하고 대용량 binary를 Runtime payload에 복제해서는 안 된다.",
+      "verification": "Architecture Test",
+      "parent": "27"
+    },
+    {
+      "section": "4.4 Work Intake & Launch UX",
+      "id": "NEX-AE-IN-FR-008",
+      "priority": "SHOULD",
+      "requirement": "향후 EVENT/SCHEDULE Work Source가 추가되어도 Workspace/Session contract를 깨지 않는 source abstraction을 유지해야 한다.",
+      "verification": "Architecture Test",
+      "parent": "11"
+    },
+    {
+      "section": "4.5 Runtime Progress & Plan UX",
+      "id": "NEX-AE-RUX-FR-001",
+      "priority": "MUST",
+      "requirement": "AE는 Frozen Runtime state를 사용자-safe status로 projection하여 표시해야 한다.",
+      "verification": "E2E Test",
+      "parent": "12"
+    },
+    {
+      "section": "4.5 Runtime Progress & Plan UX",
+      "id": "NEX-AE-RUX-FR-002",
+      "priority": "MUST",
+      "requirement": "Plan Summary는 AgentPlan/ExecutablePlan의 sensitive/internal field를 노출하지 않고 목표·주요 단계·협업·Human Gate·예상 결과를 요약해야 한다.",
+      "verification": "Security/UI Test",
+      "parent": "11/12"
+    },
+    {
+      "section": "4.5 Runtime Progress & Plan UX",
+      "id": "NEX-AE-RUX-FR-003",
+      "priority": "MUST",
+      "requirement": "Plan Router의 DIRECT/CERTIFIED_BINDING/KNOWN_TEMPLATE/DYNAMIC 유형은 운영 trace로 보존하되 일반 사용자에게 과도한 내부 구현 detail을 강제 표시하지 않아야 한다.",
+      "verification": "Inspection",
+      "parent": "12"
+    },
+    {
+      "section": "4.5 Runtime Progress & Plan UX",
+      "id": "NEX-AE-RUX-FR-004",
+      "priority": "MUST",
+      "requirement": "DELEGATE_WORK 단계는 어떤 capability/부서 범위에 협조가 요청되었는지와 Child WorkItem 상태를 표시할 수 있어야 한다.",
+      "verification": "E2E Test",
+      "parent": "12/WC"
+    },
+    {
+      "section": "4.5 Runtime Progress & Plan UX",
+      "id": "NEX-AE-RUX-FR-005",
+      "priority": "MUST",
+      "requirement": "WAITING_INPUT/CONFIRMATION/APPROVAL/DEPENDENCY/BLOCKED 상태를 서로 구분하여 action 또는 wait reason을 표시해야 한다.",
+      "verification": "Playwright",
+      "parent": "11/12"
+    },
+    {
+      "section": "4.5 Runtime Progress & Plan UX",
+      "id": "NEX-AE-RUX-FR-006",
+      "priority": "MUST",
+      "requirement": "FAILED/ESCALATED/RECONCILIATION_REQUIRED는 단순 실패 메시지로 축약하지 않고 user-safe reason과 다음 action을 제공해야 한다.",
+      "verification": "Fault/E2E",
+      "parent": "12"
+    },
+    {
+      "section": "4.5 Runtime Progress & Plan UX",
+      "id": "NEX-AE-RUX-FR-007",
+      "priority": "MUST",
+      "requirement": "Replan 발생 시 이전 계획과 새 계획 version lineage를 runtime trace에 유지하고 UI에는 변경 이유를 user-safe 형태로 표시할 수 있어야 한다.",
+      "verification": "E2E Test",
+      "parent": "11/12"
+    },
+    {
+      "section": "4.5 Runtime Progress & Plan UX",
+      "id": "NEX-AE-RUX-FR-008",
+      "priority": "MUST",
+      "requirement": "사용자의 cancel 요청은 Runtime/WorkItem state와 side-effect commit state를 고려하는 canonical cancel contract를 통해 처리해야 한다.",
+      "verification": "Fault Test",
+      "parent": "12/WC"
+    },
+    {
+      "section": "4.5 Runtime Progress & Plan UX",
+      "id": "NEX-AE-RUX-FR-009",
+      "priority": "SHOULD",
+      "requirement": "장기 Background execution은 expected completion time 대신 현재 단계/대기 원인/최근 activity를 중심으로 표시할 수 있어야 한다.",
+      "verification": "UX Test",
+      "parent": "29"
+    },
+    {
+      "section": "4.6 CX Evidence & Citation UX",
+      "id": "NEX-AE-CX-FR-001",
+      "priority": "MUST",
+      "requirement": "AE는 CX의 AE Context/Evidence Bundle을 읽기 전용 evidence contract로 사용하고 raw vector/index/storage internals를 직접 사용해서는 안 된다.",
+      "verification": "Architecture Test",
+      "parent": "27"
+    },
+    {
+      "section": "4.6 CX Evidence & Citation UX",
+      "id": "NEX-AE-CX-FR-002",
+      "priority": "MUST",
+      "requirement": "응답의 citation은 CX가 제공한 citation_map/source locator를 기준으로 표시해야 한다.",
+      "verification": "Contract/E2E",
+      "parent": "27"
+    },
+    {
+      "section": "4.6 CX Evidence & Citation UX",
+      "id": "NEX-AE-CX-FR-003",
+      "priority": "MUST",
+      "requirement": "Evidence panel은 문서명, source locator(page/heading 등), relevance/evidence quality, project/classification label을 policy-safe 범위에서 표시해야 한다.",
+      "verification": "Playwright",
+      "parent": "27"
+    },
+    {
+      "section": "4.6 CX Evidence & Citation UX",
+      "id": "NEX-AE-CX-FR-004",
+      "priority": "MUST",
+      "requirement": "Evidence quality가 PARTIAL/INSUFFICIENT/CONFLICT이면 이를 사용자에게 숨기지 않고 응답/UX에 반영해야 한다.",
+      "verification": "E2E Test",
+      "parent": "27"
+    },
+    {
+      "section": "4.6 CX Evidence & Citation UX",
+      "id": "NEX-AE-CX-FR-005",
+      "priority": "MUST",
+      "requirement": "1-Hop Ontology Graph-lite에서 발견된 relation-based evidence는 supporting evidence/citation과 함께 표시하고 graph edge 단독을 사실 근거로 표현해서는 안 된다.",
+      "verification": "E2E Test",
+      "parent": "27"
+    },
+    {
+      "section": "4.6 CX Evidence & Citation UX",
+      "id": "NEX-AE-CX-FR-006",
+      "priority": "MUST",
+      "requirement": "Evidence source를 열람할 때 current permission을 CX/OA 경계에서 재검증해야 한다.",
+      "verification": "Security Test",
+      "parent": "26/27"
+    },
+    {
+      "section": "4.6 CX Evidence & Citation UX",
+      "id": "NEX-AE-CX-FR-007",
+      "priority": "MUST",
+      "requirement": "AE follow-up은 이전 Evidence Bundle을 무조건 재사용하지 않고 current authority와 CX freshness policy를 통해 revalidation해야 한다.",
+      "verification": "Security Test",
+      "parent": "27"
+    },
+    {
+      "section": "4.6 CX Evidence & Citation UX",
+      "id": "NEX-AE-CX-FR-008",
+      "priority": "MUST",
+      "requirement": "AE는 Evidence text를 interaction DB에 대량 복제하지 않고 evidence_bundle_ref/citation refs/summary를 우선 저장해야 한다.",
+      "verification": "Data Test",
+      "parent": "27"
+    },
+    {
+      "section": "4.6 CX Evidence & Citation UX",
+      "id": "NEX-AE-CX-FR-009",
+      "priority": "SHOULD",
+      "requirement": "사용자는 citation 선택 시 원문 주변 context를 policy-safe 범위에서 preview할 수 있어야 한다.",
+      "verification": "UI Test",
+      "parent": "27"
+    },
+    {
+      "section": "4.6 CX Evidence & Citation UX",
+      "id": "NEX-AE-CX-FR-010",
+      "priority": "MUST",
+      "requirement": "CX degraded mode(BM25-only, Graph-only 등)가 반환되면 AE는 quality diagnostics를 사용자-safe 형태로 표시할 수 있어야 한다.",
+      "verification": "Fault/E2E",
+      "parent": "27/28"
+    },
+    {
+      "section": "4.7 MO Prompt, Structured Generation & Streaming",
+      "id": "NEX-AE-MO-FR-001",
+      "priority": "MUST",
+      "requirement": "Business Prompt Template/Version은 AE가 소유하고 MO는 model_profile 기반 structured/streaming generation을 수행해야 한다.",
+      "verification": "Architecture Test",
+      "parent": "12/28"
+    },
+    {
+      "section": "4.7 MO Prompt, Structured Generation & Streaming",
+      "id": "NEX-AE-MO-FR-002",
+      "priority": "MUST",
+      "requirement": "INTENT/PLAN_SELECTOR/PLAN_BUILDER/EXPERT_REASONING/AGGREGATE/RESULT_FORMATTING purpose별 Prompt Asset과 Output Schema를 versioning해야 한다.",
+      "verification": "Contract Test",
+      "parent": "12"
+    },
+    {
+      "section": "4.7 MO Prompt, Structured Generation & Streaming",
+      "id": "NEX-AE-MO-FR-003",
+      "priority": "MUST",
+      "requirement": "WorkIntent/AgentPlan 같은 control output은 schema-bounded structured generation으로 처리하고 free-form stream을 실행 권한으로 사용해서는 안 된다.",
+      "verification": "Security Test",
+      "parent": "11/12/28"
+    },
+    {
+      "section": "4.7 MO Prompt, Structured Generation & Streaming",
+      "id": "NEX-AE-MO-FR-004",
+      "priority": "MUST",
+      "requirement": "사용자-facing response는 MO가 지원하는 streaming provider를 통해 content delta를 전달할 수 있어야 한다.",
+      "verification": "E2E Test",
+      "parent": "28"
+    },
+    {
+      "section": "4.7 MO Prompt, Structured Generation & Streaming",
+      "id": "NEX-AE-MO-FR-005",
+      "priority": "MUST",
+      "requirement": "Streaming event는 request/execution/message sequence와 model/prompt provenance를 연결할 수 있어야 한다.",
+      "verification": "Trace Test",
+      "parent": "28/29"
+    },
+    {
+      "section": "4.7 MO Prompt, Structured Generation & Streaming",
+      "id": "NEX-AE-MO-FR-006",
+      "priority": "MUST",
+      "requirement": "Browser disconnect가 business execution 자체를 취소하지 않아야 하며 재접속 시 persisted result/state를 기준으로 복원해야 한다.",
+      "verification": "Fault Test",
+      "parent": "29"
+    },
+    {
+      "section": "4.7 MO Prompt, Structured Generation & Streaming",
+      "id": "NEX-AE-MO-FR-007",
+      "priority": "MUST",
+      "requirement": "MO degraded/fallback 정보가 response quality에 영향을 주는 경우 AE diagnostics에 반영해야 한다.",
+      "verification": "Fault Test",
+      "parent": "28"
+    },
+    {
+      "section": "4.7 MO Prompt, Structured Generation & Streaming",
+      "id": "NEX-AE-MO-FR-008",
+      "priority": "MUST",
+      "requirement": "Streaming text는 Formal Approval/Confirmation/PDP decision 같은 authoritative state를 생성하거나 대체해서는 안 된다.",
+      "verification": "Security Test",
+      "parent": "26/12"
+    },
+    {
+      "section": "4.7 MO Prompt, Structured Generation & Streaming",
+      "id": "NEX-AE-MO-FR-009",
+      "priority": "SHOULD",
+      "requirement": "AE는 user-facing streaming latency(first token/complete)을 별도로 계측할 수 있어야 한다.",
+      "verification": "Performance Test",
+      "parent": "28"
+    },
+    {
+      "section": "4.7 MO Prompt, Structured Generation & Streaming",
+      "id": "NEX-AE-MO-FR-010",
+      "priority": "MUST",
+      "requirement": "Prompt input에는 CX data classification/scope 및 Runtime context filtering 결과를 적용하고 raw secret을 포함해서는 안 된다.",
+      "verification": "Security Test",
+      "parent": "11/27/28"
+    },
+    {
+      "section": "4.8 NeX-WC Inbox & Coworker Coordination UX",
+      "id": "NEX-AE-WC-FR-001",
+      "priority": "MUST",
+      "requirement": "Unified Workspace는 NeX-WC의 My Work와 Coworker Work Inbox를 표시해야 한다.",
+      "verification": "E2E Test",
+      "parent": "WC"
+    },
+    {
+      "section": "4.8 NeX-WC Inbox & Coworker Coordination UX",
+      "id": "NEX-AE-WC-FR-002",
+      "priority": "MUST",
+      "requirement": "Inbox는 최소 ASSIGNED/ACKNOWLEDGED/IN_PROGRESS/BLOCKED/RESULT_SUBMITTED/REVISION_REQUESTED/CLOSED 상태를 표현할 수 있어야 한다.",
+      "verification": "Contract/UI",
+      "parent": "WC"
+    },
+    {
+      "section": "4.8 NeX-WC Inbox & Coworker Coordination UX",
+      "id": "NEX-AE-WC-FR-003",
+      "priority": "MUST",
+      "requirement": "Parent/Child WorkItem 관계와 causation trace를 사용자에게 탐색 가능하게 표시해야 한다.",
+      "verification": "E2E Test",
+      "parent": "12/WC"
+    },
+    {
+      "section": "4.8 NeX-WC Inbox & Coworker Coordination UX",
+      "id": "NEX-AE-WC-FR-004",
+      "priority": "MUST",
+      "requirement": "Coworker 간 내부 협업은 NeX-WC WorkItem을 SoR로 사용하고 AE가 별도 direct delegation state를 authoritative하게 만들지 않아야 한다.",
+      "verification": "Architecture Test",
+      "parent": "11/12"
+    },
+    {
+      "section": "4.8 NeX-WC Inbox & Coworker Coordination UX",
+      "id": "NEX-AE-WC-FR-005",
+      "priority": "MUST",
+      "requirement": "Child WorkItem의 actual assignee는 WC Assignment/Claim 결과를 표시할 뿐 AE Planner/UI가 임의 지정해서는 안 된다.",
+      "verification": "Security Test",
+      "parent": "11/12"
+    },
+    {
+      "section": "4.8 NeX-WC Inbox & Coworker Coordination UX",
+      "id": "NEX-AE-WC-FR-006",
+      "priority": "MUST",
+      "requirement": "WorkItem detail에는 goal/requester/accountable owner/due/priority/project/completion criteria/result/artifact/evidence refs를 contract 범위 내 표시할 수 있어야 한다.",
+      "verification": "UI/Contract",
+      "parent": "11/WC"
+    },
+    {
+      "section": "4.8 NeX-WC Inbox & Coworker Coordination UX",
+      "id": "NEX-AE-WC-FR-007",
+      "priority": "MUST",
+      "requirement": "WorkItem result 제출/보완 요청/closure action은 WC canonical API와 authority policy를 따라야 한다.",
+      "verification": "Integration Test",
+      "parent": "WC"
+    },
+    {
+      "section": "4.8 NeX-WC Inbox & Coworker Coordination UX",
+      "id": "NEX-AE-WC-FR-008",
+      "priority": "MUST",
+      "requirement": "Runtime SUCCEEDED를 UI에서 WC CLOSED와 동일 의미로 표시해서는 안 된다.",
+      "verification": "State Test",
+      "parent": "11/12"
+    },
+    {
+      "section": "4.8 NeX-WC Inbox & Coworker Coordination UX",
+      "id": "NEX-AE-WC-FR-009",
+      "priority": "MUST",
+      "requirement": "WAITING_DEPENDENCY는 관련 Child WorkItem 또는 external dependency 상태로 deep link할 수 있어야 한다.",
+      "verification": "E2E Test",
+      "parent": "12/WC"
+    },
+    {
+      "section": "4.8 NeX-WC Inbox & Coworker Coordination UX",
+      "id": "NEX-AE-WC-FR-010",
+      "priority": "SHOULD",
+      "requirement": "사용자는 자신에게 필요한 Work/Agent Inbox filter와 sort preference를 저장할 수 있어야 한다.",
+      "verification": "UI Test",
+      "parent": "AE"
+    },
+    {
+      "section": "4.8 NeX-WC Inbox & Coworker Coordination UX",
+      "id": "NEX-AE-WC-FR-011",
+      "priority": "MUST",
+      "requirement": "외부 독립 Agent A2A 상태가 있더라도 AE는 WC WorkItem/Execution Link를 기준으로 사용자에게 상태를 표현해야 한다.",
+      "verification": "Integration Test",
+      "parent": "11/12"
+    },
+    {
+      "section": "4.9 Human Gate & Approval UX",
+      "id": "NEX-AE-GATE-FR-001",
+      "priority": "MUST",
+      "requirement": "AE는 HUMAN_CONFIRMATION과 FORMAL_APPROVAL을 서로 다른 UI/contract로 표현해야 한다.",
+      "verification": "E2E Test",
+      "parent": "12/26"
+    },
+    {
+      "section": "4.9 Human Gate & Approval UX",
+      "id": "NEX-AE-GATE-FR-002",
+      "priority": "MUST",
+      "requirement": "Confirmation UI는 실행될 capability/target/structured inputs/예상 영향/risk/evidence summary를 표시해야 한다.",
+      "verification": "Security/UI",
+      "parent": "12"
+    },
+    {
+      "section": "4.9 Human Gate & Approval UX",
+      "id": "NEX-AE-GATE-FR-003",
+      "priority": "MUST",
+      "requirement": "Formal Approval UI는 Enterprise OS/EOS approval object와 approver/state/history를 authoritative source로 표시해야 한다.",
+      "verification": "Integration Test",
+      "parent": "12/EOS"
+    },
+    {
+      "section": "4.9 Human Gate & Approval UX",
+      "id": "NEX-AE-GATE-FR-004",
+      "priority": "MUST",
+      "requirement": "AE가 LLM 문장 또는 사용자의 일반 채팅 응답을 Formal Approval result로 해석해서는 안 된다.",
+      "verification": "Security Test",
+      "parent": "12"
+    },
+    {
+      "section": "4.9 Human Gate & Approval UX",
+      "id": "NEX-AE-GATE-FR-005",
+      "priority": "MUST",
+      "requirement": "OA Step-up Authentication이 필요한 gate는 Human Gate와 별도 흐름으로 사용자에게 안내되어야 한다.",
+      "verification": "E2E/Security",
+      "parent": "26"
+    },
+    {
+      "section": "4.9 Human Gate & Approval UX",
+      "id": "NEX-AE-GATE-FR-006",
+      "priority": "MUST",
+      "requirement": "Gate approve/reject action은 request idempotency와 current execution/checkpoint linkage를 가져야 한다.",
+      "verification": "Fault Test",
+      "parent": "12"
+    },
+    {
+      "section": "4.9 Human Gate & Approval UX",
+      "id": "NEX-AE-GATE-FR-007",
+      "priority": "MUST",
+      "requirement": "Gate 대기 중 RoleBinding/Capability/Policy가 변경되면 Resume reauthorization 결과를 따라야 하며 과거 UI 상태로 실행을 허용해서는 안 된다.",
+      "verification": "Security Test",
+      "parent": "26/12"
+    },
+    {
+      "section": "4.9 Human Gate & Approval UX",
+      "id": "NEX-AE-GATE-FR-008",
+      "priority": "MUST",
+      "requirement": "고위험 write preview에서 sensitive value는 classification/redaction policy를 적용해야 한다.",
+      "verification": "Privacy Test",
+      "parent": "26/29"
+    },
+    {
+      "section": "4.9 Human Gate & Approval UX",
+      "id": "NEX-AE-GATE-FR-009",
+      "priority": "SHOULD",
+      "requirement": "사용자는 승인 전 비교 가능한 before/after business state preview를 canonical read가 지원하는 범위에서 볼 수 있어야 한다.",
+      "verification": "UI Test",
+      "parent": "EOS"
+    },
+    {
+      "section": "4.9 Human Gate & Approval UX",
+      "id": "NEX-AE-GATE-FR-010",
+      "priority": "MUST",
+      "requirement": "Gate 완료/만료/취소 상태는 Notification과 Runtime wait state에 일관되게 반영되어야 한다.",
+      "verification": "E2E Test",
+      "parent": "12"
+    },
+    {
+      "section": "4.10 Notification & Resume UX",
+      "id": "NEX-AE-NTF-FR-001",
+      "priority": "MUST",
+      "requirement": "AE는 최소 NEED_INPUT, NEED_CONFIRMATION, NEED_APPROVAL, DEPENDENCY_UPDATE, COMPLETED, FAILED, ESCALATED notification type을 지원해야 한다.",
+      "verification": "Schema/E2E",
+      "parent": "11/12"
+    },
+    {
+      "section": "4.10 Notification & Resume UX",
+      "id": "NEX-AE-NTF-FR-002",
+      "priority": "MUST",
+      "requirement": "Notification은 execution/work_item/session/gate/artifact 등 canonical target ref와 deep link를 가져야 한다.",
+      "verification": "Contract Test",
+      "parent": "29"
+    },
+    {
+      "section": "4.10 Notification & Resume UX",
+      "id": "NEX-AE-NTF-FR-003",
+      "priority": "MUST",
+      "requirement": "동일 Runtime event의 중복 delivery가 중복 notification을 만들지 않도록 event/dedup key를 사용해야 한다.",
+      "verification": "Fault Test",
+      "parent": "12"
+    },
+    {
+      "section": "4.10 Notification & Resume UX",
+      "id": "NEX-AE-NTF-FR-004",
+      "priority": "MUST",
+      "requirement": "Notification payload에는 raw secret/full sensitive document text를 포함하지 않아야 한다.",
+      "verification": "Security Scan",
+      "parent": "29"
+    },
+    {
+      "section": "4.10 Notification & Resume UX",
+      "id": "NEX-AE-NTF-FR-005",
+      "priority": "MUST",
+      "requirement": "읽음/미읽음/처리됨 상태는 Runtime/WorkItem business state와 구분된 사용자 notification state로 관리해야 한다.",
+      "verification": "Data Test",
+      "parent": "29"
+    },
+    {
+      "section": "4.10 Notification & Resume UX",
+      "id": "NEX-AE-NTF-FR-006",
+      "priority": "MUST",
+      "requirement": "사용자가 이미 해결한 Gate/Input에 대한 stale notification action은 current state를 재조회하여 무효화해야 한다.",
+      "verification": "E2E Test",
+      "parent": "12"
+    },
+    {
+      "section": "4.10 Notification & Resume UX",
+      "id": "NEX-AE-NTF-FR-007",
+      "priority": "SHOULD",
+      "requirement": "In-app 이외 이메일/메신저 channel은 provider adapter로 확장 가능해야 하고 data classification별 전달 정책을 적용할 수 있어야 한다.",
+      "verification": "Architecture/Security",
+      "parent": "29"
+    },
+    {
+      "section": "4.10 Notification & Resume UX",
+      "id": "NEX-AE-NTF-FR-008",
+      "priority": "SHOULD",
+      "requirement": "Notification preference는 type/severity/channel별 사용자 설정을 지원할 수 있어야 한다.",
+      "verification": "UI Test",
+      "parent": "AE"
+    },
+    {
+      "section": "4.10 Notification & Resume UX",
+      "id": "NEX-AE-NTF-FR-009",
+      "priority": "MUST",
+      "requirement": "Background Coworker 완료 notification은 WorkResult/Artifact refs를 제공하되 WorkItem CLOSED를 임의 표시해서는 안 된다.",
+      "verification": "State Test",
+      "parent": "11/WC"
+    },
+    {
+      "section": "4.11 Artifact, Result & Citation",
+      "id": "NEX-AE-ART-FR-001",
+      "priority": "MUST",
+      "requirement": "AE는 생성/참조 Artifact를 artifact_ref로 관리하고 외부 Artifact Service/SoR의 authoritative content ownership을 침범해서는 안 된다.",
+      "verification": "Architecture Test",
+      "parent": "12"
+    },
+    {
+      "section": "4.11 Artifact, Result & Citation",
+      "id": "NEX-AE-ART-FR-002",
+      "priority": "MUST",
+      "requirement": "Result View는 Structured Result Envelope의 business refs, artifact refs, evidence refs, trace refs를 표시할 수 있어야 한다.",
+      "verification": "Contract Test",
+      "parent": "11"
+    },
+    {
+      "section": "4.11 Artifact, Result & Citation",
+      "id": "NEX-AE-ART-FR-003",
+      "priority": "MUST",
+      "requirement": "Artifact 다운로드/preview는 current Project/Data Classification permission을 재검증해야 한다.",
+      "verification": "Security Test",
+      "parent": "26/27"
+    },
+    {
+      "section": "4.11 Artifact, Result & Citation",
+      "id": "NEX-AE-ART-FR-004",
+      "priority": "MUST",
+      "requirement": "Citation은 answer/message/artifact section과 source Evidence를 추적 가능하게 연결해야 한다.",
+      "verification": "Trace Test",
+      "parent": "27"
+    },
+    {
+      "section": "4.11 Artifact, Result & Citation",
+      "id": "NEX-AE-ART-FR-005",
+      "priority": "MUST",
+      "requirement": "Artifact가 Evidence Bundle을 사용해 생성되었으면 evidence_bundle_ref/bundle_hash를 provenance에 보존해야 한다.",
+      "verification": "Audit Test",
+      "parent": "27"
+    },
+    {
+      "section": "4.11 Artifact, Result & Citation",
+      "id": "NEX-AE-ART-FR-006",
+      "priority": "MUST",
+      "requirement": "Generated Artifact와 Enterprise OS Business Object를 구분하여 UI에서 문서 초안이 실제 transaction 완료로 오인되지 않게 해야 한다.",
+      "verification": "UX/State Test",
+      "parent": "12/EOS"
+    },
+    {
+      "section": "4.11 Artifact, Result & Citation",
+      "id": "NEX-AE-ART-FR-007",
+      "priority": "MUST",
+      "requirement": "Result formatting LLM이 Structured Business Value를 임의 재계산/변경하지 않도록 authoritative fields는 deterministic rendering해야 한다.",
+      "verification": "Test",
+      "parent": "11/12"
+    },
+    {
+      "section": "4.11 Artifact, Result & Citation",
+      "id": "NEX-AE-ART-FR-008",
+      "priority": "MUST",
+      "requirement": "Evidence conflict/caveat가 남은 Artifact는 unresolved caveat를 함께 표시할 수 있어야 한다.",
+      "verification": "E2E Test",
+      "parent": "27"
+    },
+    {
+      "section": "4.11 Artifact, Result & Citation",
+      "id": "NEX-AE-ART-FR-009",
+      "priority": "SHOULD",
+      "requirement": "사용자는 Artifact version/history와 source execution/work item을 추적할 수 있어야 한다.",
+      "verification": "UI Test",
+      "parent": "29"
+    },
+    {
+      "section": "4.11 Artifact, Result & Citation",
+      "id": "NEX-AE-ART-FR-010",
+      "priority": "MUST",
+      "requirement": "외부 공유/export는 별도 policy/action으로 처리하고 Workspace에서 보인다는 이유로 export 권한을 부여해서는 안 된다.",
+      "verification": "Security Test",
+      "parent": "29"
+    },
+    {
+      "section": "4.12 Interaction History & Work Report",
+      "id": "NEX-AE-HIS-FR-001",
+      "priority": "MUST",
+      "requirement": "AE는 user request/assistant response를 interaction history로 저장하고 session/message/execution refs와 연결해야 한다.",
+      "verification": "Data Test",
+      "parent": "Platform v1.1"
+    },
+    {
+      "section": "4.12 Interaction History & Work Report",
+      "id": "NEX-AE-HIS-FR-002",
+      "priority": "MUST",
+      "requirement": "Interaction record는 request_text 또는 classified reference, response summary/content policy, prompt/model refs, runtime state/result refs를 versioned schema로 저장해야 한다.",
+      "verification": "Schema Test",
+      "parent": "29"
+    },
+    {
+      "section": "4.12 Interaction History & Work Report",
+      "id": "NEX-AE-HIS-FR-003",
+      "priority": "MUST",
+      "requirement": "Interaction history는 CX chunk/vector를 대량 복제하지 않고 Evidence Bundle/Citation refs를 사용해야 한다.",
+      "verification": "Data Test",
+      "parent": "27"
+    },
+    {
+      "section": "4.12 Interaction History & Work Report",
+      "id": "NEX-AE-HIS-FR-004",
+      "priority": "MUST",
+      "requirement": "Interaction은 reportable 여부와 work_class/project/work_item/artifact metadata를 관리할 수 있어야 한다.",
+      "verification": "Schema Test",
+      "parent": "AE report"
+    },
+    {
+      "section": "4.12 Interaction History & Work Report",
+      "id": "NEX-AE-HIS-FR-005",
+      "priority": "MUST",
+      "requirement": "일일/주간 업무보고 생성은 reportable interaction/work result/work activity만 대상으로 하고 사용자 확인 전 초안 상태를 유지해야 한다.",
+      "verification": "E2E Test",
+      "parent": "Platform v1.1"
+    },
+    {
+      "section": "4.12 Interaction History & Work Report",
+      "id": "NEX-AE-HIS-FR-006",
+      "priority": "MUST",
+      "requirement": "Interaction retention은 data classification/business/audit purpose별 policy를 적용할 수 있어야 한다.",
+      "verification": "Privacy Test",
+      "parent": "26/29"
+    },
+    {
+      "section": "4.12 Interaction History & Work Report",
+      "id": "NEX-AE-HIS-FR-007",
+      "priority": "MUST",
+      "requirement": "Raw hidden prompt/private reasoning을 interaction history 필수 데이터로 저장해서는 안 된다.",
+      "verification": "Security Scan",
+      "parent": "29"
+    },
+    {
+      "section": "4.12 Interaction History & Work Report",
+      "id": "NEX-AE-HIS-FR-008",
+      "priority": "MUST",
+      "requirement": "Background Coworker WorkResult와 Interactive conversation을 동일 interaction row로 억지 합치지 않고 trace refs로 연결해야 한다.",
+      "verification": "Data Test",
+      "parent": "11/WC"
+    },
+    {
+      "section": "4.12 Interaction History & Work Report",
+      "id": "NEX-AE-HIS-FR-009",
+      "priority": "SHOULD",
+      "requirement": "사용자는 자신의 conversation/history를 project/work class/status로 검색할 수 있어야 한다.",
+      "verification": "UI Test",
+      "parent": "29"
+    },
+    {
+      "section": "4.12 Interaction History & Work Report",
+      "id": "NEX-AE-HIS-FR-010",
+      "priority": "MUST",
+      "requirement": "사용자 삭제/보존 요청은 법적/audit hold와 충돌할 수 있으므로 retention policy 결과를 명시적으로 적용해야 한다.",
+      "verification": "Policy Test",
+      "parent": "29"
+    },
+    {
+      "section": "4.13 API & Service Integration Boundary",
+      "id": "NEX-AE-API-FR-001",
+      "priority": "MUST",
+      "requirement": "AE-WEB은 AE-API를 통해서만 Runtime/Session/Workspace business data를 사용해야 한다.",
+      "verification": "Architecture Test",
+      "parent": "29"
+    },
+    {
+      "section": "4.13 API & Service Integration Boundary",
+      "id": "NEX-AE-API-FR-002",
+      "priority": "MUST",
+      "requirement": "AE-API는 /sessions, /conversations, /requests, /executions, /workspace, /notifications, /artifacts refs를 versioned contract로 제공해야 한다.",
+      "verification": "Contract Test",
+      "parent": "29"
+    },
+    {
+      "section": "4.13 API & Service Integration Boundary",
+      "id": "NEX-AE-API-FR-003",
+      "priority": "MUST",
+      "requirement": "Runtime Core internal object를 public API에 그대로 노출하지 않고 user/API view model로 변환해야 한다.",
+      "verification": "Architecture Test",
+      "parent": "12/29"
+    },
+    {
+      "section": "4.13 API & Service Integration Boundary",
+      "id": "NEX-AE-API-FR-004",
+      "priority": "MUST",
+      "requirement": "Streaming endpoint는 authenticated session과 execution/message ownership을 검증해야 한다.",
+      "verification": "Security Test",
+      "parent": "26/29"
+    },
+    {
+      "section": "4.13 API & Service Integration Boundary",
+      "id": "NEX-AE-API-FR-005",
+      "priority": "MUST",
+      "requirement": "AE→OA/CX/MO/WC/NSL 호출은 service identity/correlation/timeout/error contract를 명시적으로 사용해야 한다.",
+      "verification": "Integration Test",
+      "parent": "26~28"
+    },
+    {
+      "section": "4.13 API & Service Integration Boundary",
+      "id": "NEX-AE-API-FR-006",
+      "priority": "MUST",
+      "requirement": "타 서비스 장애를 200 OK + fabricated result로 숨기지 않고 typed degraded/error state로 반환해야 한다.",
+      "verification": "Fault Test",
+      "parent": "29"
+    },
+    {
+      "section": "4.13 API & Service Integration Boundary",
+      "id": "NEX-AE-API-FR-007",
+      "priority": "SHOULD",
+      "requirement": "Long-running operations는 polling 외 SSE/WebSocket/event stream 등 push-friendly contract를 제공할 수 있어야 한다.",
+      "verification": "Performance/E2E",
+      "parent": "29"
+    },
+    {
+      "section": "4.13 API & Service Integration Boundary",
+      "id": "NEX-AE-API-FR-008",
+      "priority": "MUST",
+      "requirement": "AG가 AE job/worker/runtime summary/health/metrics를 조회할 수 있는 admin contract를 제공해야 한다.",
+      "verification": "Integration Test",
+      "parent": "AG"
+    },
+    {
+      "section": "5. Non-Functional Requirements",
+      "id": "NEX-AE-SEC-NFR-001",
+      "priority": "MUST",
+      "requirement": "AE는 Client/LLM/Prompt/RAG/MCP/A2A content의 actor/role/permission field를 authority source로 사용해서는 안 된다.",
+      "verification": "Adversarial Test",
+      "parent": "11/26"
+    },
+    {
+      "section": "5. Non-Functional Requirements",
+      "id": "NEX-AE-SEC-NFR-002",
+      "priority": "MUST",
+      "requirement": "R3+ side effect와 WAITING_* Resume에서 Frozen Runtime/OA reauthorization 경계를 유지해야 한다.",
+      "verification": "Security Test",
+      "parent": "11/12/26"
+    },
+    {
+      "section": "5. Non-Functional Requirements",
+      "id": "NEX-AE-SEC-NFR-003",
+      "priority": "MUST",
+      "requirement": "CSRF/XSS/session fixation/content security policy 등 일반 Web security controls를 AE-WEB/API에 적용해야 한다.",
+      "verification": "Web Security Test",
+      "parent": "AE-WEB"
+    },
+    {
+      "section": "5. Non-Functional Requirements",
+      "id": "NEX-AE-SEC-NFR-004",
+      "priority": "MUST",
+      "requirement": "Prompt Injection이 plan/gate/permission/citation source를 변경하지 못하도록 untrusted content boundary를 유지해야 한다.",
+      "verification": "Adversarial Test",
+      "parent": "11/27"
+    },
+    {
+      "section": "5. Non-Functional Requirements",
+      "id": "NEX-AE-SEC-NFR-005",
+      "priority": "MUST",
+      "requirement": "Notification/Interaction/Stream/Audit log에 access token/refresh token/service secret/raw private key를 저장해서는 안 된다.",
+      "verification": "Security Scan",
+      "parent": "26"
+    },
+    {
+      "section": "5. Non-Functional Requirements",
+      "id": "NEX-AE-SEC-NFR-006",
+      "priority": "MUST",
+      "requirement": "Deep link와 object ref는 IDOR 방지를 위해 server-side ownership/scope permission을 검증해야 한다.",
+      "verification": "Security Test",
+      "parent": "29"
+    },
+    {
+      "section": "5. Non-Functional Requirements",
+      "id": "NEX-AE-SEC-NFR-007",
+      "priority": "MUST",
+      "requirement": "Artifact/Evidence/Interaction export에는 Data Classification policy를 적용해야 한다.",
+      "verification": "Security Test",
+      "parent": "26/27"
+    },
+    {
+      "section": "5. Non-Functional Requirements",
+      "id": "NEX-AE-REL-NFR-001",
+      "priority": "MUST",
+      "requirement": "Browser disconnect/reconnect와 Worker crash가 Runtime durable state를 손상시키지 않아야 한다.",
+      "verification": "Fault Test",
+      "parent": "12"
+    },
+    {
+      "section": "5. Non-Functional Requirements",
+      "id": "NEX-AE-REL-NFR-002",
+      "priority": "MUST",
+      "requirement": "Runtime event/notification/stream replay는 at-least-once 가능성을 가정하고 dedup/sequence 처리해야 한다.",
+      "verification": "Fault Test",
+      "parent": "12"
+    },
+    {
+      "section": "5. Non-Functional Requirements",
+      "id": "NEX-AE-REL-NFR-003",
+      "priority": "MUST",
+      "requirement": "AE DB transaction과 OA/CX/MO/WC remote API를 distributed 2PC로 가정해서는 안 된다.",
+      "verification": "Architecture Test",
+      "parent": "12"
+    },
+    {
+      "section": "5. Non-Functional Requirements",
+      "id": "NEX-AE-REL-NFR-004",
+      "priority": "MUST",
+      "requirement": "Dependency outage 시 user-facing state와 Background execution state가 모순되지 않도록 typed degraded/wait/retry policy를 적용해야 한다.",
+      "verification": "Fault Test",
+      "parent": "29"
+    },
+    {
+      "section": "5. Non-Functional Requirements",
+      "id": "NEX-AE-REL-NFR-005",
+      "priority": "SHOULD",
+      "requirement": "Poisoned/repeated-failure notification/interaction processing은 quarantine/dead-letter 운영 경로를 제공할 수 있어야 한다.",
+      "verification": "Fault Test",
+      "parent": "12"
+    },
+    {
+      "section": "5. Non-Functional Requirements",
+      "id": "NEX-AE-PERF-NFR-001",
+      "priority": "MUST",
+      "requirement": "Interactive request는 intent/routing/first-stream/complete latency를 분리 계측해야 한다.",
+      "verification": "Performance Test",
+      "parent": "28/29"
+    },
+    {
+      "section": "5. Non-Functional Requirements",
+      "id": "NEX-AE-PERF-NFR-002",
+      "priority": "SHOULD",
+      "requirement": "Workspace 초기 로딩은 history/evidence/work item 전체를 일괄 fetch하지 않고 pagination/lazy loading을 사용할 수 있어야 한다.",
+      "verification": "Load Test",
+      "parent": "29"
+    },
+    {
+      "section": "5. Non-Functional Requirements",
+      "id": "NEX-AE-PERF-NFR-003",
+      "priority": "MUST",
+      "requirement": "동일 사용자의 복수 session/background execution이 UI/API thread 또는 Runtime worker를 장시간 독점하지 않도록 concurrency policy를 적용해야 한다.",
+      "verification": "Load Test",
+      "parent": "11/12"
+    },
+    {
+      "section": "5. Non-Functional Requirements",
+      "id": "NEX-AE-PERF-NFR-004",
+      "priority": "MUST",
+      "requirement": "Streaming connection 수와 Background job 수를 별도 capacity metric으로 관리해야 한다.",
+      "verification": "Load Test",
+      "parent": "29"
+    },
+    {
+      "section": "5. Non-Functional Requirements",
+      "id": "NEX-AE-OBS-NFR-001",
+      "priority": "MUST",
+      "requirement": "session/message/execution/work_item/plan/step/model/evidence/artifact trace를 correlation_id로 연결할 수 있어야 한다.",
+      "verification": "Trace Test",
+      "parent": "11/12/29"
+    },
+    {
+      "section": "5. Non-Functional Requirements",
+      "id": "NEX-AE-OBS-NFR-002",
+      "priority": "MUST",
+      "requirement": "mode/source/route_type/current state/wait reason/stream latency/evidence quality/gate state를 운영 metric으로 노출해야 한다.",
+      "verification": "Monitoring Test",
+      "parent": "29"
+    },
+    {
+      "section": "5. Non-Functional Requirements",
+      "id": "NEX-AE-OBS-NFR-003",
+      "priority": "MUST",
+      "requirement": "사용자 action(prompt, confirm, reject, cancel, open evidence, download artifact)은 privacy-safe audit/event로 추적 가능해야 한다.",
+      "verification": "Audit Test",
+      "parent": "29"
+    },
+    {
+      "section": "5. Non-Functional Requirements",
+      "id": "NEX-AE-OBS-NFR-004",
+      "priority": "SHOULD",
+      "requirement": "Raw prompt 전체가 운영 관찰성의 필수조건이 아니며 hash/classified summary/ref 중심 logging을 지원해야 한다.",
+      "verification": "Privacy Inspection",
+      "parent": "11"
+    },
+    {
+      "section": "5. Non-Functional Requirements",
+      "id": "NEX-AE-DATA-NFR-001",
+      "priority": "MUST",
+      "requirement": "AE는 별도 nex_ae_db를 사용하고 Frozen Runtime tables와 AE UX/session/history tables를 논리적 schema/package boundary로 구분해야 한다.",
+      "verification": "Architecture Test",
+      "parent": "Platform/12"
+    },
+    {
+      "section": "5. Non-Functional Requirements",
+      "id": "NEX-AE-DATA-NFR-002",
+      "priority": "MUST",
+      "requirement": "Cross-service entity는 stable ref로 저장하고 foreign service DB에 direct FK/write 의존성을 만들지 않아야 한다.",
+      "verification": "Architecture Test",
+      "parent": "11/12"
+    },
+    {
+      "section": "5. Non-Functional Requirements",
+      "id": "NEX-AE-DATA-NFR-003",
+      "priority": "MUST",
+      "requirement": "User-facing projection/cache는 source object의 version/ref/hash를 가져야 하고 authoritative Runtime/WC/CX state와 충돌 시 재조회해야 한다.",
+      "verification": "Data/Fault Test",
+      "parent": "29"
+    },
+    {
+      "section": "5. Non-Functional Requirements",
+      "id": "NEX-AE-DATA-NFR-004",
+      "priority": "SHOULD",
+      "requirement": "Conversation/interaction/notification의 archival tiering을 retention policy에 따라 지원할 수 있어야 한다.",
+      "verification": "Data Test",
+      "parent": "29"
+    },
+    {
+      "section": "5. Non-Functional Requirements",
+      "id": "NEX-AE-TST-NFR-001",
+      "priority": "MUST",
+      "requirement": "AE 신규 코드 statement coverage 목표 95% 이상, branch coverage 목표 85% 이상을 유지해야 한다.",
+      "verification": "Coverage",
+      "parent": "Project quality"
+    },
+    {
+      "section": "5. Non-Functional Requirements",
+      "id": "NEX-AE-TST-NFR-002",
+      "priority": "MUST",
+      "requirement": "PostgreSQL test DB를 테스트별 초기화하고 Frozen Runtime migration compatibility test를 포함해야 한다.",
+      "verification": "pytest",
+      "parent": "Project quality"
+    },
+    {
+      "section": "5. Non-Functional Requirements",
+      "id": "NEX-AE-TST-NFR-003",
+      "priority": "MUST",
+      "requirement": "Unified Workspace, Interactive request/stream, Evidence citation, WC Inbox, Human Gate, Notification, Artifact flow를 Playwright E2E로 검증해야 한다.",
+      "verification": "Playwright",
+      "parent": "Project quality"
+    },
+    {
+      "section": "5. Non-Functional Requirements",
+      "id": "NEX-AE-TST-NFR-004",
+      "priority": "MUST",
+      "requirement": "Boundary/robustness/worst-case test로 stale session, duplicate event, evidence denied, stream disconnect, approval race, notification duplicate, large history를 검증해야 한다.",
+      "verification": "Test Design",
+      "parent": "Project quality"
+    },
+    {
+      "section": "5. Non-Functional Requirements",
+      "id": "NEX-AE-TST-NFR-005",
+      "priority": "MUST",
+      "requirement": "Document 11 CAR-GS-01~07와 Document 12 fault/security scenarios를 AE integration regression suite에서 유지해야 한다.",
+      "verification": "Regression/E2E",
+      "parent": "11/12"
+    },
+    {
+      "section": "5. Non-Functional Requirements",
+      "id": "NEX-AE-TST-NFR-006",
+      "priority": "MUST",
+      "requirement": "소스 변경 후 unit/integration/regression/smoke/Playwright gate 통과가 merge/release 조건이어야 한다.",
+      "verification": "CI Inspection",
+      "parent": "Project quality"
+    }
+  ]
+}

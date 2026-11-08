@@ -217,7 +217,11 @@ def run_cx_mvp_integration_live_postgres_smoke(
     return result
 
 
-def configuration_issues(environ: Mapping[str, str]) -> list[dict[str, str]]:
+def configuration_issues(
+    environ: Mapping[str, str],
+    *,
+    expected_models: Mapping[str, str] = EXPECTED_MODELS,
+) -> list[dict[str, str]]:
     required = (
         "NEX_CX_TEST_DATABASE_URL",
         "NEX_MO_REMOTE_EMBEDDING_URL",
@@ -242,9 +246,9 @@ def configuration_issues(environ: Mapping[str, str]) -> list[dict[str, str]]:
             }
         )
     expected = {
-        "NEX_MO_REMOTE_EMBEDDING_MODEL": EXPECTED_MODELS["embedding"],
-        "NEX_MO_REMOTE_RERANKER_MODEL": EXPECTED_MODELS["reranking"],
-        "NEX_MO_VLLM_MODEL": EXPECTED_MODELS["generation"],
+        "NEX_MO_REMOTE_EMBEDDING_MODEL": expected_models["embedding"],
+        "NEX_MO_REMOTE_RERANKER_MODEL": expected_models["reranking"],
+        "NEX_MO_VLLM_MODEL": expected_models["generation"],
     }
     for field, expected_value in expected.items():
         observed = environ.get(field)

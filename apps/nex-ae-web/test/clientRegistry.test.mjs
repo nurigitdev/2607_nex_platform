@@ -41,6 +41,7 @@ describe("AE Web client registry", () => {
     assert.equal(registry.documentDetailClient.clientMode, "mock");
     assert.equal(registry.uploadClient.clientMode, "mock");
     assert.equal(registry.uploadProgressClient.clientMode, "mock");
+    assert.equal(registry.voucherAttachmentClient.clientMode, "mock");
     assert.equal(registry.retrievalClient.clientMode, "mock");
     assert.equal(registry.groundedGenerationClient.clientMode, "mock");
     assert.equal(registry.generationFeedbackClient.clientMode, "mock");
@@ -49,6 +50,7 @@ describe("AE Web client registry", () => {
     assert.equal(summary.clients.artifact, "mock");
     assert.equal(summary.clients.document_detail, "mock");
     assert.equal(summary.clients.upload_progress, "mock");
+    assert.equal(summary.clients.voucher_attachment, "mock");
     assert.equal(summary.clients.grounded_generation, "mock");
     assert.equal(summary.clients.generation_feedback, "mock");
     assert.equal(summary.clients.repaired_response_review, "mock");

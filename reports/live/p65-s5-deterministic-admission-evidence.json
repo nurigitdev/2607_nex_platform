@@ -1,0 +1,89 @@
+{
+  "evidence_schema_version": "ae_p65_s5_deterministic_admission_evidence.v1",
+  "phase": "P6.5",
+  "slice": "P6.5-S5",
+  "status": "PASS",
+  "evidence_generated_at": "2026-10-17T02:08:56Z",
+  "postgres": {
+    "status": "PASS",
+    "execution_state": "EXECUTED",
+    "actual_postgres": true,
+    "database": "nex_ae_test",
+    "role": "nex_ae_user",
+    "latest_migration": "2300_ae_semantic_candidate",
+    "candidate_rows": 3,
+    "checks_passed": 12,
+    "checks_total": 12,
+    "restart_provider_calls": 0,
+    "database_residue": 0,
+    "private_storage_residue": 0
+  },
+  "live_provider": {
+    "status": "PASS",
+    "model_profile": "general-llm-default",
+    "model_ref": "Qwen3.5-4B",
+    "provider_endpoint_included": false,
+    "stages": {
+      "INTENT": {
+        "status": "PASS",
+        "checks_passed": 10,
+        "checks_total": 10,
+        "source_evidence": "reports/live/p65-s2-live-intent-evidence.json"
+      },
+      "CONTEXT": {
+        "status": "PASS",
+        "checks_passed": 11,
+        "checks_total": 11,
+        "source_evidence": "reports/live/p65-s3-live-context-evidence.json"
+      },
+      "PLAN": {
+        "status": "PASS",
+        "checks_passed": 13,
+        "checks_total": 13,
+        "source_evidence": "reports/live/p65-s4-live-plan-evidence.json"
+      }
+    },
+    "checks_passed": 34,
+    "checks_total": 34
+  },
+  "quality": {
+    "ae_slice_gate": {
+      "status": "PASS",
+      "passed": 4310,
+      "protected_skips": 10,
+      "statement_coverage_percent": 98.62,
+      "branch_coverage_percent": 96.82
+    },
+    "checkpoint_gate": {
+      "status": "PASS",
+      "passed": 14375,
+      "protected_skips": 37,
+      "statement_coverage_percent": 98.99,
+      "branch_coverage_percent": 97.58
+    },
+    "contract_validation": {
+      "status": "PASS",
+      "schemas": 174,
+      "examples": 236,
+      "negative_examples": 204,
+      "openapi_documents": 7
+    }
+  },
+  "redaction": {
+    "status": "PASS",
+    "excluded": [
+      "database_password",
+      "provider_url",
+      "provider_endpoint",
+      "api_key",
+      "service_token",
+      "raw_prompt",
+      "raw_provider_output",
+      "candidate_payload",
+      "hidden_reasoning",
+      "tenant_id",
+      "owner_subject_id"
+    ]
+  },
+  "issues": []
+}

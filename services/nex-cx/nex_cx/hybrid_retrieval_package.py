@@ -1,11 +1,12 @@
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass
-from datetime import UTC, datetime
 import hashlib
 import json
 import re
+from collections.abc import Callable, Mapping, Sequence
+from copy import deepcopy
+from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import Any, Protocol
 from uuid import NAMESPACE_URL, uuid5
 
@@ -25,7 +26,6 @@ from nex_cx.retrieval_permissions import (
     PERMISSION_POLICY_ID,
     RetrievalPermissionError,
 )
-
 
 HYBRID_RETRIEVAL_RUNTIME_SCHEMA_VERSION = "cx_hybrid_retrieval_runtime.v1"
 RETRIEVAL_PACKAGE_SCHEMA_VERSION = "cx_retrieval_context_package.v1"
@@ -78,6 +78,28 @@ class HybridRetrievalPackageRuntime(Protocol):
     ) -> dict[str, Any]: ...
 
 
+class HybridRetrievalShadowObserver(Protocol):
+    def observe(
+        self,
+        *,
+        query_text: str,
+        evidence_items: Sequence[Mapping[str, Any]],
+        primary_package: Mapping[str, Any],
+        access_context: CxAccessContext,
+    ) -> Mapping[str, Any]: ...
+
+
+class HybridRetrievalPrimaryPolicy(Protocol):
+    def apply(
+        self,
+        *,
+        query_text: str,
+        evidence_items: Sequence[Mapping[str, Any]],
+        primary_package: Mapping[str, Any],
+        access_context: CxAccessContext,
+    ) -> Mapping[str, Any]: ...
+
+
 class HybridRetrievalPackageError(RuntimeError):
     def __init__(
         self,
@@ -104,6 +126,8 @@ class PermissionFilteredHybridPackageRuntime:
     confidence_profiles: tuple[Mapping[str, Any], ...] = ()
     require_calibrated_confidence: bool = False
     now_factory: Callable[[], str] | None = None
+    primary_policy: HybridRetrievalPrimaryPolicy | None = None
+    shadow_observer: HybridRetrievalShadowObserver | None = None
 
     def build_package(
         self,
@@ -141,9 +165,7 @@ class PermissionFilteredHybridPackageRuntime:
             candidate_set=candidate_set,
             policy=self.ranking_policy,
             text_loader=(
-                self.evidence_materializer
-                if self.rerank_client is not None
-                else None
+                self.evidence_materializer if self.rerank_client is not None else None
             ),
             rerank_client=self.rerank_client,
             reranker_alias=self.reranker_alias,
@@ -154,7 +176,7 @@ class PermissionFilteredHybridPackageRuntime:
             materializer=self.evidence_materializer,
             include_neighbors=request["include_neighbors"],
         )
-        return _build_package(
+        package = _build_package(
             access_context=access_context,
             request=request,
             candidate_set=candidate_set,
@@ -164,6 +186,27 @@ class PermissionFilteredHybridPackageRuntime:
             require_calibrated_confidence=self.require_calibrated_confidence,
             now=(self.now_factory or _utc_now)(),
         )
+        if self.primary_policy is not None:
+            package = dict(
+                self.primary_policy.apply(
+                    query_text=request["query_text"],
+                    evidence_items=deepcopy(evidence_items),
+                    primary_package=deepcopy(package),
+                    access_context=access_context,
+                )
+            )
+        if self.shadow_observer is not None:
+            try:
+                self.shadow_observer.observe(
+                    query_text=request["query_text"],
+                    evidence_items=deepcopy(evidence_items),
+                    primary_package=deepcopy(package),
+                    access_context=access_context,
+                )
+            except Exception:
+                # A shadow-only stage cannot alter the primary retrieval contract.
+                pass
+        return package
 
 
 def _request(payload: object) -> dict[str, Any]:
@@ -182,7 +225,11 @@ def _request(payload: object) -> dict[str, Any]:
     if not document_ids:
         raise _request_invalid()
     top_k = payload.get("top_k", 5)
-    if isinstance(top_k, bool) or not isinstance(top_k, int) or not 1 <= top_k <= MAX_TOP_K:
+    if (
+        isinstance(top_k, bool)
+        or not isinstance(top_k, int)
+        or not 1 <= top_k <= MAX_TOP_K
+    ):
         raise _request_invalid()
     purpose = payload.get("purpose", "search")
     if purpose not in ALLOWED_PURPOSES:
@@ -263,9 +310,7 @@ def _materialize_evidence(
                 "citation_label": f"[{rank}]",
                 "text": record["chunk_text"],
                 "neighbor_context": (
-                    [{"policy": "not_loaded_in_s95"}]
-                    if include_neighbors
-                    else []
+                    [{"policy": "not_loaded_in_s95"}] if include_neighbors else []
                 ),
                 "scores": dict(candidate["scores"]),
                 "matched_terms": record["matched_terms"],
@@ -358,12 +403,8 @@ def _build_package(
         confidence_decision = decide_retrieval_confidence(
             evidence_items,
             profiles=confidence_profiles,
-            embedding_model_revision=query_embedding_profile.get(
-                "model_revision"
-            ),
-            reranker_model_revision=ranked["reranker_profile"].get(
-                "model_revision"
-            ),
+            embedding_model_revision=query_embedding_profile.get("model_revision"),
+            reranker_model_revision=ranked["reranker_profile"].get("model_revision"),
             ranking_policy_id=policy["policy_id"],
         )
     else:
@@ -441,9 +482,7 @@ def _build_package(
                 "model_revision": query_embedding_profile.get("model_revision"),
                 "deployment_id": query_embedding_profile.get("deployment_id"),
             },
-            "bm25_tokenizer": candidate_set["tokenizer_profile"].get(
-                "bm25_tokenizer"
-            ),
+            "bm25_tokenizer": candidate_set["tokenizer_profile"].get("bm25_tokenizer"),
             "bm25_tokenizer_profile": candidate_set["tokenizer_profile"],
             "reranker_profile": ranked["reranker_profile"],
             "chunk_policy": "chunk_1000_100",
@@ -451,9 +490,7 @@ def _build_package(
                 "include_neighbors_supported": False,
                 "neighbor_policy": "not_loaded_in_s95",
             },
-            "confidence_policy": _confidence_policy_projection(
-                confidence_decision
-            ),
+            "confidence_policy": _confidence_policy_projection(confidence_decision),
             "quality_policy": {
                 **policy,
                 "policy_version": "0001",
@@ -524,12 +561,8 @@ def _score_summary(
             "feature_schema_version"
         ),
         "confidence_features": confidence_decision.get("features"),
-        "calibration_profile_id": confidence_decision.get(
-            "calibration_profile_id"
-        ),
-        "calibration_profile_hash": confidence_decision.get(
-            "calibration_profile_hash"
-        ),
+        "calibration_profile_id": confidence_decision.get("calibration_profile_id"),
+        "calibration_profile_hash": confidence_decision.get("calibration_profile_hash"),
     }
     if not scores:
         return {
@@ -542,9 +575,7 @@ def _score_summary(
             "decision_reason": confidence_decision["reason"],
             "evidence_count": confidence_decision["evidence_count"],
             "quality_policy_id": policy_id,
-            "low_confidence_threshold": confidence_decision[
-                "low_confidence_threshold"
-            ],
+            "low_confidence_threshold": confidence_decision["low_confidence_threshold"],
             **calibration,
         }
     best = confidence_decision["best_score"]
@@ -563,9 +594,7 @@ def _score_summary(
         "decision_reason": confidence_decision["reason"],
         "evidence_count": confidence_decision["evidence_count"],
         "quality_policy_id": policy_id,
-        "low_confidence_threshold": confidence_decision[
-            "low_confidence_threshold"
-        ],
+        "low_confidence_threshold": confidence_decision["low_confidence_threshold"],
         **calibration,
     }
 
@@ -575,9 +604,7 @@ def _confidence_policy_projection(
 ) -> dict[str, Any]:
     projection = {
         "policy_id": confidence_decision["policy_id"],
-        "low_confidence_threshold": confidence_decision[
-            "low_confidence_threshold"
-        ],
+        "low_confidence_threshold": confidence_decision["low_confidence_threshold"],
         "threshold_inclusive": True,
         "no_evidence_behavior": "NO_ANSWER",
         "below_threshold_behavior": "LOW_CONFIDENCE",
@@ -644,7 +671,9 @@ def _unique_identifiers(value: object) -> list[str]:
     if not isinstance(value, list):
         raise _request_invalid()
     normalized = [_identifier_or_none(item) for item in value]
-    if any(item is None for item in normalized) or len(normalized) != len(set(normalized)):
+    if any(item is None for item in normalized) or len(normalized) != len(
+        set(normalized)
+    ):
         raise _request_invalid()
     return [item for item in normalized if item is not None]
 

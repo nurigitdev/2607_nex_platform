@@ -1,0 +1,165 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:nex:schema:transition:p7:wait-registration:1.0",
+  "title": "NeX P7 WaitRegistration v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "wait_id",
+    "tenant_id",
+    "agent_execution_id",
+    "executable_step_id",
+    "wait_type",
+    "external_ref",
+    "result_contract_ref",
+    "state",
+    "version",
+    "created_at"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "1.0"
+    },
+    "wait_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "tenant_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "agent_execution_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "executable_step_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "wait_type": {
+      "const": "WORK_RESULT"
+    },
+    "external_ref": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "result_contract_ref": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512
+    },
+    "state": {
+      "enum": [
+        "PENDING",
+        "SATISFIED",
+        "RESUME_QUEUED",
+        "CONSUMED",
+        "CANCELLED"
+      ]
+    },
+    "matched_event_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "maxLength": 128
+    },
+    "resume_runtime_job_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "maxLength": 128
+    },
+    "version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "satisfied_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time"
+    },
+    "updated_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "state": {
+            "enum": [
+              "SATISFIED",
+              "RESUME_QUEUED",
+              "CONSUMED"
+            ]
+          }
+        },
+        "required": [
+          "state"
+        ]
+      },
+      "then": {
+        "required": [
+          "matched_event_id",
+          "satisfied_at"
+        ],
+        "properties": {
+          "matched_event_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "satisfied_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "state": {
+            "enum": [
+              "RESUME_QUEUED",
+              "CONSUMED"
+            ]
+          }
+        },
+        "required": [
+          "state"
+        ]
+      },
+      "then": {
+        "required": [
+          "resume_runtime_job_id"
+        ],
+        "properties": {
+          "resume_runtime_job_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          }
+        }
+      }
+    }
+  ]
+}

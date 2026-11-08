@@ -1,0 +1,29 @@
+{
+  "schema_version": "wa_work_evidence_audit.v1",
+  "tenant_id": "VO00",
+  "work_evidence_id": "11111111-1111-4111-8111-111111111111",
+  "source_type": "AE_ARTIFACT",
+  "source_ref": "artifact-001",
+  "replay_policy": "SAME_IDENTITY_SAME_HASH_REUSE",
+  "conflict_policy": "SAME_IDENTITY_DIFFERENT_HASH_REJECT",
+  "items": [
+    {
+      "work_evidence_id": "11111111-1111-4111-8111-111111111111",
+      "source_revision_ref": "version-1",
+      "source_hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "evidence_hash": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "evidence_status": "SUPERSEDED",
+      "supersedes_evidence_id": null,
+      "created_at": "2026-10-28T01:00:00Z"
+    },
+    {
+      "work_evidence_id": "22222222-2222-4222-8222-222222222222",
+      "source_revision_ref": "version-2",
+      "source_hash": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "evidence_hash": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "evidence_status": "ACTIVE",
+      "supersedes_evidence_id": "11111111-1111-4111-8111-111111111111",
+      "created_at": "2026-10-28T02:00:00Z"
+    }
+  ]
+}

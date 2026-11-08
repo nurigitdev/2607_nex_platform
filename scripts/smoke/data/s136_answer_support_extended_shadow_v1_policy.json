@@ -1,0 +1,17 @@
+{
+  "disagreement_is_observation_only": true,
+  "fallback_policy": "CURRENT_ACTIVE_RETRIEVAL_CONFIDENCE_POLICY",
+  "maximum_concurrency": 1,
+  "maximum_error_rate": 0.0,
+  "maximum_p95_latency_ms": 60000,
+  "maximum_provider_calls": 30,
+  "maximum_provider_failures": 0,
+  "maximum_single_latency_ms": 60000,
+  "maximum_total_tokens": 60000,
+  "policy_id": "cx-answer-support-extended-shadow-v1",
+  "policy_schema_version": "cx_answer_support_shadow_canary_policy.v1",
+  "production_cutover_permitted": false,
+  "runtime_activation_permitted": false,
+  "status": "FROZEN_LIMITED_LIVE_CANARY",
+  "user_visible": false
+}

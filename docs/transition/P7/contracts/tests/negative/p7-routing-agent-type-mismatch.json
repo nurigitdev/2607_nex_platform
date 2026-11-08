@@ -1,0 +1,21 @@
+{
+  "schema_version": "2.1",
+  "routing_decision_id": "route-invalid-001",
+  "work_item_id": "work-p7-golden-001",
+  "tenant_id": "tenant-a",
+  "required_capability": "FINANCE.PROJECT_BUDGET_CHECK",
+  "required_agent_type": "PA",
+  "project_scope_ref": "project-alpha",
+  "target_type": "CAPABILITY_POOL",
+  "candidate_set": [
+    {
+      "candidate_type": "AGENT",
+      "candidate_ref": "agent-ca-001",
+      "eligible": true,
+      "agent_type": "CA"
+    }
+  ],
+  "decision": "ROUTED",
+  "policy_version": "p7-routing-v1",
+  "decided_at": "2026-10-18T01:00:01Z"
+}

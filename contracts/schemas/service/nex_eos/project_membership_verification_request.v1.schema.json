@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_eos/project_membership_verification_request.v1.schema.json",
+  "title": "EOS Historical Project Membership Verification Request",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["tenant_id", "project_id", "subject_id", "occurred_at"],
+  "properties": {
+    "tenant_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:@-]{0,127}$"},
+    "project_id": {"type": "string", "format": "uuid"},
+    "subject_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:@-]{0,127}$"},
+    "occurred_at": {"type": "string", "format": "date-time"}
+  }
+}

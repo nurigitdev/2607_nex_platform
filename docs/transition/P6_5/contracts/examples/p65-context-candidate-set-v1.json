@@ -1,0 +1,41 @@
+{
+  "schema_version": "p65.context_candidate_set.v1",
+  "entity_candidates": [
+    {
+      "candidate_key": "E1",
+      "entity_type": "DOCUMENT",
+      "selector_kind": "NAME",
+      "selector_value": "프로젝트 예산 현황",
+      "confidence": 0.9
+    }
+  ],
+  "retrieval_hints": [
+    {
+      "query_terms": [
+        "예산",
+        "집행",
+        "잔액"
+      ],
+      "resource_types": [
+        "DOCUMENT"
+      ],
+      "confidence": 0.93
+    }
+  ],
+  "resource_selectors": [
+    {
+      "resource_type": "DOCUMENT",
+      "selector_kind": "OWNER_VISIBLE_LABEL",
+      "selector_value": "프로젝트 예산 현황",
+      "confidence": 0.88
+    }
+  ],
+  "parameter_candidates": [
+    {
+      "name": "currency",
+      "value": "KRW",
+      "confidence": 0.98
+    }
+  ],
+  "confidence": 0.9
+}

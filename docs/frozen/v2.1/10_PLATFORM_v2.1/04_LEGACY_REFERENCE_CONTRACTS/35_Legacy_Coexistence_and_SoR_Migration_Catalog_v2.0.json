@@ -1,0 +1,1531 @@
+{
+  "document": "35_Legacy_Coexistence_and_SoR_Migration_Plan_v2.0",
+  "version": "v2.0",
+  "date": "2026-09-04",
+  "counts": {
+    "MUST": 172,
+    "SHOULD": 18
+  },
+  "requirements": [
+    {
+      "section": "4.1 Migration Governance & Inventory",
+      "id": "NEX-MIG-GOV-FR-001",
+      "priority": "MUST",
+      "requirement": "35번은 Legacy ERP/Groupware/Jira-WAMS 및 기존 NeX code/API/DB를 한 번에 폐기하지 않고 Domain/Bounded Context 단위로 공존·전환해야 한다.",
+      "verification": "Architecture Review",
+      "parent": "00/10/34"
+    },
+    {
+      "section": "4.1 Migration Governance & Inventory",
+      "id": "NEX-MIG-GOV-FR-002",
+      "priority": "MUST",
+      "requirement": "각 Migration Scope는 domain, business entity, org/project/capability 범위, effective time, source/target system을 명시해야 한다.",
+      "verification": "Schema Test",
+      "parent": "00/10/34"
+    },
+    {
+      "section": "4.1 Migration Governance & Inventory",
+      "id": "NEX-MIG-GOV-FR-003",
+      "priority": "MUST",
+      "requirement": "실제 KEEP/REFACTOR/REPLACE/NEW/DEFER 판정은 10번의 Evidence-first 절차와 Repository/DB/API/Test evidence를 근거로 해야 한다.",
+      "verification": "Evidence Audit",
+      "parent": "00/10/34"
+    },
+    {
+      "section": "4.1 Migration Governance & Inventory",
+      "id": "NEX-MIG-GOV-FR-004",
+      "priority": "MUST",
+      "requirement": "NOT ASSESSED 상태의 component를 Production cutover disposition으로 사용해서는 안 된다.",
+      "verification": "Governance Test",
+      "parent": "00/10/34"
+    },
+    {
+      "section": "4.1 Migration Governance & Inventory",
+      "id": "NEX-MIG-GOV-FR-005",
+      "priority": "MUST",
+      "requirement": "Domain Owner, Data Owner, Migration Engineer, Security Reviewer, Operations, Business Approver의 책임을 RACI로 지정해야 한다.",
+      "verification": "RACI Review",
+      "parent": "00/10/34"
+    },
+    {
+      "section": "4.1 Migration Governance & Inventory",
+      "id": "NEX-MIG-GOV-FR-006",
+      "priority": "MUST",
+      "requirement": "Migration inventory는 source table/API, volume, usage, owner, retention, criticality, data quality, dependency를 기록해야 한다.",
+      "verification": "Inventory Inspection",
+      "parent": "00/10/34"
+    },
+    {
+      "section": "4.1 Migration Governance & Inventory",
+      "id": "NEX-MIG-GOV-FR-007",
+      "priority": "MUST",
+      "requirement": "Migration decision은 from/to state, scope, reason, effective time, evidence refs, approver, rollback/forward-fix plan을 보존해야 한다.",
+      "verification": "Audit Test",
+      "parent": "00/10/34"
+    },
+    {
+      "section": "4.1 Migration Governance & Inventory",
+      "id": "NEX-MIG-GOV-FR-008",
+      "priority": "MUST",
+      "requirement": "Migration 상태 변경은 NeX-AG governance action으로 추적 가능해야 하며 OA current admin authorization을 적용해야 한다.",
+      "verification": "Security/Governance",
+      "parent": "00/10/34"
+    },
+    {
+      "section": "4.1 Migration Governance & Inventory",
+      "id": "NEX-MIG-GOV-FR-009",
+      "priority": "SHOULD",
+      "requirement": "Migration wave는 business value, usage frequency, executive impact, complexity, risk, legacy dependency를 기준으로 우선순위를 산정할 수 있어야 한다.",
+      "verification": "Planning Review",
+      "parent": "00/10/34"
+    },
+    {
+      "section": "4.1 Migration Governance & Inventory",
+      "id": "NEX-MIG-GOV-FR-010",
+      "priority": "MUST",
+      "requirement": "Migration 종료 판단은 단순 데이터 복사 완료가 아니라 authoritative SoR, cutover evidence, rollback window, retirement status로 결정해야 한다.",
+      "verification": "Acceptance Review",
+      "parent": "00/10/34"
+    },
+    {
+      "section": "4.2 SoR Transition & Scope",
+      "id": "NEX-MIG-SOR-FR-001",
+      "priority": "MUST",
+      "requirement": "SoR resolution은 최소 Domain + Migration Scope + Effective Time으로 결정되어 동일 business entity/scope에 authoritative write owner가 정확히 하나여야 한다.",
+      "verification": "SoR Invariant Test",
+      "parent": "03/07/10/19"
+    },
+    {
+      "section": "4.2 SoR Transition & Scope",
+      "id": "NEX-MIG-SOR-FR-002",
+      "priority": "MUST",
+      "requirement": "LEGACY/READ_SYNC/DUAL_RUN_VALIDATION/NEW_SYSTEM/LEGACY_READ_ONLY/ARCHIVED 상태를 versioned transition state로 지원해야 한다.",
+      "verification": "State Test",
+      "parent": "03/07/10/19"
+    },
+    {
+      "section": "4.2 SoR Transition & Scope",
+      "id": "NEX-MIG-SOR-FR-003",
+      "priority": "MUST",
+      "requirement": "LEGACY에서는 Legacy만 authoritative write를 수행하고 target은 authoritative write를 수행해서는 안 된다.",
+      "verification": "State Test",
+      "parent": "03/07/10/19"
+    },
+    {
+      "section": "4.2 SoR Transition & Scope",
+      "id": "NEX-MIG-SOR-FR-004",
+      "priority": "MUST",
+      "requirement": "READ_SYNC에서는 Legacy write authority를 유지하고 Target data는 reference/read model임을 metadata와 UI에서 구분해야 한다.",
+      "verification": "Data Test",
+      "parent": "03/07/10/19"
+    },
+    {
+      "section": "4.2 SoR Transition & Scope",
+      "id": "NEX-MIG-SOR-FR-005",
+      "priority": "MUST",
+      "requirement": "DUAL_RUN_VALIDATION은 결과 비교를 허용하지만 uncontrolled dual-write를 허용해서는 안 된다.",
+      "verification": "Negative Test",
+      "parent": "03/07/10/19"
+    },
+    {
+      "section": "4.2 SoR Transition & Scope",
+      "id": "NEX-MIG-SOR-FR-006",
+      "priority": "MUST",
+      "requirement": "NEW_SYSTEM에서는 해당 scope의 신규 business write가 Target SoR로만 수행되어야 한다.",
+      "verification": "E2E Test",
+      "parent": "03/07/10/19"
+    },
+    {
+      "section": "4.2 SoR Transition & Scope",
+      "id": "NEX-MIG-SOR-FR-007",
+      "priority": "MUST",
+      "requirement": "LEGACY_READ_ONLY에서는 Legacy 신규 write를 application/DB/network 중 적절한 수단으로 기술적으로 차단해야 한다.",
+      "verification": "Security/Operation Test",
+      "parent": "03/07/10/19"
+    },
+    {
+      "section": "4.2 SoR Transition & Scope",
+      "id": "NEX-MIG-SOR-FR-008",
+      "priority": "MUST",
+      "requirement": "ARCHIVED에서는 operational routing에서 Legacy를 제거하고 승인된 historical query 경로만 유지해야 한다.",
+      "verification": "Archive Test",
+      "parent": "03/07/10/19"
+    },
+    {
+      "section": "4.2 SoR Transition & Scope",
+      "id": "NEX-MIG-SOR-FR-009",
+      "priority": "MUST",
+      "requirement": "Transition scope가 overlap되어 서로 다른 write owner를 가리키면 critical configuration error로 간주하고 write를 fail-closed해야 한다.",
+      "verification": "Boundary Test",
+      "parent": "03/07/10/19"
+    },
+    {
+      "section": "4.2 SoR Transition & Scope",
+      "id": "NEX-MIG-SOR-FR-010",
+      "priority": "MUST",
+      "requirement": "Transition scope에 gap이 있어 write target을 결정할 수 없으면 fallback write를 하지 않고 BLOCK해야 한다.",
+      "verification": "Negative Test",
+      "parent": "03/07/10/19"
+    },
+    {
+      "section": "4.2 SoR Transition & Scope",
+      "id": "NEX-MIG-SOR-FR-011",
+      "priority": "SHOULD",
+      "requirement": "조직/프로젝트/기능 단위의 staged cutover를 지원하여 전체 Domain보다 작은 scope로 SoR을 이전할 수 있어야 한다.",
+      "verification": "Pilot Test",
+      "parent": "03/07/10/19"
+    },
+    {
+      "section": "4.2 SoR Transition & Scope",
+      "id": "NEX-MIG-SOR-FR-012",
+      "priority": "MUST",
+      "requirement": "SoR state 변경 이력은 immutable/append-oriented history로 보존해야 한다.",
+      "verification": "Audit Test",
+      "parent": "03/07/10/19"
+    },
+    {
+      "section": "4.3 Canonical Routing & Legacy Adapter",
+      "id": "NEX-MIG-RTR-FR-001",
+      "priority": "MUST",
+      "requirement": "AE/NSL/WC 등 consumer는 Legacy ERP/Groupware/Jira/WAMS DB나 API를 직접 호출하지 않고 Canonical API/MCP 또는 승인된 adapter contract를 사용해야 한다.",
+      "verification": "Architecture Test",
+      "parent": "08/09/10/31"
+    },
+    {
+      "section": "4.3 Canonical Routing & Legacy Adapter",
+      "id": "NEX-MIG-RTR-FR-002",
+      "priority": "MUST",
+      "requirement": "Transition Router는 domain/scope/state/policy를 입력으로 read_target과 write_target을 deterministic하게 결정해야 한다.",
+      "verification": "Routing Test",
+      "parent": "08/09/10/31"
+    },
+    {
+      "section": "4.3 Canonical Routing & Legacy Adapter",
+      "id": "NEX-MIG-RTR-FR-003",
+      "priority": "MUST",
+      "requirement": "Consumer contract는 실제 Legacy/New routing 구현을 알 필요가 없도록 stable canonical capability를 유지해야 한다.",
+      "verification": "Contract Test",
+      "parent": "08/09/10/31"
+    },
+    {
+      "section": "4.3 Canonical Routing & Legacy Adapter",
+      "id": "NEX-MIG-RTR-FR-004",
+      "priority": "MUST",
+      "requirement": "Legacy Adapter는 request/response mapping, credential, timeout, error mapping, correlation, idempotency/commit state, reconciliation support를 제공해야 한다.",
+      "verification": "Adapter Contract Test",
+      "parent": "08/09/10/31"
+    },
+    {
+      "section": "4.3 Canonical Routing & Legacy Adapter",
+      "id": "NEX-MIG-RTR-FR-005",
+      "priority": "MUST",
+      "requirement": "Legacy Adapter 내부에서 LLM을 사용해 business routing/authority/ID를 결정해서는 안 된다.",
+      "verification": "Architecture/Security",
+      "parent": "08/09/10/31"
+    },
+    {
+      "section": "4.3 Canonical Routing & Legacy Adapter",
+      "id": "NEX-MIG-RTR-FR-006",
+      "priority": "MUST",
+      "requirement": "Legacy official API/business API/read-only view를 raw DB access보다 우선해야 한다.",
+      "verification": "Integration Review",
+      "parent": "08/09/10/31"
+    },
+    {
+      "section": "4.3 Canonical Routing & Legacy Adapter",
+      "id": "NEX-MIG-RTR-FR-007",
+      "priority": "MUST",
+      "requirement": "직접 DB read가 불가피하면 read-only, minimum privilege, allowlisted query, no arbitrary SQL 원칙을 적용해야 한다.",
+      "verification": "DB Security Test",
+      "parent": "08/09/10/31"
+    },
+    {
+      "section": "4.3 Canonical Routing & Legacy Adapter",
+      "id": "NEX-MIG-RTR-FR-008",
+      "priority": "MUST",
+      "requirement": "Legacy write가 필요한 상태에서는 Canonical Business Command → Adapter → Legacy 단일 경로를 사용해야 한다.",
+      "verification": "E2E Test",
+      "parent": "08/09/10/31"
+    },
+    {
+      "section": "4.3 Canonical Routing & Legacy Adapter",
+      "id": "NEX-MIG-RTR-FR-009",
+      "priority": "MUST",
+      "requirement": "Target write 실패를 이유로 Legacy에 자동 write fallback해서는 안 된다.",
+      "verification": "Negative Test",
+      "parent": "08/09/10/31"
+    },
+    {
+      "section": "4.3 Canonical Routing & Legacy Adapter",
+      "id": "NEX-MIG-RTR-FR-010",
+      "priority": "SHOULD",
+      "requirement": "Read-only 조회는 policy가 허용할 때 target read failure에 대한 legacy read fallback을 지원할 수 있으나 source/confidence를 표시해야 한다.",
+      "verification": "Degraded Read Test",
+      "parent": "08/09/10/31"
+    },
+    {
+      "section": "4.3 Canonical Routing & Legacy Adapter",
+      "id": "NEX-MIG-RTR-FR-011",
+      "priority": "MUST",
+      "requirement": "Legacy credential은 secret store/ref로 관리하고 prompt/MCP output/log에 노출해서는 안 된다.",
+      "verification": "Secret Scan",
+      "parent": "08/09/10/31"
+    },
+    {
+      "section": "4.3 Canonical Routing & Legacy Adapter",
+      "id": "NEX-MIG-RTR-FR-012",
+      "priority": "MUST",
+      "requirement": "Routing decision에는 transition policy version, selected target, scope hash, correlation refs를 audit evidence로 남겨야 한다.",
+      "verification": "Trace Test",
+      "parent": "08/09/10/31"
+    },
+    {
+      "section": "4.4 Read Sync / Delta / Change Capture",
+      "id": "NEX-MIG-SYNC-FR-001",
+      "priority": "MUST",
+      "requirement": "READ_SYNC는 FULL, INCREMENTAL, EVENT, SCHEDULED, MANUAL 중 source capability에 적합한 sync mode를 지원할 수 있어야 한다.",
+      "verification": "Sync Test",
+      "parent": "10/32/34"
+    },
+    {
+      "section": "4.4 Read Sync / Delta / Change Capture",
+      "id": "NEX-MIG-SYNC-FR-002",
+      "priority": "MUST",
+      "requirement": "Sync는 source watermark/sequence/business key/snapshot compare 중 신뢰 가능한 증분 기준을 명시해야 한다.",
+      "verification": "Data Test",
+      "parent": "10/32/34"
+    },
+    {
+      "section": "4.4 Read Sync / Delta / Change Capture",
+      "id": "NEX-MIG-SYNC-FR-003",
+      "priority": "MUST",
+      "requirement": "SyncJob은 source, domain, scope, start/end, watermark, read/mapped/error count, status를 기록해야 한다.",
+      "verification": "Schema Test",
+      "parent": "10/32/34"
+    },
+    {
+      "section": "4.4 Read Sync / Delta / Change Capture",
+      "id": "NEX-MIG-SYNC-FR-004",
+      "priority": "MUST",
+      "requirement": "Sync failure 또는 watermark gap은 숨기지 않고 stale/failed 상태와 lag를 운영자에게 노출해야 한다.",
+      "verification": "Fault Test",
+      "parent": "10/32/34"
+    },
+    {
+      "section": "4.4 Read Sync / Delta / Change Capture",
+      "id": "NEX-MIG-SYNC-FR-005",
+      "priority": "MUST",
+      "requirement": "Target reference store는 source record provenance와 source effective time/version을 추적할 수 있어야 한다.",
+      "verification": "Provenance Test",
+      "parent": "10/32/34"
+    },
+    {
+      "section": "4.4 Read Sync / Delta / Change Capture",
+      "id": "NEX-MIG-SYNC-FR-006",
+      "priority": "MUST",
+      "requirement": "Legacy delete는 target hard delete로 자동 변환하지 않고 inactive/end-effective/tombstone 정책을 사용할 수 있어야 한다.",
+      "verification": "Lifecycle Test",
+      "parent": "10/32/34"
+    },
+    {
+      "section": "4.4 Read Sync / Delta / Change Capture",
+      "id": "NEX-MIG-SYNC-FR-007",
+      "priority": "MUST",
+      "requirement": "Sync replay/retry는 idempotent해야 하며 동일 source version으로 target duplicate entity를 생성해서는 안 된다.",
+      "verification": "Idempotency Test",
+      "parent": "10/32/34"
+    },
+    {
+      "section": "4.4 Read Sync / Delta / Change Capture",
+      "id": "NEX-MIG-SYNC-FR-008",
+      "priority": "MUST",
+      "requirement": "Full sync/backfill은 online workload 영향을 측정하고 batch/throttle/off-hours 정책을 적용할 수 있어야 한다.",
+      "verification": "Performance Test",
+      "parent": "10/32/34"
+    },
+    {
+      "section": "4.4 Read Sync / Delta / Change Capture",
+      "id": "NEX-MIG-SYNC-FR-009",
+      "priority": "SHOULD",
+      "requirement": "Source가 event/CDC를 제공하는 경우 polling보다 low-lag incremental sync로 전환할 수 있는 adapter seam을 유지해야 한다.",
+      "verification": "Architecture Review",
+      "parent": "10/32/34"
+    },
+    {
+      "section": "4.4 Read Sync / Delta / Change Capture",
+      "id": "NEX-MIG-SYNC-FR-010",
+      "priority": "MUST",
+      "requirement": "READ_SYNC 데이터가 authoritative business transaction으로 오인되지 않도록 data origin/confidence를 조회 가능해야 한다.",
+      "verification": "UX/Data Test",
+      "parent": "10/32/34"
+    },
+    {
+      "section": "4.5 Mapping, Stable ID & Migration Provenance",
+      "id": "NEX-MIG-MAP-FR-001",
+      "priority": "MUST",
+      "requirement": "Legacy key를 canonical stable ID로 변환하는 Mapping Registry를 제공하고 source_system/source_key/target_type/target_id를 보존해야 한다.",
+      "verification": "Schema Test",
+      "parent": "07/09/10"
+    },
+    {
+      "section": "4.5 Mapping, Stable ID & Migration Provenance",
+      "id": "NEX-MIG-MAP-FR-002",
+      "priority": "MUST",
+      "requirement": "Mapping status는 최소 MAPPED/PARTIALLY_MAPPED/UNMAPPED/AMBIGUOUS를 지원해야 한다.",
+      "verification": "State Test",
+      "parent": "07/09/10"
+    },
+    {
+      "section": "4.5 Mapping, Stable ID & Migration Provenance",
+      "id": "NEX-MIG-MAP-FR-003",
+      "priority": "MUST",
+      "requirement": "이름 유사도 또는 LLM 후보만으로 ambiguous record를 canonical stable ID에 자동 확정해서는 안 된다.",
+      "verification": "Negative Test",
+      "parent": "07/09/10"
+    },
+    {
+      "section": "4.5 Mapping, Stable ID & Migration Provenance",
+      "id": "NEX-MIG-MAP-FR-004",
+      "priority": "MUST",
+      "requirement": "Manual Mapping은 actor, reason, evidence, reviewer, version을 audit 가능하게 남겨야 한다.",
+      "verification": "Governance Test",
+      "parent": "07/09/10"
+    },
+    {
+      "section": "4.5 Mapping, Stable ID & Migration Provenance",
+      "id": "NEX-MIG-MAP-FR-005",
+      "priority": "MUST",
+      "requirement": "Migration provenance는 source system/key, batch, mapping rule/version, migrated_at, source hash/version을 보존해야 한다.",
+      "verification": "Provenance Test",
+      "parent": "07/09/10"
+    },
+    {
+      "section": "4.5 Mapping, Stable ID & Migration Provenance",
+      "id": "NEX-MIG-MAP-FR-006",
+      "priority": "MUST",
+      "requirement": "MigrationBatch와 MigrationRecord를 분리하여 batch 전체 상태와 record-level mapping/validation/error를 추적해야 한다.",
+      "verification": "Data Test",
+      "parent": "07/09/10"
+    },
+    {
+      "section": "4.5 Mapping, Stable ID & Migration Provenance",
+      "id": "NEX-MIG-MAP-FR-007",
+      "priority": "MUST",
+      "requirement": "동일 source_system + source_key + mapping/version은 idempotent migration key로 사용되어 중복 target creation을 방지해야 한다.",
+      "verification": "Idempotency Test",
+      "parent": "07/09/10"
+    },
+    {
+      "section": "4.5 Mapping, Stable ID & Migration Provenance",
+      "id": "NEX-MIG-MAP-FR-008",
+      "priority": "MUST",
+      "requirement": "Legacy data quality 오류를 migration 과정에서 조용히 자동 수정하지 않고 DataQualityIssue로 기록해야 한다.",
+      "verification": "Quality Test",
+      "parent": "07/09/10"
+    },
+    {
+      "section": "4.5 Mapping, Stable ID & Migration Provenance",
+      "id": "NEX-MIG-MAP-FR-009",
+      "priority": "MUST",
+      "requirement": "Business data correction은 Migration Engineer 단독 권한이 아니라 Domain/Data Owner 확인 정책을 적용해야 한다.",
+      "verification": "Security/Governance",
+      "parent": "07/09/10"
+    },
+    {
+      "section": "4.5 Mapping, Stable ID & Migration Provenance",
+      "id": "NEX-MIG-MAP-FR-010",
+      "priority": "SHOULD",
+      "requirement": "Mapping rule의 자동화 확대 전 대표 active/high-value entity에 대해 manual workshop/validation을 수행할 수 있어야 한다.",
+      "verification": "Business Acceptance",
+      "parent": "07/09/10"
+    },
+    {
+      "section": "4.6 Historical Data / Backfill / Opening",
+      "id": "NEX-MIG-HIS-FR-001",
+      "priority": "MUST",
+      "requirement": "Historical data는 MUST_MIGRATE/REFERENCE_ONLY/SUMMARY_OPENING/ARCHIVE_ONLY/DISCARD_CANDIDATE로 분류할 수 있어야 한다.",
+      "verification": "Classification Test",
+      "parent": "19~25/34"
+    },
+    {
+      "section": "4.6 Historical Data / Backfill / Opening",
+      "id": "NEX-MIG-HIS-FR-002",
+      "priority": "MUST",
+      "requirement": "모든 과거 transaction의 full migration을 기본 목표로 삼아서는 안 된다.",
+      "verification": "Architecture Review",
+      "parent": "19~25/34"
+    },
+    {
+      "section": "4.6 Historical Data / Backfill / Opening",
+      "id": "NEX-MIG-HIS-FR-003",
+      "priority": "MUST",
+      "requirement": "Active project/current employee/current account/open approval/open transaction 등 operational continuity에 필요한 범위를 MUST_MIGRATE 후보로 다뤄야 한다.",
+      "verification": "Migration Review",
+      "parent": "19~25/34"
+    },
+    {
+      "section": "4.6 Historical Data / Backfill / Opening",
+      "id": "NEX-MIG-HIS-FR-004",
+      "priority": "MUST",
+      "requirement": "과거 approval/ticket/document는 active workflow로 재생성하기보다 archive/reference로 보존하는 전략을 지원해야 한다.",
+      "verification": "Archive Test",
+      "parent": "19~25/34"
+    },
+    {
+      "section": "4.6 Historical Data / Backfill / Opening",
+      "id": "NEX-MIG-HIS-FR-005",
+      "priority": "MUST",
+      "requirement": "Opening/Summary entry는 source period/system/batch/provenance를 가져야 하며 native transaction과 구분되어야 한다.",
+      "verification": "Ledger/Data Test",
+      "parent": "19~25/34"
+    },
+    {
+      "section": "4.6 Historical Data / Backfill / Opening",
+      "id": "NEX-MIG-HIS-FR-006",
+      "priority": "MUST",
+      "requirement": "Financial opening은 REVENUE/LABOR/MATERIAL/DIRECT_EXPENSE/COMMON_COST/ADJUSTMENT 등 target economic category와 reconciliation되어야 한다.",
+      "verification": "Financial Test",
+      "parent": "19~25/34"
+    },
+    {
+      "section": "4.6 Historical Data / Backfill / Opening",
+      "id": "NEX-MIG-HIS-FR-007",
+      "priority": "MUST",
+      "requirement": "Migrated/native/legacy_reference/opening의 data_origin을 보존하고 query/report에서 추적 가능해야 한다.",
+      "verification": "Trace Test",
+      "parent": "19~25/34"
+    },
+    {
+      "section": "4.6 Historical Data / Backfill / Opening",
+      "id": "NEX-MIG-HIS-FR-008",
+      "priority": "MUST",
+      "requirement": "Discard candidate 삭제 전 retention/legal/audit 정책을 검토해야 한다.",
+      "verification": "Governance Test",
+      "parent": "19~25/34"
+    },
+    {
+      "section": "4.6 Historical Data / Backfill / Opening",
+      "id": "NEX-MIG-HIS-FR-009",
+      "priority": "SHOULD",
+      "requirement": "Historical detail migration 범위는 최근 N개월/회계기간 또는 selected project로 제한할 수 있어야 한다.",
+      "verification": "Migration Planning",
+      "parent": "19~25/34"
+    },
+    {
+      "section": "4.6 Historical Data / Backfill / Opening",
+      "id": "NEX-MIG-HIS-FR-010",
+      "priority": "MUST",
+      "requirement": "Archive 데이터는 restore-tested backup 또는 read-only archive 경로를 통해 필요한 historical query를 재현할 수 있어야 한다.",
+      "verification": "Archive Recovery Test",
+      "parent": "19~25/34"
+    },
+    {
+      "section": "4.7 Shadow Read / Dual-run Validation",
+      "id": "NEX-MIG-SHD-FR-001",
+      "priority": "MUST",
+      "requirement": "Shadow/Dual-run은 authoritative path와 shadow path를 분리하고 shadow 결과가 business write authority가 되지 않게 해야 한다.",
+      "verification": "Architecture Test",
+      "parent": "10/19/31/32/33"
+    },
+    {
+      "section": "4.7 Shadow Read / Dual-run Validation",
+      "id": "NEX-MIG-SHD-FR-002",
+      "priority": "MUST",
+      "requirement": "Comparator는 record count뿐 아니라 key/attribute/business rule/financial total/E2E invariant 수준 비교를 지원해야 한다.",
+      "verification": "Reconciliation Test",
+      "parent": "10/19/31/32/33"
+    },
+    {
+      "section": "4.7 Shadow Read / Dual-run Validation",
+      "id": "NEX-MIG-SHD-FR-003",
+      "priority": "MUST",
+      "requirement": "Reconciliation level은 최소 L1 Count/L2 Key/L3 Attribute/L4 Business Rule/L5 Financial/L6 E2E를 구분해야 한다.",
+      "verification": "Test Matrix",
+      "parent": "10/19/31/32/33"
+    },
+    {
+      "section": "4.7 Shadow Read / Dual-run Validation",
+      "id": "NEX-MIG-SHD-FR-004",
+      "priority": "MUST",
+      "requirement": "Compare result는 MATCHED/PARTIAL_MATCH/MISMATCH/UNKNOWN 상태와 severity/owner를 가져야 한다.",
+      "verification": "Schema Test",
+      "parent": "10/19/31/32/33"
+    },
+    {
+      "section": "4.7 Shadow Read / Dual-run Validation",
+      "id": "NEX-MIG-SHD-FR-005",
+      "priority": "MUST",
+      "requirement": "Critical mismatch는 Cutover Gate를 block해야 한다.",
+      "verification": "Cutover Test",
+      "parent": "10/19/31/32/33"
+    },
+    {
+      "section": "4.7 Shadow Read / Dual-run Validation",
+      "id": "NEX-MIG-SHD-FR-006",
+      "priority": "MUST",
+      "requirement": "Legacy/New 결과가 다르면 차이를 숨기지 않고 source/expected/actual을 ReconciliationIssue로 기록해야 한다.",
+      "verification": "Audit Test",
+      "parent": "10/19/31/32/33"
+    },
+    {
+      "section": "4.7 Shadow Read / Dual-run Validation",
+      "id": "NEX-MIG-SHD-FR-007",
+      "priority": "MUST",
+      "requirement": "Financial dual-run은 동일 sample slice에서 Voucher/Ledger/P&L 총계와 drill-down provenance를 비교해야 한다.",
+      "verification": "Golden Slice Test",
+      "parent": "10/19/31/32/33"
+    },
+    {
+      "section": "4.7 Shadow Read / Dual-run Validation",
+      "id": "NEX-MIG-SHD-FR-008",
+      "priority": "MUST",
+      "requirement": "Shadow path provider failure는 authoritative result를 변경하지 않고 validation unavailable 상태로 기록해야 한다.",
+      "verification": "Fault Test",
+      "parent": "10/19/31/32/33"
+    },
+    {
+      "section": "4.7 Shadow Read / Dual-run Validation",
+      "id": "NEX-MIG-SHD-FR-009",
+      "priority": "SHOULD",
+      "requirement": "Dual-run duration은 domain별 transaction volume/회계주기/risk를 근거로 versioned cutover policy에서 정할 수 있어야 한다.",
+      "verification": "Policy Review",
+      "parent": "10/19/31/32/33"
+    },
+    {
+      "section": "4.7 Shadow Read / Dual-run Validation",
+      "id": "NEX-MIG-SHD-FR-010",
+      "priority": "MUST",
+      "requirement": "동일 business transaction을 양쪽에서 independent commit하여 비교하는 방식을 기본 validation 전략으로 사용해서는 안 된다.",
+      "verification": "Negative Test",
+      "parent": "10/19/31/32/33"
+    },
+    {
+      "section": "4.7 Shadow Read / Dual-run Validation",
+      "id": "NEX-MIG-SHD-FR-011",
+      "priority": "MUST",
+      "requirement": "업무연속성 때문에 제한적 dual-write가 불가피한 경우에도 하나의 authoritative operation을 유지하고 secondary write는 bridge/mirror replication으로만 모델링해야 한다.",
+      "verification": "Architecture Test",
+      "parent": "10/19/31/32/33"
+    },
+    {
+      "section": "4.7 Shadow Read / Dual-run Validation",
+      "id": "NEX-MIG-SHD-FR-012",
+      "priority": "MUST",
+      "requirement": "제한적 dual-write bridge는 동일 business_operation_id/correlation/idempotency/source_of_truth_ref를 전달하고 양쪽 결과를 reconciliation해야 한다.",
+      "verification": "Reliability Test",
+      "parent": "10/19/31/32/33"
+    },
+    {
+      "section": "4.7 Shadow Read / Dual-run Validation",
+      "id": "NEX-MIG-SHD-FR-013",
+      "priority": "MUST",
+      "requirement": "dual-write bridge의 어느 한쪽이라도 UNKNOWN_COMMIT_STATE가 되면 다른 쪽으로 자동 재발행하지 않고 RECONCILIATION_REQUIRED로 전환해야 한다.",
+      "verification": "Fault Test",
+      "parent": "10/19/31/32/33"
+    },
+    {
+      "section": "4.7 Shadow Read / Dual-run Validation",
+      "id": "NEX-MIG-SHD-FR-014",
+      "priority": "SHOULD",
+      "requirement": "제한적 dual-write는 feature flag/kill switch, explicit scope, sunset date를 가져야 하며 permanent dual-master로 남아서는 안 된다.",
+      "verification": "Governance Test",
+      "parent": "10/19/31/32/33"
+    },
+    {
+      "section": "4.8 Cutover & Write Redirect",
+      "id": "NEX-MIG-CUT-FR-001",
+      "priority": "MUST",
+      "requirement": "Cutover 전에 target contract, regression, data, security, reliability, golden slice, observability, rollback, SoR, acceptance gate를 통과해야 한다.",
+      "verification": "Migration Gate",
+      "parent": "10/33/34"
+    },
+    {
+      "section": "4.8 Cutover & Write Redirect",
+      "id": "NEX-MIG-CUT-FR-002",
+      "priority": "MUST",
+      "requirement": "Cutover runbook은 window, freeze/no-freeze strategy, final delta sync, reconciliation, write redirect, legacy write disable, smoke, monitoring을 포함해야 한다.",
+      "verification": "Runbook Test",
+      "parent": "10/33/34"
+    },
+    {
+      "section": "4.8 Cutover & Write Redirect",
+      "id": "NEX-MIG-CUT-FR-003",
+      "priority": "MUST",
+      "requirement": "SoR cutover 직전 verified backup/recovery point와 rollback/forward-fix evidence가 있어야 한다.",
+      "verification": "Recovery Gate",
+      "parent": "10/33/34"
+    },
+    {
+      "section": "4.8 Cutover & Write Redirect",
+      "id": "NEX-MIG-CUT-FR-004",
+      "priority": "MUST",
+      "requirement": "Write redirect는 feature flag/routing policy exact version으로 수행하고 mutable latest 설정에 의존하지 않아야 한다.",
+      "verification": "Version Test",
+      "parent": "10/33/34"
+    },
+    {
+      "section": "4.8 Cutover & Write Redirect",
+      "id": "NEX-MIG-CUT-FR-005",
+      "priority": "MUST",
+      "requirement": "Cutover exact timestamp/effective boundary를 event/audit와 timezone 기준으로 기록해야 한다.",
+      "verification": "Boundary Test",
+      "parent": "10/33/34"
+    },
+    {
+      "section": "4.8 Cutover & Write Redirect",
+      "id": "NEX-MIG-CUT-FR-006",
+      "priority": "MUST",
+      "requirement": "Freeze window를 사용하는 경우 affected create/update 기능과 사용자 communication을 명확히 해야 한다.",
+      "verification": "Operational Test",
+      "parent": "10/33/34"
+    },
+    {
+      "section": "4.8 Cutover & Write Redirect",
+      "id": "NEX-MIG-CUT-FR-007",
+      "priority": "MUST",
+      "requirement": "No-freeze cutover는 watermark/delta sync/write redirect 순서와 race window를 검증해야 한다.",
+      "verification": "Concurrency Test",
+      "parent": "10/33/34"
+    },
+    {
+      "section": "4.8 Cutover & Write Redirect",
+      "id": "NEX-MIG-CUT-FR-008",
+      "priority": "MUST",
+      "requirement": "Cutover 완료 후 legacy write가 실제로 disabled인지 negative write test로 검증해야 한다.",
+      "verification": "Security/Operation Test",
+      "parent": "10/33/34"
+    },
+    {
+      "section": "4.8 Cutover & Write Redirect",
+      "id": "NEX-MIG-CUT-FR-009",
+      "priority": "MUST",
+      "requirement": "Cutover smoke는 target canonical API, authority, business result, trace, open work 상태를 검증해야 한다.",
+      "verification": "E2E Smoke",
+      "parent": "10/33/34"
+    },
+    {
+      "section": "4.8 Cutover & Write Redirect",
+      "id": "NEX-MIG-CUT-FR-010",
+      "priority": "MUST",
+      "requirement": "Cutover 완료는 business owner + architecture/operations owner의 승인 evidence를 가져야 한다.",
+      "verification": "Acceptance Review",
+      "parent": "10/33/34"
+    },
+    {
+      "section": "4.8 Cutover & Write Redirect",
+      "id": "NEX-MIG-CUT-FR-011",
+      "priority": "SHOULD",
+      "requirement": "초기 rollout은 사용자/조직/프로젝트/capability scope를 제한하여 staged cutover할 수 있어야 한다.",
+      "verification": "Pilot Test",
+      "parent": "10/33/34"
+    },
+    {
+      "section": "4.8 Cutover & Write Redirect",
+      "id": "NEX-MIG-CUT-FR-012",
+      "priority": "MUST",
+      "requirement": "Critical reconciliation/security/backup/unknown commit blocker가 있으면 cutover를 fail-closed해야 한다.",
+      "verification": "Negative Gate Test",
+      "parent": "10/33/34"
+    },
+    {
+      "section": "4.9 Rollback Window & Forward Fix",
+      "id": "NEX-MIG-RBK-FR-001",
+      "priority": "MUST",
+      "requirement": "Domain별 rollback window와 trigger를 cutover 전에 정의해야 한다.",
+      "verification": "Policy Test",
+      "parent": "32/34"
+    },
+    {
+      "section": "4.9 Rollback Window & Forward Fix",
+      "id": "NEX-MIG-RBK-FR-002",
+      "priority": "MUST",
+      "requirement": "Rollback trigger는 data corruption, business rule failure, approval/ledger mismatch, security incident, severe operational instability를 포함할 수 있어야 한다.",
+      "verification": "Scenario Test",
+      "parent": "32/34"
+    },
+    {
+      "section": "4.9 Rollback Window & Forward Fix",
+      "id": "NEX-MIG-RBK-FR-003",
+      "priority": "MUST",
+      "requirement": "Rollback은 application rollback과 SoR authority rollback을 구분해야 한다.",
+      "verification": "Architecture Test",
+      "parent": "32/34"
+    },
+    {
+      "section": "4.9 Rollback Window & Forward Fix",
+      "id": "NEX-MIG-RBK-FR-004",
+      "priority": "MUST",
+      "requirement": "Target에서 이미 authoritative 신규 transaction이 생성된 후 SoR를 legacy로 되돌리려면 target delta 처리/재입력/export/reconciliation 계획이 있어야 한다.",
+      "verification": "Rollback Rehearsal",
+      "parent": "32/34"
+    },
+    {
+      "section": "4.9 Rollback Window & Forward Fix",
+      "id": "NEX-MIG-RBK-FR-005",
+      "priority": "MUST",
+      "requirement": "안전한 data delta 처리경로가 없으면 SoR rollback보다 forward-fix를 우선할 수 있어야 한다.",
+      "verification": "Decision Test",
+      "parent": "32/34"
+    },
+    {
+      "section": "4.9 Rollback Window & Forward Fix",
+      "id": "NEX-MIG-RBK-FR-006",
+      "priority": "MUST",
+      "requirement": "Rollback 실행은 exact prior routing/policy/version과 current authoritative state를 기준으로 typed operation으로 수행해야 한다.",
+      "verification": "Control Test",
+      "parent": "32/34"
+    },
+    {
+      "section": "4.9 Rollback Window & Forward Fix",
+      "id": "NEX-MIG-RBK-FR-007",
+      "priority": "MUST",
+      "requirement": "Rollback 중 UNKNOWN_COMMIT_STATE 또는 unreconciled write가 있으면 blind authority switch를 금지해야 한다.",
+      "verification": "Reliability Test",
+      "parent": "32/34"
+    },
+    {
+      "section": "4.9 Rollback Window & Forward Fix",
+      "id": "NEX-MIG-RBK-FR-008",
+      "priority": "MUST",
+      "requirement": "Rollback 후 legacy/new source consistency와 open work/event/reconciliation backlog를 재검증해야 한다.",
+      "verification": "Recovery Test",
+      "parent": "32/34"
+    },
+    {
+      "section": "4.9 Rollback Window & Forward Fix",
+      "id": "NEX-MIG-RBK-FR-009",
+      "priority": "SHOULD",
+      "requirement": "Rollback window는 transaction volume이 증가할수록 짧아지거나 forward-fix 중심으로 전환하도록 policy calibration할 수 있어야 한다.",
+      "verification": "Policy Review",
+      "parent": "32/34"
+    },
+    {
+      "section": "4.9 Rollback Window & Forward Fix",
+      "id": "NEX-MIG-RBK-FR-010",
+      "priority": "MUST",
+      "requirement": "Rollback 결과는 original cutover decision, trigger, actions, data delta, final SoR를 audit evidence로 남겨야 한다.",
+      "verification": "Audit Test",
+      "parent": "32/34"
+    },
+    {
+      "section": "4.10 Legacy Read-only / Archive / Retirement",
+      "id": "NEX-MIG-RET-FR-001",
+      "priority": "MUST",
+      "requirement": "NEW_SYSTEM 안정화 후 legacy write를 application permission/DB grant/UI/network policy 중 적절한 수단으로 차단해야 한다.",
+      "verification": "Enforcement Test",
+      "parent": "09/34"
+    },
+    {
+      "section": "4.10 Legacy Read-only / Archive / Retirement",
+      "id": "NEX-MIG-RET-FR-002",
+      "priority": "MUST",
+      "requirement": "Legacy read-only 상태에서 발생하는 write attempt를 metric/alert로 수집하여 미전환 업무/자동 batch를 탐지해야 한다.",
+      "verification": "Operations Test",
+      "parent": "09/34"
+    },
+    {
+      "section": "4.10 Legacy Read-only / Archive / Retirement",
+      "id": "NEX-MIG-RET-FR-003",
+      "priority": "MUST",
+      "requirement": "Legacy retirement 전에 retention, legal hold, audit, historical query, backup, restore test를 확인해야 한다.",
+      "verification": "Retirement Gate",
+      "parent": "09/34"
+    },
+    {
+      "section": "4.10 Legacy Read-only / Archive / Retirement",
+      "id": "NEX-MIG-RET-FR-004",
+      "priority": "MUST",
+      "requirement": "Archived system은 운영 routing에서 제거되고 제한된 Archive Reader authority로만 접근할 수 있어야 한다.",
+      "verification": "Security Test",
+      "parent": "09/34"
+    },
+    {
+      "section": "4.10 Legacy Read-only / Archive / Retirement",
+      "id": "NEX-MIG-RET-FR-005",
+      "priority": "MUST",
+      "requirement": "Archive UI/query는 source system과 data date/snapshot을 표시해야 한다.",
+      "verification": "UX Test",
+      "parent": "09/34"
+    },
+    {
+      "section": "4.10 Legacy Read-only / Archive / Retirement",
+      "id": "NEX-MIG-RET-FR-006",
+      "priority": "MUST",
+      "requirement": "Archive backup/VM/export 자체도 encryption/access control/retention/audit 정책을 적용해야 한다.",
+      "verification": "Archive Security",
+      "parent": "09/34"
+    },
+    {
+      "section": "4.10 Legacy Read-only / Archive / Retirement",
+      "id": "NEX-MIG-RET-FR-007",
+      "priority": "MUST",
+      "requirement": "Legacy adapter를 retire하기 전에 모든 remaining consumer/caller가 canonical target path로 전환되었는지 dependency scan을 수행해야 한다.",
+      "verification": "Dependency Audit",
+      "parent": "09/34"
+    },
+    {
+      "section": "4.10 Legacy Read-only / Archive / Retirement",
+      "id": "NEX-MIG-RET-FR-008",
+      "priority": "MUST",
+      "requirement": "Retirement 후에도 migration provenance와 legacy key→canonical ID mapping을 보존해야 한다.",
+      "verification": "Trace Test",
+      "parent": "09/34"
+    },
+    {
+      "section": "4.10 Legacy Read-only / Archive / Retirement",
+      "id": "NEX-MIG-RET-FR-009",
+      "priority": "SHOULD",
+      "requirement": "비용/사용량/법적요건에 따라 read-only DB, VM archive, export file, backup image 등 archive tier를 선택할 수 있어야 한다.",
+      "verification": "Architecture Review",
+      "parent": "09/34"
+    },
+    {
+      "section": "4.10 Legacy Read-only / Archive / Retirement",
+      "id": "NEX-MIG-RET-FR-010",
+      "priority": "MUST",
+      "requirement": "Legacy delete/decommission은 승인된 retirement decision과 restore evidence 없이 수행해서는 안 된다.",
+      "verification": "Negative Governance Test",
+      "parent": "09/34"
+    },
+    {
+      "section": "4.11 Existing NeX Code / API / DB Convergence",
+      "id": "NEX-MIG-CODE-FR-001",
+      "priority": "MUST",
+      "requirement": "기존 NeX component는 repository 전체가 아니라 bounded context/module/API/DB schema/worker/test 단위로 disposition해야 한다.",
+      "verification": "Gap Review",
+      "parent": "02/10/34"
+    },
+    {
+      "section": "4.11 Existing NeX Code / API / DB Convergence",
+      "id": "NEX-MIG-CODE-FR-002",
+      "priority": "MUST",
+      "requirement": "KEEP는 verified target alignment와 regression evidence가 있을 때만 확정해야 한다.",
+      "verification": "Evidence Gate",
+      "parent": "02/10/34"
+    },
+    {
+      "section": "4.11 Existing NeX Code / API / DB Convergence",
+      "id": "NEX-MIG-CODE-FR-003",
+      "priority": "MUST",
+      "requirement": "REFACTOR는 stable external contract를 보호하면서 branch-by-abstraction/refactor-in-place 패턴을 우선해야 한다.",
+      "verification": "Architecture Test",
+      "parent": "02/10/34"
+    },
+    {
+      "section": "4.11 Existing NeX Code / API / DB Convergence",
+      "id": "NEX-MIG-CODE-FR-004",
+      "priority": "MUST",
+      "requirement": "REPLACE는 strangler bounded-context 방식으로 parallel target을 만들고 traffic/data ownership을 단계적으로 전환해야 한다.",
+      "verification": "Migration Test",
+      "parent": "02/10/34"
+    },
+    {
+      "section": "4.11 Existing NeX Code / API / DB Convergence",
+      "id": "NEX-MIG-CODE-FR-005",
+      "priority": "MUST",
+      "requirement": "NEW는 canonical contract/security/test baseline을 먼저 정의한 후 구현해야 한다.",
+      "verification": "Design Gate",
+      "parent": "02/10/34"
+    },
+    {
+      "section": "4.11 Existing NeX Code / API / DB Convergence",
+      "id": "NEX-MIG-CODE-FR-006",
+      "priority": "MUST",
+      "requirement": "DEFER component는 unsupported path를 guard/disable하여 신규 coupling이 늘어나지 않게 해야 한다.",
+      "verification": "Boundary Test",
+      "parent": "02/10/34"
+    },
+    {
+      "section": "4.11 Existing NeX Code / API / DB Convergence",
+      "id": "NEX-MIG-CODE-FR-007",
+      "priority": "MUST",
+      "requirement": "기존 cross-service direct DB access는 canonical API/event seam으로 대체해야 하며 migration 편의를 이유로 새 direct write를 추가해서는 안 된다.",
+      "verification": "Architecture Test",
+      "parent": "02/10/34"
+    },
+    {
+      "section": "4.11 Existing NeX Code / API / DB Convergence",
+      "id": "NEX-MIG-CODE-FR-008",
+      "priority": "MUST",
+      "requirement": "Legacy NeX API compatibility가 필요한 경우 facade/adapter를 두고 caller별 cutover를 추적해야 한다.",
+      "verification": "Contract Test",
+      "parent": "02/10/34"
+    },
+    {
+      "section": "4.11 Existing NeX Code / API / DB Convergence",
+      "id": "NEX-MIG-CODE-FR-009",
+      "priority": "MUST",
+      "requirement": "Legacy NeX DB table의 write ownership을 target service로 전환한 후 old table은 read-only/archive 단계로 이동해야 한다.",
+      "verification": "DB Migration Test",
+      "parent": "02/10/34"
+    },
+    {
+      "section": "4.11 Existing NeX Code / API / DB Convergence",
+      "id": "NEX-MIG-CODE-FR-010",
+      "priority": "MUST",
+      "requirement": "Old ID와 canonical stable ID를 bridge mapping으로 관리하여 caller migration 중 referential trace를 유지해야 한다.",
+      "verification": "Data Test",
+      "parent": "02/10/34"
+    },
+    {
+      "section": "4.11 Existing NeX Code / API / DB Convergence",
+      "id": "NEX-MIG-CODE-FR-011",
+      "priority": "MUST",
+      "requirement": "Source/DB/OpenAPI/Test Runtime evidence가 없으면 최종 code disposition을 확정하지 않아야 한다.",
+      "verification": "Governance Test",
+      "parent": "02/10/34"
+    },
+    {
+      "section": "4.11 Existing NeX Code / API / DB Convergence",
+      "id": "NEX-MIG-CODE-FR-012",
+      "priority": "SHOULD",
+      "requirement": "기존 API deprecation은 usage telemetry와 consumer inventory를 기반으로 sunset date를 설정할 수 있어야 한다.",
+      "verification": "Operations Review",
+      "parent": "02/10/34"
+    },
+    {
+      "section": "4.12 ERP / Finance / Accounting Coexistence",
+      "id": "NEX-MIG-ERP-FR-001",
+      "priority": "MUST",
+      "requirement": "Employee/Org/Account 등 Legacy ERP master가 초기 authority인 항목은 READ_SYNC로 시작할 수 있어야 한다.",
+      "verification": "Integration Test",
+      "parent": "19~22/31~34"
+    },
+    {
+      "section": "4.12 ERP / Finance / Accounting Coexistence",
+      "id": "NEX-MIG-ERP-FR-002",
+      "priority": "MUST",
+      "requirement": "Enterprise OS가 공식 SoR가 된 Project/Voucher/Ledger scope에서는 legacy fallback write를 금지해야 한다.",
+      "verification": "Negative Test",
+      "parent": "19~22/31~34"
+    },
+    {
+      "section": "4.12 ERP / Finance / Accounting Coexistence",
+      "id": "NEX-MIG-ERP-FR-003",
+      "priority": "MUST",
+      "requirement": "Voucher dual-run은 동일 transaction을 양쪽에 실제 posting하는 방식이 아니라 legacy 기준과 target 결과를 shadow compare해야 한다.",
+      "verification": "Golden Slice Test",
+      "parent": "19~22/31~34"
+    },
+    {
+      "section": "4.12 ERP / Finance / Accounting Coexistence",
+      "id": "NEX-MIG-ERP-FR-004",
+      "priority": "MUST",
+      "requirement": "Financial cutover는 Project cost/account totals/NVT P&L/Ledger balance 등 L5 reconciliation을 통과해야 한다.",
+      "verification": "Financial Reconciliation",
+      "parent": "19~22/31~34"
+    },
+    {
+      "section": "4.12 ERP / Finance / Accounting Coexistence",
+      "id": "NEX-MIG-ERP-FR-005",
+      "priority": "MUST",
+      "requirement": "Legacy account master는 code/effective date/category/economic mapping을 검증한 후 canonical AccountVersion과 연결해야 한다.",
+      "verification": "Data Validation",
+      "parent": "19~22/31~34"
+    },
+    {
+      "section": "4.12 ERP / Finance / Accounting Coexistence",
+      "id": "NEX-MIG-ERP-FR-006",
+      "priority": "MUST",
+      "requirement": "과거 Voucher migration은 recent detail/archive/opening strategy를 domain owner가 확정해야 한다.",
+      "verification": "Migration Review",
+      "parent": "19~22/31~34"
+    },
+    {
+      "section": "4.12 ERP / Finance / Accounting Coexistence",
+      "id": "NEX-MIG-ERP-FR-007",
+      "priority": "MUST",
+      "requirement": "Closed/posted legacy financial facts를 migration 과정에서 overwrite로 수정하지 않고 opening/reversal/adjustment provenance를 유지해야 한다.",
+      "verification": "Financial Integrity Test",
+      "parent": "19~22/31~34"
+    },
+    {
+      "section": "4.12 ERP / Finance / Accounting Coexistence",
+      "id": "NEX-MIG-ERP-FR-008",
+      "priority": "MUST",
+      "requirement": "Legacy finance adapter timeout으로 commit 여부가 불명확하면 UNKNOWN_COMMIT_STATE로 처리하고 자동 retry하지 않아야 한다.",
+      "verification": "Reliability Test",
+      "parent": "19~22/31~34"
+    },
+    {
+      "section": "4.12 ERP / Finance / Accounting Coexistence",
+      "id": "NEX-MIG-ERP-FR-009",
+      "priority": "SHOULD",
+      "requirement": "Revenue/Procurement/Payroll/Tax/Closing 등 고복잡도 domain은 initial slice 밖에서 별도 migration wave로 유지할 수 있어야 한다.",
+      "verification": "Scope Review",
+      "parent": "19~22/31~34"
+    },
+    {
+      "section": "4.12 ERP / Finance / Accounting Coexistence",
+      "id": "NEX-MIG-ERP-FR-010",
+      "priority": "MUST",
+      "requirement": "Golden Slice A migration은 target-authoritative voucher scope에서 AE→OA→NSL→EOS→Ledger/P&L chain을 검증해야 한다.",
+      "verification": "E2E Acceptance",
+      "parent": "19~22/31~34"
+    },
+    {
+      "section": "4.13 Groupware / Approval Coexistence",
+      "id": "NEX-MIG-GRP-FR-001",
+      "priority": "MUST",
+      "requirement": "Approval cutover는 cutover datetime 이전 제출과 이후 신규 제출을 구분하는 명시적 boundary를 가져야 한다.",
+      "verification": "Boundary Test",
+      "parent": "17/19/31/34"
+    },
+    {
+      "section": "4.13 Groupware / Approval Coexistence",
+      "id": "NEX-MIG-GRP-FR-002",
+      "priority": "MUST",
+      "requirement": "초기 전략에서 in-flight legacy approval은 가능하면 legacy에서 완료하고 신규 제출부터 target Approval Engine을 사용해야 한다.",
+      "verification": "Migration Scenario",
+      "parent": "17/19/31/34"
+    },
+    {
+      "section": "4.13 Groupware / Approval Coexistence",
+      "id": "NEX-MIG-GRP-FR-003",
+      "priority": "MUST",
+      "requirement": "진행 중 approval을 target으로 임의 재생성하여 approval history/authority를 변조해서는 안 된다.",
+      "verification": "Negative Test",
+      "parent": "17/19/31/34"
+    },
+    {
+      "section": "4.13 Groupware / Approval Coexistence",
+      "id": "NEX-MIG-GRP-FR-004",
+      "priority": "MUST",
+      "requirement": "과거 Groupware approval은 active workflow가 아니라 historical archive/reference로 이관할 수 있어야 한다.",
+      "verification": "Archive Test",
+      "parent": "17/19/31/34"
+    },
+    {
+      "section": "4.13 Groupware / Approval Coexistence",
+      "id": "NEX-MIG-GRP-FR-005",
+      "priority": "MUST",
+      "requirement": "Approval history migration은 document/result/approver/time/evidence refs와 source provenance를 보존해야 한다.",
+      "verification": "Trace Test",
+      "parent": "17/19/31/34"
+    },
+    {
+      "section": "4.13 Groupware / Approval Coexistence",
+      "id": "NEX-MIG-GRP-FR-006",
+      "priority": "MUST",
+      "requirement": "Target Approval Engine으로 전환된 scope의 신규 approval write가 legacy groupware에 자동 fallback되어서는 안 된다.",
+      "verification": "Negative Test",
+      "parent": "17/19/31/34"
+    },
+    {
+      "section": "4.13 Groupware / Approval Coexistence",
+      "id": "NEX-MIG-GRP-FR-007",
+      "priority": "MUST",
+      "requirement": "Legacy approval 조회는 Canonical Approval Query/Adapter를 통해 source badge와 함께 제공할 수 있어야 한다.",
+      "verification": "UX/Contract Test",
+      "parent": "17/19/31/34"
+    },
+    {
+      "section": "4.13 Groupware / Approval Coexistence",
+      "id": "NEX-MIG-GRP-FR-008",
+      "priority": "MUST",
+      "requirement": "Approval cutover 전 OA role/approver mapping, Human Gate contract, notification/runbook을 검증해야 한다.",
+      "verification": "Security/E2E",
+      "parent": "17/19/31/34"
+    },
+    {
+      "section": "4.13 Groupware / Approval Coexistence",
+      "id": "NEX-MIG-GRP-FR-009",
+      "priority": "SHOULD",
+      "requirement": "필요하면 특정 부서/문서유형부터 staged approval cutover를 수행할 수 있어야 한다.",
+      "verification": "Pilot Test",
+      "parent": "17/19/31/34"
+    },
+    {
+      "section": "4.13 Groupware / Approval Coexistence",
+      "id": "NEX-MIG-GRP-FR-010",
+      "priority": "MUST",
+      "requirement": "Legacy Groupware retirement 전에 open approval=0 또는 승인된 exception 목록을 확인해야 한다.",
+      "verification": "Retirement Gate",
+      "parent": "17/19/31/34"
+    },
+    {
+      "section": "4.14 Jira / WAMS → NeX-WC Transition",
+      "id": "NEX-MIG-WC-FR-001",
+      "priority": "MUST",
+      "requirement": "신규 Enterprise Work는 cutover scope 이후 NeX-WC WorkItem을 authoritative SoR로 사용해야 한다.",
+      "verification": "SoR Test",
+      "parent": "13/14/31~34"
+    },
+    {
+      "section": "4.14 Jira / WAMS → NeX-WC Transition",
+      "id": "NEX-MIG-WC-FR-002",
+      "priority": "MUST",
+      "requirement": "기존 Jira/WAMS open item은 legacy completion, selective active migration, follow-up WorkItem 중 명시적으로 분류해야 한다.",
+      "verification": "Migration Review",
+      "parent": "13/14/31~34"
+    },
+    {
+      "section": "4.14 Jira / WAMS → NeX-WC Transition",
+      "id": "NEX-MIG-WC-FR-003",
+      "priority": "MUST",
+      "requirement": "Closed historical ticket를 WC active WorkItem으로 무분별하게 재생성해서는 안 된다.",
+      "verification": "Negative Test",
+      "parent": "13/14/31~34"
+    },
+    {
+      "section": "4.14 Jira / WAMS → NeX-WC Transition",
+      "id": "NEX-MIG-WC-FR-004",
+      "priority": "MUST",
+      "requirement": "Selective migration은 legacy issue key, title/summary classification, assignee/owner, status, project, result/evidence refs를 provenance와 함께 mapping해야 한다.",
+      "verification": "Data Test",
+      "parent": "13/14/31~34"
+    },
+    {
+      "section": "4.14 Jira / WAMS → NeX-WC Transition",
+      "id": "NEX-MIG-WC-FR-005",
+      "priority": "MUST",
+      "requirement": "Legacy status와 WC state가 1:1로 맞지 않을 경우 Mapping Rule/Exception을 기록하고 LLM이 임의 state를 확정하지 않아야 한다.",
+      "verification": "Mapping Test",
+      "parent": "13/14/31~34"
+    },
+    {
+      "section": "4.14 Jira / WAMS → NeX-WC Transition",
+      "id": "NEX-MIG-WC-FR-006",
+      "priority": "MUST",
+      "requirement": "Cutover 이후 신규 child/delegated work는 WC Parent/Child causation을 사용하고 Jira/WAMS에 parallel authoritative task를 만들지 않아야 한다.",
+      "verification": "E2E Test",
+      "parent": "13/14/31~34"
+    },
+    {
+      "section": "4.14 Jira / WAMS → NeX-WC Transition",
+      "id": "NEX-MIG-WC-FR-007",
+      "priority": "MUST",
+      "requirement": "Legacy ticket link는 migrated/follow-up WC WorkItem에 stable external_ref로 보존할 수 있어야 한다.",
+      "verification": "Trace Test",
+      "parent": "13/14/31~34"
+    },
+    {
+      "section": "4.14 Jira / WAMS → NeX-WC Transition",
+      "id": "NEX-MIG-WC-FR-008",
+      "priority": "MUST",
+      "requirement": "Jira/WAMS read-only 전환 후 automation/integration bot의 잔존 create/update attempt를 모니터링해야 한다.",
+      "verification": "Operations Test",
+      "parent": "13/14/31~34"
+    },
+    {
+      "section": "4.14 Jira / WAMS → NeX-WC Transition",
+      "id": "NEX-MIG-WC-FR-009",
+      "priority": "SHOULD",
+      "requirement": "오랜 history는 full migration 대신 archive/search reference로 유지할 수 있어야 한다.",
+      "verification": "Archive Review",
+      "parent": "13/14/31~34"
+    },
+    {
+      "section": "4.14 Jira / WAMS → NeX-WC Transition",
+      "id": "NEX-MIG-WC-FR-010",
+      "priority": "MUST",
+      "requirement": "Golden Slice B는 Parent/Child WorkItem, Coworker Claim, Result Event, Resume 흐름이 WC authoritative path에서 동작해야 한다.",
+      "verification": "Golden Slice Test",
+      "parent": "13/14/31~34"
+    },
+    {
+      "section": "4.15 Work Activity / Reporting / NeX-WA Transition",
+      "id": "NEX-MIG-WA-FR-001",
+      "priority": "MUST",
+      "requirement": "v2.0 이후 WorkActivity/WorkAsset의 authoritative post-work record는 NeX-WA가 소유해야 한다.",
+      "verification": "Architecture Test",
+      "parent": "22~25/29/34"
+    },
+    {
+      "section": "4.15 Work Activity / Reporting / NeX-WA Transition",
+      "id": "NEX-MIG-WA-FR-002",
+      "priority": "MUST",
+      "requirement": "기존 AE interaction/report history에서 WA로 이전할 데이터는 canonical event/activity projection으로 변환하고 source provenance를 보존해야 한다.",
+      "verification": "Migration Test",
+      "parent": "22~25/29/34"
+    },
+    {
+      "section": "4.15 Work Activity / Reporting / NeX-WA Transition",
+      "id": "NEX-MIG-WA-FR-003",
+      "priority": "MUST",
+      "requirement": "Legacy Jira/WAMS/Groupware/ERP activity telemetry를 employee performance score로 직접 변환해서는 안 된다.",
+      "verification": "Governance Test",
+      "parent": "22~25/29/34"
+    },
+    {
+      "section": "4.15 Work Activity / Reporting / NeX-WA Transition",
+      "id": "NEX-MIG-WA-FR-004",
+      "priority": "MUST",
+      "requirement": "Historical Work Activity가 부족한 기간은 labor/reporting opening/summary로 처리하고 생성되지 않은 상세 활동을 추정해 authoritative history로 만들지 않아야 한다.",
+      "verification": "Data Test",
+      "parent": "22~25/29/34"
+    },
+    {
+      "section": "4.15 Work Activity / Reporting / NeX-WA Transition",
+      "id": "NEX-MIG-WA-FR-005",
+      "priority": "MUST",
+      "requirement": "WA projection은 source WorkItem/AgentExecution/Approval/EOS event refs를 유지하고 migration 중 cross-service DB direct write를 요구해서는 안 된다.",
+      "verification": "Architecture Test",
+      "parent": "22~25/29/34"
+    },
+    {
+      "section": "4.15 Work Activity / Reporting / NeX-WA Transition",
+      "id": "NEX-MIG-WA-FR-006",
+      "priority": "MUST",
+      "requirement": "Projection rebuild와 authoritative source migration을 구분하여 WA 재구축 가능 data는 34 recovery policy와 연결해야 한다.",
+      "verification": "Recovery Test",
+      "parent": "22~25/29/34"
+    },
+    {
+      "section": "4.15 Work Activity / Reporting / NeX-WA Transition",
+      "id": "NEX-MIG-WA-FR-007",
+      "priority": "SHOULD",
+      "requirement": "기존 일/주/월 보고 초안은 사용자 제출 이력/Artifact ref를 보존하는 범위에서 WA reporting asset으로 migration할 수 있어야 한다.",
+      "verification": "Migration Review",
+      "parent": "22~25/29/34"
+    },
+    {
+      "section": "4.15 Work Activity / Reporting / NeX-WA Transition",
+      "id": "NEX-MIG-WA-FR-008",
+      "priority": "MUST",
+      "requirement": "Work Activity migration 완료 후 AE가 다시 report/activity SoR를 독점하지 않도록 ownership regression test를 유지해야 한다.",
+      "verification": "Boundary Test",
+      "parent": "22~25/29/34"
+    },
+    {
+      "section": "4.16 Security, Governance & Audit",
+      "id": "NEX-MIG-SEC-FR-001",
+      "priority": "MUST",
+      "requirement": "Migration service account는 일반 user와 분리되고 source read/target write 범위에 최소권한/시간제한을 적용해야 한다.",
+      "verification": "Security Test",
+      "parent": "09/30/34"
+    },
+    {
+      "section": "4.16 Security, Governance & Audit",
+      "id": "NEX-MIG-SEC-FR-002",
+      "priority": "MUST",
+      "requirement": "Migration account가 business approval authority를 자동 보유해서는 안 된다.",
+      "verification": "SoD Test",
+      "parent": "09/30/34"
+    },
+    {
+      "section": "4.16 Security, Governance & Audit",
+      "id": "NEX-MIG-SEC-FR-003",
+      "priority": "MUST",
+      "requirement": "Intermediate CSV/Excel/export 파일은 암호화, access restriction, short retention, audited deletion 정책을 적용해야 한다.",
+      "verification": "Data Protection Test",
+      "parent": "09/30/34"
+    },
+    {
+      "section": "4.16 Security, Governance & Audit",
+      "id": "NEX-MIG-SEC-FR-004",
+      "priority": "MUST",
+      "requirement": "Migration/Sync/Adapter log에 raw password/token/private key를 기록해서는 안 된다.",
+      "verification": "Security Scan",
+      "parent": "09/30/34"
+    },
+    {
+      "section": "4.16 Security, Governance & Audit",
+      "id": "NEX-MIG-SEC-FR-005",
+      "priority": "MUST",
+      "requirement": "Data Classification/Org/Project Scope가 migration/export/archive 경로에서도 유지되어야 한다.",
+      "verification": "Security Test",
+      "parent": "09/30/34"
+    },
+    {
+      "section": "4.16 Security, Governance & Audit",
+      "id": "NEX-MIG-SEC-FR-006",
+      "priority": "MUST",
+      "requirement": "DOMAIN_SOR_CHANGED/CUTOVER/ROLLBACK/LEGACY_WRITE_DISABLED/ARCHIVED 등 핵심 migration event를 audit해야 한다.",
+      "verification": "Audit Test",
+      "parent": "09/30/34"
+    },
+    {
+      "section": "4.16 Security, Governance & Audit",
+      "id": "NEX-MIG-SEC-FR-007",
+      "priority": "MUST",
+      "requirement": "Transition policy 변경은 privileged admin action이며 before/after version/hash/effective time을 보존해야 한다.",
+      "verification": "Governance Test",
+      "parent": "09/30/34"
+    },
+    {
+      "section": "4.16 Security, Governance & Audit",
+      "id": "NEX-MIG-SEC-FR-008",
+      "priority": "MUST",
+      "requirement": "긴급 문제 시 new-write disable/read-route/pause-sync/pause-migration kill controls를 typed operation으로 제공할 수 있어야 한다.",
+      "verification": "Kill Switch Test",
+      "parent": "09/30/34"
+    },
+    {
+      "section": "4.16 Security, Governance & Audit",
+      "id": "NEX-MIG-SEC-FR-009",
+      "priority": "MUST",
+      "requirement": "Migration provenance/evidence 자체의 tamper detection을 위해 immutable hash/ref를 제공해야 한다.",
+      "verification": "Integrity Test",
+      "parent": "09/30/34"
+    },
+    {
+      "section": "4.16 Security, Governance & Audit",
+      "id": "NEX-MIG-SEC-FR-010",
+      "priority": "SHOULD",
+      "requirement": "대규모 migration 직무에서 업무분리(prepare/review/approve/execute)를 policy로 강제할 수 있어야 한다.",
+      "verification": "Governance Review",
+      "parent": "09/30/34"
+    },
+    {
+      "section": "4.17 Operations, Monitoring & Communication",
+      "id": "NEX-MIG-OPS-FR-001",
+      "priority": "MUST",
+      "requirement": "AG Dashboard는 domain/scope transition state, primary SoR, sync health/lag, last reconciliation, open issues, cutover date, rollback window를 표시해야 한다.",
+      "verification": "UI Test",
+      "parent": "30/32/34"
+    },
+    {
+      "section": "4.17 Operations, Monitoring & Communication",
+      "id": "NEX-MIG-OPS-FR-002",
+      "priority": "MUST",
+      "requirement": "Migration Dashboard는 batch progress, mapped/unmapped/failed, reconciliation, data confidence를 표시해야 한다.",
+      "verification": "UI Test",
+      "parent": "30/32/34"
+    },
+    {
+      "section": "4.17 Operations, Monitoring & Communication",
+      "id": "NEX-MIG-OPS-FR-003",
+      "priority": "MUST",
+      "requirement": "주요 metric은 sync_lag, mapping_error, reconciliation_mismatch, legacy_write_attempt, adapter_error, unknown_commit, cutover_error를 포함해야 한다.",
+      "verification": "Monitoring Test",
+      "parent": "30/32/34"
+    },
+    {
+      "section": "4.17 Operations, Monitoring & Communication",
+      "id": "NEX-MIG-OPS-FR-004",
+      "priority": "MUST",
+      "requirement": "Transition 중 공식 보고/경영수치에 mixed source가 포함되면 source/data confidence를 추적 가능해야 한다.",
+      "verification": "Reporting Test",
+      "parent": "30/32/34"
+    },
+    {
+      "section": "4.17 Operations, Monitoring & Communication",
+      "id": "NEX-MIG-OPS-FR-005",
+      "priority": "MUST",
+      "requirement": "Legacy/New 수치 불일치를 숨기지 않고 verified/partial/unverified 및 source detail을 표시할 수 있어야 한다.",
+      "verification": "UX Test",
+      "parent": "30/32/34"
+    },
+    {
+      "section": "4.17 Operations, Monitoring & Communication",
+      "id": "NEX-MIG-OPS-FR-006",
+      "priority": "MUST",
+      "requirement": "Domain별 runbook은 sync check, mapping error, reconciliation issue, legacy down, target down, cutover, rollback, archive restore를 포함해야 한다.",
+      "verification": "Runbook Review",
+      "parent": "30/32/34"
+    },
+    {
+      "section": "4.17 Operations, Monitoring & Communication",
+      "id": "NEX-MIG-OPS-FR-007",
+      "priority": "MUST",
+      "requirement": "Cutover communication은 사용자에게 effective time, 신규 업무경로, legacy read-only 여부, support/escalation을 안내해야 한다.",
+      "verification": "Operational Acceptance",
+      "parent": "30/32/34"
+    },
+    {
+      "section": "4.17 Operations, Monitoring & Communication",
+      "id": "NEX-MIG-OPS-FR-008",
+      "priority": "MUST",
+      "requirement": "Legacy write attempt와 user adoption/support ticket를 안정화 기간 지표로 사용해야 한다.",
+      "verification": "Stabilization Review",
+      "parent": "30/32/34"
+    },
+    {
+      "section": "4.17 Operations, Monitoring & Communication",
+      "id": "NEX-MIG-OPS-FR-009",
+      "priority": "SHOULD",
+      "requirement": "Full sync/backfill/cutover 작업은 planned maintenance 또는 throttled background job으로 scheduling할 수 있어야 한다.",
+      "verification": "Capacity Test",
+      "parent": "30/32/34"
+    },
+    {
+      "section": "4.17 Operations, Monitoring & Communication",
+      "id": "NEX-MIG-OPS-FR-010",
+      "priority": "MUST",
+      "requirement": "Migration 완료 후 runbook/dashboard/policy에서 obsolete legacy control을 retire/deprecate해야 한다.",
+      "verification": "Retirement Review",
+      "parent": "30/32/34"
+    },
+    {
+      "section": "5. Test / Acceptance NFR",
+      "id": "NEX-MIG-TST-FR-001",
+      "priority": "MUST",
+      "requirement": "35 migration requirement는 33 Test Strategy의 Unit/Contract/Integration/Fault/E2E/Golden/Acceptance/Regression gate에 trace되어야 한다.",
+      "verification": "Traceability Audit",
+      "parent": "33/34"
+    },
+    {
+      "section": "5. Test / Acceptance NFR",
+      "id": "NEX-MIG-TST-FR-002",
+      "priority": "MUST",
+      "requirement": "Migration test는 isolated test DB/source fixture를 사용하고 source/target 상태를 반복 초기화할 수 있어야 한다.",
+      "verification": "Test Environment",
+      "parent": "33/34"
+    },
+    {
+      "section": "5. Test / Acceptance NFR",
+      "id": "NEX-MIG-TST-FR-003",
+      "priority": "MUST",
+      "requirement": "Transition boundary exact timestamp, fiscal year, approval/voucher before-after cutover를 boundary value로 검증해야 한다.",
+      "verification": "Boundary Test",
+      "parent": "33/34"
+    },
+    {
+      "section": "5. Test / Acceptance NFR",
+      "id": "NEX-MIG-TST-FR-004",
+      "priority": "MUST",
+      "requirement": "Failure test는 source unavailable, sync gap, mapping corruption, partial batch, target write success+response loss, legacy write remains enabled를 포함해야 한다.",
+      "verification": "Fault Injection",
+      "parent": "33/34"
+    },
+    {
+      "section": "5. Test / Acceptance NFR",
+      "id": "NEX-MIG-TST-FR-005",
+      "priority": "MUST",
+      "requirement": "Golden Slice A/B는 legacy coexistence variant와 target-authoritative variant를 모두 검증해야 한다.",
+      "verification": "Golden Test",
+      "parent": "33/34"
+    },
+    {
+      "section": "5. Test / Acceptance NFR",
+      "id": "NEX-MIG-TST-FR-006",
+      "priority": "MUST",
+      "requirement": "Financial migration은 L1~L6 reconciliation과 accounting totals/P&L acceptance를 포함해야 한다.",
+      "verification": "Financial Acceptance",
+      "parent": "33/34"
+    },
+    {
+      "section": "5. Test / Acceptance NFR",
+      "id": "NEX-MIG-TST-FR-007",
+      "priority": "MUST",
+      "requirement": "Jira/WAMS→WC migration은 duplicate WorkItem, state mapping, parent/child causation, event dedup regression을 포함해야 한다.",
+      "verification": "E2E Test",
+      "parent": "33/34"
+    },
+    {
+      "section": "5. Test / Acceptance NFR",
+      "id": "NEX-MIG-TST-FR-008",
+      "priority": "MUST",
+      "requirement": "Groupware approval migration은 in-flight legacy completion/new submission target boundary를 검증해야 한다.",
+      "verification": "E2E Test",
+      "parent": "33/34"
+    },
+    {
+      "section": "5. Test / Acceptance NFR",
+      "id": "NEX-MIG-TST-FR-009",
+      "priority": "MUST",
+      "requirement": "Legacy read-only/retirement은 실제 write denial, archive query, restore evidence를 acceptance로 검증해야 한다.",
+      "verification": "Operational Acceptance",
+      "parent": "33/34"
+    },
+    {
+      "section": "5. Test / Acceptance NFR",
+      "id": "NEX-MIG-TST-FR-010",
+      "priority": "MUST",
+      "requirement": "Migration/cutover code 변경 후 관련 unit/integration/regression/Golden test가 merge/release gate가 되어야 한다.",
+      "verification": "CI Gate",
+      "parent": "33/34"
+    }
+  ]
+}

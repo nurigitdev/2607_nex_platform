@@ -154,7 +154,7 @@ export async function runGroundedGenerationPlaywrightSmoke({
     await page.click("#credential-login-submit-button");
     await page.waitForSelector(
       "#credential-login-feedback[data-severity='success']",
-      { timeout: timeoutMs }
+      { state: "attached", timeout: timeoutMs }
     );
     await page.waitForFunction(
       () => document.querySelector("#session-route-guard-summary")
@@ -168,8 +168,9 @@ export async function runGroundedGenerationPlaywrightSmoke({
     );
     await page.click("#composer button[type='submit']");
     await page.waitForFunction(
-      () => document.querySelector("#runtime-diagnostics-summary")
-        ?.textContent.includes("VERIFIED_RESPONSE"),
+      () =>
+        document.querySelector("#golden-chat")?.dataset.generationDisplayMode ===
+        "VERIFIED_RESPONSE",
       null,
       { timeout: timeoutMs }
     );
@@ -179,15 +180,17 @@ export async function runGroundedGenerationPlaywrightSmoke({
         ...document.querySelectorAll("#message-list .message.assistant")
       ];
       const latest = assistantMessages.at(-1);
-      const diagnostics = document.querySelector("#runtime-diagnostics-summary")
-        ?.textContent || "";
+      const chat = document.querySelector("#golden-chat");
       return {
         interaction_id: latest?.dataset.interactionId || null,
         assistant_message_count: assistantMessages.length,
         latest_response_present: Boolean(latest?.querySelector("p")?.textContent?.trim()),
-        verified_response_visible: diagnostics.includes("VERIFIED_RESPONSE"),
-        present_response_action_visible: diagnostics.includes("PRESENT_RESPONSE"),
-        fetch_runtime_visible: diagnostics.includes("fetch"),
+        verified_response_visible:
+          chat?.dataset.generationDisplayMode === "VERIFIED_RESPONSE",
+        present_response_action_visible:
+          chat?.dataset.generationNextAction === "PRESENT_RESPONSE",
+        fetch_runtime_visible:
+          document.querySelector("#authenticated-shell")?.hidden === false,
         quality_surface_visible: Boolean(
           latest?.querySelector(".grounded-response-quality-chip")
         ),
@@ -305,8 +308,7 @@ export function safeErrorDetail(value) {
 async function collectFailureStage(page) {
   try {
     return await page.evaluate(() => {
-      const diagnostics = document.querySelector("#runtime-diagnostics-summary")
-        ?.textContent || "";
+      const chat = document.querySelector("#golden-chat");
       return {
         page_created: true,
         credential_form_present: Boolean(
@@ -318,8 +320,10 @@ async function collectFailureStage(page) {
         route_guard_allowed:
           document.querySelector("#session-route-guard-summary")
             ?.textContent.includes("allowed") === true,
-        verified_response_visible: diagnostics.includes("VERIFIED_RESPONSE"),
-        present_response_action_visible: diagnostics.includes("PRESENT_RESPONSE")
+        verified_response_visible:
+          chat?.dataset.generationDisplayMode === "VERIFIED_RESPONSE",
+        present_response_action_visible:
+          chat?.dataset.generationNextAction === "PRESENT_RESPONSE"
       };
     });
   } catch {

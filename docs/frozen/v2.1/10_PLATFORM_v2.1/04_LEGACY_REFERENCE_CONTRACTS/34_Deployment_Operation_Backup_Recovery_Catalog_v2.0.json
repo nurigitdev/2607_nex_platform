@@ -1,0 +1,1291 @@
+{
+  "document": "34_Deployment_Operation_Backup_Recovery_Design_v2.0",
+  "version": "v2.0",
+  "date": "2026-09-04",
+  "counts": {
+    "MUST": 144,
+    "SHOULD": 16
+  },
+  "requirements": [
+    {
+      "section": "4.1 Release & Deployment Governance",
+      "id": "NEX-OPS-REL-FR-001",
+      "priority": "MUST",
+      "requirement": "Production 배포 대상은 immutable build/artifact digest와 33 Acceptance Evidence Package가 exact하게 연결된 Release Manifest를 가져야 한다.",
+      "verification": "Release Gate",
+      "parent": "33"
+    },
+    {
+      "section": "4.1 Release & Deployment Governance",
+      "id": "NEX-OPS-REL-FR-002",
+      "priority": "MUST",
+      "requirement": "Release Manifest는 source commit/build SHA, artifact/container digest, database migration set, contract versions, configuration baseline ref, policy/skill/model refs를 포함해야 한다.",
+      "verification": "Schema Test",
+      "parent": "33/34"
+    },
+    {
+      "section": "4.1 Release & Deployment Governance",
+      "id": "NEX-OPS-REL-FR-003",
+      "priority": "MUST",
+      "requirement": "33번에서 정의한 Critical Security/Reliability/Golden Slice blocker가 하나라도 존재하면 일반 Production 배포를 허용해서는 안 된다.",
+      "verification": "Release Gate",
+      "parent": "33"
+    },
+    {
+      "section": "4.1 Release & Deployment Governance",
+      "id": "NEX-OPS-REL-FR-004",
+      "priority": "MUST",
+      "requirement": "CONDITIONAL_PASS Release는 critical blocker에 사용할 수 없고 owner/deadline/risk/rollback 조건이 명시된 경우에만 제한적으로 허용해야 한다.",
+      "verification": "Governance Test",
+      "parent": "33"
+    },
+    {
+      "section": "4.1 Release & Deployment Governance",
+      "id": "NEX-OPS-REL-FR-005",
+      "priority": "MUST",
+      "requirement": "배포 승인과 실제 배포 실행은 actor/approver/build/environment/time/result를 audit 가능한 DeploymentRecord로 남겨야 한다.",
+      "verification": "Audit Test",
+      "parent": "30/34"
+    },
+    {
+      "section": "4.1 Release & Deployment Governance",
+      "id": "NEX-OPS-REL-FR-006",
+      "priority": "MUST",
+      "requirement": "Production에 배포되는 binary/container/model/skill artifact는 mutable latest tag가 아니라 immutable digest/version으로 식별해야 한다.",
+      "verification": "Integrity Test",
+      "parent": "17/28/34"
+    },
+    {
+      "section": "4.1 Release & Deployment Governance",
+      "id": "NEX-OPS-REL-FR-007",
+      "priority": "MUST",
+      "requirement": "배포 Pipeline은 다른 서비스 DB를 직접 수정하지 않고 service-owned migration/administrative contract를 사용해야 한다.",
+      "verification": "Architecture Test",
+      "parent": "07/31"
+    },
+    {
+      "section": "4.1 Release & Deployment Governance",
+      "id": "NEX-OPS-REL-FR-008",
+      "priority": "MUST",
+      "requirement": "Release 전 schema migration compatibility와 rollback/forward-fix 전략이 검증되어야 한다.",
+      "verification": "Migration Test",
+      "parent": "33/34"
+    },
+    {
+      "section": "4.1 Release & Deployment Governance",
+      "id": "NEX-OPS-REL-FR-009",
+      "priority": "SHOULD",
+      "requirement": "Release Manifest와 Acceptance Evidence hash는 장기 추적을 위해 AG federated trace에서 조회 가능한 stable ref로 연결할 수 있어야 한다.",
+      "verification": "Operations Test",
+      "parent": "30/33"
+    },
+    {
+      "section": "4.1 Release & Deployment Governance",
+      "id": "NEX-OPS-REL-FR-010",
+      "priority": "MUST",
+      "requirement": "긴급 Hotfix도 인증/감사/Smoke/rollback 기준을 우회하지 않고 별도 Emergency Release Policy를 따라야 한다.",
+      "verification": "Emergency Release Test",
+      "parent": "30/34"
+    },
+    {
+      "section": "4.2 Deployment Topology & Environment",
+      "id": "NEX-OPS-TOP-FR-001",
+      "priority": "MUST",
+      "requirement": "DEV/TEST/STAGING/PROD 환경은 credential, database, artifact namespace, policy binding을 논리적으로 분리해야 한다.",
+      "verification": "Architecture Test",
+      "parent": "33/34"
+    },
+    {
+      "section": "4.2 Deployment Topology & Environment",
+      "id": "NEX-OPS-TOP-FR-002",
+      "priority": "MUST",
+      "requirement": "Production service는 OA/AE/WC/CX/MO/AG/NSL/EOS/WA의 서비스 경계를 유지하고 공용 monolithic database로 합치지 않아야 한다.",
+      "verification": "Architecture Test",
+      "parent": "05/26~32"
+    },
+    {
+      "section": "4.2 Deployment Topology & Environment",
+      "id": "NEX-OPS-TOP-FR-003",
+      "priority": "MUST",
+      "requirement": "서비스별 PostgreSQL은 service-owned SoR 원칙을 유지하고 cross-service direct FK/write를 금지해야 한다.",
+      "verification": "Architecture Test",
+      "parent": "07/31"
+    },
+    {
+      "section": "4.2 Deployment Topology & Environment",
+      "id": "NEX-OPS-TOP-FR-004",
+      "priority": "MUST",
+      "requirement": "HTTP/API traffic, Background Worker, PostgreSQL, object/artifact storage, GPU/model runtime의 장애 도메인을 가능한 범위에서 분리할 수 있어야 한다.",
+      "verification": "Topology Review",
+      "parent": "28/32/34"
+    },
+    {
+      "section": "4.2 Deployment Topology & Environment",
+      "id": "NEX-OPS-TOP-FR-005",
+      "priority": "MUST",
+      "requirement": "MO/vLLM GPU runtime 장애가 OA/WC/EOS의 deterministic business state를 손상시키지 않도록 dependency boundary를 유지해야 한다.",
+      "verification": "Fault Test",
+      "parent": "28/31"
+    },
+    {
+      "section": "4.2 Deployment Topology & Environment",
+      "id": "NEX-OPS-TOP-FR-006",
+      "priority": "MUST",
+      "requirement": "AG 장애는 이미 배포된 runtime policy와 정상 business execution의 즉시 중단 원인이 되지 않아야 한다.",
+      "verification": "Fault Test",
+      "parent": "30"
+    },
+    {
+      "section": "4.2 Deployment Topology & Environment",
+      "id": "NEX-OPS-TOP-FR-007",
+      "priority": "SHOULD",
+      "requirement": "초기 On-Premise 배포는 단일 Site를 지원하되 DR Site 또는 off-site backup target으로 확장 가능한 network/storage boundary를 가져야 한다.",
+      "verification": "Architecture Review",
+      "parent": "34"
+    },
+    {
+      "section": "4.2 Deployment Topology & Environment",
+      "id": "NEX-OPS-TOP-FR-008",
+      "priority": "MUST",
+      "requirement": "모든 Production node는 신뢰 가능한 time synchronization을 사용하여 token expiry, lease, retry, audit timestamp가 의미 있게 비교 가능해야 한다.",
+      "verification": "Operational Test",
+      "parent": "26/32"
+    },
+    {
+      "section": "4.2 Deployment Topology & Environment",
+      "id": "NEX-OPS-TOP-FR-009",
+      "priority": "MUST",
+      "requirement": "Environment promotion은 동일 artifact digest를 유지하고 environment-specific configuration/secret만 분리 적용하는 방식을 우선해야 한다.",
+      "verification": "Promotion Test",
+      "parent": "34"
+    },
+    {
+      "section": "4.2 Deployment Topology & Environment",
+      "id": "NEX-OPS-TOP-FR-010",
+      "priority": "SHOULD",
+      "requirement": "서비스 Replica 수와 Worker concurrency는 workload/capacity evidence에 따라 독립 확장 가능하도록 배치해야 한다.",
+      "verification": "Capacity Test",
+      "parent": "28/29/32"
+    },
+    {
+      "section": "4.3 Configuration & Secret Management",
+      "id": "NEX-OPS-CFG-FR-001",
+      "priority": "MUST",
+      "requirement": "비밀이 아닌 runtime configuration은 versioned configuration bundle/profile로 관리하고 environment별 적용 버전을 추적해야 한다.",
+      "verification": "Config Audit",
+      "parent": "34"
+    },
+    {
+      "section": "4.3 Configuration & Secret Management",
+      "id": "NEX-OPS-CFG-FR-002",
+      "priority": "MUST",
+      "requirement": "Password, private key, API key, DB credential, signing secret는 source repository, image, prompt, log, backup manifest에 평문 저장해서는 안 된다.",
+      "verification": "Secret Scan",
+      "parent": "26/30/34"
+    },
+    {
+      "section": "4.3 Configuration & Secret Management",
+      "id": "NEX-OPS-CFG-FR-003",
+      "priority": "MUST",
+      "requirement": "Service configuration은 secret_ref/certificate thumbprint/provider ref를 사용하고 runtime에서 authorized secret provider를 통해 해석해야 한다.",
+      "verification": "Integration Test",
+      "parent": "26/34"
+    },
+    {
+      "section": "4.3 Configuration & Secret Management",
+      "id": "NEX-OPS-CFG-FR-004",
+      "priority": "MUST",
+      "requirement": "Configuration 변경은 schema validation과 affected service smoke/contract test를 통과해야 한다.",
+      "verification": "Config Test",
+      "parent": "33/34"
+    },
+    {
+      "section": "4.3 Configuration & Secret Management",
+      "id": "NEX-OPS-CFG-FR-005",
+      "priority": "MUST",
+      "requirement": "Production config 변경은 누가/무엇을/왜/언제 변경했는지와 before/after version/hash를 audit해야 한다.",
+      "verification": "Audit Test",
+      "parent": "30/34"
+    },
+    {
+      "section": "4.3 Configuration & Secret Management",
+      "id": "NEX-OPS-CFG-FR-006",
+      "priority": "MUST",
+      "requirement": "Security-critical config 변경은 OA current admin authorization 및 정책에 따른 step-up/approval을 요구할 수 있어야 한다.",
+      "verification": "Security Test",
+      "parent": "26/30"
+    },
+    {
+      "section": "4.3 Configuration & Secret Management",
+      "id": "NEX-OPS-CFG-FR-007",
+      "priority": "MUST",
+      "requirement": "Secret rotation은 서비스 재기동 없이 또는 controlled restart/drain으로 적용 가능해야 하고 이전 credential revoke 시점을 추적해야 한다.",
+      "verification": "Rotation Test",
+      "parent": "26/34"
+    },
+    {
+      "section": "4.3 Configuration & Secret Management",
+      "id": "NEX-OPS-CFG-FR-008",
+      "priority": "MUST",
+      "requirement": "Secret backup은 암호화된 secret store/escrow policy로 별도 처리하고 일반 DB dump나 configuration archive에 secret 원문을 포함하지 않아야 한다.",
+      "verification": "Backup Security Test",
+      "parent": "34"
+    },
+    {
+      "section": "4.3 Configuration & Secret Management",
+      "id": "NEX-OPS-CFG-FR-009",
+      "priority": "SHOULD",
+      "requirement": "Configuration drift를 desired version/hash와 runtime reported version을 비교하여 감지할 수 있어야 한다.",
+      "verification": "Drift Test",
+      "parent": "30/34"
+    },
+    {
+      "section": "4.3 Configuration & Secret Management",
+      "id": "NEX-OPS-CFG-FR-010",
+      "priority": "MUST",
+      "requirement": "Rollback 시 오래된 application version이 현재 secret/policy schema와 호환되는지 사전 검증 없이 자동 복귀해서는 안 된다.",
+      "verification": "Rollback Test",
+      "parent": "34"
+    },
+    {
+      "section": "4.4 Database Migration & Compatibility",
+      "id": "NEX-OPS-DBM-FR-001",
+      "priority": "MUST",
+      "requirement": "Database schema 변경은 versioned migration으로 관리하고 적용 순서와 상태를 service별로 추적해야 한다.",
+      "verification": "Migration Test",
+      "parent": "34"
+    },
+    {
+      "section": "4.4 Database Migration & Compatibility",
+      "id": "NEX-OPS-DBM-FR-002",
+      "priority": "MUST",
+      "requirement": "일반 Release에서는 expand→deploy→migrate/use→contract의 backward-compatible migration 패턴을 우선해야 한다.",
+      "verification": "Compatibility Test",
+      "parent": "34"
+    },
+    {
+      "section": "4.4 Database Migration & Compatibility",
+      "id": "NEX-OPS-DBM-FR-003",
+      "priority": "MUST",
+      "requirement": "Destructive migration은 이전 application version과 rollback compatibility가 사라지는 시점을 명시하고 별도 approval을 요구해야 한다.",
+      "verification": "Governance Test",
+      "parent": "34"
+    },
+    {
+      "section": "4.4 Database Migration & Compatibility",
+      "id": "NEX-OPS-DBM-FR-004",
+      "priority": "MUST",
+      "requirement": "Migration 실행 전 해당 SoR의 verified backup/recovery point 또는 동등한 rollback evidence가 있어야 한다.",
+      "verification": "Pre-deploy Gate",
+      "parent": "34"
+    },
+    {
+      "section": "4.4 Database Migration & Compatibility",
+      "id": "NEX-OPS-DBM-FR-005",
+      "priority": "MUST",
+      "requirement": "Migration 중 하나의 service DB 실패가 다른 service DB에 cross-transaction rollback을 요구하지 않도록 해야 한다.",
+      "verification": "Architecture Test",
+      "parent": "31/32"
+    },
+    {
+      "section": "4.4 Database Migration & Compatibility",
+      "id": "NEX-OPS-DBM-FR-006",
+      "priority": "MUST",
+      "requirement": "Migration 상태 UNKNOWN 또는 일부 적용 상태는 service readiness를 false/degraded로 표시하고 operator reconciliation을 요구해야 한다.",
+      "verification": "Fault Test",
+      "parent": "32/34"
+    },
+    {
+      "section": "4.4 Database Migration & Compatibility",
+      "id": "NEX-OPS-DBM-FR-007",
+      "priority": "MUST",
+      "requirement": "Migration lock/lease를 사용하여 동일 schema version migration의 동시 중복 실행을 방지해야 한다.",
+      "verification": "Concurrency Test",
+      "parent": "32/34"
+    },
+    {
+      "section": "4.4 Database Migration & Compatibility",
+      "id": "NEX-OPS-DBM-FR-008",
+      "priority": "MUST",
+      "requirement": "Rollback이 database down-migration을 의미한다고 가정하지 않고 schema가 forward-compatible할 경우 application rollback을 우선할 수 있어야 한다.",
+      "verification": "Rollback Test",
+      "parent": "34"
+    },
+    {
+      "section": "4.4 Database Migration & Compatibility",
+      "id": "NEX-OPS-DBM-FR-009",
+      "priority": "SHOULD",
+      "requirement": "대용량 migration/backfill은 API request thread가 아니라 durable JobQueue/Worker로 실행하고 progress/cancel/recovery를 제공할 수 있어야 한다.",
+      "verification": "Integration Test",
+      "parent": "32/34"
+    },
+    {
+      "section": "4.4 Database Migration & Compatibility",
+      "id": "NEX-OPS-DBM-FR-010",
+      "priority": "MUST",
+      "requirement": "Production migration은 staging에서 동일 major PostgreSQL/schema 조건으로 rehearsal되어야 한다.",
+      "verification": "Acceptance Test",
+      "parent": "33/34"
+    },
+    {
+      "section": "4.5 Canary / Rollout / Rollback",
+      "id": "NEX-OPS-ROL-FR-001",
+      "priority": "MUST",
+      "requirement": "서비스 배포는 가능한 경우 all-at-once보다 rolling/canary 방식을 우선하고 rollout 단계별 health/evidence를 확인해야 한다.",
+      "verification": "Deployment Test",
+      "parent": "34"
+    },
+    {
+      "section": "4.5 Canary / Rollout / Rollback",
+      "id": "NEX-OPS-ROL-FR-002",
+      "priority": "MUST",
+      "requirement": "API canary는 기존/신규 instance가 동일 database/contract를 공유할 때 backward compatibility를 검증해야 한다.",
+      "verification": "Compatibility Test",
+      "parent": "33/34"
+    },
+    {
+      "section": "4.5 Canary / Rollout / Rollback",
+      "id": "NEX-OPS-ROL-FR-003",
+      "priority": "MUST",
+      "requirement": "Background Worker canary는 제한된 worker pool/job type/risk class로 신규 version을 검증하고 전체 queue로 즉시 확산하지 않아야 한다.",
+      "verification": "Worker Canary Test",
+      "parent": "32/34"
+    },
+    {
+      "section": "4.5 Canary / Rollout / Rollback",
+      "id": "NEX-OPS-ROL-FR-004",
+      "priority": "MUST",
+      "requirement": "MO model rollout은 exact model/deployment version과 deterministic routing decision을 유지하고 incompatible embedding space로 자동 fallback해서는 안 된다.",
+      "verification": "Model Rollout Test",
+      "parent": "28"
+    },
+    {
+      "section": "4.5 Canary / Rollout / Rollback",
+      "id": "NEX-OPS-ROL-FR-005",
+      "priority": "MUST",
+      "requirement": "Certified Skill rollout은 exact skill/version/hash와 current preflight/PDP를 유지하며 latest alias에 의존하지 않아야 한다.",
+      "verification": "Skill Rollout Test",
+      "parent": "17/29"
+    },
+    {
+      "section": "4.5 Canary / Rollout / Rollback",
+      "id": "NEX-OPS-ROL-FR-006",
+      "priority": "MUST",
+      "requirement": "Canary promotion 기준은 error rate, latency, business failure, authorization deny anomaly, reconciliation 증가 등 typed metric을 포함해야 한다.",
+      "verification": "Promotion Gate",
+      "parent": "30/34"
+    },
+    {
+      "section": "4.5 Canary / Rollout / Rollback",
+      "id": "NEX-OPS-ROL-FR-007",
+      "priority": "MUST",
+      "requirement": "Rollback trigger는 서비스 crash뿐 아니라 schema error, security incident, business outcome regression, reconciliation spike를 포함할 수 있어야 한다.",
+      "verification": "Rollback Policy Test",
+      "parent": "30/33"
+    },
+    {
+      "section": "4.5 Canary / Rollout / Rollback",
+      "id": "NEX-OPS-ROL-FR-008",
+      "priority": "MUST",
+      "requirement": "Rollback은 exact 이전 artifact/config/model/skill version을 가리켜야 하며 mutable latest를 재해석해서는 안 된다.",
+      "verification": "Version Test",
+      "parent": "17/28/34"
+    },
+    {
+      "section": "4.5 Canary / Rollout / Rollback",
+      "id": "NEX-OPS-ROL-FR-009",
+      "priority": "MUST",
+      "requirement": "이미 commit된 business transaction은 application rollback으로 되돌아갔다고 간주하지 않고 SoR state를 유지해야 한다.",
+      "verification": "State Test",
+      "parent": "31/32"
+    },
+    {
+      "section": "4.5 Canary / Rollout / Rollback",
+      "id": "NEX-OPS-ROL-FR-010",
+      "priority": "MUST",
+      "requirement": "Rollback 후 Post-deploy Smoke와 reconciliation/backlog check를 다시 통과해야 release를 안정화 상태로 종료할 수 있어야 한다.",
+      "verification": "Smoke Test",
+      "parent": "33/34"
+    },
+    {
+      "section": "4.6 Health, Readiness & Monitoring",
+      "id": "NEX-OPS-HLT-FR-001",
+      "priority": "MUST",
+      "requirement": "서비스는 최소 Liveness와 Readiness를 구분하여 제공해야 한다.",
+      "verification": "Health Test",
+      "parent": "34"
+    },
+    {
+      "section": "4.6 Health, Readiness & Monitoring",
+      "id": "NEX-OPS-HLT-FR-002",
+      "priority": "MUST",
+      "requirement": "Readiness는 process alive뿐 아니라 필수 DB/migration/config/dependency가 요청 처리 가능한지 반영해야 한다.",
+      "verification": "Readiness Test",
+      "parent": "34"
+    },
+    {
+      "section": "4.6 Health, Readiness & Monitoring",
+      "id": "NEX-OPS-HLT-FR-003",
+      "priority": "MUST",
+      "requirement": "MO model readiness는 model load/warm-up/serving compatibility를 확인하고 process liveness만으로 READY를 반환해서는 안 된다.",
+      "verification": "Readiness Test",
+      "parent": "28"
+    },
+    {
+      "section": "4.6 Health, Readiness & Monitoring",
+      "id": "NEX-OPS-HLT-FR-004",
+      "priority": "MUST",
+      "requirement": "AE business readiness는 OA/WC/NSL/EOS 등 필수 경계와 선택적 CX/MO dependency의 degraded 상태를 구분해 표현할 수 있어야 한다.",
+      "verification": "Integration Test",
+      "parent": "29/31/34"
+    },
+    {
+      "section": "4.6 Health, Readiness & Monitoring",
+      "id": "NEX-OPS-HLT-FR-005",
+      "priority": "MUST",
+      "requirement": "CX는 PostgreSQL/index/retrieval provider 상태를 반영하고 lexical-only 또는 degraded retrieval을 명시적으로 표시해야 한다.",
+      "verification": "Health Test",
+      "parent": "27"
+    },
+    {
+      "section": "4.6 Health, Readiness & Monitoring",
+      "id": "NEX-OPS-HLT-FR-006",
+      "priority": "MUST",
+      "requirement": "서비스 health, job/worker, queue age, reconciliation, dead-letter, backup age, restore verification 상태를 NeX-AG에서 관측할 수 있어야 한다.",
+      "verification": "Operations Test",
+      "parent": "30/32/34"
+    },
+    {
+      "section": "4.6 Health, Readiness & Monitoring",
+      "id": "NEX-OPS-HLT-FR-007",
+      "priority": "MUST",
+      "requirement": "Alert는 severity/dedup/cooldown/ack/escalation 상태를 가지고 duplicate storm을 방지해야 한다.",
+      "verification": "Alert Test",
+      "parent": "30"
+    },
+    {
+      "section": "4.6 Health, Readiness & Monitoring",
+      "id": "NEX-OPS-HLT-FR-008",
+      "priority": "MUST",
+      "requirement": "Raw prompt/token/secret을 기본 monitoring metric/log에 포함하지 않아야 한다.",
+      "verification": "Privacy/Security Test",
+      "parent": "27~30"
+    },
+    {
+      "section": "4.6 Health, Readiness & Monitoring",
+      "id": "NEX-OPS-HLT-FR-009",
+      "priority": "SHOULD",
+      "requirement": "주요 SLI는 availability, p95 latency, error rate, queue age, worker utilization, reconciliation age, backup freshness를 포함할 수 있어야 한다.",
+      "verification": "SLI Review",
+      "parent": "34"
+    },
+    {
+      "section": "4.6 Health, Readiness & Monitoring",
+      "id": "NEX-OPS-HLT-FR-010",
+      "priority": "MUST",
+      "requirement": "배포 직후 모니터링은 release/build version별로 canary와 stable cohort를 구분하여 비교 가능해야 한다.",
+      "verification": "Observability Test",
+      "parent": "30/34"
+    },
+    {
+      "section": "4.7 Backup Scope & Data Classification",
+      "id": "NEX-OPS-BKP-FR-001",
+      "priority": "MUST",
+      "requirement": "Backup Policy는 canonical/irreproducible data와 rebuildable projection/cache를 구분해야 한다.",
+      "verification": "Architecture Review",
+      "parent": "31/34"
+    },
+    {
+      "section": "4.7 Backup Scope & Data Classification",
+      "id": "NEX-OPS-BKP-FR-002",
+      "priority": "MUST",
+      "requirement": "OA identity/role/policy state, WC WorkItem/Result, AE execution/checkpoint, Enterprise OS transaction/ledger, NSL Registry/certification 등 authoritative state는 backup 필수 범위여야 한다.",
+      "verification": "Backup Coverage Test",
+      "parent": "26/14/17/18~22/29"
+    },
+    {
+      "section": "4.7 Backup Scope & Data Classification",
+      "id": "NEX-OPS-BKP-FR-003",
+      "priority": "MUST",
+      "requirement": "CX 원본 문서/metadata/evidence와 Artifact의 원본이 다른 곳에서 재구성 불가능한 경우 backup 필수 범위에 포함해야 한다.",
+      "verification": "Backup Coverage Test",
+      "parent": "27/23"
+    },
+    {
+      "section": "4.7 Backup Scope & Data Classification",
+      "id": "NEX-OPS-BKP-FR-004",
+      "priority": "MUST",
+      "requirement": "BM25 index, embedding vector, WA/AG projection, transient model cache 등 재구축 가능한 데이터는 rebuild procedure와 예상 시간 증거가 있을 경우 별도 backup tier로 분류할 수 있어야 한다.",
+      "verification": "Recovery Test",
+      "parent": "27/30/31"
+    },
+    {
+      "section": "4.7 Backup Scope & Data Classification",
+      "id": "NEX-OPS-BKP-FR-005",
+      "priority": "MUST",
+      "requirement": "MO model artifact/container는 외부 다운로드에 의존하지 않고 validated local artifact registry/mirror에서 exact digest로 복구 가능해야 한다.",
+      "verification": "Recovery Test",
+      "parent": "28/34"
+    },
+    {
+      "section": "4.7 Backup Scope & Data Classification",
+      "id": "NEX-OPS-BKP-FR-006",
+      "priority": "MUST",
+      "requirement": "Backup에는 encryption at rest/in transit, access control, retention, deletion policy를 적용해야 한다.",
+      "verification": "Security Test",
+      "parent": "09/34"
+    },
+    {
+      "section": "4.7 Backup Scope & Data Classification",
+      "id": "NEX-OPS-BKP-FR-007",
+      "priority": "MUST",
+      "requirement": "Backup metadata에는 source service/database, backup type, start/end, recovery point, encryption/key ref, checksum, status, retention class를 포함해야 한다.",
+      "verification": "Schema Test",
+      "parent": "34"
+    },
+    {
+      "section": "4.7 Backup Scope & Data Classification",
+      "id": "NEX-OPS-BKP-FR-008",
+      "priority": "MUST",
+      "requirement": "Backup job 성공은 파일 생성만으로 판단하지 않고 checksum/manifest validation을 포함해야 한다.",
+      "verification": "Backup Verification",
+      "parent": "34"
+    },
+    {
+      "section": "4.7 Backup Scope & Data Classification",
+      "id": "NEX-OPS-BKP-FR-009",
+      "priority": "SHOULD",
+      "requirement": "장기 보존 backup은 운영 account/credential과 분리된 접근 경계 또는 off-site target을 사용할 수 있어야 한다.",
+      "verification": "Security Review",
+      "parent": "34"
+    },
+    {
+      "section": "4.7 Backup Scope & Data Classification",
+      "id": "NEX-OPS-BKP-FR-010",
+      "priority": "MUST",
+      "requirement": "Data Classification/개인정보 retention 요구가 backup 보존/삭제 정책에도 동일하게 반영되어야 한다.",
+      "verification": "Governance Test",
+      "parent": "26/27/34"
+    },
+    {
+      "section": "4.8 PostgreSQL Backup / PITR",
+      "id": "NEX-OPS-PITR-FR-001",
+      "priority": "MUST",
+      "requirement": "PostgreSQL authoritative DB는 full/base backup과 WAL 또는 동등한 point-in-time recovery 수단을 조합할 수 있어야 한다.",
+      "verification": "Restore Test",
+      "parent": "34"
+    },
+    {
+      "section": "4.8 PostgreSQL Backup / PITR",
+      "id": "NEX-OPS-PITR-FR-002",
+      "priority": "MUST",
+      "requirement": "Backup 주기와 WAL 보존기간은 service recovery tier의 RPO보다 짧거나 동등하도록 설정해야 한다.",
+      "verification": "Policy Test",
+      "parent": "34"
+    },
+    {
+      "section": "4.8 PostgreSQL Backup / PITR",
+      "id": "NEX-OPS-PITR-FR-003",
+      "priority": "MUST",
+      "requirement": "Backup job 자체는 service request thread와 분리하고 실패/재시도/alert가 운영자에게 노출되어야 한다.",
+      "verification": "Operations Test",
+      "parent": "30/32/34"
+    },
+    {
+      "section": "4.8 PostgreSQL Backup / PITR",
+      "id": "NEX-OPS-PITR-FR-004",
+      "priority": "MUST",
+      "requirement": "Backup 중 DB write가 계속되는 경우 DB-consistent backup mechanism을 사용하고 application-level file copy로 database consistency를 가정해서는 안 된다.",
+      "verification": "Backup Test",
+      "parent": "34"
+    },
+    {
+      "section": "4.8 PostgreSQL Backup / PITR",
+      "id": "NEX-OPS-PITR-FR-005",
+      "priority": "MUST",
+      "requirement": "Restore 시 migration/schema version과 application compatibility를 확인해야 한다.",
+      "verification": "Restore Compatibility",
+      "parent": "34"
+    },
+    {
+      "section": "4.8 PostgreSQL Backup / PITR",
+      "id": "NEX-OPS-PITR-FR-006",
+      "priority": "MUST",
+      "requirement": "PITR target time 선정은 transaction/audit correlation과 timezone/time sync를 기준으로 기록해야 한다.",
+      "verification": "Recovery Audit",
+      "parent": "32/34"
+    },
+    {
+      "section": "4.8 PostgreSQL Backup / PITR",
+      "id": "NEX-OPS-PITR-FR-007",
+      "priority": "MUST",
+      "requirement": "Backup chain 손상/누락은 다음 성공 backup까지 숨기지 않고 Alert/Recovery Risk로 표시해야 한다.",
+      "verification": "Fault Test",
+      "parent": "30/34"
+    },
+    {
+      "section": "4.8 PostgreSQL Backup / PITR",
+      "id": "NEX-OPS-PITR-FR-008",
+      "priority": "SHOULD",
+      "requirement": "대용량 CX/EOS DB는 backup window/IO impact를 측정하여 throttling 또는 replica backup을 검토할 수 있어야 한다.",
+      "verification": "Performance Test",
+      "parent": "34"
+    },
+    {
+      "section": "4.8 PostgreSQL Backup / PITR",
+      "id": "NEX-OPS-PITR-FR-009",
+      "priority": "MUST",
+      "requirement": "DB backup encryption key/reference를 backup data와 동일한 failure domain에만 보관해서는 안 된다.",
+      "verification": "Security Review",
+      "parent": "34"
+    },
+    {
+      "section": "4.8 PostgreSQL Backup / PITR",
+      "id": "NEX-OPS-PITR-FR-010",
+      "priority": "MUST",
+      "requirement": "Backup/Restore tooling version과 PostgreSQL major version compatibility를 runbook에 고정해야 한다.",
+      "verification": "Runbook Test",
+      "parent": "34"
+    },
+    {
+      "section": "4.9 Restore Verification & Recovery Point",
+      "id": "NEX-OPS-RST-FR-001",
+      "priority": "MUST",
+      "requirement": "Backup은 정기 Restore Drill에서 실제 복구가 성공해야 VERIFIED 상태로 승격할 수 있어야 한다.",
+      "verification": "Restore Drill",
+      "parent": "34"
+    },
+    {
+      "section": "4.9 Restore Verification & Recovery Point",
+      "id": "NEX-OPS-RST-FR-002",
+      "priority": "MUST",
+      "requirement": "Restore Drill은 isolated recovery environment에서 수행하고 Production source를 덮어쓰지 않아야 한다.",
+      "verification": "Safety Test",
+      "parent": "34"
+    },
+    {
+      "section": "4.9 Restore Verification & Recovery Point",
+      "id": "NEX-OPS-RST-FR-003",
+      "priority": "MUST",
+      "requirement": "Restore 성공 후 schema, row/reference integrity, critical API, authorization, open Work/Execution, business object를 검증해야 한다.",
+      "verification": "Acceptance Test",
+      "parent": "33/34"
+    },
+    {
+      "section": "4.9 Restore Verification & Recovery Point",
+      "id": "NEX-OPS-RST-FR-004",
+      "priority": "MUST",
+      "requirement": "Cross-System Recovery는 단일 global DB snapshot을 전제로 하지 않고 service별 recovery point를 Recovery Point Manifest로 묶어야 한다.",
+      "verification": "Architecture Test",
+      "parent": "31/32/34"
+    },
+    {
+      "section": "4.9 Restore Verification & Recovery Point",
+      "id": "NEX-OPS-RST-FR-005",
+      "priority": "MUST",
+      "requirement": "Recovery Point Manifest는 service backup refs, target timestamps/LSNs 또는 동등한 checkpoint, artifact/config versions, policy refs를 포함해야 한다.",
+      "verification": "Schema Test",
+      "parent": "34"
+    },
+    {
+      "section": "4.9 Restore Verification & Recovery Point",
+      "id": "NEX-OPS-RST-FR-006",
+      "priority": "MUST",
+      "requirement": "서비스별 복구 시점이 다르면 복구 후 Outbox/Inbox/Work/Execution/Business state를 reconciliation해야 한다.",
+      "verification": "Recovery Test",
+      "parent": "32/34"
+    },
+    {
+      "section": "4.9 Restore Verification & Recovery Point",
+      "id": "NEX-OPS-RST-FR-007",
+      "priority": "MUST",
+      "requirement": "Restore 후 UNKNOWN/stranded operation이 존재하면 새 write를 허용하기 전에 reconciliation backlog를 평가해야 한다.",
+      "verification": "Recovery Gate",
+      "parent": "32/34"
+    },
+    {
+      "section": "4.9 Restore Verification & Recovery Point",
+      "id": "NEX-OPS-RST-FR-008",
+      "priority": "SHOULD",
+      "requirement": "Restore Drill 결과는 실제 RTO/RPO 달성시간, data loss window, manual steps를 측정하여 정책 calibration에 사용해야 한다.",
+      "verification": "DR Metrics",
+      "parent": "34"
+    },
+    {
+      "section": "4.9 Restore Verification & Recovery Point",
+      "id": "NEX-OPS-RST-FR-009",
+      "priority": "MUST",
+      "requirement": "Restore verification failure는 backup chain을 정상 backup으로 표시하지 않고 unusable/at-risk 상태로 표시해야 한다.",
+      "verification": "Operations Test",
+      "parent": "30/34"
+    },
+    {
+      "section": "4.9 Restore Verification & Recovery Point",
+      "id": "NEX-OPS-RST-FR-010",
+      "priority": "MUST",
+      "requirement": "복구 결과와 증거는 build/config/backup manifest hash와 연결하여 재현 가능하게 보관해야 한다.",
+      "verification": "Audit Test",
+      "parent": "33/34"
+    },
+    {
+      "section": "4.10 Disaster Recovery & Service Tier",
+      "id": "NEX-OPS-DR-FR-001",
+      "priority": "MUST",
+      "requirement": "서비스는 Business Criticality에 따라 Recovery Tier와 RPO/RTO 목표를 가져야 한다.",
+      "verification": "DR Review",
+      "parent": "34"
+    },
+    {
+      "section": "4.10 Disaster Recovery & Service Tier",
+      "id": "NEX-OPS-DR-FR-002",
+      "priority": "MUST",
+      "requirement": "초기 Pilot RPO/RTO 값은 운영/DR drill evidence로 calibration 가능한 versioned policy로 관리해야 한다.",
+      "verification": "Policy Test",
+      "parent": "34"
+    },
+    {
+      "section": "4.10 Disaster Recovery & Service Tier",
+      "id": "NEX-OPS-DR-FR-003",
+      "priority": "MUST",
+      "requirement": "OA/WC/AE Runtime/EOS/NSL Registry 등 핵심 권한·업무·거래 SoR은 projection/telemetry보다 높은 recovery priority를 가져야 한다.",
+      "verification": "DR Priority Test",
+      "parent": "31/34"
+    },
+    {
+      "section": "4.10 Disaster Recovery & Service Tier",
+      "id": "NEX-OPS-DR-FR-004",
+      "priority": "MUST",
+      "requirement": "DR 전환 시 신규 high-risk write를 일시 제한하고 authority/policy/config/SoR readiness 검증 후 단계적으로 해제할 수 있어야 한다.",
+      "verification": "DR Exercise",
+      "parent": "26/34"
+    },
+    {
+      "section": "4.10 Disaster Recovery & Service Tier",
+      "id": "NEX-OPS-DR-FR-005",
+      "priority": "MUST",
+      "requirement": "DR Site/복구 환경은 Production secret를 복제할 때 승인된 secure process를 사용하고 불필요한 raw credential copy를 금지해야 한다.",
+      "verification": "Security DR Test",
+      "parent": "26/34"
+    },
+    {
+      "section": "4.10 Disaster Recovery & Service Tier",
+      "id": "NEX-OPS-DR-FR-006",
+      "priority": "MUST",
+      "requirement": "DR startup order는 network/time/secret/config → OA/SoR DB → core services → CX/MO → AG/WA projection의 dependency를 runbook으로 정의해야 한다.",
+      "verification": "Runbook Test",
+      "parent": "34"
+    },
+    {
+      "section": "4.10 Disaster Recovery & Service Tier",
+      "id": "NEX-OPS-DR-FR-007",
+      "priority": "MUST",
+      "requirement": "DR 복구 후 open WorkItem/AgentExecution/Approval/Outbox/Inbox/ReconciliationCase를 scan하여 stranded state를 찾아야 한다.",
+      "verification": "Recovery Test",
+      "parent": "14/32"
+    },
+    {
+      "section": "4.10 Disaster Recovery & Service Tier",
+      "id": "NEX-OPS-DR-FR-008",
+      "priority": "MUST",
+      "requirement": "DR failback도 새 Release/Recovery operation으로 취급하고 data direction, cutover point, rollback condition을 명시해야 한다.",
+      "verification": "DR Test",
+      "parent": "34"
+    },
+    {
+      "section": "4.10 Disaster Recovery & Service Tier",
+      "id": "NEX-OPS-DR-FR-009",
+      "priority": "SHOULD",
+      "requirement": "정기 DR drill은 Golden Slice A/B의 read/safe-write variant와 monitoring/alert path를 포함할 수 있어야 한다.",
+      "verification": "DR Acceptance",
+      "parent": "33/34"
+    },
+    {
+      "section": "4.10 Disaster Recovery & Service Tier",
+      "id": "NEX-OPS-DR-FR-010",
+      "priority": "MUST",
+      "requirement": "RPO/RTO 미달성은 단순 기록이 아니라 Risk/Corrective Action으로 추적되어야 한다.",
+      "verification": "Governance Test",
+      "parent": "30/34"
+    },
+    {
+      "section": "4.11 Maintenance / Drain / Shutdown",
+      "id": "NEX-OPS-MNT-FR-001",
+      "priority": "MUST",
+      "requirement": "계획 Maintenance 전 서비스는 신규 request/claim/enqueue 수용 정책을 단계적으로 제한할 수 있어야 한다.",
+      "verification": "Maintenance Test",
+      "parent": "32/34"
+    },
+    {
+      "section": "4.11 Maintenance / Drain / Shutdown",
+      "id": "NEX-OPS-MNT-FR-002",
+      "priority": "MUST",
+      "requirement": "Worker drain은 신규 claim을 중단하고 active job이 safe point에 도달하거나 checkpoint/lease handoff 될 때까지 상태를 추적해야 한다.",
+      "verification": "Drain Test",
+      "parent": "32"
+    },
+    {
+      "section": "4.11 Maintenance / Drain / Shutdown",
+      "id": "NEX-OPS-MNT-FR-003",
+      "priority": "MUST",
+      "requirement": "WAITING_* execution은 worker 점유와 무관하므로 maintenance 중 checkpoint를 보존하고 resume event를 유실하지 않아야 한다.",
+      "verification": "Fault Test",
+      "parent": "12/32"
+    },
+    {
+      "section": "4.11 Maintenance / Drain / Shutdown",
+      "id": "NEX-OPS-MNT-FR-004",
+      "priority": "MUST",
+      "requirement": "Shutdown 시 Outbox publisher가 중단되더라도 미전송 event를 durable하게 남겨 재기동 후 계속 publish할 수 있어야 한다.",
+      "verification": "Recovery Test",
+      "parent": "32"
+    },
+    {
+      "section": "4.11 Maintenance / Drain / Shutdown",
+      "id": "NEX-OPS-MNT-FR-005",
+      "priority": "MUST",
+      "requirement": "Maintenance 중 이미 COMMITTED된 business effect를 cancel/rollback된 것으로 표시해서는 안 된다.",
+      "verification": "State Test",
+      "parent": "31/32"
+    },
+    {
+      "section": "4.11 Maintenance / Drain / Shutdown",
+      "id": "NEX-OPS-MNT-FR-006",
+      "priority": "MUST",
+      "requirement": "DB migration 또는 secret rotation 전 drain 필요 여부를 service/capability contract에 명시해야 한다.",
+      "verification": "Operational Review",
+      "parent": "34"
+    },
+    {
+      "section": "4.11 Maintenance / Drain / Shutdown",
+      "id": "NEX-OPS-MNT-FR-007",
+      "priority": "MUST",
+      "requirement": "Maintenance 완료 후 readiness, migration, queue/worker, reconciliation, alert 상태를 확인한 뒤 traffic/claim을 재개해야 한다.",
+      "verification": "Post-maintenance Gate",
+      "parent": "34"
+    },
+    {
+      "section": "4.11 Maintenance / Drain / Shutdown",
+      "id": "NEX-OPS-MNT-FR-008",
+      "priority": "SHOULD",
+      "requirement": "사용자에게 영향을 주는 Maintenance는 AE Workspace/notification에 planned window와 degraded 기능을 표시할 수 있어야 한다.",
+      "verification": "UX Test",
+      "parent": "29/34"
+    },
+    {
+      "section": "4.11 Maintenance / Drain / Shutdown",
+      "id": "NEX-OPS-MNT-FR-009",
+      "priority": "MUST",
+      "requirement": "긴급 Shutdown/Kill Switch와 계획 Maintenance를 동일 개념으로 취급하지 않아야 한다.",
+      "verification": "Architecture Test",
+      "parent": "30/34"
+    },
+    {
+      "section": "4.11 Maintenance / Drain / Shutdown",
+      "id": "NEX-OPS-MNT-FR-010",
+      "priority": "MUST",
+      "requirement": "Maintenance action은 typed admin operation과 audit trail을 사용하고 raw shell/SQL을 표준 운영절차로 요구해서는 안 된다.",
+      "verification": "Security Test",
+      "parent": "30"
+    },
+    {
+      "section": "4.12 Operational Runbook & Incident Response",
+      "id": "NEX-OPS-RUN-FR-001",
+      "priority": "MUST",
+      "requirement": "Critical operational scenario는 trigger, impact, diagnosis, safe action, verification, escalation, rollback/recovery를 포함한 versioned Runbook을 가져야 한다.",
+      "verification": "Runbook Review",
+      "parent": "34"
+    },
+    {
+      "section": "4.12 Operational Runbook & Incident Response",
+      "id": "NEX-OPS-RUN-FR-002",
+      "priority": "MUST",
+      "requirement": "최소 Runbook 범위는 service down, DB unavailable, storage full, queue backlog, stale worker, stuck outbox, reconciliation backlog, backup failure, restore, DR cutover를 포함해야 한다.",
+      "verification": "Coverage Review",
+      "parent": "30/32/34"
+    },
+    {
+      "section": "4.12 Operational Runbook & Incident Response",
+      "id": "NEX-OPS-RUN-FR-003",
+      "priority": "MUST",
+      "requirement": "MO/GPU 운영 Runbook은 model load/OOM/provider degraded/canary rollback을 포함해야 한다.",
+      "verification": "Runbook Test",
+      "parent": "28/34"
+    },
+    {
+      "section": "4.12 Operational Runbook & Incident Response",
+      "id": "NEX-OPS-RUN-FR-004",
+      "priority": "MUST",
+      "requirement": "CX 운영 Runbook은 ingestion/index failure, embedding degraded, Graph-lite rebuild, permission-safe reindex를 포함해야 한다.",
+      "verification": "Runbook Test",
+      "parent": "27/34"
+    },
+    {
+      "section": "4.12 Operational Runbook & Incident Response",
+      "id": "NEX-OPS-RUN-FR-005",
+      "priority": "MUST",
+      "requirement": "Security incident Runbook은 credential compromise, Role/Policy revoke, Kill Switch, evidence preservation을 포함해야 한다.",
+      "verification": "Security Drill",
+      "parent": "26/30"
+    },
+    {
+      "section": "4.12 Operational Runbook & Incident Response",
+      "id": "NEX-OPS-RUN-FR-006",
+      "priority": "MUST",
+      "requirement": "Runbook action은 현재 object/version/state를 재조회한 후 실행하고 stale operator assumption으로 business state를 덮어쓰지 않아야 한다.",
+      "verification": "Concurrency/Operation Test",
+      "parent": "30/32"
+    },
+    {
+      "section": "4.12 Operational Runbook & Incident Response",
+      "id": "NEX-OPS-RUN-FR-007",
+      "priority": "MUST",
+      "requirement": "Incident는 severity, correlation refs, affected service/version, start/end, actions, outcome, follow-up를 기록해야 한다.",
+      "verification": "Incident Audit",
+      "parent": "30/34"
+    },
+    {
+      "section": "4.12 Operational Runbook & Incident Response",
+      "id": "NEX-OPS-RUN-FR-008",
+      "priority": "SHOULD",
+      "requirement": "반복 incident는 runbook automation 후보로 기록하되 deterministic typed action으로 구현하고 LLM 자유 실행을 운영 권한으로 사용하지 않아야 한다.",
+      "verification": "Governance Review",
+      "parent": "30/34"
+    },
+    {
+      "section": "4.12 Operational Runbook & Incident Response",
+      "id": "NEX-OPS-RUN-FR-009",
+      "priority": "MUST",
+      "requirement": "Operational recovery 완료는 service green만이 아니라 authoritative SoR/reconciliation/queue/backup/trace 상태를 검증해야 한다.",
+      "verification": "Recovery Acceptance",
+      "parent": "31~34"
+    },
+    {
+      "section": "4.12 Operational Runbook & Incident Response",
+      "id": "NEX-OPS-RUN-FR-010",
+      "priority": "MUST",
+      "requirement": "Runbook과 실제 CLI/API contract drift를 정기적으로 test/staging에서 검증해야 한다.",
+      "verification": "Runbook Regression",
+      "parent": "33/34"
+    },
+    {
+      "section": "4.13 Operational Observability & Audit",
+      "id": "NEX-OPS-OBS-FR-001",
+      "priority": "MUST",
+      "requirement": "모든 deployment/rollback/maintenance/backup/restore/DR/recovery action은 correlation_id와 actor/build/environment refs를 가져야 한다.",
+      "verification": "Trace Test",
+      "parent": "30/34"
+    },
+    {
+      "section": "4.13 Operational Observability & Audit",
+      "id": "NEX-OPS-OBS-FR-002",
+      "priority": "MUST",
+      "requirement": "AG Dashboard는 release version, service readiness, queue/worker, reconciliation, backup freshness, latest restore verification, DR risk를 표시할 수 있어야 한다.",
+      "verification": "UI Test",
+      "parent": "30/34"
+    },
+    {
+      "section": "4.13 Operational Observability & Audit",
+      "id": "NEX-OPS-OBS-FR-003",
+      "priority": "MUST",
+      "requirement": "Backup/Restore/DR failure는 일반 service error와 구분된 operational severity/classification을 가져야 한다.",
+      "verification": "Alert Test",
+      "parent": "34"
+    },
+    {
+      "section": "4.13 Operational Observability & Audit",
+      "id": "NEX-OPS-OBS-FR-004",
+      "priority": "MUST",
+      "requirement": "Audit/monitoring에 raw backup encryption key, secret, token, private key를 포함하지 않아야 한다.",
+      "verification": "Security Scan",
+      "parent": "34"
+    },
+    {
+      "section": "4.13 Operational Observability & Audit",
+      "id": "NEX-OPS-OBS-FR-005",
+      "priority": "MUST",
+      "requirement": "Deployment 전후 error/latency/deny/reconciliation/queue age delta를 release version별로 비교할 수 있어야 한다.",
+      "verification": "Observability Test",
+      "parent": "30/34"
+    },
+    {
+      "section": "4.13 Operational Observability & Audit",
+      "id": "NEX-OPS-OBS-FR-006",
+      "priority": "MUST",
+      "requirement": "Recovery action은 original incident/reconciliation/dead-letter/backup refs와 causation을 연결해야 한다.",
+      "verification": "Trace Test",
+      "parent": "32/34"
+    },
+    {
+      "section": "4.13 Operational Observability & Audit",
+      "id": "NEX-OPS-OBS-FR-007",
+      "priority": "MUST",
+      "requirement": "운영 Evidence는 incident/DR/restore acceptance에 재사용 가능하도록 stable ref/hash를 제공해야 한다.",
+      "verification": "Evidence Test",
+      "parent": "33/34"
+    },
+    {
+      "section": "4.13 Operational Observability & Audit",
+      "id": "NEX-OPS-OBS-FR-008",
+      "priority": "SHOULD",
+      "requirement": "Capacity trend는 CPU/memory/storage/DB connection/GPU memory/job backlog/model throughput을 포함할 수 있어야 한다.",
+      "verification": "Capacity Review",
+      "parent": "28/30/34"
+    },
+    {
+      "section": "4.13 Operational Observability & Audit",
+      "id": "NEX-OPS-OBS-FR-009",
+      "priority": "MUST",
+      "requirement": "Disk/storage low-watermark는 DB/WAL/object backup failure 이전에 alert를 발생시킬 수 있어야 한다.",
+      "verification": "Operational Test",
+      "parent": "34"
+    },
+    {
+      "section": "4.13 Operational Observability & Audit",
+      "id": "NEX-OPS-OBS-FR-010",
+      "priority": "MUST",
+      "requirement": "Clock drift/time sync 이상을 보안/lease/audit reliability risk로 탐지할 수 있어야 한다.",
+      "verification": "Operational Test",
+      "parent": "26/32/34"
+    },
+    {
+      "section": "4.14 Operational Acceptance & Go-Live Gate",
+      "id": "NEX-OPS-ACC-FR-001",
+      "priority": "MUST",
+      "requirement": "Go-Live 전 33 Acceptance Evidence Package와 34 Deployment/Backup/Restore/DR readiness evidence를 함께 승인해야 한다.",
+      "verification": "Go-Live Review",
+      "parent": "33/34"
+    },
+    {
+      "section": "4.14 Operational Acceptance & Go-Live Gate",
+      "id": "NEX-OPS-ACC-FR-002",
+      "priority": "MUST",
+      "requirement": "Production-like staging에서 deployment+rollback rehearsal을 성공해야 한다.",
+      "verification": "Rehearsal",
+      "parent": "34"
+    },
+    {
+      "section": "4.14 Operational Acceptance & Go-Live Gate",
+      "id": "NEX-OPS-ACC-FR-003",
+      "priority": "MUST",
+      "requirement": "최소 하나의 실제 backup→isolated restore→smoke 검증이 Go-Live 전 완료되어야 한다.",
+      "verification": "Restore Acceptance",
+      "parent": "34"
+    },
+    {
+      "section": "4.14 Operational Acceptance & Go-Live Gate",
+      "id": "NEX-OPS-ACC-FR-004",
+      "priority": "MUST",
+      "requirement": "Critical SoR에 대한 Recovery Point Manifest 생성과 cross-system reconciliation rehearsal을 수행해야 한다.",
+      "verification": "Recovery Acceptance",
+      "parent": "32/34"
+    },
+    {
+      "section": "4.14 Operational Acceptance & Go-Live Gate",
+      "id": "NEX-OPS-ACC-FR-005",
+      "priority": "MUST",
+      "requirement": "Golden Slice A/B의 Production-safe smoke 또는 staging final proof가 target release digest와 연결되어야 한다.",
+      "verification": "Golden Gate",
+      "parent": "33"
+    },
+    {
+      "section": "4.14 Operational Acceptance & Go-Live Gate",
+      "id": "NEX-OPS-ACC-FR-006",
+      "priority": "MUST",
+      "requirement": "운영자에게 service/job/worker/reconciliation/backup/restore/DR runbook과 권한이 제공되어야 한다.",
+      "verification": "Operations Acceptance",
+      "parent": "30/34"
+    },
+    {
+      "section": "4.14 Operational Acceptance & Go-Live Gate",
+      "id": "NEX-OPS-ACC-FR-007",
+      "priority": "MUST",
+      "requirement": "Monitoring/alert channel과 on-call/escalation owner가 확인되지 않으면 Production-ready로 간주해서는 안 된다.",
+      "verification": "Operational Gate",
+      "parent": "34"
+    },
+    {
+      "section": "4.14 Operational Acceptance & Go-Live Gate",
+      "id": "NEX-OPS-ACC-FR-008",
+      "priority": "MUST",
+      "requirement": "미해결 backup/restore/DR blocker는 일반 waiver로 Production Go-Live를 허용하지 않는 critical class로 지정해야 한다.",
+      "verification": "Release Policy",
+      "parent": "34"
+    },
+    {
+      "section": "4.14 Operational Acceptance & Go-Live Gate",
+      "id": "NEX-OPS-ACC-FR-009",
+      "priority": "SHOULD",
+      "requirement": "Pilot Go-Live는 제한된 사용자/조직/프로젝트/skill scope로 canary 운영 후 확대할 수 있어야 한다.",
+      "verification": "Pilot Gate",
+      "parent": "34"
+    },
+    {
+      "section": "4.14 Operational Acceptance & Go-Live Gate",
+      "id": "NEX-OPS-ACC-FR-010",
+      "priority": "MUST",
+      "requirement": "Go-Live 완료 시 ReleaseManifest/DeploymentRecord/AcceptanceEvidence/RecoveryPoint refs를 하나의 release evidence package로 봉인해야 한다.",
+      "verification": "Evidence Audit",
+      "parent": "33/34"
+    },
+    {
+      "section": "5.1 Security NFR",
+      "id": "NEX-OPS-SEC-NFR-001",
+      "priority": "MUST",
+      "requirement": "Deployment/backup/restore/admin control은 OA current authorization과 최소권한을 적용해야 한다.",
+      "verification": "Security Test",
+      "parent": "26/30"
+    },
+    {
+      "section": "5.1 Security NFR",
+      "id": "NEX-OPS-SEC-NFR-002",
+      "priority": "MUST",
+      "requirement": "Backup/restore 권한과 일반 application 운영 권한은 필요 시 분리 가능한 privileged role로 관리해야 한다.",
+      "verification": "Access Review",
+      "parent": "34"
+    },
+    {
+      "section": "5.1 Security NFR",
+      "id": "NEX-OPS-SEC-NFR-003",
+      "priority": "MUST",
+      "requirement": "Production artifact/config/backup의 integrity는 checksum/signature/hash로 검증해야 한다.",
+      "verification": "Integrity Test",
+      "parent": "17/28/34"
+    },
+    {
+      "section": "5.1 Security NFR",
+      "id": "NEX-OPS-SEC-NFR-004",
+      "priority": "MUST",
+      "requirement": "DR/restore 환경에서도 Production 수준의 authorization/data classification policy를 적용해야 한다.",
+      "verification": "Security DR Test",
+      "parent": "26/34"
+    },
+    {
+      "section": "5.1 Security NFR",
+      "id": "NEX-OPS-SEC-NFR-005",
+      "priority": "MUST",
+      "requirement": "운영 로그/backup manifest/runbook evidence에 secret raw value가 포함되지 않아야 한다.",
+      "verification": "Security Scan",
+      "parent": "34"
+    },
+    {
+      "section": "5.1 Security NFR",
+      "id": "NEX-OPS-SEC-NFR-006",
+      "priority": "MUST",
+      "requirement": "Emergency access/break-glass가 필요한 경우 별도 강한 인증/시간제한/사후감사 정책을 가져야 한다.",
+      "verification": "Security Policy Test",
+      "parent": "26/34"
+    },
+    {
+      "section": "5.2 Reliability / Availability NFR",
+      "id": "NEX-OPS-REL-NFR-001",
+      "priority": "MUST",
+      "requirement": "Deployment/rollback/maintenance action은 idempotent/typed 상태와 UNKNOWN action reconciliation을 지원해야 한다.",
+      "verification": "Fault Test",
+      "parent": "30/32"
+    },
+    {
+      "section": "5.2 Reliability / Availability NFR",
+      "id": "NEX-OPS-REL-NFR-002",
+      "priority": "MUST",
+      "requirement": "Backup failure가 application success와 혼동되지 않고 별도 operational risk로 지속 노출되어야 한다.",
+      "verification": "Fault Test",
+      "parent": "34"
+    },
+    {
+      "section": "5.2 Reliability / Availability NFR",
+      "id": "NEX-OPS-REL-NFR-003",
+      "priority": "MUST",
+      "requirement": "단일 worker/instance failure가 durable Job/Work/Execution state loss로 이어져서는 안 된다.",
+      "verification": "Fault Test",
+      "parent": "32"
+    },
+    {
+      "section": "5.2 Reliability / Availability NFR",
+      "id": "NEX-OPS-REL-NFR-004",
+      "priority": "MUST",
+      "requirement": "Restore/DR 과정에서 duplicate event/write가 발생해도 기존 idempotency/reconciliation contract를 유지해야 한다.",
+      "verification": "DR Fault Test",
+      "parent": "32/34"
+    },
+    {
+      "section": "5.2 Reliability / Availability NFR",
+      "id": "NEX-OPS-REL-NFR-005",
+      "priority": "SHOULD",
+      "requirement": "서비스별 availability/RPO/RTO 목표는 실제 운영 evidence로 정기 재조정할 수 있어야 한다.",
+      "verification": "SLO Review",
+      "parent": "34"
+    },
+    {
+      "section": "5.3 Performance / Capacity NFR",
+      "id": "NEX-OPS-PERF-NFR-001",
+      "priority": "MUST",
+      "requirement": "Canary/rolling deployment가 정상 peak workload를 수용할 최소 remaining capacity를 고려해야 한다.",
+      "verification": "Capacity Test",
+      "parent": "34"
+    },
+    {
+      "section": "5.3 Performance / Capacity NFR",
+      "id": "NEX-OPS-PERF-NFR-002",
+      "priority": "MUST",
+      "requirement": "Backup/restore/reindex/migration은 Production IO/DB/GPU capacity 영향을 측정하고 throttling 정책을 적용할 수 있어야 한다.",
+      "verification": "Load Test",
+      "parent": "27/28/34"
+    },
+    {
+      "section": "5.3 Performance / Capacity NFR",
+      "id": "NEX-OPS-PERF-NFR-003",
+      "priority": "MUST",
+      "requirement": "Storage/WAL/object growth trend를 capacity forecast에 사용해야 한다.",
+      "verification": "Capacity Review",
+      "parent": "34"
+    },
+    {
+      "section": "5.3 Performance / Capacity NFR",
+      "id": "NEX-OPS-PERF-NFR-004",
+      "priority": "SHOULD",
+      "requirement": "DR environment sizing은 minimum business continuity workload를 수용하도록 별도 capacity profile을 정의할 수 있어야 한다.",
+      "verification": "DR Capacity Test",
+      "parent": "34"
+    },
+    {
+      "section": "5.4 Test / Evidence NFR",
+      "id": "NEX-OPS-TST-NFR-001",
+      "priority": "MUST",
+      "requirement": "Deployment/backup/restore/DR/migration/runbook 변경은 33 Test Strategy에 따른 automated test 또는 rehearsal evidence를 가져야 한다.",
+      "verification": "Traceability Audit",
+      "parent": "33"
+    },
+    {
+      "section": "5.4 Test / Evidence NFR",
+      "id": "NEX-OPS-TST-NFR-002",
+      "priority": "MUST",
+      "requirement": "PostgreSQL restore test는 격리된 environment에서 반복 자동화 가능해야 한다.",
+      "verification": "Restore Test",
+      "parent": "33/34"
+    },
+    {
+      "section": "5.4 Test / Evidence NFR",
+      "id": "NEX-OPS-TST-NFR-003",
+      "priority": "MUST",
+      "requirement": "Playwright/Post-deploy smoke는 AE Workspace login, health, safe read, result/trace 표시를 검증해야 한다.",
+      "verification": "Playwright",
+      "parent": "29/33/34"
+    },
+    {
+      "section": "5.4 Test / Evidence NFR",
+      "id": "NEX-OPS-TST-NFR-004",
+      "priority": "MUST",
+      "requirement": "Golden Slice critical path와 DR/restore acceptance는 release마다 필요한 cadence를 policy로 명시해야 한다.",
+      "verification": "Test Policy",
+      "parent": "33/34"
+    },
+    {
+      "section": "5.4 Test / Evidence NFR",
+      "id": "NEX-OPS-TST-NFR-005",
+      "priority": "MUST",
+      "requirement": "Runbook 변경은 version/tag와 regression evidence를 가져야 한다.",
+      "verification": "Documentation Gate",
+      "parent": "34"
+    }
+  ]
+}

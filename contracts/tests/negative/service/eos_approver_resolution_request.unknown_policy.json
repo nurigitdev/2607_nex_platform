@@ -1,0 +1,12 @@
+{
+  "schema_version": "eos_approver_resolution_request.v1",
+  "requester_ref": {"type": "oa.user", "id": "employee-1001"},
+  "approval_domain": "NSL_WRITE",
+  "risk_level": "HIGH",
+  "org_unit_ref": {
+    "type": "eos.org_unit",
+    "id": "10000000-0000-4000-8000-000000000001"
+  },
+  "project_ref": null,
+  "policy_ref": "eos.approver.llm-selected.v1"
+}

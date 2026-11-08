@@ -1,0 +1,122 @@
+{
+  "calibration_admission": {
+    "checks": {
+      "nested_calibration_oof_admitted": false,
+      "pipeline_repeatability_stable": true
+    },
+    "holdout_access_permitted": false,
+    "holdout_eligible_for_separate_execution": false,
+    "runtime_activation_permitted": false,
+    "status": "REJECTED"
+  },
+  "checks": {
+    "actual_test_database_identity": true,
+    "candidate_membership_repeatable": true,
+    "cleanup_complete": true,
+    "final_rank_repeatable": true,
+    "five_run_pipeline_repeatability_stable": true,
+    "holdout_remained_sealed": true,
+    "parent_execution_passed": true,
+    "provider_calls_complete": true,
+    "rrf_score_repeatable": true,
+    "runtime_activation_prohibited": true,
+    "vector_rank_repeatable": true
+  },
+  "database_identity": {
+    "database": "nex_cx_test",
+    "role": "nex_cx_user"
+  },
+  "dataset": {
+    "candidate_count": 640,
+    "dataset_id": "s136-retrieval-package-confidence-public-v4",
+    "dataset_sha256": "594209203d25b0a87e6fd136b6794bdc30058a5eb45b7e2c8ff27523bd7f1757",
+    "holdout_status": "SEALED_NOT_COLLECTED",
+    "package_count": 160,
+    "partition": "CALIBRATION",
+    "scenario_count": 80
+  },
+  "evidence_schema_version": "gb2_s20qpa_vector_near_tie_ordering.v1",
+  "failed_checks": [],
+  "holdout_status": "SEALED_NOT_OPENED",
+  "migration": {
+    "applied_count": 0,
+    "planned_count": 23,
+    "skipped_count": 23
+  },
+  "nested_selection_status": "NO_ADMISSIBLE_PROFILE",
+  "ordering_policy": {
+    "maximum_score_delta": 0.001,
+    "policy_id": "cx_vector_near_tie_stable_identity_v1",
+    "raw_score_preserved": true,
+    "stable_identity_fields": [
+      "content_object_id",
+      "chunk_id",
+      "vector_index_id"
+    ]
+  },
+  "pipeline_repeatability": {
+    "holdout_access_permitted": false,
+    "measurement": {
+      "candidate_count_per_repeat": 640,
+      "comparison_count": 2560,
+      "package_count_per_repeat": 160,
+      "repeat_count": 5,
+      "same_seeded_corpus_required": true
+    },
+    "policy_id": "cx_full_retrieval_pipeline_repeatability_v1",
+    "repeatability_hash": "sha256:6a32dfab52ad2eabedec2d72e0c26bd752ba30807e817e68f0ff1c8e537bb792",
+    "repeatability_schema_version": "cx_retrieval_pipeline_repeatability.v1",
+    "run_set_hash": "sha256:2a907e89088a9b9e5c9687589cbb24e42d92572ed669037ee37956f954fc097d",
+    "runtime_activation_permitted": false,
+    "stages": {
+      "bm25_rank_change_count": 0,
+      "bm25_score_quality_drift_count": 0,
+      "candidate_membership_change_count": 0,
+      "final_rank_change_count": 0,
+      "first_unstable_stage": null,
+      "max_bm25_score_quality_delta": 0.0,
+      "max_reranker_score_delta": 0.0,
+      "max_rrf_score_delta": 0.0,
+      "max_vector_similarity_quality_delta": 0.00321917,
+      "reranker_score_drift_count": 0,
+      "rrf_score_drift_count": 0,
+      "vector_rank_change_count": 0,
+      "vector_similarity_quality_drift_count": 0
+    },
+    "status": "STABLE",
+    "tolerances": {
+      "bm25_score_quality": 1e-08,
+      "rank": 0,
+      "reranker_score": 0.0005,
+      "rrf_normalized_score": 1e-08,
+      "vector_similarity_quality": 0.005
+    }
+  },
+  "provider_binding": {
+    "chunk_policy_id": "chunk_1000_100",
+    "embedding_model_revision": "hf:5cf2132abc99cad020ac570b19d031efec650f2b",
+    "ranking_policy_id": "weighted_rrf_vector_bm25_v1",
+    "reranker_model_revision": "hf:22e683669bc0f0bd69640a1354a6d0aebcfeede5",
+    "tokenizer_policy_id": "cx-tokenizer-profile:sha256:bea6a191e61ec9c45e5cafc3c973bfcca5fa1147872800b6bb27eb0cab03d7ab"
+  },
+  "provider_observation": {
+    "embedding": {
+      "failure_count": 0,
+      "model": "hf:5cf2132abc99cad020ac570b19d031efec650f2b",
+      "success_count": 1440
+    },
+    "reranking": {
+      "failure_count": 0,
+      "model": "hf:22e683669bc0f0bd69640a1354a6d0aebcfeede5",
+      "success_count": 800
+    }
+  },
+  "provider_request_counts": {
+    "embedding": 1440,
+    "holdout_blocked": 0,
+    "reranking": 800,
+    "total": 2240
+  },
+  "slice_id": "GB2-CA00-S20Q-P-A",
+  "status": "PASS"
+}

@@ -1,0 +1,14 @@
+{
+  "schema_version": "p65.intent_candidate.v1",
+  "intent_label": "analyze_project_budget",
+  "suggested_execution_mode": "GROUNDED_ANSWER",
+  "entity_selectors": [],
+  "parameter_candidates": [],
+  "clarification": {
+    "required": false,
+    "reasons": [],
+    "questions": []
+  },
+  "confidence": 0.92,
+  "tenant_authority": "tenant-forged-by-model"
+}

@@ -1,0 +1,35 @@
+{
+  "policy_schema_version": "cx_answer_support_policy_cutover_operations_policy.v1",
+  "policy_id": "cx-answer-support-policy-cutover-operations-v1",
+  "status": "APPROVED_FOR_BOUNDED_CUTOVER_OPERATIONS",
+  "source_acceptance": {
+    "evidence_schema_version": "gb2_s20qpag_answer_support_policy_cutover_acceptance.v1",
+    "decision": "ANSWER_SUPPORT_POLICY_CUTOVER_AND_ROLLBACK_ACCEPTED",
+    "next_boundary": "ANSWER_SUPPORT_POLICY_CUTOVER_OPERATIONS",
+    "evidence_hash": "sha256:c07655bcba5fc85db6506bbcba873dbb33d3ed91fd2395cd266837df18545aac",
+    "report_document_hash": "sha256:36b181a7800e3a3d44264c6ad6067dbd08afd823d3cc1c7329136002dc2983bd",
+    "slice_document_hash": "sha256:003f070aa65304f1436a6a540ddcddbacbe5c22855406dba293c980cfe9d35e2"
+  },
+  "authorization_hash": "sha256:fe45b9267af3e81095b957c0488ee86dba7f88114b3fff99708ccc812108fc00",
+  "activation_bundle_hash": "sha256:6d5c631c9e18418ae2787d4053d06cdf87cc49a3cbc67aea6258b11f29893a06",
+  "selected_policy_hash": "sha256:c81f7a0bf3d3d72d7bbc5de1f564ada3b415f2206689c1939fcb925f172168cb",
+  "window_id": "s20qpah-answer-support-policy-cutover-operations-v1",
+  "minimum_operator_review_samples": 12,
+  "maximum_observation_provider_samples": 12,
+  "maximum_concurrency": 4,
+  "maximum_event_scan": 500,
+  "operational_slo": {
+    "maximum_feedback_p95_latency_ms": 2000,
+    "maximum_provider_p95_latency_ms": 15000,
+    "maximum_e2e_p95_latency_ms": 20000,
+    "maximum_provider_failures": 0
+  },
+  "safety": {
+    "holdout_access_permitted": false,
+    "raw_text_projection_permitted": false,
+    "production_cutover_permitted": false,
+    "runtime_stopped_at_observation_cap": false,
+    "operator_review_required_at_observation_cap": true
+  },
+  "policy_hash": "sha256:7f6dd67840bf1de1ba0d5b9f2d6c5d66afffba6e0ebc5bdb71620d2c7259e439"
+}

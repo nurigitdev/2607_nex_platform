@@ -3,11 +3,12 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from nex_runtime.env import load_env_file, merge_pythonpath
+from nex_runtime.env import load_env_file, merge_pythonpath, read_env_file
 
 
 def test_load_env_file_ignores_missing_file(tmp_path: Path) -> None:
     load_env_file(tmp_path / "missing.env")
+    assert read_env_file(tmp_path / "missing.env") == {}
 
 
 def test_load_env_file_sets_values_without_overwriting_existing(
@@ -16,22 +17,24 @@ def test_load_env_file_sets_values_without_overwriting_existing(
 ) -> None:
     env_file = tmp_path / ".env.local"
     env_file.write_text(
-        "\n".join(
-            [
-                "# comment",
-                "NEX_EMPTY_IGNORED",
-                "NEX_ALPHA='alpha value'",
-                'NEX_BRAVO="bravo value"',
-                "NEX_EMPTY=",
-                "NEX_EXISTING=from-file",
-            ]
-        ),
+        "# comment\n"
+        "NEX_EMPTY_IGNORED\n"
+        "NEX_ALPHA='alpha value'\n"
+        'NEX_BRAVO="bravo value"\n'
+        "NEX_EMPTY=\n"
+        "NEX_EXISTING=from-file",
         encoding="utf-8",
     )
     monkeypatch.setenv("NEX_EXISTING", "from-env")
 
     load_env_file(env_file)
 
+    assert read_env_file(env_file) == {
+        "NEX_ALPHA": "alpha value",
+        "NEX_BRAVO": "bravo value",
+        "NEX_EMPTY": "",
+        "NEX_EXISTING": "from-file",
+    }
     assert os.environ["NEX_ALPHA"] == "alpha value"
     assert os.environ["NEX_BRAVO"] == "bravo value"
     assert os.environ["NEX_EMPTY"] == ""

@@ -1,0 +1,98 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_oa/employee_batch_resolution.v1.schema.json",
+  "title": "NeX OA Employee Batch Resolution",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "resolution_schema_version",
+    "service_id",
+    "tenant_id",
+    "requested_count",
+    "resolved_count",
+    "rejected_count",
+    "results",
+    "resolution_evidence_hash",
+    "request_id",
+    "trace_id"
+  ],
+  "properties": {
+    "resolution_schema_version": {"const": "oa_employee_batch_resolution.v1"},
+    "service_id": {"const": "nex-oa"},
+    "tenant_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+    },
+    "requested_count": {"type": "integer", "minimum": 1, "maximum": 50},
+    "resolved_count": {"type": "integer", "minimum": 0, "maximum": 50},
+    "rejected_count": {"type": "integer", "minimum": 0, "maximum": 50},
+    "results": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 50,
+      "items": {
+        "oneOf": [
+          {"$ref": "#/$defs/resolvedItem"},
+          {"$ref": "#/$defs/rejectedItem"},
+          {"$ref": "#/$defs/invalidItem"}
+        ]
+      }
+    },
+    "resolution_evidence_hash": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "request_id": {"type": "string", "minLength": 1, "maxLength": 128},
+    "trace_id": {"type": "string", "pattern": "^[0-9a-f]{32}$"}
+  },
+  "$defs": {
+    "resolvedItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "input_index",
+        "resolution_status",
+        "normalized_employee_id",
+        "subject_id",
+        "display_name",
+        "subject_revision",
+        "tenant_membership_revision"
+      ],
+      "properties": {
+        "input_index": {"type": "integer", "minimum": 0},
+        "resolution_status": {"const": "RESOLVED"},
+        "normalized_employee_id": {"type": "string", "minLength": 1, "maxLength": 128},
+        "subject_id": {"type": "string", "minLength": 1, "maxLength": 128},
+        "display_name": {"type": "string", "minLength": 1, "maxLength": 256},
+        "subject_revision": {"type": "integer", "minimum": 1},
+        "tenant_membership_revision": {"type": "integer", "minimum": 1}
+      }
+    },
+    "rejectedItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["input_index", "resolution_status", "normalized_employee_id"],
+      "properties": {
+        "input_index": {"type": "integer", "minimum": 0},
+        "resolution_status": {
+          "enum": [
+            "EMPLOYEE_NOT_FOUND",
+            "SUBJECT_INACTIVE",
+            "NAME_MISMATCH",
+            "DUPLICATE_INPUT"
+          ]
+        },
+        "normalized_employee_id": {"type": "string", "minLength": 1, "maxLength": 128}
+      }
+    },
+    "invalidItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["input_index", "resolution_status"],
+      "properties": {
+        "input_index": {"type": "integer", "minimum": 0},
+        "resolution_status": {"const": "INVALID_EMPLOYEE_ID"}
+      }
+    }
+  }
+}

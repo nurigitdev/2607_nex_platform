@@ -2,16 +2,14 @@ from __future__ import annotations
 
 from dataclasses import replace
 
+import nex_runtime.postgres_targets as targets_module
 import pytest
 import run_platform_postgres_test_targets as smoke
-
-import nex_runtime.postgres_targets as targets_module
 from nex_runtime.postgres_targets import (
     CX_VECTOR_RUNTIME_DATABASE_ENV,
     CX_VECTOR_TEST_DATABASE_ENV,
     POSTGRES_TEST_TARGETS,
     PostgresTargetConfigError,
-    PostgresTestTarget,
     build_postgres_test_runtime_overlay,
     postgres_test_targets_public_projection,
     resolve_postgres_test_targets,

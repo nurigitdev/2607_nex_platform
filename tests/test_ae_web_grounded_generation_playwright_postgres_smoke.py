@@ -470,6 +470,12 @@ def test_stale_ae_runtime_cleanup_is_owner_scoped() -> None:
         )
         connection.execute(
             text(
+                "CREATE TABLE ae_conversations ("
+                "conversation_id TEXT, workspace_id TEXT, owner_user_id TEXT)"
+            )
+        )
+        connection.execute(
+            text(
                 "INSERT INTO ae_chat_interactions VALUES "
                 "('target-chat', :owner, 'target-trace', 'target-request'), "
                 "('other-chat', 'other-owner', 'other-trace', 'other-request')"
@@ -497,6 +503,14 @@ def test_stale_ae_runtime_cleanup_is_owner_scoped() -> None:
             ),
             {"owner": smoke.OWNER_ID},
         )
+        connection.execute(
+            text(
+                "INSERT INTO ae_conversations VALUES "
+                "('target-conversation', 'target-workspace', :owner), "
+                "('other-conversation', 'other-workspace', 'other-owner')"
+            ),
+            {"owner": smoke.OWNER_ID},
+        )
 
     deleted = smoke._cleanup_stale_s109_ae_runtime(engine)
 
@@ -504,6 +518,7 @@ def test_stale_ae_runtime_cleanup_is_owner_scoped() -> None:
         "events": 1,
         "render_events": 1,
         "chat": 1,
+        "conversations": 1,
         "workspaces": 1,
     }
     with engine.connect() as connection:
@@ -518,5 +533,8 @@ def test_stale_ae_runtime_cleanup_is_owner_scoped() -> None:
         ).scalar_one() == 1
         assert connection.execute(
             text("SELECT count(*) FROM ae_workspaces")
+        ).scalar_one() == 1
+        assert connection.execute(
+            text("SELECT count(*) FROM ae_conversations")
         ).scalar_one() == 1
     engine.dispose()

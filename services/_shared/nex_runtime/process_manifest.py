@@ -1,18 +1,21 @@
 from __future__ import annotations
 
-from collections.abc import Mapping
-from pathlib import Path
 import os
 import sys
+from collections.abc import Mapping
+from pathlib import Path
 from urllib.parse import urlsplit
 
 from .runtime_profiles import (
+    CURRENT_DATABASE_ENV_NAMES,
+    CURRENT_TEST_DATABASE_ENV_NAMES,
     DATABASE_ENV_NAMES,
     TEST_DATABASE_ENV_NAMES,
     RuntimeProfileResolution,
+    resolve_current_runtime_profile,
     resolve_runtime_profile,
 )
-from .service_endpoints import SERVICE_ENDPOINTS, resolve_service_endpoint
+from .service_endpoints import CURRENT_SERVICE_ENDPOINTS, resolve_service_endpoint
 from .topology import (
     PlatformRuntimeManifest,
     RuntimeEndpoint,
@@ -21,7 +24,6 @@ from .topology import (
     RuntimeProcess,
     validate_runtime_manifest,
 )
-
 
 AE_WEB_ENDPOINT_ENV = "NEX_AE_WEB_BASE_URL"
 AE_WEB_DEFAULT_BASE_URL = "http://127.0.0.1:5173"
@@ -34,12 +36,68 @@ BACKGROUND_PROCESS_IDS = (
     "nex-cx-ingestion-worker",
     "nex-cx-remediation-worker",
 )
+CURRENT_BACKGROUND_PROCESS_IDS = (
+    *BACKGROUND_PROCESS_IDS,
+    "nex-wa-evidence-consumer",
+    "nex-ae-agent-runtime-worker",
+    "nex-wc-event-delivery-worker",
+    "nex-eos-outbox-publisher",
+)
+CURRENT_BACKGROUND_ENVIRONMENT_NAMES = {
+    "nex-wa-evidence-consumer": (
+        "NEX_AE_API_BASE_URL",
+        "NEX_WC_BASE_URL",
+        "NEX_OA_BASE_URL",
+        "NEX_EOS_BASE_URL",
+        "NEX_WA_TO_AE_SERVICE_TOKEN",
+        "NEX_WA_TO_WC_SERVICE_TOKEN",
+        "NEX_WA_TO_OA_SERVICE_TOKEN",
+        "NEX_WA_TO_EOS_SERVICE_TOKEN",
+        "NEX_WA_WORKER_ID",
+    ),
+    "nex-ae-agent-runtime-worker": (
+        "NEX_AE_AGENT_WORKER_ID",
+        "NEX_AE_AGENT_WORKER_EXECUTOR_KINDS",
+        "NEX_AE_AGENT_WORKER_BACKEND_PROFILES",
+    ),
+    "nex-wc-event-delivery-worker": (
+        "NEX_WC_AE_BASE_URL",
+        "NEX_WC_TO_AE_SERVICE_TOKEN",
+        "NEX_WC_EVENT_DELIVERY_WORKER_ID",
+        "NEX_WC_AE_DELIVERY_TIMEOUT_SECONDS",
+        "NEX_WC_AE_APPROVAL_TIMEOUT_SECONDS",
+        "NEX_WC_EVENT_DELIVERY_POLL_SECONDS",
+    ),
+    "nex-eos-outbox-publisher": (
+        "NEX_AE_API_BASE_URL",
+        "NEX_EOS_TO_AE_SERVICE_TOKEN",
+        "NEX_EOS_OUTBOX_PUBLISHER_WORKER_ID",
+        "NEX_EOS_AE_OUTBOX_TIMEOUT_SECONDS",
+        "NEX_EOS_OUTBOX_PUBLISH_POLL_SECONDS",
+    ),
+}
+HISTORICAL_SERVICE_IDS = (
+    "nex-oa",
+    "nex-mo",
+    "nex-cx",
+    "nex-ae-api",
+    "nex-ag",
+)
+CURRENT_SERVICE_IDS = (
+    *HISTORICAL_SERVICE_IDS,
+    "nex-wc",
+    "nex-eos",
+    "nex-wa",
+)
 SERVICE_DATABASE_INDEX = {
     "nex-oa": 0,
     "nex-ag": 1,
     "nex-ae-api": 2,
     "nex-cx": 3,
     "nex-mo": 4,
+    "nex-wc": 5,
+    "nex-eos": 6,
+    "nex-wa": 7,
 }
 
 
@@ -49,14 +107,52 @@ def build_platform_runtime_manifest(
     environ: Mapping[str, str] | None = None,
     python_executable: str | None = None,
 ) -> PlatformRuntimeManifest:
+    return _build_runtime_manifest(
+        profile,
+        environ=environ,
+        python_executable=python_executable,
+        current=False,
+    )
+
+
+def build_current_platform_runtime_manifest(
+    profile: str | None = None,
+    *,
+    environ: Mapping[str, str] | None = None,
+    python_executable: str | None = None,
+) -> PlatformRuntimeManifest:
+    """Build the P9 topology: promoted P8-Demo services plus NeX-WA."""
+    return _build_runtime_manifest(
+        profile,
+        environ=environ,
+        python_executable=python_executable,
+        current=True,
+    )
+
+
+def _build_runtime_manifest(
+    profile: str | None,
+    *,
+    environ: Mapping[str, str] | None,
+    python_executable: str | None,
+    current: bool,
+) -> PlatformRuntimeManifest:
     env = os.environ if environ is None else environ
-    resolution = resolve_runtime_profile(profile, environ=env)
-    endpoints = _runtime_endpoints(env)
+    resolver = resolve_current_runtime_profile if current else resolve_runtime_profile
+    resolution = resolver(profile, environ=env)
+    service_ids = CURRENT_SERVICE_IDS if current else HISTORICAL_SERVICE_IDS
+    background_ids = (
+        CURRENT_BACKGROUND_PROCESS_IDS if current else BACKGROUND_PROCESS_IDS
+    )
+    endpoints = _runtime_endpoints(env, service_ids=service_ids)
     endpoint_by_id = {item.service_id: item for item in endpoints}
     processes = _runtime_processes(
         resolution,
         endpoint_by_id,
         python_executable=python_executable or sys.executable,
+        service_ids=service_ids,
+        background_process_ids=background_ids,
+        current=current,
     )
     manifest = PlatformRuntimeManifest(
         schema_version="platform_runtime_manifest.v1",
@@ -86,10 +182,16 @@ def validate_runtime_command_targets(
         )
 
 
-def _runtime_endpoints(env: Mapping[str, str]) -> tuple[RuntimeEndpoint, ...]:
+def _runtime_endpoints(
+    env: Mapping[str, str],
+    *,
+    service_ids: tuple[str, ...] = HISTORICAL_SERVICE_IDS,
+) -> tuple[RuntimeEndpoint, ...]:
     backend = tuple(
-        RuntimeEndpoint(service_id, resolve_service_endpoint(service_id, environ=env).base_url)
-        for service_id in SERVICE_ENDPOINTS
+        RuntimeEndpoint(
+            service_id, resolve_service_endpoint(service_id, environ=env).base_url
+        )
+        for service_id in service_ids
     )
     web_base_url = (env.get(AE_WEB_ENDPOINT_ENV) or AE_WEB_DEFAULT_BASE_URL).strip()
     return (*backend, RuntimeEndpoint("nex-ae-web", web_base_url.rstrip("/")))
@@ -100,6 +202,9 @@ def _runtime_processes(
     endpoints: Mapping[str, RuntimeEndpoint],
     *,
     python_executable: str,
+    service_ids: tuple[str, ...] = HISTORICAL_SERVICE_IDS,
+    background_process_ids: tuple[str, ...] = BACKGROUND_PROCESS_IDS,
+    current: bool = False,
 ) -> tuple[RuntimeProcess, ...]:
     api_dependencies = {
         "nex-oa": (),
@@ -107,6 +212,14 @@ def _runtime_processes(
         "nex-cx": ("nex-oa-api", "nex-mo-api"),
         "nex-ae-api": ("nex-oa-api", "nex-cx-api"),
         "nex-ag": ("nex-oa-api", "nex-ae-api", "nex-cx-api", "nex-mo-api"),
+        "nex-wc": ("nex-oa-api", "nex-ae-api"),
+        "nex-eos": ("nex-oa-api", "nex-ae-api", "nex-wc-api"),
+        "nex-wa": (
+            "nex-oa-api",
+            "nex-ae-api",
+            "nex-wc-api",
+            "nex-eos-api",
+        ),
     }
     api_processes = tuple(
         _api_process(
@@ -115,8 +228,9 @@ def _runtime_processes(
             dependencies=api_dependencies[service_id],
             resolution=resolution,
             python_executable=python_executable,
+            current=current,
         )
-        for service_id in ("nex-oa", "nex-mo", "nex-cx", "nex-ae-api", "nex-ag")
+        for service_id in service_ids
     )
     web_host, web_port = _network_address(endpoints["nex-ae-web"].base_url)
     web = RuntimeProcess(
@@ -140,8 +254,9 @@ def _runtime_processes(
             process_id,
             resolution=resolution,
             python_executable=python_executable,
+            current=current,
         )
-        for process_id in BACKGROUND_PROCESS_IDS
+        for process_id in background_process_ids
     )
     return (*api_processes, web, *background)
 
@@ -153,9 +268,10 @@ def _api_process(
     dependencies: tuple[str, ...],
     resolution: RuntimeProfileResolution,
     python_executable: str,
+    current: bool = False,
 ) -> RuntimeProcess:
     host, port = _network_address(endpoint.base_url)
-    endpoint_environment = SERVICE_ENDPOINTS[service_id][0]
+    endpoint_environment = CURRENT_SERVICE_ENDPOINTS[service_id][0]
     return RuntimeProcess(
         process_id=f"{service_id}-api" if service_id != "nex-ae-api" else service_id,
         owner=service_id,
@@ -177,7 +293,7 @@ def _api_process(
         environment_names=(
             "NEX_PROFILE",
             endpoint_environment,
-            _database_environment(service_id, resolution.profile),
+            _database_environment(service_id, resolution.profile, current=current),
         ),
     )
 
@@ -187,6 +303,7 @@ def _background_process(
     *,
     resolution: RuntimeProfileResolution,
     python_executable: str,
+    current: bool = False,
 ) -> RuntimeProcess:
     owner, kind, dependencies = {
         "nex-ae-artifact-render-worker": (
@@ -224,6 +341,47 @@ def _background_process(
             "worker",
             ("nex-cx-api", "nex-mo-api"),
         ),
+        "nex-wa-evidence-consumer": (
+            "nex-wa",
+            "worker",
+            (
+                "nex-wa-api",
+                "nex-oa-api",
+                "nex-ae-api",
+                "nex-wc-api",
+                "nex-eos-api",
+            ),
+        ),
+        "nex-ae-agent-runtime-worker": (
+            "nex-ae-api",
+            "worker",
+            (
+                "nex-ae-api",
+                "nex-oa-api",
+                "nex-cx-api",
+                "nex-mo-api",
+                "nex-wc-api",
+                "nex-eos-api",
+            ),
+        ),
+        "nex-wc-event-delivery-worker": (
+            "nex-wc",
+            "worker",
+            (
+                "nex-wc-api",
+                "nex-ae-api",
+                "nex-oa-api",
+            ),
+        ),
+        "nex-eos-outbox-publisher": (
+            "nex-eos",
+            "worker",
+            (
+                "nex-eos-api",
+                "nex-ae-api",
+                "nex-oa-api",
+            ),
+        ),
     }[process_id]
     return RuntimeProcess(
         process_id=process_id,
@@ -237,15 +395,32 @@ def _background_process(
             resolution.profile,
         ),
         dependencies=dependencies,
-        environment_names=(
-            "NEX_PROFILE",
-            _database_environment(owner, resolution.profile),
+        environment_names=tuple(
+            dict.fromkeys(
+                (
+                    "NEX_PROFILE",
+                    _database_environment(owner, resolution.profile, current=current),
+                    *CURRENT_BACKGROUND_ENVIRONMENT_NAMES.get(process_id, ()),
+                )
+            )
         ),
     )
 
 
-def _database_environment(service_id: str, profile: str) -> str:
-    names = TEST_DATABASE_ENV_NAMES if profile == "test" else DATABASE_ENV_NAMES
+def _database_environment(
+    service_id: str,
+    profile: str,
+    *,
+    current: bool = False,
+) -> str:
+    if current:
+        names = (
+            CURRENT_TEST_DATABASE_ENV_NAMES
+            if profile == "test"
+            else CURRENT_DATABASE_ENV_NAMES
+        )
+    else:
+        names = TEST_DATABASE_ENV_NAMES if profile == "test" else DATABASE_ENV_NAMES
     return names[SERVICE_DATABASE_INDEX[service_id]]
 
 

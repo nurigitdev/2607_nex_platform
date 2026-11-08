@@ -1,0 +1,257 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:nex:ae:agent-result:v2.1",
+  "title": "AE AgentResult v2.1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "tenant_id",
+    "result_id",
+    "agent_execution_id",
+    "agent_type",
+    "status",
+    "structured_result",
+    "business_refs",
+    "artifact_refs",
+    "evidence_refs",
+    "warnings",
+    "conflicts",
+    "provenance",
+    "created_at",
+    "result_hash"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "2.1"
+    },
+    "tenant_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "result_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "agent_execution_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "agent_type": {
+      "enum": [
+        "IA",
+        "CA",
+        "PA",
+        "EA"
+      ]
+    },
+    "agent_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "project_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "work_intent_ref": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "agent_context_ref": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "agent_plan_ref": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "executable_plan_ref": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "source_work_item_ref": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "source_claim_ref": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "source_claim_generation": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 0
+    },
+    "source_assignment_ref": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "status": {
+      "enum": [
+        "SUCCEEDED",
+        "PARTIAL",
+        "BLOCKED",
+        "FAILED",
+        "CANCELLED"
+      ]
+    },
+    "quality": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "completion_verification_refs": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "uniqueItems": true
+    },
+    "structured_result_contract_ref": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "structured_result": {
+      "type": "object"
+    },
+    "business_refs": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "uniqueItems": true
+    },
+    "child_work_result_refs": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "uniqueItems": true
+    },
+    "artifact_refs": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "uniqueItems": true
+    },
+    "evidence_refs": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "uniqueItems": true
+    },
+    "citation_refs": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "uniqueItems": true
+    },
+    "warnings": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "conflicts": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "control_summary": {
+      "type": "object"
+    },
+    "provenance": {
+      "type": "object"
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "result_hash": {
+      "type": "string",
+      "minLength": 1
+    },
+    "source_claimant_agent_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "agent_type": {
+            "enum": [
+              "CA",
+              "PA",
+              "EA"
+            ]
+          }
+        },
+        "required": [
+          "agent_type"
+        ]
+      },
+      "then": {
+        "required": [
+          "source_work_item_ref",
+          "source_claim_ref",
+          "source_claim_generation",
+          "source_claimant_agent_id",
+          "source_assignment_ref"
+        ],
+        "properties": {
+          "source_work_item_ref": {
+            "type": "string",
+            "minLength": 1
+          },
+          "source_claim_ref": {
+            "type": "string",
+            "minLength": 1
+          },
+          "source_claim_generation": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "source_claimant_agent_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "source_assignment_ref": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    }
+  ]
+}

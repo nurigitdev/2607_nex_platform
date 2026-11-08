@@ -1,0 +1,11 @@
+{
+  "schema_version": "eos_nvt_project_update_command.v1",
+  "tenant_id": "tenant-demo",
+  "business_operation_id": "a1000000-0000-4000-8000-000000000003",
+  "idempotency_key": "demo-nvt-project-update-invalid",
+  "payload_hash": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+  "requester_subject_id": "employee-1001",
+  "nvt_project_id": "a2000000-0000-4000-8000-000000000001",
+  "expected_version": 1,
+  "changes": {"nvt_project_code": "IMMUTABLE"}
+}

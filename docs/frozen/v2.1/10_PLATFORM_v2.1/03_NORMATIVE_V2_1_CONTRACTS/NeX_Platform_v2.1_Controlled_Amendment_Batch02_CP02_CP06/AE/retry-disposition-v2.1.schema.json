@@ -1,0 +1,129 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:nex:ae:retry-disposition:v2.1",
+  "title": "AE RetryDisposition v2.1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "decision_id",
+    "tenant_id",
+    "agent_execution_id",
+    "executable_step_id",
+    "disposition",
+    "reason_codes",
+    "decided_at"
+  ],
+  "properties": {
+    "decision_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "tenant_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "agent_execution_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "executable_step_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "source_result_ref": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "source_retry_safety_ref": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "commit_state": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "enum": [
+        "COMMITTED",
+        "NOT_COMMITTED",
+        "UNKNOWN_COMMIT_STATE",
+        null
+      ]
+    },
+    "verification_status": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "enum": [
+        "NOT_REQUESTED",
+        "VERIFIED",
+        "FAILED",
+        "UNKNOWN",
+        null
+      ]
+    },
+    "disposition": {
+      "enum": [
+        "RETRY_WITH_BACKOFF",
+        "DO_NOT_RETRY",
+        "RECONCILE_FIRST",
+        "REPLAN_OR_ESCALATE"
+      ]
+    },
+    "policy_ref": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "reason_codes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "decided_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "commit_state": {
+            "const": "COMMITTED"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "disposition": {
+            "const": "DO_NOT_RETRY"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "commit_state": {
+            "const": "UNKNOWN_COMMIT_STATE"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "disposition": {
+            "const": "RECONCILE_FIRST"
+          }
+        }
+      }
+    }
+  ]
+}

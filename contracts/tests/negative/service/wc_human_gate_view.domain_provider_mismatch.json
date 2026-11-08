@@ -1,0 +1,12 @@
+{
+  "schema_version": "human_gate_view.p8.v1",
+  "gate_id": "32000000-0000-4000-8000-000000000003",
+  "approval_domain": "BUSINESS_FORMAL",
+  "state": "PENDING",
+  "title": "Finance organization approval",
+  "summary": "Safe summary.",
+  "action_ref": "wc-approval:32000000-0000-4000-8000-000000000003",
+  "approval_provider_type": "NSL",
+  "approval_target_ref": "approval-request-p8-001",
+  "business_operation_id": "business-operation-p8-001"
+}

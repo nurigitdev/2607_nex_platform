@@ -1,0 +1,32 @@
+{
+  "schema_version": "1.0",
+  "nsl_execution_id": "66666666-6666-4666-8666-666666666666",
+  "business_operation_id": "77777777-7777-4777-8777-777777777777",
+  "skill_id": "FINANCE.PROJECT_BUDGET_CHECK",
+  "skill_version": "1.0.0",
+  "skill_semantic_hash": "sha256:ba75f7b96d08f0a8bff6ff1917b127c36cf2a0c96f1d29b7dc883674a4678b56",
+  "verified_artifact_ref": "AE:NSL_ARTIFACT:finance-project-budget-check:1.0.0",
+  "package_hash": "sha256:9e538ec352bddc4ba4a43ac1510759c02491f74f52c50bf4f817f94c9925622e",
+  "trust_evidence_ref": "NSL:PACKAGE_TRUST:9e538ec352bd",
+  "execution_status": "COMPLETED",
+  "completeness": "COMPLETE",
+  "result_ref": "AE:NSL_RUNTIME_RESULT:66666666-6666-4666-8666-666666666666",
+  "result_hash": "sha256:4b88447736aa8eb4ff3de30376c98b19612d65e17308834edf27d707ca702f25",
+  "evidence_refs": [
+    "NSL:AUDIT:66666666-6666-4666-8666-666666666666",
+    "NSL:SNAPSHOT:66666666-6666-4666-8666-666666666666"
+  ],
+  "resource_summary": {
+    "tool_calls": 2,
+    "loop_iterations": 1,
+    "emitted_rows": 1,
+    "max_collection_size_seen": 3
+  },
+  "error_code": null,
+  "error_ref": null,
+  "pre_write_eligibility": null,
+  "commit_state": null,
+  "verification_status": null,
+  "retry_safety": null,
+  "completed_at": "2026-10-14T07:00:01Z"
+}

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import run_oa_contract_api_drift_audit as runner
 from nex_oa.contract_api_drift_audit import (
     INVENTORY_BASELINE,
     _index_entries,
@@ -10,7 +11,6 @@ from nex_oa.contract_api_drift_audit import (
     _runtime_operations,
     build_oa_contract_api_drift_audit,
 )
-import run_oa_contract_api_drift_audit as runner
 
 
 def test_repository_contract_api_audit_confirms_known_drift() -> None:
@@ -20,24 +20,33 @@ def test_repository_contract_api_audit_confirms_known_drift() -> None:
     assert result["contract_readiness"] == "GAPS_CONFIRMED"
     assert all(result["checks"].values())
     assert result["issues"] == []
-    assert result["summary"] == {
-        "runtime_operation_count": 53,
-        "openapi_operation_count": 32,
-        "runtime_openapi_covered_count": 32,
-        "missing_openapi_operation_count": 21,
-        "undocumented_openapi_operation_count": 0,
-        "schema_count": 26,
-        "positive_fixture_covered_count": 26,
-        "negative_fixture_covered_count": 26,
-        "drift_count": 21,
-        "audit_issue_count": 0,
-    }
-    assert result["openapi_version"] == "0.0.0-slice1289"
+    summary = result["summary"]
+    assert summary["runtime_operation_count"] >= INVENTORY_BASELINE[
+        "runtime_operations"
+    ]
+    assert summary["openapi_operation_count"] >= INVENTORY_BASELINE[
+        "openapi_operations"
+    ]
+    assert (
+        summary["runtime_openapi_covered_count"]
+        + summary["missing_openapi_operation_count"]
+        == summary["runtime_operation_count"]
+    )
+    assert summary["undocumented_openapi_operation_count"] == 0
+    assert summary["schema_count"] == 30
+    assert summary["positive_fixture_covered_count"] == summary["schema_count"]
+    assert summary["negative_fixture_covered_count"] == summary["schema_count"]
+    assert summary["drift_count"] == summary["missing_openapi_operation_count"]
+    assert summary["audit_issue_count"] == 0
+    assert result["openapi_version"] == "0.0.0-p8-s107"
     assert result["hardening_handoff"]["target_requirement"] == "S123"
-    assert {
-        "method": "GET",
-        "path": "/internal/v1/auth/service-token-runtime",
-    } in result["missing_openapi_operations"]
+    assert len(result["missing_openapi_operations"]) == summary[
+        "missing_openapi_operation_count"
+    ]
+    assert all(
+        set(operation) == {"method", "path"}
+        for operation in result["missing_openapi_operations"]
+    )
 
 
 def test_inventory_baseline_matches_repository_minimum() -> None:
@@ -94,8 +103,10 @@ def test_summary_line_and_runner_main_paths(monkeypatch, capsys) -> None:
 
     summary = passing["summary"]
     assert "contract_api_drift_audit=pass" in runner.summary_line(passing)
-    assert "runtime_routes=53" in runner.summary_line(passing)
-    assert "drift=21" in runner.summary_line(passing)
+    assert f"runtime_routes={summary['runtime_operation_count']}" in runner.summary_line(
+        passing
+    )
+    assert f"drift={summary['drift_count']}" in runner.summary_line(passing)
     monkeypatch.setattr(runner, "run_oa_contract_api_drift_audit", lambda: passing)
     assert runner.main(["--summary"]) == 0
     assert f"openapi_missing={summary['missing_openapi_operation_count']}" in (

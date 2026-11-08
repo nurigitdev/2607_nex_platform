@@ -20,7 +20,7 @@ describe("AE Web golden journey viewport acceptance", () => {
 
       assert.equal(evidence.status, "PASS");
       assert.deepEqual(evidence.issues, []);
-      assert.equal(evidence.summary.regionCount, 9);
+      assert.equal(evidence.summary.regionCount, 8);
       assert.equal(evidence.summary.controlCount, 3);
       assert.equal(evidence.summary.overlapCount, 0);
     }

@@ -151,6 +151,22 @@ def deployment_build_inputs_digest(inputs: DeploymentBuildInputs) -> str:
     return f"sha256:{hashlib.sha256(payload).hexdigest()}"
 
 
+def python_lock_package_versions(path: Path) -> dict[str, str]:
+    text = _read_required_text(path, strip=False)
+    versions: dict[str, str] = {}
+    for raw_line in text.splitlines():
+        match = _PYTHON_PACKAGE.fullmatch(raw_line.strip())
+        if match is None:
+            continue
+        name = match.group(1).lower().replace("_", "-")
+        if name in versions:
+            raise DeploymentLockError(f"Python lock contains duplicate package: {name}")
+        versions[name] = match.group(2)
+    if not versions:
+        raise DeploymentLockError("Python lock contains no exact packages")
+    return versions
+
+
 def _python_lock_record(path: Path) -> DependencyLockRecord:
     text = _read_required_text(path, strip=False)
     if PYTHON_LOCK_COMMAND not in text:
@@ -245,4 +261,3 @@ def _file_sha256(path: Path) -> str:
         return hashlib.sha256(path.read_bytes()).hexdigest()
     except OSError as exc:
         raise DeploymentLockError(f"required build input is missing: {path.name}") from exc
-

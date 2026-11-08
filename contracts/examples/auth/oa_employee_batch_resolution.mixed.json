@@ -1,0 +1,32 @@
+{
+  "resolution_schema_version": "oa_employee_batch_resolution.v1",
+  "service_id": "nex-oa",
+  "tenant_id": "tenant-demo",
+  "requested_count": 3,
+  "resolved_count": 1,
+  "rejected_count": 2,
+  "results": [
+    {
+      "input_index": 0,
+      "resolution_status": "RESOLVED",
+      "normalized_employee_id": "emp-1001",
+      "subject_id": "subject-1001",
+      "display_name": "홍길동",
+      "subject_revision": 3,
+      "tenant_membership_revision": 5
+    },
+    {
+      "input_index": 1,
+      "resolution_status": "EMPLOYEE_NOT_FOUND",
+      "normalized_employee_id": "emp-1002"
+    },
+    {
+      "input_index": 2,
+      "resolution_status": "DUPLICATE_INPUT",
+      "normalized_employee_id": "emp-1001"
+    }
+  ],
+  "resolution_evidence_hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "request_id": "p8-s107-example",
+  "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736"
+}

@@ -1,0 +1,972 @@
+{
+  "assignment": {
+    "algorithm": "SHA256_STRATIFIED_ROUND_ROBIN_V1",
+    "group_key": "scenario_id",
+    "inner_fold_count": 4,
+    "outer_fold_count": 5,
+    "outer_folds": [
+      {
+        "fold_index": 0,
+        "inner_folds": [
+          {
+            "fold_index": 0,
+            "training_scenario_count": 48,
+            "validation_scenario_count": 16,
+            "validation_scenario_ids": [
+              "ai-calibration-admission",
+              "ai-index-freshness",
+              "ai-prompt-version-binding",
+              "ai-retrieval-no-answer",
+              "finance-asset-capitalization",
+              "finance-expense-receipt-required",
+              "finance-fx-rate-date",
+              "finance-tax-code-validation",
+              "governance-incident-escalation-mixed",
+              "governance-policy-effective-version",
+              "identity-account-provision",
+              "identity-project-authority",
+              "project-close-evidence",
+              "project-create-required-fields",
+              "project-portfolio-priority",
+              "project-sponsor-transfer"
+            ],
+            "validation_strata": {
+              "domain": {
+                "AI_RUNTIME": 4,
+                "FINANCE": 4,
+                "GOVERNANCE_OPERATIONS": 2,
+                "IDENTITY_AUTHORIZATION": 2,
+                "PROJECT": 4
+              },
+              "language_profile": {
+                "ENGLISH": 3,
+                "KOREAN": 10,
+                "KOREAN_ENGLISH_MIXED": 3
+              }
+            }
+          },
+          {
+            "fold_index": 1,
+            "training_scenario_count": 48,
+            "validation_scenario_count": 16,
+            "validation_scenario_ids": [
+              "ai-generation-timeout-retry",
+              "ai-model-readiness",
+              "ai-provider-readiness",
+              "ai-tool-allowlist",
+              "finance-account-code",
+              "finance-balanced-lines",
+              "finance-journal-reversal-linkage",
+              "finance-project-profit",
+              "governance-contract-version-mixed",
+              "governance-control-owner-review",
+              "identity-employee-status",
+              "identity-service-principal-mixed",
+              "identity-termination-revoke",
+              "project-change-impact-review",
+              "project-profitability-view",
+              "project-risk-owner-assignment"
+            ],
+            "validation_strata": {
+              "domain": {
+                "AI_RUNTIME": 4,
+                "FINANCE": 4,
+                "GOVERNANCE_OPERATIONS": 2,
+                "IDENTITY_AUTHORIZATION": 3,
+                "PROJECT": 3
+              },
+              "language_profile": {
+                "ENGLISH": 3,
+                "KOREAN": 9,
+                "KOREAN_ENGLISH_MIXED": 4
+              }
+            }
+          },
+          {
+            "fold_index": 2,
+            "training_scenario_count": 48,
+            "validation_scenario_count": 16,
+            "validation_scenario_ids": [
+              "ai-calibration-policy-binding",
+              "ai-citation-minimum",
+              "ai-inference-lineage",
+              "ai-token-budget-truncation",
+              "finance-duplicate-invoice-detection",
+              "finance-revenue-recognition-date",
+              "finance-transport-expense",
+              "finance-voucher-idempotency",
+              "governance-audit-retention",
+              "governance-record-retention-mixed",
+              "governance-secret-rotation",
+              "identity-approval-role",
+              "identity-session-revocation",
+              "project-cost-center-link",
+              "project-member-remove",
+              "project-status-update"
+            ],
+            "validation_strata": {
+              "domain": {
+                "AI_RUNTIME": 4,
+                "FINANCE": 4,
+                "GOVERNANCE_OPERATIONS": 3,
+                "IDENTITY_AUTHORIZATION": 2,
+                "PROJECT": 3
+              },
+              "language_profile": {
+                "ENGLISH": 3,
+                "KOREAN": 10,
+                "KOREAN_ENGLISH_MIXED": 3
+              }
+            }
+          },
+          {
+            "fold_index": 3,
+            "training_scenario_count": 48,
+            "validation_scenario_count": 16,
+            "validation_scenario_ids": [
+              "ai-embedding-index",
+              "ai-provider-circuit",
+              "ai-reranker-fallback",
+              "ai-retrieval-low-confidence",
+              "finance-cost-center-budget-control",
+              "finance-expense-date",
+              "finance-period-lock",
+              "finance-voucher-evidence",
+              "governance-audit-trace-mixed",
+              "governance-incident-severity",
+              "identity-delegated-access-expiry",
+              "identity-dormant-lock",
+              "identity-service-principal-scope",
+              "project-archive-retention",
+              "project-member-role-effective-date",
+              "project-members-batch-add"
+            ],
+            "validation_strata": {
+              "domain": {
+                "AI_RUNTIME": 4,
+                "FINANCE": 4,
+                "GOVERNANCE_OPERATIONS": 2,
+                "IDENTITY_AUTHORIZATION": 3,
+                "PROJECT": 3
+              },
+              "language_profile": {
+                "ENGLISH": 4,
+                "KOREAN": 9,
+                "KOREAN_ENGLISH_MIXED": 3
+              }
+            }
+          }
+        ],
+        "training_scenario_count": 64,
+        "validation_scenario_count": 16,
+        "validation_scenario_ids": [
+          "ai-chunk-overlap-policy",
+          "ai-generation-reasoning",
+          "ai-model-canary",
+          "ai-reranker-role-mixed",
+          "finance-advance-settlement",
+          "finance-payment-hold",
+          "finance-voucher-create",
+          "finance-voucher-line-balance",
+          "governance-data-export-approval",
+          "governance-evidence-custody",
+          "governance-waiver-expiry",
+          "identity-mfa-recovery",
+          "identity-role-request-approval",
+          "project-budget-baseline-lock",
+          "project-list-filter",
+          "project-milestone-dependency"
+        ],
+        "validation_strata": {
+          "domain": {
+            "AI_RUNTIME": 4,
+            "FINANCE": 4,
+            "GOVERNANCE_OPERATIONS": 3,
+            "IDENTITY_AUTHORIZATION": 2,
+            "PROJECT": 3
+          },
+          "language_profile": {
+            "ENGLISH": 3,
+            "KOREAN": 10,
+            "KOREAN_ENGLISH_MIXED": 3
+          }
+        }
+      },
+      {
+        "fold_index": 1,
+        "inner_folds": [
+          {
+            "fold_index": 0,
+            "training_scenario_count": 48,
+            "validation_scenario_count": 16,
+            "validation_scenario_ids": [
+              "ai-citation-minimum",
+              "ai-model-canary",
+              "ai-provider-readiness",
+              "ai-retrieval-no-answer",
+              "finance-advance-settlement",
+              "finance-asset-capitalization",
+              "finance-voucher-evidence",
+              "finance-voucher-line-balance",
+              "governance-audit-retention",
+              "governance-contract-version-mixed",
+              "identity-mfa-recovery",
+              "identity-service-principal-scope",
+              "identity-session-revocation",
+              "project-budget-baseline-lock",
+              "project-close-evidence",
+              "project-member-role-effective-date"
+            ],
+            "validation_strata": {
+              "domain": {
+                "AI_RUNTIME": 4,
+                "FINANCE": 4,
+                "GOVERNANCE_OPERATIONS": 2,
+                "IDENTITY_AUTHORIZATION": 3,
+                "PROJECT": 3
+              },
+              "language_profile": {
+                "ENGLISH": 3,
+                "KOREAN": 10,
+                "KOREAN_ENGLISH_MIXED": 3
+              }
+            }
+          },
+          {
+            "fold_index": 1,
+            "training_scenario_count": 48,
+            "validation_scenario_count": 16,
+            "validation_scenario_ids": [
+              "ai-calibration-admission",
+              "ai-chunk-overlap-policy",
+              "ai-embedding-index",
+              "ai-index-freshness",
+              "finance-balanced-lines",
+              "finance-cost-center-budget-control",
+              "finance-fx-rate-date",
+              "finance-period-lock",
+              "governance-control-owner-review",
+              "governance-waiver-expiry",
+              "identity-approval-role",
+              "identity-employee-status",
+              "identity-role-request-approval",
+              "project-change-impact-review",
+              "project-cost-center-link",
+              "project-milestone-dependency"
+            ],
+            "validation_strata": {
+              "domain": {
+                "AI_RUNTIME": 4,
+                "FINANCE": 4,
+                "GOVERNANCE_OPERATIONS": 2,
+                "IDENTITY_AUTHORIZATION": 3,
+                "PROJECT": 3
+              },
+              "language_profile": {
+                "ENGLISH": 3,
+                "KOREAN": 10,
+                "KOREAN_ENGLISH_MIXED": 3
+              }
+            }
+          },
+          {
+            "fold_index": 2,
+            "training_scenario_count": 48,
+            "validation_scenario_count": 16,
+            "validation_scenario_ids": [
+              "ai-calibration-policy-binding",
+              "ai-generation-reasoning",
+              "ai-reranker-role-mixed",
+              "ai-tool-allowlist",
+              "finance-account-code",
+              "finance-duplicate-invoice-detection",
+              "finance-expense-receipt-required",
+              "finance-revenue-recognition-date",
+              "governance-incident-escalation-mixed",
+              "governance-policy-effective-version",
+              "governance-secret-rotation",
+              "identity-project-authority",
+              "identity-termination-revoke",
+              "project-member-remove",
+              "project-members-batch-add",
+              "project-sponsor-transfer"
+            ],
+            "validation_strata": {
+              "domain": {
+                "AI_RUNTIME": 4,
+                "FINANCE": 4,
+                "GOVERNANCE_OPERATIONS": 3,
+                "IDENTITY_AUTHORIZATION": 2,
+                "PROJECT": 3
+              },
+              "language_profile": {
+                "ENGLISH": 4,
+                "KOREAN": 9,
+                "KOREAN_ENGLISH_MIXED": 3
+              }
+            }
+          },
+          {
+            "fold_index": 3,
+            "training_scenario_count": 48,
+            "validation_scenario_count": 16,
+            "validation_scenario_ids": [
+              "ai-generation-timeout-retry",
+              "ai-model-readiness",
+              "ai-provider-circuit",
+              "ai-token-budget-truncation",
+              "finance-payment-hold",
+              "finance-tax-code-validation",
+              "finance-voucher-create",
+              "finance-voucher-idempotency",
+              "governance-data-export-approval",
+              "governance-evidence-custody",
+              "governance-record-retention-mixed",
+              "identity-delegated-access-expiry",
+              "identity-dormant-lock",
+              "project-list-filter",
+              "project-profitability-view",
+              "project-risk-owner-assignment"
+            ],
+            "validation_strata": {
+              "domain": {
+                "AI_RUNTIME": 4,
+                "FINANCE": 4,
+                "GOVERNANCE_OPERATIONS": 3,
+                "IDENTITY_AUTHORIZATION": 2,
+                "PROJECT": 3
+              },
+              "language_profile": {
+                "ENGLISH": 3,
+                "KOREAN": 10,
+                "KOREAN_ENGLISH_MIXED": 3
+              }
+            }
+          }
+        ],
+        "training_scenario_count": 64,
+        "validation_scenario_count": 16,
+        "validation_scenario_ids": [
+          "ai-inference-lineage",
+          "ai-prompt-version-binding",
+          "ai-reranker-fallback",
+          "ai-retrieval-low-confidence",
+          "finance-expense-date",
+          "finance-journal-reversal-linkage",
+          "finance-project-profit",
+          "finance-transport-expense",
+          "governance-audit-trace-mixed",
+          "governance-incident-severity",
+          "identity-account-provision",
+          "identity-service-principal-mixed",
+          "project-archive-retention",
+          "project-create-required-fields",
+          "project-portfolio-priority",
+          "project-status-update"
+        ],
+        "validation_strata": {
+          "domain": {
+            "AI_RUNTIME": 4,
+            "FINANCE": 4,
+            "GOVERNANCE_OPERATIONS": 2,
+            "IDENTITY_AUTHORIZATION": 2,
+            "PROJECT": 4
+          },
+          "language_profile": {
+            "ENGLISH": 3,
+            "KOREAN": 9,
+            "KOREAN_ENGLISH_MIXED": 4
+          }
+        }
+      },
+      {
+        "fold_index": 2,
+        "inner_folds": [
+          {
+            "fold_index": 0,
+            "training_scenario_count": 48,
+            "validation_scenario_count": 16,
+            "validation_scenario_ids": [
+              "ai-calibration-admission",
+              "ai-citation-minimum",
+              "ai-generation-reasoning",
+              "ai-model-canary",
+              "finance-account-code",
+              "finance-expense-receipt-required",
+              "finance-payment-hold",
+              "finance-voucher-idempotency",
+              "governance-contract-version-mixed",
+              "governance-evidence-custody",
+              "governance-policy-effective-version",
+              "identity-account-provision",
+              "identity-service-principal-mixed",
+              "project-members-batch-add",
+              "project-milestone-dependency",
+              "project-profitability-view"
+            ],
+            "validation_strata": {
+              "domain": {
+                "AI_RUNTIME": 4,
+                "FINANCE": 4,
+                "GOVERNANCE_OPERATIONS": 3,
+                "IDENTITY_AUTHORIZATION": 2,
+                "PROJECT": 3
+              },
+              "language_profile": {
+                "ENGLISH": 3,
+                "KOREAN": 10,
+                "KOREAN_ENGLISH_MIXED": 3
+              }
+            }
+          },
+          {
+            "fold_index": 1,
+            "training_scenario_count": 48,
+            "validation_scenario_count": 16,
+            "validation_scenario_ids": [
+              "ai-embedding-index",
+              "ai-generation-timeout-retry",
+              "ai-retrieval-low-confidence",
+              "ai-retrieval-no-answer",
+              "finance-advance-settlement",
+              "finance-cost-center-budget-control",
+              "finance-tax-code-validation",
+              "finance-voucher-create",
+              "governance-data-export-approval",
+              "governance-waiver-expiry",
+              "identity-delegated-access-expiry",
+              "identity-role-request-approval",
+              "project-budget-baseline-lock",
+              "project-close-evidence",
+              "project-portfolio-priority",
+              "project-status-update"
+            ],
+            "validation_strata": {
+              "domain": {
+                "AI_RUNTIME": 4,
+                "FINANCE": 4,
+                "GOVERNANCE_OPERATIONS": 2,
+                "IDENTITY_AUTHORIZATION": 2,
+                "PROJECT": 4
+              },
+              "language_profile": {
+                "ENGLISH": 3,
+                "KOREAN": 9,
+                "KOREAN_ENGLISH_MIXED": 4
+              }
+            }
+          },
+          {
+            "fold_index": 2,
+            "training_scenario_count": 48,
+            "validation_scenario_count": 16,
+            "validation_scenario_ids": [
+              "ai-chunk-overlap-policy",
+              "ai-model-readiness",
+              "ai-reranker-fallback",
+              "ai-tool-allowlist",
+              "finance-asset-capitalization",
+              "finance-expense-date",
+              "finance-fx-rate-date",
+              "finance-period-lock",
+              "governance-audit-trace-mixed",
+              "governance-control-owner-review",
+              "governance-record-retention-mixed",
+              "identity-dormant-lock",
+              "identity-mfa-recovery",
+              "project-list-filter",
+              "project-member-remove",
+              "project-risk-owner-assignment"
+            ],
+            "validation_strata": {
+              "domain": {
+                "AI_RUNTIME": 4,
+                "FINANCE": 4,
+                "GOVERNANCE_OPERATIONS": 3,
+                "IDENTITY_AUTHORIZATION": 2,
+                "PROJECT": 3
+              },
+              "language_profile": {
+                "ENGLISH": 4,
+                "KOREAN": 9,
+                "KOREAN_ENGLISH_MIXED": 3
+              }
+            }
+          },
+          {
+            "fold_index": 3,
+            "training_scenario_count": 48,
+            "validation_scenario_count": 16,
+            "validation_scenario_ids": [
+              "ai-calibration-policy-binding",
+              "ai-inference-lineage",
+              "ai-prompt-version-binding",
+              "ai-reranker-role-mixed",
+              "finance-journal-reversal-linkage",
+              "finance-project-profit",
+              "finance-transport-expense",
+              "finance-voucher-line-balance",
+              "governance-incident-severity",
+              "governance-secret-rotation",
+              "identity-project-authority",
+              "identity-service-principal-scope",
+              "identity-termination-revoke",
+              "project-archive-retention",
+              "project-create-required-fields",
+              "project-member-role-effective-date"
+            ],
+            "validation_strata": {
+              "domain": {
+                "AI_RUNTIME": 4,
+                "FINANCE": 4,
+                "GOVERNANCE_OPERATIONS": 2,
+                "IDENTITY_AUTHORIZATION": 3,
+                "PROJECT": 3
+              },
+              "language_profile": {
+                "ENGLISH": 3,
+                "KOREAN": 10,
+                "KOREAN_ENGLISH_MIXED": 3
+              }
+            }
+          }
+        ],
+        "training_scenario_count": 64,
+        "validation_scenario_count": 16,
+        "validation_scenario_ids": [
+          "ai-index-freshness",
+          "ai-provider-circuit",
+          "ai-provider-readiness",
+          "ai-token-budget-truncation",
+          "finance-balanced-lines",
+          "finance-duplicate-invoice-detection",
+          "finance-revenue-recognition-date",
+          "finance-voucher-evidence",
+          "governance-audit-retention",
+          "governance-incident-escalation-mixed",
+          "identity-approval-role",
+          "identity-employee-status",
+          "identity-session-revocation",
+          "project-change-impact-review",
+          "project-cost-center-link",
+          "project-sponsor-transfer"
+        ],
+        "validation_strata": {
+          "domain": {
+            "AI_RUNTIME": 4,
+            "FINANCE": 4,
+            "GOVERNANCE_OPERATIONS": 2,
+            "IDENTITY_AUTHORIZATION": 3,
+            "PROJECT": 3
+          },
+          "language_profile": {
+            "ENGLISH": 3,
+            "KOREAN": 10,
+            "KOREAN_ENGLISH_MIXED": 3
+          }
+        }
+      },
+      {
+        "fold_index": 3,
+        "inner_folds": [
+          {
+            "fold_index": 0,
+            "training_scenario_count": 48,
+            "validation_scenario_count": 16,
+            "validation_scenario_ids": [
+              "ai-prompt-version-binding",
+              "ai-provider-circuit",
+              "ai-retrieval-low-confidence",
+              "ai-tool-allowlist",
+              "finance-duplicate-invoice-detection",
+              "finance-expense-date",
+              "finance-revenue-recognition-date",
+              "finance-voucher-evidence",
+              "governance-audit-trace-mixed",
+              "governance-policy-effective-version",
+              "governance-secret-rotation",
+              "identity-approval-role",
+              "identity-employee-status",
+              "project-cost-center-link",
+              "project-create-required-fields",
+              "project-status-update"
+            ],
+            "validation_strata": {
+              "domain": {
+                "AI_RUNTIME": 4,
+                "FINANCE": 4,
+                "GOVERNANCE_OPERATIONS": 3,
+                "IDENTITY_AUTHORIZATION": 2,
+                "PROJECT": 3
+              },
+              "language_profile": {
+                "ENGLISH": 3,
+                "KOREAN": 10,
+                "KOREAN_ENGLISH_MIXED": 3
+              }
+            }
+          },
+          {
+            "fold_index": 1,
+            "training_scenario_count": 48,
+            "validation_scenario_count": 16,
+            "validation_scenario_ids": [
+              "ai-chunk-overlap-policy",
+              "ai-generation-timeout-retry",
+              "ai-provider-readiness",
+              "ai-reranker-role-mixed",
+              "finance-journal-reversal-linkage",
+              "finance-transport-expense",
+              "finance-voucher-create",
+              "finance-voucher-line-balance",
+              "governance-incident-escalation-mixed",
+              "governance-incident-severity",
+              "identity-account-provision",
+              "identity-mfa-recovery",
+              "identity-session-revocation",
+              "project-archive-retention",
+              "project-member-remove",
+              "project-members-batch-add"
+            ],
+            "validation_strata": {
+              "domain": {
+                "AI_RUNTIME": 4,
+                "FINANCE": 4,
+                "GOVERNANCE_OPERATIONS": 2,
+                "IDENTITY_AUTHORIZATION": 3,
+                "PROJECT": 3
+              },
+              "language_profile": {
+                "ENGLISH": 3,
+                "KOREAN": 10,
+                "KOREAN_ENGLISH_MIXED": 3
+              }
+            }
+          },
+          {
+            "fold_index": 2,
+            "training_scenario_count": 48,
+            "validation_scenario_count": 16,
+            "validation_scenario_ids": [
+              "ai-calibration-admission",
+              "ai-calibration-policy-binding",
+              "ai-inference-lineage",
+              "ai-reranker-fallback",
+              "finance-advance-settlement",
+              "finance-payment-hold",
+              "finance-project-profit",
+              "finance-tax-code-validation",
+              "governance-data-export-approval",
+              "governance-evidence-custody",
+              "governance-record-retention-mixed",
+              "identity-project-authority",
+              "identity-service-principal-mixed",
+              "project-milestone-dependency",
+              "project-portfolio-priority",
+              "project-profitability-view"
+            ],
+            "validation_strata": {
+              "domain": {
+                "AI_RUNTIME": 4,
+                "FINANCE": 4,
+                "GOVERNANCE_OPERATIONS": 3,
+                "IDENTITY_AUTHORIZATION": 2,
+                "PROJECT": 3
+              },
+              "language_profile": {
+                "ENGLISH": 3,
+                "KOREAN": 9,
+                "KOREAN_ENGLISH_MIXED": 4
+              }
+            }
+          },
+          {
+            "fold_index": 3,
+            "training_scenario_count": 48,
+            "validation_scenario_count": 16,
+            "validation_scenario_ids": [
+              "ai-generation-reasoning",
+              "ai-index-freshness",
+              "ai-model-canary",
+              "ai-token-budget-truncation",
+              "finance-balanced-lines",
+              "finance-cost-center-budget-control",
+              "finance-fx-rate-date",
+              "finance-period-lock",
+              "governance-audit-retention",
+              "governance-waiver-expiry",
+              "identity-delegated-access-expiry",
+              "identity-role-request-approval",
+              "project-budget-baseline-lock",
+              "project-change-impact-review",
+              "project-list-filter",
+              "project-sponsor-transfer"
+            ],
+            "validation_strata": {
+              "domain": {
+                "AI_RUNTIME": 4,
+                "FINANCE": 4,
+                "GOVERNANCE_OPERATIONS": 2,
+                "IDENTITY_AUTHORIZATION": 2,
+                "PROJECT": 4
+              },
+              "language_profile": {
+                "ENGLISH": 3,
+                "KOREAN": 10,
+                "KOREAN_ENGLISH_MIXED": 3
+              }
+            }
+          }
+        ],
+        "training_scenario_count": 64,
+        "validation_scenario_count": 16,
+        "validation_scenario_ids": [
+          "ai-citation-minimum",
+          "ai-embedding-index",
+          "ai-model-readiness",
+          "ai-retrieval-no-answer",
+          "finance-account-code",
+          "finance-asset-capitalization",
+          "finance-expense-receipt-required",
+          "finance-voucher-idempotency",
+          "governance-contract-version-mixed",
+          "governance-control-owner-review",
+          "identity-dormant-lock",
+          "identity-service-principal-scope",
+          "identity-termination-revoke",
+          "project-close-evidence",
+          "project-member-role-effective-date",
+          "project-risk-owner-assignment"
+        ],
+        "validation_strata": {
+          "domain": {
+            "AI_RUNTIME": 4,
+            "FINANCE": 4,
+            "GOVERNANCE_OPERATIONS": 2,
+            "IDENTITY_AUTHORIZATION": 3,
+            "PROJECT": 3
+          },
+          "language_profile": {
+            "ENGLISH": 4,
+            "KOREAN": 9,
+            "KOREAN_ENGLISH_MIXED": 3
+          }
+        }
+      },
+      {
+        "fold_index": 4,
+        "inner_folds": [
+          {
+            "fold_index": 0,
+            "training_scenario_count": 48,
+            "validation_scenario_count": 16,
+            "validation_scenario_ids": [
+              "ai-embedding-index",
+              "ai-model-canary",
+              "ai-reranker-fallback",
+              "ai-reranker-role-mixed",
+              "finance-duplicate-invoice-detection",
+              "finance-project-profit",
+              "finance-revenue-recognition-date",
+              "finance-voucher-evidence",
+              "governance-audit-retention",
+              "governance-waiver-expiry",
+              "identity-role-request-approval",
+              "identity-session-revocation",
+              "project-cost-center-link",
+              "project-risk-owner-assignment",
+              "project-sponsor-transfer",
+              "project-status-update"
+            ],
+            "validation_strata": {
+              "domain": {
+                "AI_RUNTIME": 4,
+                "FINANCE": 4,
+                "GOVERNANCE_OPERATIONS": 2,
+                "IDENTITY_AUTHORIZATION": 2,
+                "PROJECT": 4
+              },
+              "language_profile": {
+                "ENGLISH": 3,
+                "KOREAN": 10,
+                "KOREAN_ENGLISH_MIXED": 3
+              }
+            }
+          },
+          {
+            "fold_index": 1,
+            "training_scenario_count": 48,
+            "validation_scenario_count": 16,
+            "validation_scenario_ids": [
+              "ai-prompt-version-binding",
+              "ai-provider-circuit",
+              "ai-retrieval-low-confidence",
+              "ai-token-budget-truncation",
+              "finance-account-code",
+              "finance-asset-capitalization",
+              "finance-balanced-lines",
+              "finance-voucher-create",
+              "governance-contract-version-mixed",
+              "governance-incident-severity",
+              "identity-approval-role",
+              "identity-mfa-recovery",
+              "identity-service-principal-scope",
+              "project-archive-retention",
+              "project-budget-baseline-lock",
+              "project-member-role-effective-date"
+            ],
+            "validation_strata": {
+              "domain": {
+                "AI_RUNTIME": 4,
+                "FINANCE": 4,
+                "GOVERNANCE_OPERATIONS": 2,
+                "IDENTITY_AUTHORIZATION": 3,
+                "PROJECT": 3
+              },
+              "language_profile": {
+                "ENGLISH": 4,
+                "KOREAN": 9,
+                "KOREAN_ENGLISH_MIXED": 3
+              }
+            }
+          },
+          {
+            "fold_index": 2,
+            "training_scenario_count": 48,
+            "validation_scenario_count": 16,
+            "validation_scenario_ids": [
+              "ai-index-freshness",
+              "ai-inference-lineage",
+              "ai-model-readiness",
+              "ai-retrieval-no-answer",
+              "finance-advance-settlement",
+              "finance-journal-reversal-linkage",
+              "finance-transport-expense",
+              "finance-voucher-line-balance",
+              "governance-evidence-custody",
+              "governance-incident-escalation-mixed",
+              "identity-dormant-lock",
+              "identity-employee-status",
+              "identity-service-principal-mixed",
+              "project-close-evidence",
+              "project-create-required-fields",
+              "project-list-filter"
+            ],
+            "validation_strata": {
+              "domain": {
+                "AI_RUNTIME": 4,
+                "FINANCE": 4,
+                "GOVERNANCE_OPERATIONS": 2,
+                "IDENTITY_AUTHORIZATION": 3,
+                "PROJECT": 3
+              },
+              "language_profile": {
+                "ENGLISH": 3,
+                "KOREAN": 9,
+                "KOREAN_ENGLISH_MIXED": 4
+              }
+            }
+          },
+          {
+            "fold_index": 3,
+            "training_scenario_count": 48,
+            "validation_scenario_count": 16,
+            "validation_scenario_ids": [
+              "ai-chunk-overlap-policy",
+              "ai-citation-minimum",
+              "ai-generation-reasoning",
+              "ai-provider-readiness",
+              "finance-expense-date",
+              "finance-expense-receipt-required",
+              "finance-payment-hold",
+              "finance-voucher-idempotency",
+              "governance-audit-trace-mixed",
+              "governance-control-owner-review",
+              "governance-data-export-approval",
+              "identity-account-provision",
+              "identity-termination-revoke",
+              "project-change-impact-review",
+              "project-milestone-dependency",
+              "project-portfolio-priority"
+            ],
+            "validation_strata": {
+              "domain": {
+                "AI_RUNTIME": 4,
+                "FINANCE": 4,
+                "GOVERNANCE_OPERATIONS": 3,
+                "IDENTITY_AUTHORIZATION": 2,
+                "PROJECT": 3
+              },
+              "language_profile": {
+                "ENGLISH": 3,
+                "KOREAN": 10,
+                "KOREAN_ENGLISH_MIXED": 3
+              }
+            }
+          }
+        ],
+        "training_scenario_count": 64,
+        "validation_scenario_count": 16,
+        "validation_scenario_ids": [
+          "ai-calibration-admission",
+          "ai-calibration-policy-binding",
+          "ai-generation-timeout-retry",
+          "ai-tool-allowlist",
+          "finance-cost-center-budget-control",
+          "finance-fx-rate-date",
+          "finance-period-lock",
+          "finance-tax-code-validation",
+          "governance-policy-effective-version",
+          "governance-record-retention-mixed",
+          "governance-secret-rotation",
+          "identity-delegated-access-expiry",
+          "identity-project-authority",
+          "project-member-remove",
+          "project-members-batch-add",
+          "project-profitability-view"
+        ],
+        "validation_strata": {
+          "domain": {
+            "AI_RUNTIME": 4,
+            "FINANCE": 4,
+            "GOVERNANCE_OPERATIONS": 3,
+            "IDENTITY_AUTHORIZATION": 2,
+            "PROJECT": 3
+          },
+          "language_profile": {
+            "ENGLISH": 3,
+            "KOREAN": 10,
+            "KOREAN_ENGLISH_MIXED": 3
+          }
+        }
+      }
+    ],
+    "seed": "s136-v4-nested-cv-v1",
+    "stratification_fields": [
+      "domain",
+      "language_profile"
+    ]
+  },
+  "checks": {
+    "holdout_excluded": true,
+    "inner_partitions_exact": true,
+    "outer_partition_exact": true,
+    "query_or_candidate_text_included": false,
+    "scenario_pair_grouping_preserved": true
+  },
+  "dataset": {
+    "calibration_scenario_count": 80,
+    "dataset_id": "s136-retrieval-package-confidence-public-v4",
+    "dataset_sha256": "594209203d25b0a87e6fd136b6794bdc30058a5eb45b7e2c8ff27523bd7f1757",
+    "holdout_scenario_count": 20
+  },
+  "design": {
+    "design_hash": "sha256:f467d2c7ba37e0b314add4961a573dad8a9f800db58762ba3644456352585a2a",
+    "design_id": "s136-retrieval-package-confidence-v4-design"
+  },
+  "fold_plan_hash": "sha256:6e01aa5792b3d18f67a39419a37622f9c8df6e8124e981b04151496180de4613",
+  "fold_plan_schema_version": "cx_retrieval_nested_fold_plan.v1",
+  "holdout_access_permitted": false,
+  "runtime_activation_permitted": false,
+  "status": "ASSIGNED"
+}

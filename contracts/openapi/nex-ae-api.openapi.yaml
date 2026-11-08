@@ -16,7 +16,9 @@ tags:
   - name: Analytics
   - name: Prompts
   - name: Runtime Policy
+  - name: Approvals
   - name: Operations
+  - name: Work Sources
 paths:
   /health:
     get:
@@ -311,6 +313,164 @@ paths:
           description: CX returned an invalid ingestion or vector-readiness projection.
         "503":
           description: AE handoff persistence or CX progress dependencies are unavailable.
+  /api/v1/voucher-attachments/batches:
+    post:
+      operationId: createAeVoucherAttachmentBatch
+      tags: [Uploads]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AeVoucherAttachmentBatchCreateRequest"
+      responses:
+        "201":
+          description: Owner-scoped voucher attachment batch created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AeVoucherAttachmentBatch"
+        "401": {description: Authenticated browser session is missing or invalid.}
+        "403": {description: Authenticated browser-user authority is required.}
+        "422": {description: Attachment batch request is invalid.}
+        "503": {description: Attachment persistence is unavailable.}
+  /api/v1/voucher-attachments/batches/{attachment_batch_id}:
+    get:
+      operationId: getAeVoucherAttachmentBatch
+      tags: [Uploads]
+      parameters:
+        - $ref: "#/components/parameters/AeVoucherAttachmentBatchId"
+      responses:
+        "200":
+          description: Owner-scoped voucher attachment batch projection.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AeVoucherAttachmentBatch"
+        "401": {description: Authenticated browser session is missing or invalid.}
+        "404": {description: Batch is absent or outside the authenticated owner scope.}
+        "503": {description: Attachment persistence is unavailable.}
+  /api/v1/voucher-attachments/batches/{attachment_batch_id}/items:
+    post:
+      operationId: uploadAeVoucherAttachmentItem
+      tags: [Uploads]
+      parameters:
+        - $ref: "#/components/parameters/AeVoucherAttachmentBatchId"
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [file]
+              properties:
+                attachment_id:
+                  type: string
+                  format: uuid
+                  description: Optional stable idempotency identity for the upload.
+                file:
+                  type: string
+                  format: binary
+      responses:
+        "200":
+          description: Idempotent replay of an existing immutable attachment.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AeVoucherAttachmentUploadResult"
+        "201":
+          description: Voucher evidence attachment stored and registered.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AeVoucherAttachmentUploadResult"
+        "401": {description: Authenticated browser session is missing or invalid.}
+        "404": {description: Batch is absent or outside the authenticated owner scope.}
+        "409": {description: Batch is immutable or upload semantics conflict.}
+        "413": {description: Attachment or batch size limit was exceeded.}
+        "415": {description: Attachment media type is not allowed.}
+        "422": {description: Attachment metadata or content integrity is invalid.}
+        "503": {description: Attachment persistence or object storage is unavailable.}
+  /api/v1/voucher-attachments/batches/{attachment_batch_id}/items/{attachment_id}:
+    delete:
+      operationId: removeAeVoucherAttachmentItem
+      tags: [Uploads]
+      parameters:
+        - $ref: "#/components/parameters/AeVoucherAttachmentBatchId"
+        - $ref: "#/components/parameters/AeVoucherAttachmentId"
+      responses:
+        "200": {description: Draft attachment removed or an identical removal replayed.}
+        "401": {description: Authenticated browser session is missing or invalid.}
+        "404": {description: Attachment is absent or outside the authenticated owner scope.}
+        "409": {description: Locked attachment cannot be removed.}
+        "503": {description: Attachment persistence or object storage is unavailable.}
+  /api/v1/voucher-attachments/batches/{attachment_batch_id}/items/{attachment_id}/content:
+    get:
+      operationId: getAeVoucherAttachmentContent
+      tags: [Uploads]
+      parameters:
+        - $ref: "#/components/parameters/AeVoucherAttachmentBatchId"
+        - $ref: "#/components/parameters/AeVoucherAttachmentId"
+        - name: download
+          in: query
+          required: false
+          schema: {type: boolean, default: false}
+        - name: tenant_id
+          in: query
+          required: false
+          schema: {type: string}
+          description: Required only for an authorized internal service review.
+      responses:
+        "200":
+          description: Owner- or service-authorized private attachment bytes.
+          headers:
+            Cache-Control:
+              schema: {type: string}
+              description: Always private, no-store.
+            X-Content-Type-Options:
+              schema: {const: nosniff}
+          content:
+            application/octet-stream:
+              schema: {type: string, format: binary}
+        "401": {description: User or service authentication is missing or invalid.}
+        "403": {description: Service review authority is insufficient.}
+        "404": {description: Attachment is absent or outside the authorized scope.}
+        "503": {description: Attachment persistence or object storage is unavailable.}
+  /api/v1/voucher-attachments/batches/{attachment_batch_id}/finalize:
+    post:
+      operationId: finalizeAeVoucherAttachmentBatch
+      tags: [Uploads]
+      parameters:
+        - $ref: "#/components/parameters/AeVoucherAttachmentBatchId"
+      responses:
+        "200":
+          description: Batch has no incomplete items and is ready to lock.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AeVoucherAttachmentBatch"
+        "401": {description: Authenticated browser session is missing or invalid.}
+        "404": {description: Batch is absent or outside the authenticated owner scope.}
+        "409": {description: "Batch is empty, incomplete, quarantined, or failed."}
+        "503": {description: Attachment persistence is unavailable.}
+  /api/v1/voucher-attachments/batches/{attachment_batch_id}/lock:
+    post:
+      operationId: lockAeVoucherAttachmentManifest
+      tags: [Uploads]
+      parameters:
+        - $ref: "#/components/parameters/AeVoucherAttachmentBatchId"
+      responses:
+        "200":
+          description: Immutable, hash-bound voucher attachment manifest.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AeVoucherAttachmentManifest"
+        "401": {description: Authenticated browser session is missing or invalid.}
+        "404": {description: Batch is absent or outside the authenticated owner scope.}
+        "409": {description: Batch is not ready to lock.}
+        "503": {description: Attachment persistence is unavailable.}
   /api/v1/workspaces/{workspace_id}/documents:
     get:
       operationId: listAeWorkspaceDocuments
@@ -1122,6 +1282,92 @@ paths:
           description: Generated response lineage is not ready.
         "503":
           description: Private response storage is unavailable or failed integrity verification.
+  /api/v1/chat/interactions/{interaction_id}/agent-result:
+    get:
+      operationId: getAeInteractionAgentResult
+      tags:
+        - Chat
+      parameters:
+        - name: interaction_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Owner-scoped Agent execution and published result projection.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required:
+                  - schema_version
+                  - interaction_id
+                  - workspace_id
+                  - agent_execution_id
+                  - execution_state
+                  - execution_phase
+                  - terminal
+                  - result
+                  - updated_at
+                  - completed_at
+                  - metadata
+                properties:
+                  schema_version:
+                    const: ae_interaction_agent_result.v1
+                  interaction_id:
+                    type: string
+                    format: uuid
+                  workspace_id:
+                    type: string
+                    format: uuid
+                  agent_execution_id:
+                    type: string
+                    format: uuid
+                  execution_state:
+                    type: string
+                  execution_phase:
+                    type: string
+                  terminal:
+                    type: boolean
+                  result:
+                    type:
+                      - object
+                      - "null"
+                  updated_at:
+                    type: string
+                    format: date-time
+                  completed_at:
+                    type:
+                      - string
+                      - "null"
+                    format: date-time
+                  metadata:
+                    type: object
+                    additionalProperties: false
+                    required:
+                      - owner_scope_authority
+                      - raw_result_included
+                      - prompt_included
+                    properties:
+                      owner_scope_authority:
+                        const: claim
+                      raw_result_included:
+                        const: false
+                      prompt_included:
+                        const: false
+        "400":
+          description: Interaction identity or stored projection is invalid.
+        "401":
+          description: Service or browser claim is missing or invalid.
+        "403":
+          description: An authenticated browser owner is required.
+        "404":
+          description: Agent result was not found in the authenticated owner scope.
+        "503":
+          description: Durable interaction result storage is unavailable.
   /api/v1/chat/interactions/{interaction_id}/citation-quality:
     get:
       operationId: getAeChatInteractionCitationQuality
@@ -2022,6 +2268,76 @@ paths:
           description: Proposed automation recommendations for the user.
         "401":
           description: Service claim is missing or invalid.
+  /api/v1/approval-gates:
+    get:
+      operationId: listAeApprovalGates
+      tags: [Approvals]
+      description: >-
+        Returns a bounded, display-safe unified approval inbox for the
+        authenticated browser user. AE derives tenant and subject identity
+        from the browser session and calls WC with its service credential.
+      parameters:
+        - name: limit
+          in: query
+          schema: {type: integer, minimum: 1, maximum: 100, default: 50}
+      responses:
+        "200":
+          description: Eligible pending approval gates across preserved domains.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/WcApprovalInbox"}
+        "401": {description: Authenticated browser session is missing or invalid.}
+        "403": {description: Current approval read authority is denied.}
+        "422": {description: Limit is invalid.}
+        "503": {description: WC approval service is unavailable.}
+  /api/v1/approval-gates/{approval_work_item_id}:
+    get:
+      operationId: getAeApprovalGate
+      tags: [Approvals]
+      description: Returns display-safe approval detail after WC authorization.
+      parameters:
+        - {$ref: "#/components/parameters/ApprovalWorkItemId"}
+      responses:
+        "200":
+          description: Eligible display-safe approval gate detail.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/WcApprovalGateDetail"}
+        "401": {description: Authenticated browser session is missing or invalid.}
+        "403": {description: Current approval read authority is denied.}
+        "404": {description: Gate is absent or unavailable to the browser user.}
+        "503": {description: WC approval service is unavailable.}
+  /api/v1/approval-gates/{approval_work_item_id}/decisions:
+    post:
+      operationId: decideAeApprovalGate
+      tags: [Approvals]
+      description: >-
+        Forwards an exact APPROVE or REJECT request to WC. WC remains the
+        decision system of record and performs fresh OA authorization.
+      parameters:
+        - {$ref: "#/components/parameters/ApprovalWorkItemId"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/WcApprovalDecisionRequest"}
+      responses:
+        "200":
+          description: Exact idempotent replay of an existing decision.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/WcApprovalDecision"}
+        "201":
+          description: Immutable approval decision recorded by WC.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/WcApprovalDecision"}
+        "401": {description: Authenticated browser session is missing or invalid.}
+        "403": {description: Current approval decision authority is denied.}
+        "404": {description: Approval gate was not found.}
+        "409": {description: "Gate is expired, terminal, stale, or conflicts."}
+        "422": {description: Decision request is invalid.}
+        "503": {description: WC approval service is unavailable.}
   /admin/v1/operations/mvp-acceptance:
     get:
       operationId: getAeMvpAcceptanceOperationsProjection
@@ -2038,6 +2354,212 @@ paths:
           description: Service or user claim is missing or invalid.
         "403":
           description: User claim does not include the admin role.
+  /internal/v1/tenants/{tenant_id}/agents:
+    post:
+      operationId: registerAeBackgroundAgent
+      security: [{serviceBearer: []}]
+      x-nex-required-scopes: [service:call]
+      parameters:
+        - {name: tenant_id, in: path, required: true, schema: {type: string}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [agent_type, profile_ref]
+              properties:
+                agent_type: {enum: [CA, PA, EA]}
+                profile_ref: {type: string}
+                project_id: {type: [string, "null"]}
+      responses:
+        "201": {description: Background AgentIdentity registered}
+        "409": {description: Active PA or identity conflict}
+    get:
+      operationId: listAeBackgroundAgents
+      security: [{serviceBearer: []}]
+      x-nex-required-scopes: [service:call]
+      parameters:
+        - {name: tenant_id, in: path, required: true, schema: {type: string}}
+        - {name: agent_type, in: query, schema: {enum: [CA, PA, EA]}}
+        - {name: status, in: query, schema: {enum: [ACTIVE, SUSPENDED, RETIRED]}}
+        - {name: project_id, in: query, schema: {type: string}}
+      responses:
+        "200": {description: Metadata-safe AgentIdentity list}
+  /internal/v1/tenants/{tenant_id}/agents/{agent_id}:
+    get:
+      operationId: getAeBackgroundAgent
+      security: [{serviceBearer: []}]
+      parameters:
+        - {name: tenant_id, in: path, required: true, schema: {type: string}}
+        - {name: agent_id, in: path, required: true, schema: {type: string}}
+      responses:
+        "200": {description: AgentIdentity projection}
+        "404": {description: AgentIdentity not found}
+  /internal/v1/tenants/{tenant_id}/agents/{agent_id}/status:
+    patch:
+      operationId: setAeBackgroundAgentStatus
+      security: [{serviceBearer: []}]
+      parameters:
+        - {name: tenant_id, in: path, required: true, schema: {type: string}}
+        - {name: agent_id, in: path, required: true, schema: {type: string}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status, expected_version]
+              properties:
+                status: {enum: [ACTIVE, SUSPENDED, RETIRED]}
+                expected_version: {type: integer, minimum: 1}
+      responses:
+        "200": {description: AgentIdentity status changed}
+        "409": {description: Version or active PA conflict}
+  /internal/v1/tenants/{tenant_id}/projects/{project_id}/active-pa:
+    get:
+      operationId: resolveAeActiveProjectAgent
+      security: [{serviceBearer: []}]
+      parameters:
+        - {name: tenant_id, in: path, required: true, schema: {type: string}}
+        - {name: project_id, in: path, required: true, schema: {type: string}}
+      responses:
+        "200": {description: Exact active project PA}
+        "404": {description: Active PA not found}
+  /internal/v1/work-handoffs:
+    post:
+      operationId: admitAeClaimExecutionHandoff
+      security: [{serviceBearer: []}]
+      x-nex-required-scopes: [service:call]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [event_id, event_type, requester_ref, handoff]
+              properties:
+                event_id: {type: string, minLength: 1}
+                event_type: {const: CLAIM_EXECUTION_HANDOFF}
+                requester_ref: {type: string, minLength: 1}
+                handoff:
+                  type: object
+                  x-nex-canonical-json-schema: docs/transition/P7/contracts/p7-claim-execution-handoff-v2.1.schema.json
+      responses:
+        "200": {description: Idempotent CLAIMED_WORKITEM AgentExecution admission}
+        "401": {description: Missing or invalid service token}
+        "403": {description: Caller is not nex-wc}
+        "409": {description: Handoff semantics or Agent scope conflict}
+        "503": {description: AE Agent Runtime persistence unavailable}
+  /internal/v1/wa-sources/agent-results:
+    get:
+      operationId: listAeAgentResultWaSources
+      tags: [Work Sources]
+      security: [{serviceBearer: []}]
+      x-nex-required-caller: nex-wa
+      x-nex-required-scopes: [service:call, "work:source:read"]
+      parameters:
+        - {$ref: "#/components/parameters/WaSourceTenant"}
+        - {$ref: "#/components/parameters/WaSourceCreatedAfter"}
+        - {$ref: "#/components/parameters/WaSourceCreatedBefore"}
+        - {$ref: "#/components/parameters/WaSourceLimit"}
+        - {$ref: "#/components/parameters/WaSourceCursor"}
+      responses:
+        "200":
+          description: Bounded AgentResult refs and hashes for WA reconciliation.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/WaSourceReconciliationPage"}
+        "400": {description: "Bounded window, cursor, tenant, or limit is invalid."}
+        "401": {description: Service token or required source-read scope is invalid.}
+        "403": {description: Caller service is denied.}
+        "503": {description: AE persistence is unavailable.}
+  /internal/v1/wa-sources/agent-results/{result_id}:
+    get:
+      operationId: getAeAgentResultWaSource
+      tags: [Work Sources]
+      security: [{serviceBearer: []}]
+      x-nex-required-caller: nex-wa
+      x-nex-required-scopes: [service:call, "work:source:read"]
+      parameters:
+        - name: result_id
+          in: path
+          required: true
+          schema: {type: string, minLength: 1}
+        - name: X-NeX-Tenant-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1}
+      responses:
+        "200":
+          description: Safe tenant-scoped AgentResult projection for NeX-WA.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WaAgentResultSourceProjection"
+        "400": {description: Tenant header is missing.}
+        "401": {description: Service token or required source-read scope is invalid.}
+        "403": {description: Caller service is denied.}
+        "404": {description: AgentResult is absent in the tenant scope.}
+        "409": {description: Authoritative result lineage is inconsistent.}
+        "503": {description: AE persistence is unavailable.}
+  /internal/v1/wa-sources/artifacts:
+    get:
+      operationId: listAeArtifactWaSources
+      tags: [Work Sources]
+      security: [{serviceBearer: []}]
+      x-nex-required-caller: nex-wa
+      x-nex-required-scopes: [service:call, "work:source:read"]
+      parameters:
+        - {$ref: "#/components/parameters/WaSourceTenant"}
+        - {$ref: "#/components/parameters/WaSourceCreatedAfter"}
+        - {$ref: "#/components/parameters/WaSourceCreatedBefore"}
+        - {$ref: "#/components/parameters/WaSourceLimit"}
+        - {$ref: "#/components/parameters/WaSourceCursor"}
+      responses:
+        "200":
+          description: Bounded READY Artifact refs and hashes for WA reconciliation.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/WaSourceReconciliationPage"}
+        "400": {description: "Bounded window, cursor, tenant, or limit is invalid."}
+        "401": {description: Service token or required source-read scope is invalid.}
+        "403": {description: Caller service is denied.}
+        "503": {description: AE persistence is unavailable.}
+  /internal/v1/wa-sources/artifacts/{artifact_id}/versions/{artifact_version_id}:
+    get:
+      operationId: getAeArtifactVersionWaSource
+      tags: [Work Sources]
+      security: [{serviceBearer: []}]
+      x-nex-required-caller: nex-wa
+      x-nex-required-scopes: [service:call, "work:source:read"]
+      parameters:
+        - name: artifact_id
+          in: path
+          required: true
+          schema: {type: string, minLength: 1}
+        - name: artifact_version_id
+          in: path
+          required: true
+          schema: {type: string, minLength: 1}
+        - name: X-NeX-Tenant-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1}
+      responses:
+        "200":
+          description: Safe exact Artifact version projection for NeX-WA.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WaArtifactSourceProjection"
+        "400": {description: Tenant header is missing.}
+        "401": {description: Service token or required source-read scope is invalid.}
+        "403": {description: Caller service is denied.}
+        "404": {description: Artifact version is absent in the tenant scope.}
+        "409": {description: Artifact is not READY or lineage is inconsistent.}
+        "503": {description: AE persistence is unavailable.}
 components:
   securitySchemes:
     serviceBearer:
@@ -2045,13 +2567,78 @@ components:
       scheme: bearer
       bearerFormat: RS256 at+jwt
   parameters:
+    WaSourceTenant:
+      name: X-NeX-Tenant-Id
+      in: header
+      required: true
+      schema: {type: string, minLength: 1}
+    WaSourceCreatedAfter:
+      name: created_after
+      in: query
+      required: true
+      schema: {type: string, format: date-time}
+    WaSourceCreatedBefore:
+      name: created_before
+      in: query
+      required: true
+      schema: {type: string, format: date-time}
+    WaSourceLimit:
+      name: limit
+      in: query
+      required: false
+      schema: {type: integer, minimum: 1, maximum: 100, default: 50}
+    WaSourceCursor:
+      name: cursor
+      in: query
+      required: false
+      schema: {type: string, minLength: 1, maxLength: 1024}
+    ApprovalWorkItemId:
+      name: approval_work_item_id
+      in: path
+      required: true
+      schema: {type: string, format: uuid}
     AeAsyncRenderJobId:
       name: render_job_id
       in: path
       required: true
       schema:
         type: string
+    AeVoucherAttachmentBatchId:
+      name: attachment_batch_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    AeVoucherAttachmentId:
+      name: attachment_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
   schemas:
+    WaSourceReconciliationPage:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_ae_api/wa_source_reconciliation_page.v1.schema.json
+    WaArtifactSourceProjection:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_ae_api/wa_artifact_source_projection.v1.schema.json
+    WaAgentResultSourceProjection:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_ae_api/wa_agent_result_source_projection.v1.schema.json
+    WcApprovalDecision:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_wc/approval_decision.v1.schema.json
+    WcApprovalDecisionRequest:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_wc/approval_decision_request.v1.schema.json
+    WcApprovalGateDetail:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_wc/approval_gate_detail.v1.schema.json
+    WcApprovalInbox:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_wc/approval_inbox.v1.schema.json
     AeUploadIngestionProgress:
       type: object
       x-nex-canonical-json-schema: schemas/service/nex_ae_api/upload_ingestion_progress.v1.schema.json
@@ -2085,6 +2672,70 @@ components:
         vector_index: {type: object}
         links: {type: object}
         metadata: {type: object}
+    AeVoucherAttachmentBatchCreateRequest:
+      type: object
+      additionalProperties: false
+      required: [conversation_id, interaction_id]
+      properties:
+        attachment_batch_id:
+          type: string
+          format: uuid
+          description: Optional stable idempotency identity for the batch.
+        conversation_id: {type: string, format: uuid}
+        interaction_id: {type: string, format: uuid}
+    AeVoucherAttachmentBatch:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_ae_api/voucher_attachment_batch.v1.schema.json
+      additionalProperties: true
+      required:
+        - schema_version
+        - attachment_batch_id
+        - tenant_id
+        - owner_subject_ref
+        - state
+        - items
+      properties:
+        schema_version: {const: ae_voucher_attachment_batch.v1}
+        attachment_batch_id: {type: string, format: uuid}
+        tenant_id: {type: string}
+        owner_subject_ref: {type: object}
+        state: {type: string}
+        items:
+          type: array
+          maxItems: 20
+          items: {type: object}
+    AeVoucherAttachmentManifest:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_ae_api/voucher_attachment_manifest.v1.schema.json
+      additionalProperties: true
+      required:
+        - schema_version
+        - attachment_batch_id
+        - attachment_count
+        - items
+        - attachment_manifest_hash
+      properties:
+        schema_version: {const: ae_voucher_attachment_manifest.v1}
+        attachment_batch_id: {type: string, format: uuid}
+        attachment_count: {type: integer, minimum: 1, maximum: 20}
+        items:
+          type: array
+          minItems: 1
+          maxItems: 20
+          items: {type: object}
+        attachment_manifest_hash:
+          type: string
+          pattern: "^sha256:[0-9a-f]{64}$"
+    AeVoucherAttachmentUploadResult:
+      type: object
+      additionalProperties: false
+      required: [attachment_batch_id, attachment, resolution]
+      properties:
+        attachment_batch_id: {type: string, format: uuid}
+        attachment: {type: object}
+        resolution:
+          type: object
+          x-nex-canonical-json-schema: schemas/service/nex_ae_api/voucher_attachment_resolution.v1.schema.json
     ActiveServiceClaim:
       type: object
       x-nex-canonical-json-schema: schemas/common/active_service_claim.v1.schema.json

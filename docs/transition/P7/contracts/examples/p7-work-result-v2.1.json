@@ -1,0 +1,39 @@
+{
+  "schema_version": "2.1",
+  "tenant_id": "tenant-a",
+  "result_id": "work-result-p7-golden-001",
+  "work_item_id": "work-p7-golden-001",
+  "revision_no": 1,
+  "result_type": "PROJECT_BUDGET_ANALYSIS",
+  "summary": "The admitted project budget check completed successfully.",
+  "payload": {
+    "result_ref": "ae://agent-results/agent-result-p7-golden-001",
+    "result_hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  },
+  "schema_ref": "contract://nex/wc/project-budget-analysis/v1",
+  "technical_outcome": "SUCCEEDED",
+  "business_outcome": "PENDING_VERIFICATION",
+  "artifact_refs": [],
+  "evidence_refs": [
+    {
+      "entity_type": "NSL_RESULT_SUMMARY",
+      "entity_id": "nsl-result-p7-golden-001"
+    }
+  ],
+  "business_object_refs": [],
+  "source_execution_ref": "execution-child-001",
+  "source_plan_ref": "plan-child-001",
+  "claim_ref": "claim-p7-golden-001",
+  "claim_generation": 1,
+  "assignment_ref": "assignment-p7-golden-001",
+  "submitted_by": {
+    "entity_type": "AGENT",
+    "entity_id": "agent-pa-project-alpha"
+  },
+  "trace": {
+    "correlation_id": "corr-p7-golden-001",
+    "causation_id": "execution-child-001",
+    "request_id": "request-p7-golden-001"
+  },
+  "submitted_at": "2026-10-18T01:00:10Z"
+}

@@ -1,6 +1,15 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import run_platform_deployment_build_inputs as smoke
+from nex_runtime.deployment_locks import (
+    PYTHON_LOCK_PATH,
+    python_lock_package_versions,
+)
+
+
+ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_repository_build_input_evidence_is_complete() -> None:
@@ -8,7 +17,10 @@ def test_repository_build_input_evidence_is_complete() -> None:
 
     assert result["status"] == "PASS"
     assert result["summary"]["lock_count"] == 2
-    assert result["summary"]["python_package_count"] == 52
+    expected_python_packages = len(
+        python_lock_package_versions(ROOT / PYTHON_LOCK_PATH)
+    )
+    assert result["summary"]["python_package_count"] == expected_python_packages
     assert result["summary"]["python_hash_count"] > 1000
     assert result["summary"]["node_package_count"] == 4
     assert result["summary"]["node_integrity_count"] == 4
@@ -23,8 +35,12 @@ def test_repository_build_input_evidence_is_complete() -> None:
 
 def test_summary_and_main_branches(monkeypatch, capsys) -> None:
     passing = smoke.run_platform_deployment_build_inputs()
+    expected_python_packages = len(
+        python_lock_package_versions(ROOT / PYTHON_LOCK_PATH)
+    )
     assert smoke.summary_line(passing).startswith(
-        "platform_deployment_build_inputs=pass locks=2 python_packages=52"
+        "platform_deployment_build_inputs=pass locks=2 "
+        f"python_packages={expected_python_packages}"
     )
     assert smoke.summary_line({"status": "FAIL"}) == (
         "platform_deployment_build_inputs=fail"

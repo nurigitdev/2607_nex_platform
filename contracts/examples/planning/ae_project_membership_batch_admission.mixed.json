@@ -1,0 +1,45 @@
+{
+  "schema_version": "p8.project_membership_batch_admission.v1",
+  "directive": "CONTINUE",
+  "operation_id": "PROJECT.MEMBERSHIP.ADD_MANY",
+  "tenant_id": "tenant-demo",
+  "requester_subject_id": "subject-chairman",
+  "project_id": "11111111-1111-4111-8111-111111111111",
+  "member_role": "MEMBER",
+  "requested_count": 3,
+  "admitted_count": 2,
+  "rejected_count": 1,
+  "admitted_members": [
+    {"subject_id": "subject-a", "subject_revision": 3, "tenant_membership_revision": 5},
+    {"subject_id": "subject-b", "subject_revision": 7, "tenant_membership_revision": 9}
+  ],
+  "rejected_candidates": [
+    {
+      "input_index": 1,
+      "outcome_code": "EMPLOYEE_NOT_FOUND",
+      "normalized_employee_id": "9999"
+    }
+  ],
+  "resolution_evidence_hash": "sha256:573b130aa3ef95b2cb2c7c7756cc76029ad7fb0f427bff88824060ba3e04eacd",
+  "protected_intake_hash": "sha256:e5e9fa9fc733bd7243c72be538aa342edeaf2fe8502fe0fa2927397e06fb66e4",
+  "governed_payload": {
+    "tenant_id": "tenant-demo",
+    "requester_subject_id": "subject-chairman",
+    "project_id": "11111111-1111-4111-8111-111111111111",
+    "target_subject_ids": ["subject-a", "subject-b"],
+    "member_role": "MEMBER",
+    "resolution_evidence_hash": "sha256:573b130aa3ef95b2cb2c7c7756cc76029ad7fb0f427bff88824060ba3e04eacd"
+  },
+  "payload_hash": "sha256:571996c3fab245fd25bd73c8e33ad93266f933045296f792cdb7d10d92d13103",
+  "approval_projection": {
+    "operation_id": "PROJECT.MEMBERSHIP.ADD_MANY",
+    "project_id": "11111111-1111-4111-8111-111111111111",
+    "target_subject_ids": ["subject-a", "subject-b"],
+    "target_count": 2,
+    "rejected_count": 1,
+    "member_role": "MEMBER",
+    "resolution_evidence_hash": "sha256:573b130aa3ef95b2cb2c7c7756cc76029ad7fb0f427bff88824060ba3e04eacd",
+    "payload_hash": "sha256:571996c3fab245fd25bd73c8e33ad93266f933045296f792cdb7d10d92d13103"
+  },
+  "admission_hash": "sha256:45413a061a121fbd645a4374ab3ba0c005bcfa0ceb38df2c990d07b71915aa37"
+}

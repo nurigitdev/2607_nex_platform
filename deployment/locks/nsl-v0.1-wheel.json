@@ -1,0 +1,22 @@
+{
+  "distribution": "nex-skill-language",
+  "locked_cryptography_version": "46.0.7",
+  "package_version": "0.1.0",
+  "platform_cryptography_requirement": "cryptography<47,>=46",
+  "platform_lock_sha256": "sha256:4921d3104651bba369876c2edecd4a5ae05a01353e6ce4c4def453a90eac3417",
+  "public_api_symbols": [
+    "RuntimeEngine",
+    "RuntimeResultEnvelope",
+    "SkillExecutionJob",
+    "SkillExecutionWorker"
+  ],
+  "repository": "nurigitdev/2608_nsl",
+  "requirements": [
+    "cryptography<50.0.0,>=46.0.0"
+  ],
+  "requires_python": ">=3.12",
+  "schema_version": "nsl_wheel_lock.v1",
+  "source_revision": "3b4cb198888570a857e6fb0d3aa077930bb23504",
+  "wheel_filename": "nex_skill_language-0.1.0-py3-none-any.whl",
+  "wheel_sha256": "sha256:290a202f540ec98291842e9281a28288cc7ac112525b6c0f02c10b8721aef21f"
+}

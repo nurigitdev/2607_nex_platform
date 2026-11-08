@@ -25,6 +25,7 @@ for path in (
     ROOT / "services/_shared",
     ROOT / "services/nex-oa",
     ROOT / "scripts/db",
+    ROOT / "scripts/smoke",
 ):
     sys.path.insert(0, str(path))
 
@@ -52,6 +53,10 @@ from nex_runtime import (  # noqa: E402
 )
 from nex_runtime.postgres_targets import resolve_postgres_test_targets  # noqa: E402
 from nex_runtime.runtime_profiles import runtime_profile_environment_overlay  # noqa: E402
+from operational_recovery_harness import (  # noqa: E402
+    fail_only_exit_code,
+    trust_denial_evidence,
+)
 from platform_test_migrations import run_platform_test_migration_readiness  # noqa: E402
 
 
@@ -863,13 +868,7 @@ def _trace_headers(request_id: str, trace_id: str) -> dict[str, str]:
 def _denial(
     scenario: str, service_id: str, payload: Mapping[str, Any]
 ) -> dict[str, Any]:
-    return {
-        "scenario": scenario,
-        "service_id": service_id,
-        "status_code": int(payload.get("status") or payload.get("status_code") or 401),
-        "error_code": str(payload.get("error_code") or "denied"),
-        "failed_closed": True,
-    }
+    return trust_denial_evidence(scenario, service_id, payload)
 
 
 def _free_port() -> int:
@@ -926,7 +925,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.summary
         else json.dumps(report, indent=2, sort_keys=True)
     )
-    return 1 if report.get("status") == "FAIL" else 0
+    return fail_only_exit_code(report)
 
 
 if __name__ == "__main__":  # pragma: no cover

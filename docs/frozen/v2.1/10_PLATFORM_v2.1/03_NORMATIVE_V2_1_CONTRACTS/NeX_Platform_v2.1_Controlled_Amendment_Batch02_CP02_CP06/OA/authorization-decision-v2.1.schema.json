@@ -1,0 +1,300 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:nex:schema:oa:authorization-decision:2.1",
+  "title": "NeX Authorization Decision v2.1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "decision_id",
+    "allowed",
+    "reason_codes",
+    "principal_ref",
+    "business_actor_ref",
+    "role_binding_ref",
+    "capability_ref",
+    "risk_level",
+    "policy_ref",
+    "decided_at",
+    "correlation_id",
+    "tenant_id",
+    "agent_identity_ref",
+    "agent_type"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "2.1"
+    },
+    "decision_id": {
+      "type": "string"
+    },
+    "allowed": {
+      "type": "boolean"
+    },
+    "reason_codes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "principal_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "entity_type",
+        "entity_id"
+      ],
+      "properties": {
+        "entity_type": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "entity_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "version": {
+          "type": [
+            "string",
+            "integer",
+            "null"
+          ]
+        },
+        "status": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 80
+        }
+      }
+    },
+    "business_actor_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "entity_type",
+        "entity_id"
+      ],
+      "properties": {
+        "entity_type": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "entity_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "version": {
+          "type": [
+            "string",
+            "integer",
+            "null"
+          ]
+        },
+        "status": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 80
+        }
+      }
+    },
+    "role_binding_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "entity_type",
+        "entity_id"
+      ],
+      "properties": {
+        "entity_type": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "entity_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "version": {
+          "type": [
+            "string",
+            "integer",
+            "null"
+          ]
+        },
+        "status": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 80
+        }
+      }
+    },
+    "capability_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "entity_type",
+        "entity_id"
+      ],
+      "properties": {
+        "entity_type": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "entity_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "version": {
+          "type": [
+            "string",
+            "integer",
+            "null"
+          ]
+        },
+        "status": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 80
+        }
+      }
+    },
+    "resource_refs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "entity_type",
+          "entity_id"
+        ],
+        "properties": {
+          "entity_type": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          },
+          "entity_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 160
+          },
+          "version": {
+            "type": [
+              "string",
+              "integer",
+              "null"
+            ]
+          },
+          "status": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 80
+          }
+        }
+      }
+    },
+    "risk_level": {
+      "enum": [
+        "R0",
+        "R1",
+        "R2",
+        "R3",
+        "R4",
+        "R5"
+      ]
+    },
+    "required_auth_level": {
+      "enum": [
+        "AAL1_EQUIVALENT",
+        "AAL2_EQUIVALENT",
+        "PHISHING_RESISTANT",
+        "SERVICE_STRONG"
+      ]
+    },
+    "step_up_required": {
+      "type": "boolean"
+    },
+    "human_gate_required": {
+      "enum": [
+        "NONE",
+        "CONFIRMATION",
+        "FORMAL_APPROVAL",
+        "DOMAIN_POLICY"
+      ],
+      "description": "Agent/business control gate requirement only. It does not replace NSL v0.2 STRICT WRITE Approval."
+    },
+    "policy_ref": {
+      "type": "string"
+    },
+    "decided_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "correlation_id": {
+      "type": "string"
+    },
+    "tenant_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "agent_identity_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "entity_type",
+        "entity_id"
+      ],
+      "properties": {
+        "entity_type": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "entity_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "version": {
+          "type": [
+            "string",
+            "integer",
+            "null"
+          ]
+        },
+        "status": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 80
+        }
+      }
+    },
+    "agent_type": {
+      "enum": [
+        "IA",
+        "CA",
+        "PA",
+        "EA"
+      ]
+    }
+  }
+}

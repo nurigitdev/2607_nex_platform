@@ -1,0 +1,2 @@
+Scenario,Title,Verdict,Summary
+E2E-11,Result Publication Failure,PASS,"AgentResult/ResultDelivery, stable PublicationOperationId, current preflight, UNKNOWN_DELIVERY reconciliation, required ACK finalization and no-Business-WRITE-retry are normative."

@@ -1,0 +1,17 @@
+{
+  "attempt_number": 1,
+  "authorization_hash": "sha256:4ba9f4f7633136589cda7d17976afa3f2b1ce711c0e8dec67bd17e65527a1575",
+  "completed_at": "2026-11-05T00:33:16.475336Z",
+  "dataset_file_sha256": "sha256:a0be13e113efee2a4a2dd904aaab6d65916a4e31b4a71b91465b66210d9dea20",
+  "dataset_semantic_sha256": "sha256:594209203d25b0a87e6fd136b6794bdc30058a5eb45b7e2c8ff27523bd7f1757",
+  "evaluation_hash": "sha256:e3696095c0fb198ce35d65b291e3121d8a099e6a4fafb993d28be265f3c9a28c",
+  "execution_id": "s20qpq-4ba9f4f7633136589cda7d17",
+  "freeze_hash": "sha256:31236a3d8a7fa6f9e4834baa9eba4184374036414876710784028750ecc066e5",
+  "provider_evaluation_count": 40,
+  "provider_http_request_count": 40,
+  "receipt_hash": "sha256:1bbfa3983dcad9b0aa39ace9be8eca57dfbd4a7bc1484b2f01366c8ccf5caa68",
+  "receipt_schema_version": "cx_answer_support_holdout_receipt.v1",
+  "started_at": "2026-11-05T00:30:17.512033Z",
+  "status": "PASS",
+  "terminal_reason": null
+}

@@ -66,18 +66,30 @@ export function buildCredentialLoginRequest({
     "employee_id"
   );
   const normalizedPassword = requiredText(password, "password");
-  if (scopes !== undefined && requestedScopes !== DEFAULT_REQUESTED_SCOPES) {
+  if (
+    scopes !== undefined &&
+    requestedScopes !== DEFAULT_REQUESTED_SCOPES &&
+    requestedScopes !== null
+  ) {
     throw new CredentialLoginSurfaceError(
       "Credential login request must use either scopes or requestedScopes.",
       { status: "CREDENTIAL_LOGIN_SCOPE_CONFLICT" }
     );
   }
 
+  const normalizedRequestedScopes =
+    scopes !== undefined
+      ? normalizeScopes(scopes)
+      : requestedScopes === null
+        ? null
+        : normalizeScopes(requestedScopes);
   return {
     tenant_id: normalizedTenantId,
     employee_id: normalizedEmployeeId,
     password: normalizedPassword,
-    requested_scopes: normalizeScopes(scopes || requestedScopes),
+    ...(normalizedRequestedScopes === null
+      ? {}
+      : { requested_scopes: normalizedRequestedScopes }),
     ttl_seconds: normalizeTtl(ttlSeconds)
   };
 }

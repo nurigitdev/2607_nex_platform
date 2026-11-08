@@ -69,3 +69,18 @@ FROM python-source AS ag-runtime
 ENV PYTHONPATH=/app/services/_shared:/app/services/nex-ag
 RUN python -c "import importlib.util; assert importlib.util.find_spec('nex_ag')"
 CMD ["python", "-m", "uvicorn", "nex_ag.main:app", "--host", "0.0.0.0", "--port", "8102"]
+
+FROM python-source AS wc-runtime
+ENV PYTHONPATH=/app/services/_shared:/app/services/nex-wc
+RUN python -c "import importlib.util; assert importlib.util.find_spec('nex_wc')"
+CMD ["python", "-m", "uvicorn", "nex_wc.main:app", "--host", "0.0.0.0", "--port", "8106"]
+
+FROM python-source AS eos-runtime
+ENV PYTHONPATH=/app/services/_shared:/app/services/nex-eos
+RUN python -c "import importlib.util; assert importlib.util.find_spec('nex_eos')"
+CMD ["python", "-m", "uvicorn", "nex_eos.main:app", "--host", "0.0.0.0", "--port", "8107"]
+
+FROM python-source AS wa-runtime
+ENV PYTHONPATH=/app/services/_shared:/app/services/nex-wa
+RUN python -c "import importlib.util; assert importlib.util.find_spec('nex_wa')"
+CMD ["python", "-m", "uvicorn", "nex_wa.main:app", "--host", "0.0.0.0", "--port", "8108"]

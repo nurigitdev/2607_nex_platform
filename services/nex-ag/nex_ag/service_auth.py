@@ -28,6 +28,7 @@ AG_OUTBOUND_TOKEN_ENV_BY_AUDIENCE = {
     "nex-ae-api": "NEX_AG_TO_AE_SERVICE_TOKEN",
     "nex-cx": "NEX_AG_TO_CX_SERVICE_TOKEN",
     "nex-mo": "NEX_AG_TO_MO_SERVICE_TOKEN",
+    "nex-eos": "NEX_AG_TO_EOS_SERVICE_TOKEN",
 }
 
 

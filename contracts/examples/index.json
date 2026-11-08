@@ -1,6 +1,96 @@
 {
   "examples": [
     {
+      "name": "platform_dependency_readiness_ready",
+      "path": "examples/common/platform_dependency_readiness.ready.json",
+      "schema": "schemas/common/platform_dependency_readiness.v1.schema.json"
+    },
+    {
+      "name": "eos_project_verification_request_valid",
+      "path": "examples/service/eos_project_verification_request.valid.json",
+      "schema": "schemas/service/nex_eos/project_verification_request.v1.schema.json"
+    },
+    {
+      "name": "eos_project_verification_valid",
+      "path": "examples/service/eos_project_verification.valid.json",
+      "schema": "schemas/service/nex_eos/project_verification.v1.schema.json"
+    },
+    {
+      "name": "eos_project_membership_verification_request_valid",
+      "path": "examples/service/eos_project_membership_verification_request.valid.json",
+      "schema": "schemas/service/nex_eos/project_membership_verification_request.v1.schema.json"
+    },
+    {
+      "name": "eos_project_membership_verification_valid",
+      "path": "examples/service/eos_project_membership_verification.valid.json",
+      "schema": "schemas/service/nex_eos/project_membership_verification.v1.schema.json"
+    },
+    {
+      "name": "oa_subject_verification_request_valid",
+      "path": "examples/service/oa_subject_verification_request.valid.json",
+      "schema": "schemas/service/nex_oa/subject_verification_request.v1.schema.json"
+    },
+    {
+      "name": "oa_subject_verification_valid",
+      "path": "examples/service/oa_subject_verification.valid.json",
+      "schema": "schemas/service/nex_oa/subject_verification.v1.schema.json"
+    },
+    {
+      "name": "wa_source_normalized_envelope_available",
+      "path": "examples/service/wa_source_normalized_envelope.available.json",
+      "schema": "schemas/service/nex_wa/wa_source_normalized_envelope.v1.schema.json"
+    },
+    {
+      "name": "wa_source_reconciliation_page_agent_result",
+      "path": "examples/service/wa_source_reconciliation_page.agent_result.json",
+      "schema": "schemas/service/nex_ae_api/wa_source_reconciliation_page.v1.schema.json"
+    },
+    {
+      "name": "wa_evidence_intake_request_agent_result",
+      "path": "examples/service/wa_evidence_intake_request.agent_result.json",
+      "schema": "schemas/service/nex_wa/wa_evidence_intake_request.v1.schema.json"
+    },
+    {
+      "name": "wa_evidence_intake_admission_queued",
+      "path": "examples/service/wa_evidence_intake_admission.queued.json",
+      "schema": "schemas/service/nex_wa/wa_evidence_intake_admission.v1.schema.json"
+    },
+    {
+      "name": "wa_error_idempotency_conflict",
+      "path": "examples/service/wa_error.idempotency_conflict.json",
+      "schema": "schemas/service/nex_wa/wa_error.v1.schema.json"
+    },
+    {
+      "name": "nsl_voucher_read_artifact_admission_pass",
+      "path": "examples/common/nsl_voucher_read_artifact_admission.pass.json",
+      "schema": "schemas/common/nsl_voucher_read_artifact_admission.v1.schema.json"
+    },
+    {
+      "name": "eos_voucher_draft_list_request_project_scoped",
+      "path": "examples/service/eos_voucher_draft_list_request.project_scoped.json",
+      "schema": "schemas/service/nex_eos/voucher_draft_list_request.v1.schema.json"
+    },
+    {
+      "name": "nsl_project_write_artifact_admission_pass",
+      "path": "examples/common/nsl_project_write_artifact_admission.pass.json",
+      "schema": "schemas/common/nsl_project_write_artifact_admission.v1.schema.json"
+    },
+    {
+      "name": "ae_project_operation_admission_continue",
+      "path": "examples/planning/ae_project_operation_admission.continue.json",
+      "schema": "schemas/service/nex_ae_api/project_operation_admission.v1.schema.json"
+    },
+    {
+      "name": "nsl_project_read_artifact_admission_pass",
+      "path": "examples/common/nsl_project_read_artifact_admission.pass.json",
+      "schema": "schemas/common/nsl_project_read_artifact_admission.v1.schema.json"
+    },
+    {
+      "name": "canonical_operation_alias_project_get",
+      "path": "examples/common/canonical_operation_alias.project_get.json",
+      "schema": "schemas/common/canonical_operation_alias.v1.schema.json"
+    },
+    {
       "name": "contract_manifest_minimal",
       "path": "examples/common/contract_manifest.minimal.json",
       "schema": "schemas/common/contract_manifest.v1.schema.json"
@@ -1179,6 +1269,191 @@
       "name": "ag_platform_observability_dashboard_mock_external",
       "path": "examples/operations/ag_platform_observability_dashboard.mock_external.json",
       "schema": "schemas/service/nex_ag/platform_observability_dashboard.v1.schema.json"
+    },
+    {
+      "name": "ag_operator_review_note_observation",
+      "path": "examples/generation/ag_operator_review_note.observation.json",
+      "schema": "schemas/generation/ag_operator_review_note.v1.schema.json"
+    },
+    {
+      "name": "ag_redacted_evidence_export_worker_result",
+      "path": "examples/generation/ag_redacted_evidence_export.worker_result.json",
+      "schema": "schemas/generation/ag_redacted_evidence_export.v1.schema.json"
+    },
+    {
+      "name": "eos_create_voucher_draft_command_golden_a",
+      "path": "examples/service/eos_create_voucher_draft_command.golden_a.json",
+      "schema": "schemas/service/nex_eos/create_voucher_draft_command.v1.schema.json"
+    },
+    {
+      "name": "eos_create_voucher_draft_result_committed",
+      "path": "examples/service/eos_create_voucher_draft_result.committed.json",
+      "schema": "schemas/service/nex_eos/create_voucher_draft_result.v1.schema.json"
+    },
+    {
+      "name": "wc_delegation_policy_initial",
+      "path": "examples/service/wc_delegation_policy.initial.json",
+      "schema": "schemas/service/nex_wc/delegation_policy.v1.schema.json"
+    },
+    {
+      "name": "wc_delegation_lineage_nested",
+      "path": "examples/service/wc_delegation_lineage.nested.json",
+      "schema": "schemas/service/nex_wc/delegation_lineage.v1.schema.json"
+    },
+    {
+      "name": "wc_delegation_spec_nested",
+      "path": "examples/service/wc_delegation_spec.nested.json",
+      "schema": "schemas/service/nex_wc/delegation_spec.v1_1.schema.json"
+    },
+    {
+      "name": "wc_approval_work_item_nsl_write",
+      "path": "examples/service/wc_approval_work_item.nsl_write.json",
+      "schema": "schemas/service/nex_wc/approval_work_item.v1.schema.json"
+    },
+    {
+      "name": "wc_approval_decision_approved",
+      "path": "examples/service/wc_approval_decision.approved.json",
+      "schema": "schemas/service/nex_wc/approval_decision.v1.schema.json"
+    },
+    {
+      "name": "wc_human_gate_view_business_formal",
+      "path": "examples/service/wc_human_gate_view.business_formal.json",
+      "schema": "schemas/service/nex_wc/human_gate_view.v1.schema.json"
+    },
+    {
+      "name": "wc_approval_event_nsl_approved",
+      "path": "examples/service/wc_approval_event.nsl_approved.json",
+      "schema": "schemas/service/nex_wc/approval_event.v1.schema.json"
+    },
+    {
+      "name": "eos_approver_resolution_request_default",
+      "path": "examples/service/eos_approver_resolution_request.default.json",
+      "schema": "schemas/service/nex_eos/approver_resolution_request.v1.schema.json"
+    },
+    {
+      "name": "eos_approver_resolution_resolved",
+      "path": "examples/service/eos_approver_resolution.resolved.json",
+      "schema": "schemas/service/nex_eos/approver_resolution.v1.schema.json"
+    },
+    {
+      "name": "wc_approval_inbox_pending",
+      "path": "examples/service/wc_approval_inbox.pending.json",
+      "schema": "schemas/service/nex_wc/approval_inbox.v1.schema.json"
+    },
+    {
+      "name": "wc_approval_gate_detail_pending",
+      "path": "examples/service/wc_approval_gate_detail.pending.json",
+      "schema": "schemas/service/nex_wc/approval_gate_detail.v1.schema.json"
+    },
+    {
+      "name": "wc_approval_decision_request_approve",
+      "path": "examples/service/wc_approval_decision_request.approve.json",
+      "schema": "schemas/service/nex_wc/approval_decision_request.v1.schema.json"
+    },
+    {
+      "name": "ae_voucher_attachment_batch_ready",
+      "path": "examples/service/ae_voucher_attachment_batch.ready.json",
+      "schema": "schemas/service/nex_ae_api/voucher_attachment_batch.v1.schema.json"
+    },
+    {
+      "name": "ae_voucher_attachment_manifest_locked",
+      "path": "examples/service/ae_voucher_attachment_manifest.locked.json",
+      "schema": "schemas/service/nex_ae_api/voucher_attachment_manifest.v1.schema.json"
+    },
+    {
+      "name": "ae_voucher_attachment_resolution_ready",
+      "path": "examples/service/ae_voucher_attachment_resolution.ready.json",
+      "schema": "schemas/service/nex_ae_api/voucher_attachment_resolution.v1.schema.json"
+    },
+    {
+      "name": "eos_nvt_project_create_command_valid",
+      "path": "examples/service/eos_nvt_project_create_command.valid.json",
+      "schema": "schemas/service/nex_eos/nvt_project_create_command.v1.schema.json"
+    },
+    {
+      "name": "eos_nvt_project_update_command_valid",
+      "path": "examples/service/eos_nvt_project_update_command.valid.json",
+      "schema": "schemas/service/nex_eos/nvt_project_update_command.v1.schema.json"
+    },
+    {
+      "name": "oa_employee_batch_resolution_request_mixed",
+      "path": "examples/auth/oa_employee_batch_resolution_request.mixed.json",
+      "schema": "schemas/service/nex_oa/employee_batch_resolution_request.v1.schema.json"
+    },
+    {
+      "name": "oa_employee_batch_resolution_mixed",
+      "path": "examples/auth/oa_employee_batch_resolution.mixed.json",
+      "schema": "schemas/service/nex_oa/employee_batch_resolution.v1.schema.json"
+    },
+    {
+      "name": "ae_project_membership_batch_intake_mixed",
+      "path": "examples/planning/ae_project_membership_batch_intake.mixed.json",
+      "schema": "schemas/service/nex_ae_api/project_membership_batch_intake.v1.schema.json"
+    },
+    {
+      "name": "ae_project_membership_batch_admission_mixed",
+      "path": "examples/planning/ae_project_membership_batch_admission.mixed.json",
+      "schema": "schemas/service/nex_ae_api/project_membership_batch_admission.v1.schema.json"
+    },
+    {
+      "name": "ae_project_membership_batch_skill_binding_bound",
+      "path": "examples/planning/ae_project_membership_batch_skill_binding.bound.json",
+      "schema": "schemas/service/nex_ae_api/project_membership_batch_skill_binding.v1.schema.json"
+    },
+    {
+      "name": "ae_project_membership_batch_result_partial",
+      "path": "examples/planning/ae_project_membership_batch_result.partial.json",
+      "schema": "schemas/service/nex_ae_api/project_membership_batch_result_projection.v1.schema.json"
+    },
+    {
+      "name": "eos_project_membership_add_many_command_valid",
+      "path": "examples/service/eos_project_membership_add_many_command.valid.json",
+      "schema": "schemas/service/nex_eos/project_membership_add_many_command.v1.schema.json"
+    },
+    {
+      "name": "eos_project_membership_add_many_result_partial",
+      "path": "examples/service/eos_project_membership_add_many_result.partial.json",
+      "schema": "schemas/service/nex_eos/project_membership_add_many_result.v1.schema.json"
+    },
+    {
+      "name": "wa_work_evidence_agent_result",
+      "path": "examples/service/wa_work_evidence.agent_result.json",
+      "schema": "schemas/service/nex_wa/wa_work_evidence.v1.schema.json"
+    },
+    {
+      "name": "wa_work_asset_agent_result",
+      "path": "examples/service/wa_work_asset.agent_result.json",
+      "schema": "schemas/service/nex_wa/wa_work_asset.v1.schema.json"
+    },
+    {
+      "name": "wa_work_asset_evidence_lineage_mixed",
+      "path": "examples/service/wa_work_asset_evidence_lineage.mixed.json",
+      "schema": "schemas/service/nex_wa/wa_work_asset_evidence_lineage.v1.schema.json"
+    },
+    {
+      "name": "wa_work_asset_summary_agent_result",
+      "path": "examples/service/wa_work_asset_summary.agent_result.json",
+      "schema": "schemas/service/nex_wa/wa_work_asset_summary.v1.schema.json"
+    },
+    {
+      "name": "wa_work_evidence_audit_superseded",
+      "path": "examples/service/wa_work_evidence_audit.superseded.json",
+      "schema": "schemas/service/nex_wa/wa_work_evidence_audit.v1.schema.json"
+    },
+    {
+      "name": "wa_agent_result_source_projection_acknowledged",
+      "path": "examples/service/wa_agent_result_source_projection.acknowledged.json",
+      "schema": "schemas/service/nex_ae_api/wa_agent_result_source_projection.v1.schema.json"
+    },
+    {
+      "name": "wa_artifact_source_projection_ready",
+      "path": "examples/service/wa_artifact_source_projection.ready.json",
+      "schema": "schemas/service/nex_ae_api/wa_artifact_source_projection.v1.schema.json"
+    },
+    {
+      "name": "wa_work_result_source_projection_valid",
+      "path": "examples/service/wa_work_result_source_projection.valid.json",
+      "schema": "schemas/service/nex_wc/wa_work_result_source_projection.v1.schema.json"
     }
   ]
 }

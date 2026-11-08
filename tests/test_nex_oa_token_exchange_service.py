@@ -7,13 +7,19 @@ import pytest
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import padding, rsa
 
-from nex_oa.production_token_profiles import PRODUCTION_TOKEN_ISSUER
+from nex_oa.production_token_profiles import (
+    P8_DEMO_SERVICE_ACCESS_PROFILE,
+    PRODUCTION_TOKEN_ISSUER,
+)
 from nex_oa.service_principal_repository import InMemoryOaServicePrincipalRepository
 from nex_oa.service_principal_service import OaServicePrincipalService
 from nex_oa.signed_token_repository import InMemoryOaSignedTokenRepository
 from nex_oa.signed_tokens import OaSignedTokenError
 from nex_oa.signing_key_service import OaSigningKeyService
-from nex_oa.token_exchange_service import OaClientCredentialTokenExchangeService
+from nex_oa.token_exchange_service import (
+    OaClientCredentialTokenExchangeService,
+    service_token_exchange_profile_for_environment,
+)
 from nex_oa.token_signing import InMemoryOaRsaSigningProvider
 
 
@@ -119,6 +125,35 @@ def test_exchange_uses_runtime_clock_and_random_token_id(monkeypatch) -> None:
     assert first["iat"] == 500
     assert first["jti"].startswith("sat-")
     assert first["jti"] != second["jti"]
+
+
+def test_demo_exchange_profile_is_explicit_bounded_and_environment_guarded() -> None:
+    service, _ = _runtime()
+    service.token_profile = service_token_exchange_profile_for_environment(
+        {
+            "NEX_PROFILE": "staging_live",
+            "NEX_DEPLOYMENT_BOUNDARY": "P8_DEMO",
+            "NEX_P8_DEMO_SERVICE_TOKEN_PROFILE": "STARTUP_24H",
+        }
+    )
+    response = service.exchange(_request(), now_epoch=500, token_id="demo-token")
+    claims = _parts(response["access_token"])[1]
+
+    assert response["expires_in"] == 86_400
+    assert claims["token_use"] == P8_DEMO_SERVICE_ACCESS_PROFILE
+    assert claims["deployment_boundary"] == "P8_DEMO"
+    assert claims["deployment_profile"] == "staging_live"
+    assert claims["exp"] - claims["iat"] == 86_400
+
+    assert service_token_exchange_profile_for_environment({}).name == "service_access"
+    with pytest.raises(ValueError, match="boundary"):
+        service_token_exchange_profile_for_environment(
+            {"NEX_P8_DEMO_SERVICE_TOKEN_PROFILE": "STARTUP_24H"}
+        )
+    with pytest.raises(ValueError, match="unsupported"):
+        service_token_exchange_profile_for_environment(
+            {"NEX_P8_DEMO_SERVICE_TOKEN_PROFILE": "one-year"}
+        )
 
 
 @pytest.mark.parametrize(

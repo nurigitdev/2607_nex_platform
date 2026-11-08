@@ -1,0 +1,28 @@
+{
+  "schema_version": "ae_voucher_attachment_batch.v1",
+  "attachment_batch_id": "750a0000-0000-4000-8000-000000000001",
+  "tenant_id": "tenant-p8-7a",
+  "owner_subject_ref": {"type": "oa.user", "id": "employee-1001"},
+  "conversation_id": "750a0000-0000-4000-8000-000000000002",
+  "interaction_id": "750a0000-0000-4000-8000-000000000003",
+  "state": "READY",
+  "items": [
+    {
+      "attachment_id": "750a0000-0000-4000-8000-000000000004",
+      "state": "READY",
+      "display_name": "oversized.zip",
+      "media_type": "application/zip",
+      "size_bytes": 26214401,
+      "content_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "object_ref": "objref:ae-voucher-evidence-0001",
+      "object_version_ref": null,
+      "scan_status": "CLEAN"
+    }
+  ],
+  "total_size_bytes": 26214401,
+  "attachment_manifest_hash": null,
+  "locked_at": null,
+  "created_at": "2026-10-23T10:00:00Z",
+  "updated_at": "2026-10-23T10:01:00Z",
+  "trace": {"trace_id": "trace", "correlation_id": "correlation", "causation_id": "causation"}
+}

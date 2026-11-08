@@ -1,0 +1,9 @@
+{
+  "schema_version": "p65.context_candidate_set.v1",
+  "entity_candidates": [],
+  "retrieval_hints": [],
+  "resource_selectors": [],
+  "parameter_candidates": [],
+  "confidence": 0.9,
+  "permission": "ALLOW_ALL"
+}

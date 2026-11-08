@@ -1,0 +1,66 @@
+{
+  "schema_version": "1.0",
+  "work_intent_id": "WI-INTENT-0001",
+  "execution_id": "AE-EXEC-0001",
+  "source": {
+    "source_type": "PROMPT",
+    "source_ref": "MSG-0001"
+  },
+  "goal": "A 프로젝트의 출장비 84,000원 전표 초안을 생성한다.",
+  "work_class": "ACCOUNTING.VOUCHER_DRAFT_CREATE",
+  "capability_hints": [
+    "accounting.voucher.create_draft"
+  ],
+  "entity_selectors": [
+    {
+      "selector_id": "E1",
+      "entity_type": "PROJECT",
+      "mention": "A 프로젝트",
+      "constraints": {
+        "name": "A 프로젝트"
+      },
+      "required": true
+    }
+  ],
+  "parameter_candidates": [
+    {
+      "name": "amount",
+      "value": 84000,
+      "value_type": "INTEGER",
+      "source": "USER_INPUT",
+      "confidence": 1.0
+    },
+    {
+      "name": "expense_category",
+      "value": "TRAVEL",
+      "value_type": "STRING",
+      "source": "USER_INPUT",
+      "confidence": 0.99
+    },
+    {
+      "name": "currency",
+      "value": "KRW",
+      "value_type": "STRING",
+      "source": "DEFAULT_CANDIDATE",
+      "confidence": 0.95
+    }
+  ],
+  "completion_criteria": [
+    {
+      "criterion_id": "C1",
+      "description": "전표 초안 생성 결과가 authoritative business reference와 함께 반환된다.",
+      "result_contract_ref": "contract://accounting/voucher-draft-result/v1"
+    }
+  ],
+  "clarification_state": {
+    "status": "NOT_REQUIRED",
+    "questions": []
+  },
+  "intent_confidence": 0.97,
+  "provenance": {
+    "prompt_template_ref": "prompt://ae/intent/v1",
+    "model_profile": "INTENT_FAST",
+    "model_ref": "model://example/intent-model",
+    "input_context_hash": "sha256:EXAMPLE_CONTEXT_HASH"
+  }
+}

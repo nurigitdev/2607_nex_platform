@@ -5,7 +5,6 @@ from typing import Any, Sequence
 
 import pytest
 from fastapi.testclient import TestClient
-
 from nex_oa.service_auth import (
     LocalOaJwksSource,
     LocalOaTokenIntrospector,
@@ -19,7 +18,6 @@ from nex_runtime import (
     issue_mock_service_token,
     register_service_token_admission_routes,
 )
-
 
 KEY_REF = "memory://oa-local-admission"
 KEY_ID = "oa-local-admission"
@@ -189,8 +187,18 @@ def test_service_admission_routes_can_attach_after_app_construction() -> None:
     )
     assert accepted.status_code == 200
     assert accepted.json()["claim_status"] == "ACTIVE"
+    runtime = client.get(
+        "/internal/v1/auth/service-token-runtime",
+        headers={"Authorization": f"Bearer {token.access_token}"},
+    )
+    assert runtime.status_code == 200
+    assert runtime.json()["service_id"] == "nex-oa"
     assert sum(
         route.path == "/internal/v1/auth/service-claim/active"
+        for route in app.routes
+    ) == 1
+    assert sum(
+        route.path == "/internal/v1/auth/service-token-runtime"
         for route in app.routes
     ) == 1
 
@@ -205,3 +213,6 @@ def test_oa_main_attaches_local_admission_runtime() -> None:
 
     assert main.app.state.service_token_admission is main.SERVICE_TOKEN_ADMISSION
     assert "/internal/v1/auth/user-login" in {route.path for route in main.app.routes}
+    assert "/internal/v1/auth/service-token-runtime" in {
+        route.path for route in main.app.routes
+    }

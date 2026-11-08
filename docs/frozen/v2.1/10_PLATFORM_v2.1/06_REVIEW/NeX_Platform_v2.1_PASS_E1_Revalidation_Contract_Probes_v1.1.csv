@@ -1,0 +1,14 @@
+﻿Probe,Check,PASS
+R-P01,Valid PA identity,True
+R-P02,PA project_id=null rejected,True
+R-P03,PA missing project_id rejected,True
+R-P04,AGENT candidate with PA type accepted,True
+R-P05,AGENT candidate with null agent_type rejected,True
+R-P06,AGENT candidate missing agent_type rejected,True
+R-P07,PROMPT IA trigger accepted,True
+R-P08,CLAIMED_WORKITEM PA trigger accepted,True
+R-P09,Claim trigger missing claim_ref rejected,True
+R-P10,Claim trigger with IA rejected,True
+R-P11,WC ClaimExecutionHandoff accepted,True
+R-P12,PA uniqueness partial index present,True
+R-P13,PA non-null project check present,True

@@ -2,11 +2,10 @@
 from __future__ import annotations
 
 import argparse
-from dataclasses import dataclass
 import json
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
-
 
 ROOT = Path(__file__).resolve().parents[2]
 SCHEMA_VERSION = "ae_mvp_acceptance_operations_boundary_audit.v1"
@@ -249,7 +248,11 @@ def _closure_evidence(root: Path) -> list[dict[str, Any]]:
     evidence = []
     for number in range(101, 110):
         runners = list((root / "scripts/smoke").glob(f"run_s{number}_*_closure.py"))
-        documents = list((root / "docs/slices").glob(f"*s{number}_*closure.md"))
+        documents = list(
+            (root / "docs/slices").glob(
+                f"[0-9][0-9][0-9][0-9]_s{number}_*closure.md"
+            )
+        )
         evidence.append(
             {
                 "requirement": f"S{number}",

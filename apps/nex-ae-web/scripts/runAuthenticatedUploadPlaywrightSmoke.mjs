@@ -97,6 +97,7 @@ export async function runAuthenticatedUploadPlaywrightSmoke({
     await page.fill("#credential-password", environ[PASSWORD_ENV]);
     await page.click("#credential-login-submit-button");
     await page.waitForSelector("#credential-login-feedback[data-severity='success']", {
+      state: "attached",
       timeout: timeoutMs
     });
     await page.waitForFunction(
@@ -107,6 +108,7 @@ export async function runAuthenticatedUploadPlaywrightSmoke({
       null,
       { timeout: timeoutMs }
     );
+    await page.click('[data-shell-view="upload"]');
     const loginFeedback = await safeText(page, "#credential-login-feedback");
     const routeGuardText = await safeText(page, "#session-route-guard-summary");
     const passwordValueAfterSubmit = await page.inputValue("#credential-password");

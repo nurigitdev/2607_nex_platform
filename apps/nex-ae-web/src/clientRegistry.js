@@ -3,6 +3,10 @@ import {
   createMockArtifactClient
 } from "./artifactClient.js";
 import {
+  createFetchApprovalClient,
+  createMockApprovalClient
+} from "./approvalClient.js";
+import {
   createFetchDocumentDetailClient,
   createMockDocumentDetailClient
 } from "./documentDetailClient.js";
@@ -19,6 +23,10 @@ import {
   createMockGroundedGenerationClient
 } from "./groundedGenerationClient.js";
 import {
+  createFetchInteractionAgentResultClient,
+  createMockInteractionAgentResultClient
+} from "./interactionAgentResultClient.js";
+import {
   createFetchRepairedResponseReviewClient,
   createMockRepairedResponseReviewClient
 } from "./repairedResponseReviewClient.js";
@@ -34,6 +42,10 @@ import {
   createFetchUploadProgressClient,
   createMockUploadProgressClient
 } from "./uploadProgressClient.js";
+import {
+  createFetchVoucherAttachmentClient,
+  createMockVoucherAttachmentClient
+} from "./voucherAttachmentClient.js";
 
 export const AE_WEB_CLIENT_REGISTRY_SCHEMA_VERSION = "ae_web_client_registry.v1";
 export const AE_WEB_CLIENT_MODES = ["mock", "fetch"];
@@ -60,6 +72,10 @@ export function createAeWebClients({
   const clients =
     clientMode === "mock"
       ? {
+          approvalClient: createMockApprovalClient({
+            inbox: responseFactories.approvalInbox,
+            deniedGateIds: responseFactories.approvalDeniedGateIds
+          }),
           artifactClient: createMockArtifactClient({
             artifacts,
             previews: responseFactories.artifactPreviews || {},
@@ -72,6 +88,7 @@ export function createAeWebClients({
           uploadProgressClient: createMockUploadProgressClient({
             responseFactory: responseFactories.uploadProgress
           }),
+          voucherAttachmentClient: createMockVoucherAttachmentClient(),
           retrievalClient: createMockRetrievalClient({
             responseFactory: responseFactories.retrieval
           }),
@@ -80,6 +97,9 @@ export function createAeWebClients({
           }),
           groundedGenerationClient: createMockGroundedGenerationClient({
             responseFactories: responseFactories.groundedGeneration || {}
+          }),
+          interactionAgentResultClient: createMockInteractionAgentResultClient({
+            responseFactory: responseFactories.interactionAgentResult
           }),
           repairedResponseReviewClient: createMockRepairedResponseReviewClient({
             projections: responseFactories.repairedResponseReviewProjections || [],
@@ -90,15 +110,20 @@ export function createAeWebClients({
           })
         }
       : {
+          approvalClient: createFetchApprovalClient(commonFetchOptions),
           artifactClient: createFetchArtifactClient(commonFetchOptions),
           documentDetailClient: createFetchDocumentDetailClient(commonFetchOptions),
           uploadClient: createFetchUploadClient(commonFetchOptions),
           uploadProgressClient: createFetchUploadProgressClient(commonFetchOptions),
+          voucherAttachmentClient:
+            createFetchVoucherAttachmentClient(commonFetchOptions),
           retrievalClient: createFetchRetrievalClient(commonFetchOptions),
           generationFeedbackClient:
             createFetchGenerationFeedbackClient(commonFetchOptions),
           groundedGenerationClient:
             createFetchGroundedGenerationClient(commonFetchOptions),
+          interactionAgentResultClient:
+            createFetchInteractionAgentResultClient(commonFetchOptions),
           repairedResponseReviewClient:
             createFetchRepairedResponseReviewClient(commonFetchOptions),
           repairedResponseDecisionClient:
@@ -131,12 +156,15 @@ export function buildClientRegistrySummary(registry) {
     client_mode: registry.clientMode,
     base_url: registry.clientMode === "fetch" ? registry.baseUrl : "",
     clients: {
+      approval: registry.approvalClient.clientMode,
       artifact: registry.artifactClient.clientMode,
       document_detail: registry.documentDetailClient.clientMode,
       upload: registry.uploadClient.clientMode,
       upload_progress: registry.uploadProgressClient.clientMode,
+      voucher_attachment: registry.voucherAttachmentClient.clientMode,
       retrieval: registry.retrievalClient.clientMode,
       grounded_generation: registry.groundedGenerationClient.clientMode,
+      interaction_agent_result: registry.interactionAgentResultClient.clientMode,
       generation_feedback: registry.generationFeedbackClient.clientMode,
       repaired_response_review: registry.repairedResponseReviewClient.clientMode,
       repaired_response_decision: registry.repairedResponseDecisionClient.clientMode
@@ -168,10 +196,12 @@ function isRegistry(value) {
   return (
     Boolean(value) &&
     value.client_registry_schema_version === AE_WEB_CLIENT_REGISTRY_SCHEMA_VERSION &&
+    value.approvalClient &&
     value.artifactClient &&
     value.documentDetailClient &&
     value.uploadClient &&
     value.uploadProgressClient &&
+    value.voucherAttachmentClient &&
     value.retrievalClient &&
     value.groundedGenerationClient &&
     value.generationFeedbackClient &&

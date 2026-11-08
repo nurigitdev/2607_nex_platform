@@ -1,0 +1,85 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/common/model_calibration_dataset.v2.schema.json",
+  "title": "Model Calibration Dataset v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["dataset_schema_version", "dataset_id", "cases"],
+  "properties": {
+    "dataset_schema_version": {"const": "model_calibration_dataset.v2"},
+    "dataset_id": {"const": "s136-reranker-relevance-public-v2"},
+    "cases": {
+      "type": "array",
+      "minItems": 30,
+      "maxItems": 30,
+      "items": {"$ref": "#/$defs/case"}
+    }
+  },
+  "$defs": {
+    "case": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "case_id",
+        "partition",
+        "language_profile",
+        "domain",
+        "query",
+        "documents"
+      ],
+      "properties": {
+        "case_id": {"type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"},
+        "partition": {"enum": ["CALIBRATION", "HOLDOUT"]},
+        "language_profile": {
+          "enum": ["KOREAN", "KOREAN_ENGLISH_MIXED", "ENGLISH"]
+        },
+        "domain": {
+          "enum": [
+            "PROJECT",
+            "FINANCE",
+            "IDENTITY_AUTHORIZATION",
+            "GOVERNANCE_OPERATIONS",
+            "AI_RUNTIME"
+          ]
+        },
+        "query": {"type": "string", "minLength": 1},
+        "documents": {
+          "type": "array",
+          "minItems": 4,
+          "maxItems": 4,
+          "items": {"$ref": "#/$defs/document"}
+        }
+      }
+    },
+    "document": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "document_id",
+        "relevance_grade",
+        "expected_ready",
+        "text"
+      ],
+      "properties": {
+        "document_id": {
+          "enum": [
+            "strong-positive",
+            "acceptable-positive",
+            "hard-negative",
+            "easy-negative"
+          ]
+        },
+        "relevance_grade": {
+          "enum": [
+            "STRONG_POSITIVE",
+            "ACCEPTABLE_POSITIVE",
+            "HARD_NEGATIVE",
+            "EASY_NEGATIVE"
+          ]
+        },
+        "expected_ready": {"type": "boolean"},
+        "text": {"type": "string", "minLength": 1}
+      }
+    }
+  }
+}

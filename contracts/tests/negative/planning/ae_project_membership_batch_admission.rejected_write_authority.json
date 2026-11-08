@@ -1,0 +1,26 @@
+{
+  "schema_version": "p8.project_membership_batch_admission.v1",
+  "directive": "REJECTED",
+  "operation_id": "PROJECT.MEMBERSHIP.ADD_MANY",
+  "tenant_id": "tenant-demo",
+  "requester_subject_id": "subject-chairman",
+  "project_id": "11111111-1111-4111-8111-111111111111",
+  "member_role": "MEMBER",
+  "requested_count": 1,
+  "admitted_count": 0,
+  "rejected_count": 1,
+  "admitted_members": [],
+  "rejected_candidates": [
+    {
+      "input_index": 0,
+      "outcome_code": "EMPLOYEE_NOT_FOUND",
+      "normalized_employee_id": "9999"
+    }
+  ],
+  "resolution_evidence_hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "protected_intake_hash": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "governed_payload": {},
+  "payload_hash": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+  "approval_projection": {},
+  "admission_hash": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+}

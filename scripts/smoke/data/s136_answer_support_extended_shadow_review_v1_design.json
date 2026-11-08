@@ -1,0 +1,46 @@
+{
+  "decision_boundary": {
+    "approved_scope": "ANSWER_SUPPORT_POLICY_CUTOVER_REVIEW_ONLY",
+    "candidate_policy_status": "ADMITTED_PENDING_SEPARATE_CUTOVER_DECISION",
+    "current_policy": "CURRENT_ACTIVE_RETRIEVAL_CONFIDENCE_POLICY",
+    "cutover_execution_permitted": false,
+    "cutover_review_permitted": true,
+    "decision_status": "APPROVED_NOT_EXECUTED",
+    "next_boundary": "ANSWER_SUPPORT_POLICY_CUTOVER_OPERATOR_DECISION"
+  },
+  "design_hash": "sha256:ddc6c73d885ec58c6c09fc3e15aa77483b2b64ecb1a077406c075632e84188df",
+  "design_id": "cx-answer-support-extended-shadow-operator-review-v1",
+  "design_schema_version": "cx_answer_support_extended_shadow_review_design.v1",
+  "review_policy": {
+    "automatic_cutover_permitted": false,
+    "maximum_e2e_p95_latency_ms": 20000,
+    "maximum_provider_p95_latency_ms": 15000,
+    "operator_decision_required": true,
+    "required_operations_status": "REVIEW_REQUIRED",
+    "required_peak_in_flight": 4,
+    "required_provider_call_count": 30,
+    "required_provider_sample_count": 30,
+    "required_source_decision": "EXTENDED_LIMITED_SHADOW_RUNTIME_OPERATIONS_ACCEPTED",
+    "required_source_status": "PASS",
+    "required_test_database_residue_rows": 0
+  },
+  "safety": {
+    "database_call_permitted": false,
+    "holdout_access_permitted": false,
+    "production_cutover_permitted": false,
+    "provider_call_permitted": false,
+    "runtime_change_permitted": false,
+    "user_visible_decision_change_permitted": false
+  },
+  "source_binding": {
+    "activation_bundle_hash": "sha256:6d5c631c9e18418ae2787d4053d06cdf87cc49a3cbc67aea6258b11f29893a06",
+    "operations_policy_hash": "sha256:c273eb6078573d96fb8bb25fb8478524a61c0020bf570c342c451ea1a3baa3d3",
+    "prior_decision_receipt_hash": "sha256:fae6534f558766d59f5eab53084cbc9e479f0de619bc30529ccba611f89988af",
+    "prior_operator_decision_hash": "sha256:bb7c3a3c077fa3471c2b84e83ad1a698e9246aa2662b96ae7b1468376a7ac510",
+    "prior_review_design_hash": "sha256:f92c6d8e96b194383b19f9a9308696a2e29a833e2838be8c04dab492653477f9",
+    "source_evidence_hash": "sha256:b4956c90e5fe0896456fe9f62a12953b1d9bd1a6d2001f60a0942b23880d0cf2",
+    "source_report_document_hash": "sha256:61398d5c003025acdc8a059b948db0c8e95715754f44f8cfee9fdaa6773f8352",
+    "window_id": "s20qpad-extended-limited-shadow-window-v1"
+  },
+  "status": "FROZEN_OPERATOR_REVIEW"
+}

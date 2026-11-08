@@ -1,0 +1,66 @@
+{
+  "admission": {
+    "calibration_candidate_required": true,
+    "holdout_pass_required_for_activation": true,
+    "maximum_false_ready_rate": 0.1,
+    "minimum_package_auc": 0.8,
+    "minimum_ready_recall": 0.8,
+    "point_constraints_remain_authoritative": true,
+    "runtime_activation_requires_separate_approval": true
+  },
+  "design_id": "s136-answer-support-holdout-one-shot-v1",
+  "design_schema_version": "cx_answer_support_holdout_execution_design.v1",
+  "holdout_manifest": {
+    "candidate_count": 160,
+    "dataset_id": "s136-retrieval-package-confidence-public-v4",
+    "domain_scenario_counts": {
+      "AI_RUNTIME": 5,
+      "FINANCE": 5,
+      "GOVERNANCE_OPERATIONS": 3,
+      "IDENTITY_AUTHORIZATION": 3,
+      "PROJECT": 4
+    },
+    "language_scenario_counts": {
+      "ENGLISH": 4,
+      "KOREAN": 12,
+      "KOREAN_ENGLISH_MIXED": 4
+    },
+    "package_count": 40,
+    "partition": "HOLDOUT",
+    "scenario_count": 20
+  },
+  "protocol": {
+    "execution_mode": "ONE_SHOT_BLIND_HOLDOUT",
+    "expected_provider_evaluations": 40,
+    "maximum_concurrency": 4,
+    "maximum_execution_attempts": 1,
+    "maximum_provider_http_requests": 40,
+    "partial_failure_disposition": "TERMINAL_INCONCLUSIVE_CONSUMED",
+    "profile_change_permitted": false,
+    "provider_request_retry_permitted": false,
+    "receipt_creation_mode": "ATOMIC_CREATE_EXCLUSIVE",
+    "receipt_path": "reports/live/gb2_ca00_s20qpq_holdout_one_shot_receipt.json",
+    "receipt_reservation_required_before_provider_call": true,
+    "threshold_reselection_permitted": false
+  },
+  "safety": {
+    "calibration_reentry_permitted": false,
+    "candidate_truth_provider_input_permitted": false,
+    "holdout_access_in_this_slice_permitted": false,
+    "holdout_source_text_in_freeze_permitted": false,
+    "runtime_activation_permitted": false,
+    "second_execution_permitted": false
+  },
+  "source_binding": {
+    "artifact_evidence_hash": "sha256:50135139c4271768dde60328dd46ddceab663b8e66928746e21affe82ff7955e",
+    "artifact_revision": "hf:c202236235762e1c871ad0ccb60c8ee5ba337b9a",
+    "canonical_profile_hash": "sha256:495bbc63c50affddd70e90c97fc27655c94c5eeabf890a5f13f5c2df5f90a31e",
+    "dataset_file_sha256": "sha256:a0be13e113efee2a4a2dd904aaab6d65916a4e31b4a71b91465b66210d9dea20",
+    "dataset_semantic_sha256": "sha256:594209203d25b0a87e6fd136b6794bdc30058a5eb45b7e2c8ff27523bd7f1757",
+    "p_n_collection_hash": "sha256:9ed7ed8c3a699d48c7090223749d60fe40574bae6e2520822cd0fc9d52749d4b",
+    "p_o_calibration_design_hash": "sha256:0f70676af6103b9053b0e568a1a96f11956227ac7e1cb7f7872bcd79eac9a9bc",
+    "p_o_calibration_hash": "sha256:06016641346b9241ad20b0553490579512876891771e363eecca9b70f9604f0b",
+    "p_o_threshold": 0.46375
+  },
+  "status": "FROZEN_PRE_HOLDOUT_ONLY"
+}

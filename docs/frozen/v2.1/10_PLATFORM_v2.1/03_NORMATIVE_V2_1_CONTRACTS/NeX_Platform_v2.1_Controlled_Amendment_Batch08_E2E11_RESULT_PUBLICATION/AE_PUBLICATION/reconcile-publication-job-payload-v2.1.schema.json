@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:nex:ae:reconcile-publication-job-payload:v2.1",
+  "title": "AE ReconcilePublicationJobPayload v2.1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "publication_reconciliation_id",
+    "result_delivery_id",
+    "publication_operation_id"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "2.1"
+    },
+    "publication_reconciliation_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "result_delivery_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "publication_operation_id": {
+      "type": "string",
+      "minLength": 1
+    }
+  }
+}

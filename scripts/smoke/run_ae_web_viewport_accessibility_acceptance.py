@@ -30,7 +30,6 @@ def run_ae_web_viewport_accessibility_acceptance(
         "workspace-summary",
         "golden-content",
         "golden-workspace-column",
-        "golden-context-pane",
         "golden-chat",
         "golden-timeline",
     )
@@ -63,11 +62,22 @@ def run_ae_web_viewport_accessibility_acceptance(
             '<html lang="ko">' in html
             and '<main class="workspace" id="main-workspace"' in html
         ),
+        "authentication_first_shell_present": all(
+            token in html
+            for token in (
+                'id="authentication-shell"',
+                'id="authenticated-shell" hidden',
+                'id="credential-login-panel"',
+            )
+        ),
         "localized_skip_link_present": all(
-            token in html + messages
+            token in html + messages + _read_text(
+                root / "apps/nex-ae-web/src/main.js"
+            )
             for token in (
                 'class="skip-link"',
-                'href="#main-workspace"',
+                'href="#primary-content"',
+                '"#main-workspace" : "#credential-login-panel"',
                 '"action.skip_main": "본문으로 건너뛰기"',
                 '"action.skip_main": "Skip to main content"',
             )
@@ -104,7 +114,7 @@ def run_ae_web_viewport_accessibility_acceptance(
         "summary": {
             "viewport_count": 2,
             "required_region_count": len(required_regions),
-            "non_overlap_pair_count": 5,
+            "non_overlap_pair_count": 4,
             "minimum_control_target_px": 24,
             "issue_count": len(issues),
         },

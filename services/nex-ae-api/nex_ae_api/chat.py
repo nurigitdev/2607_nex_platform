@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import os
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -120,6 +121,10 @@ from nex_ae_api.workspace_chat_orchestration import (
     idempotent_chat_record,
 )
 from nex_ae_api.workspace_chat_observability import observe_workspace_chat_state
+from nex_ae_api.chat_application import ChatApplicationService
+from nex_ae_api.semantic_candidate_admission import SemanticCandidateAdmissionError
+
+LOGGER = logging.getLogger(__name__)
 
 AE_CHAT_RETRIEVAL_QUALITY_WARNING_CONTRACT_VERSION = (
     "ae_chat_retrieval_quality_warning.v1"
@@ -361,6 +366,9 @@ class ChatInteractionError(Exception):
     error_code: str
     detail: str
     retryable: bool = False
+    failure_directive: str | None = None
+    failed_stage: str | None = None
+    retry_after_seconds: float | None = None
 
 
 DEFAULT_CHAT_STORE = ChatInteractionStore()
@@ -406,6 +414,7 @@ def register_chat_routes(
     event_emitter: OperationalEventEmitter | None = None,
     prompt_store: Any | None = None,
     generated_response_storage: Any | None = None,
+    application_service: ChatApplicationService | None = None,
 ) -> None:
     chat_store = store or build_default_chat_store(app)
     app.state.ae_chat_store = chat_store
@@ -425,9 +434,10 @@ def register_chat_routes(
         generated_response_storage or build_default_generated_response_storage()
     )
     app.state.ae_generated_response_storage = response_storage
+    chat_application = application_service or ChatApplicationService()
+    app.state.ae_chat_application_service = chat_application
 
-    @app.post("/api/v1/chat/interactions", response_model=None)
-    def create_chat_interaction(
+    def _create_chat_interaction_operation(
         payload: dict[str, Any],
         request: Request,
         authorization: str | None = Header(default=None),
@@ -540,6 +550,40 @@ def register_chat_routes(
                         trace_id=trace_id,
                     )
                     return saved_no_answer
+
+            semantic_admission = _admit_semantic_candidate_pipeline(
+                request=request,
+                payload=payload,
+                runtime_policy=runtime_policy,
+                retrieval_package=retrieval_package,
+                request_id=request_id,
+                trace_id=trace_id,
+            )
+            if semantic_admission is not None and semantic_admission.mode == "required":
+                planning_record = chat_store.save(
+                    {
+                        **pending_record,
+                        "status": "PENDING",
+                        "generation": {
+                            "semantic_planning": semantic_admission.to_wire(),
+                        },
+                        "retrieval": retrieval_summary(retrieval_package),
+                        "updated_at": _utc_now(),
+                    }
+                )
+                observe_workspace_chat_state(emitter, planning_record)
+                append_workspace_chat_activity(
+                    binding,
+                    workspace_store=workspace_store,
+                    activity_type="chat.agent-runtime.admitted",
+                    status="PENDING",
+                    request_id=request_id,
+                    trace_id=trace_id,
+                )
+                return JSONResponse(
+                    status_code=202,
+                    content=jsonable_encoder(planning_record),
+                )
 
             if retrieval_package is not None:
                 cx_payload = attach_retrieval_package_to_generation_payload(
@@ -786,11 +830,7 @@ def register_chat_routes(
             )
         return record
 
-    @app.post(
-        "/api/v1/chat/interactions/{interaction_id}/refresh",
-        response_model=None,
-    )
-    def refresh_chat_interaction(
+    def _refresh_chat_interaction_operation(
         interaction_id: str,
         request: Request,
         authorization: str | None = Header(default=None),
@@ -1095,11 +1135,7 @@ def register_chat_routes(
         except ChatInteractionError as exc:
             return _chat_problem_response(request, exc)
 
-    @app.post(
-        "/api/v1/chat/interactions/{interaction_id}/cancel",
-        response_model=None,
-    )
-    def cancel_chat_interaction(
+    def _cancel_chat_interaction_operation(
         interaction_id: str,
         request: Request,
         authorization: str | None = Header(default=None),
@@ -1185,11 +1221,7 @@ def register_chat_routes(
         except ChatInteractionError as exc:
             return _chat_problem_response(request, exc)
 
-    @app.get(
-        "/api/v1/chat/interactions/{interaction_id}/recovery",
-        response_model=None,
-    )
-    def get_chat_interaction_recovery(
+    def _get_chat_interaction_recovery_operation(
         interaction_id: str,
         request: Request,
         authorization: str | None = Header(default=None),
@@ -1252,11 +1284,7 @@ def register_chat_routes(
         except ChatInteractionError as exc:
             return _chat_problem_response(request, exc)
 
-    @app.post(
-        "/api/v1/chat/interactions/{interaction_id}/retry",
-        response_model=None,
-    )
-    def retry_chat_interaction(
+    def _retry_chat_interaction_operation(
         interaction_id: str,
         payload: dict[str, Any],
         request: Request,
@@ -1376,6 +1404,90 @@ def register_chat_routes(
             "chat_document_id": record["chat_document_id"],
             "artifact_refs": record["artifact_refs"],
         }
+
+    @app.post("/api/v1/chat/interactions", response_model=None)
+    def create_chat_interaction(
+        payload: dict[str, Any],
+        request: Request,
+        authorization: str | None = Header(default=None),
+    ):
+        return chat_application.create(
+            lambda: _create_chat_interaction_operation(
+                payload,
+                request,
+                authorization,
+            )
+        )
+
+    @app.post(
+        "/api/v1/chat/interactions/{interaction_id}/refresh",
+        response_model=None,
+    )
+    def refresh_chat_interaction(
+        interaction_id: str,
+        request: Request,
+        authorization: str | None = Header(default=None),
+    ):
+        return chat_application.refresh(
+            lambda: _refresh_chat_interaction_operation(
+                interaction_id,
+                request,
+                authorization,
+            )
+        )
+
+    @app.post(
+        "/api/v1/chat/interactions/{interaction_id}/cancel",
+        response_model=None,
+    )
+    def cancel_chat_interaction(
+        interaction_id: str,
+        request: Request,
+        authorization: str | None = Header(default=None),
+    ):
+        return chat_application.cancel(
+            lambda: _cancel_chat_interaction_operation(
+                interaction_id,
+                request,
+                authorization,
+            )
+        )
+
+    @app.get(
+        "/api/v1/chat/interactions/{interaction_id}/recovery",
+        response_model=None,
+    )
+    def get_chat_interaction_recovery(
+        interaction_id: str,
+        request: Request,
+        authorization: str | None = Header(default=None),
+    ):
+        return chat_application.recovery(
+            lambda: _get_chat_interaction_recovery_operation(
+                interaction_id,
+                request,
+                authorization,
+            )
+        )
+
+    @app.post(
+        "/api/v1/chat/interactions/{interaction_id}/retry",
+        response_model=None,
+    )
+    def retry_chat_interaction(
+        interaction_id: str,
+        payload: dict[str, Any],
+        request: Request,
+        authorization: str | None = Header(default=None),
+    ):
+        return chat_application.retry(
+            lambda: _retry_chat_interaction_operation(
+                interaction_id,
+                payload,
+                request,
+                authorization,
+            )
+        )
 
 
 def build_cx_generation_payload(
@@ -1785,18 +1897,25 @@ def build_failed_chat_interaction_record(
     pending_record: dict[str, Any],
     failure: Any,
 ) -> dict[str, Any]:
+    failure_record = {
+        "failure_schema_version": "ae_chat_execution_failure.v1",
+        "error_code": failure.error_code,
+        "failed_stage": (
+            getattr(failure, "failed_stage", None)
+            or "workspace_chat_orchestration"
+        ),
+        "retryable": bool(getattr(failure, "retryable", False)),
+        "raw_error_detail_included": False,
+    }
+    directive = getattr(failure, "failure_directive", None)
+    if isinstance(directive, str) and directive:
+        failure_record["directive"] = directive
     return {
         **pending_record,
         "status": "FAILED",
         "cx_status": "FAILED",
         "generation": pending_record.get("generation"),
-        "failure": {
-            "failure_schema_version": "ae_chat_execution_failure.v1",
-            "error_code": failure.error_code,
-            "failed_stage": "workspace_chat_orchestration",
-            "retryable": bool(getattr(failure, "retryable", False)),
-            "raw_error_detail_included": False,
-        },
+        "failure": failure_record,
         "updated_at": _utc_now(),
     }
 
@@ -2367,6 +2486,63 @@ def user_message_from_payload(payload: dict[str, Any]) -> str:
     return user_message.strip()
 
 
+def _admit_semantic_candidate_pipeline(
+    *,
+    request: Request,
+    payload: Mapping[str, Any],
+    runtime_policy: Mapping[str, Any],
+    retrieval_package: Mapping[str, Any] | None,
+    request_id: str,
+    trace_id: str,
+) -> Any | None:
+    runtime = getattr(request.app.state, "ae_semantic_candidate_admission", None)
+    if runtime is None or getattr(runtime, "mode", "disabled") == "disabled":
+        return None
+    try:
+        result = runtime.admit_chat(
+            payload=payload,
+            runtime_policy=runtime_policy,
+            retrieval_package=retrieval_package,
+            request_id=request_id,
+            trace_id=trace_id,
+        )
+    except SemanticCandidateAdmissionError as exc:
+        if getattr(runtime, "mode", None) == "shadow":
+            return None
+        raise ChatInteractionError(
+            status_code=exc.status_code,
+            error_code=exc.error_code,
+            detail="AE semantic candidate admission failed.",
+            retryable=exc.retryable,
+            failure_directive=exc.directive,
+            failed_stage=exc.semantic_stage,
+            retry_after_seconds=exc.retry_after_seconds,
+        ) from exc
+    except Exception as exc:
+        if getattr(runtime, "mode", None) == "shadow":
+            return None
+        LOGGER.exception(
+            "Unexpected semantic candidate admission failure; exception_type=%s",
+            type(exc).__name__,
+        )
+        raise ChatInteractionError(
+            status_code=409,
+            error_code="SEMANTIC_ADMISSION_FAILED",
+            detail="AE semantic candidate admission failed.",
+            retryable=False,
+            failure_directive="BLOCKED",
+        ) from exc
+    if result.status in {"COMPILED", "DISABLED", "SHADOW_ONLY", "SHADOW_SKIPPED"}:
+        return result
+    if getattr(runtime, "mode", None) == "shadow":
+        return result
+    raise ChatInteractionError(
+        status_code=409,
+        error_code="SEMANTIC_ADMISSION_BLOCKED",
+        detail=f"Semantic admission stopped with directive {result.directive}.",
+    )
+
+
 def chat_owner_scope_from_payload(payload: dict[str, Any]) -> tuple[str, str]:
     tenant_id = _optional_text(payload.get("tenant_id")) or DEFAULT_TENANT_ID
     user_id = _optional_text(payload.get("user_id")) or DEFAULT_USER_ID
@@ -2872,6 +3048,16 @@ def _chat_problem_response(
         | WorkspaceChatOrchestrationError
     ),
 ) -> JSONResponse:
+    details: dict[str, Any] = {}
+    directive = getattr(exc, "failure_directive", None)
+    if isinstance(directive, str) and directive:
+        details["directive"] = directive
+    failed_stage = getattr(exc, "failed_stage", None)
+    if isinstance(failed_stage, str) and failed_stage:
+        details["semantic_stage"] = failed_stage
+    retry_after = getattr(exc, "retry_after_seconds", None)
+    if isinstance(retry_after, int | float) and not isinstance(retry_after, bool):
+        details["retry_after_seconds"] = float(retry_after)
     return problem_response(
         request,
         status_code=exc.status_code,
@@ -2880,6 +3066,7 @@ def _chat_problem_response(
         detail=exc.detail,
         retryable=getattr(exc, "retryable", False),
         type_uri="https://nex-platform.local/problems/chat-interaction-failed",
+        details=details,
     )
 
 

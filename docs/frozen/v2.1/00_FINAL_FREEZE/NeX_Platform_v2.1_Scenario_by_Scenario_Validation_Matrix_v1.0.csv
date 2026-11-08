@@ -1,0 +1,13 @@
+﻿Scenario,Title,Verdict,Summary,OpenIssueCount
+E2E-01,User → IA → READ Skill → Result,PASS,,0
+E2E-02,Golden A WRITE with NSL Approval,PASS,Approval/Resume/Idempotency/Package trust typed chain closed; negative safety probes pass.,0
+E2E-03,Agent FORMAL_APPROVAL + NSL WRITE Approval,PASS,Distinct approval domains and domain-specific bindings enforced.,0
+E2E-04,CA Delegation through WC,PASS,,0
+E2E-05,PA Project Work Execution,PASS,,0
+E2E-06,EA-Trust ALLOW + OA DENY,PASS,Typed operation trust binding; OA DENY and fingerprint mismatch return false/block before provider WRITE.,0
+E2E-07,Package Trust Failure,PASS,Revoked package cannot produce ADMITTED decision or VerifiedSkillArtifact.,0
+E2E-08,Duplicate RuntimeJob / Idempotency,PASS,RuntimeJob dedup/lease and durable IdempotencyRecord now normative; same-key conflict helper/SQL verified.,0
+E2E-09,UNKNOWN_COMMIT_STATE / Reconciliation,PASS,Typed result condition + ReconciliationEvidence/Case/Outcome + RECONCILE_EXECUTION contract verified.,0
+E2E-10,COMMITTED + Verification FAILED,PASS,Commit/verification typing + UNSAFE_TO_RETRY + typed DO_NOT_RETRY mapping verified.,0
+E2E-11,Result Publication Failure,PASS,"AgentResult/ResultDelivery, stable PublicationOperationId, current preflight, UNKNOWN_DELIVERY reconciliation, required ACK finalization and no-Business-WRITE-retry are normative.",0
+E2E-12,Scheduled PA Recurring Work,PASS,"WC Schedule SoR, deterministic time/misfire, atomic exactly-one WorkItem materialization, PA project binding, current authorization/audit, Claim-only Agent start and WA projection-only boundary are normative.",0

@@ -41,6 +41,10 @@ BACKGROUND_MODULES = {
         "nex-cx",
         "nex_cx.remediation_execution_worker",
     ),
+    "nex-wa-evidence-consumer": (
+        "nex-wa",
+        "nex_wa.consumer",
+    ),
 }
 BACKGROUND_DATABASE_ENVIRONMENTS = {
     "nex-ae-api": {
@@ -54,6 +58,10 @@ BACKGROUND_DATABASE_ENVIRONMENTS = {
     "nex-cx": {
         "default": "NEX_CX_DATABASE_URL",
         "test": "NEX_CX_TEST_DATABASE_URL",
+    },
+    "nex-wa": {
+        "default": "NEX_WA_DATABASE_URL",
+        "test": "NEX_WA_TEST_DATABASE_URL",
     },
 }
 ENABLED_BACKGROUND_PROFILES = ("local_mock", "test")

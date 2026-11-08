@@ -150,10 +150,12 @@ async function runViewport({
   page.on("pageerror", error => pageErrorNames.push(error?.name || "Error"));
   try {
     await page.goto(webUrl, { waitUntil: "networkidle", timeout: timeoutMs });
-    await page.waitForSelector("#main-workspace", { timeout: timeoutMs });
+    await page.waitForSelector("#authentication-shell:not([hidden])", {
+      timeout: timeoutMs
+    });
     const koreanUiConfirmed = await page.evaluate(() =>
       document.documentElement.lang === "ko" &&
-      document.querySelector("h1")?.textContent?.includes("작업면") &&
+      document.querySelector("#authentication-shell h1")?.textContent?.includes("로그인") &&
       document.querySelector("#credential-login-title")?.textContent?.includes("로그인")
     );
 
@@ -163,10 +165,11 @@ async function runViewport({
     await page.click("#credential-login-submit-button");
     await page.waitForSelector(
       "#credential-login-feedback[data-severity='success']",
-      { timeout: timeoutMs }
+      { state: "attached", timeout: timeoutMs }
     );
 
     stage = "UPLOAD";
+    await page.click('[data-shell-view="upload"]');
     await page.setInputFiles("#upload-file-input", {
       name: "golden-reference.md",
       mimeType: "text/markdown",
@@ -179,6 +182,7 @@ async function runViewport({
     });
 
     stage = "GENERATION";
+    await page.click('[data-shell-view="workspace"]');
     const messageCount = await page.locator("#message-list .message.assistant").count();
     await page.fill("#prompt", "근거와 인용이 포함된 테스트 보고서를 작성해줘.");
     await page.click("#composer button[type='submit']");
@@ -193,12 +197,15 @@ async function runViewport({
     const previewAction = latestMessage.locator("[data-artifact-preview-route]").first();
     const downloadAction = latestMessage.locator("[data-artifact-download-route]").first();
     await previewAction.click();
+    await page.click('[data-shell-view="artifacts"]');
     await page.waitForSelector(
       "#artifact-preview-content[data-status='PREVIEW_READY']",
       { timeout: timeoutMs }
     );
     stage = "ARTIFACT_DOWNLOAD";
+    await page.click('[data-shell-view="workspace"]');
     await downloadAction.click();
+    await page.click('[data-shell-view="artifacts"]');
     await page.waitForSelector(
       "#artifact-preview-content[data-status='DOWNLOAD_READY']",
       { timeout: timeoutMs }
@@ -213,6 +220,7 @@ async function runViewport({
     }, viewportName);
 
     stage = "LAYOUT";
+    await page.click('[data-shell-view="workspace"]');
     await page.keyboard.press("Tab");
     await page.locator(".skip-link").focus();
     await page.waitForFunction(
@@ -331,8 +339,12 @@ async function collectLayoutSnapshot(page, viewportName, viewport) {
       const activeStyle = active ? getComputedStyle(active) : null;
       return {
         htmlLang: document.documentElement.lang,
-        mainLandmarkCount: document.querySelectorAll("main").length,
-        primaryHeadingCount: document.querySelectorAll("h1").length,
+        mainLandmarkCount: [...document.querySelectorAll("main")].filter(
+          element => !element.hidden && getComputedStyle(element).display !== "none"
+        ).length,
+        primaryHeadingCount: [...document.querySelectorAll("h1")].filter(
+          element => !element.closest("[hidden]") && getComputedStyle(element).display !== "none"
+        ).length,
         documentWidth: document.documentElement.scrollWidth,
         regions,
         controls,

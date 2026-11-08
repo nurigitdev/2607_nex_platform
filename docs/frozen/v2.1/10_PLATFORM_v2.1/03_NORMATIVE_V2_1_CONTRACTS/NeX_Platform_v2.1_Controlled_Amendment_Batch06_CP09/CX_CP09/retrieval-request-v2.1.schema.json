@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "CXRetrievalRequest v2.1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "tenant_id",
+    "query",
+    "authority_ref"
+  ],
+  "properties": {
+    "tenant_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "query": {
+      "type": "string",
+      "minLength": 1
+    },
+    "authority_ref": {
+      "type": "string"
+    },
+    "authority_hash": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "filters": {
+      "type": "object"
+    },
+    "retrieval_profile": {
+      "type": "string"
+    },
+    "top_k": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 100
+    }
+  }
+}

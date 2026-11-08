@@ -1,0 +1,11 @@
+{
+  "schema_version": "wa_evidence_intake_request.v1",
+  "tenant_id": "VO00",
+  "source_type": "AE_AGENT_RESULT",
+  "source_ref": "agent-execution-9001",
+  "source_revision_ref": "result-1",
+  "source_hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "occurred_at": "2026-10-27T09:00:00Z",
+  "correlation_id": "corr-p9-s06-001",
+  "prompt": "raw business prompt must not enter the queue"
+}

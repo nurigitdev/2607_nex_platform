@@ -1,0 +1,70 @@
+{
+  "audit_schema_version": "cx_answer_support_profile_equivalence_audit_design.v1",
+  "audit_id": "s136-answer-support-exact-profile-stability-equivalence-audit-v1",
+  "status": "FROZEN_CALIBRATION_ONLY",
+  "source_binding": {
+    "collection_hash": "sha256:2ef316848a3c3f503856de53e52c80ff9ec94162e59afee966504cb1f8ef530a",
+    "nested_design_id": "s136-answer-support-nested-package-calibration-v1",
+    "p_j_selection_hash": "sha256:3dad4bc80aad642d7628fe27ec5f06db4016143cfa66d1344f4b1c8332c4cc57"
+  },
+  "compared_profiles": [
+    "answer-support-top-two-v1",
+    "answer-support-contradiction-aware-v1"
+  ],
+  "empirical_equivalence": {
+    "maximum_oof_decision_disagreement_rate": 0.05,
+    "minimum_score_ordering_agreement_rate": 0.98,
+    "require_complete_fold_local_thresholds": true
+  },
+  "semantic_equivalence": {
+    "counterfactual_delta_tolerance": 1e-09,
+    "require_equal_feature_dependency_sets": true,
+    "require_counterfactual_response_equivalence": true
+  },
+  "counterfactual_pairs": [
+    {
+      "baseline": {
+        "direct_or_support_fraction": 0.5,
+        "inverse_maximum_contradiction_score": 0.9,
+        "inverse_mean_contradiction_score": 0.9,
+        "normalized_support_contradiction_margin": 0.85,
+        "second_answer_support_score": 0.75,
+        "top_two_answer_support_mean": 0.8
+      },
+      "pair_id": "contradiction-sensitivity",
+      "variant": {
+        "direct_or_support_fraction": 0.25,
+        "inverse_maximum_contradiction_score": 0.2,
+        "inverse_mean_contradiction_score": 0.2,
+        "normalized_support_contradiction_margin": 0.5,
+        "second_answer_support_score": 0.75,
+        "top_two_answer_support_mean": 0.8
+      }
+    },
+    {
+      "baseline": {
+        "direct_or_support_fraction": 0.75,
+        "inverse_maximum_contradiction_score": 0.8,
+        "inverse_mean_contradiction_score": 0.8,
+        "normalized_support_contradiction_margin": 0.75,
+        "second_answer_support_score": 0.7,
+        "top_two_answer_support_mean": 0.75
+      },
+      "pair_id": "classification-fraction-sensitivity",
+      "variant": {
+        "direct_or_support_fraction": 0.25,
+        "inverse_maximum_contradiction_score": 0.8,
+        "inverse_mean_contradiction_score": 0.8,
+        "normalized_support_contradiction_margin": 0.75,
+        "second_answer_support_score": 0.7,
+        "top_two_answer_support_mean": 0.75
+      }
+    }
+  ],
+  "safety": {
+    "equivalence_family_authorized": false,
+    "holdout_access_permitted": false,
+    "profile_or_threshold_mutation_permitted": false,
+    "runtime_activation_permitted": false
+  }
+}

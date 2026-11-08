@@ -1,0 +1,149 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:nex:schema:transition:p7:delegation-spec:1.0",
+  "title": "NeX P7 DelegationSpec v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "delegation_id",
+    "tenant_id",
+    "parent_agent_execution_id",
+    "parent_executable_plan_id",
+    "parent_executable_step_id",
+    "delegation_revision",
+    "goal",
+    "work_class",
+    "required_agent_type",
+    "required_capability",
+    "project_ref",
+    "project_scope_ref",
+    "result_contract_ref",
+    "completion_policy",
+    "correlation_id"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "1.0"
+    },
+    "delegation_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "tenant_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "parent_agent_execution_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "parent_executable_plan_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "parent_executable_step_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "delegation_revision": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "goal": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 4000
+    },
+    "work_class": {
+      "enum": [
+        "QUERY",
+        "ANALYSIS",
+        "DOCUMENT",
+        "BUSINESS_TRANSACTION",
+        "COORDINATION",
+        "EXPERT_REVIEW",
+        "REPORTING",
+        "OPERATIONAL"
+      ]
+    },
+    "required_agent_type": {
+      "enum": [
+        "CA",
+        "PA",
+        "EA"
+      ]
+    },
+    "required_capability": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 160
+    },
+    "project_ref": {
+      "$ref": "#/$defs/entityRef"
+    },
+    "project_scope_ref": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 160
+    },
+    "result_contract_ref": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512
+    },
+    "completion_policy": {
+      "enum": [
+        "OWNER_SUBMITS",
+        "ALL_ASSIGNEES_SUBMIT",
+        "ANY_ASSIGNEE_SUBMITS",
+        "ALL_REQUIRED_CHILDREN",
+        "MANUAL"
+      ]
+    },
+    "correlation_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "causation_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "maxLength": 128
+    }
+  },
+  "$defs": {
+    "entityRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "entity_type",
+        "entity_id"
+      ],
+      "properties": {
+        "entity_type": {
+          "const": "PROJECT"
+        },
+        "entity_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "version": {
+          "type": [
+            "string",
+            "integer",
+            "null"
+          ]
+        }
+      }
+    }
+  }
+}

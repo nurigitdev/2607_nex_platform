@@ -4,20 +4,21 @@ import argparse
 import json
 import os
 import sys
-from pathlib import Path
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 ROOT_DIR = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT_DIR / "services" / "_shared"))
 sys.path.insert(0, str(ROOT_DIR / "services" / "nex-mo"))
 
-from nex_mo.providers import build_model_profile_catalog
-from nex_mo.remote_provider import (
-    build_remote_provider_preflight_configs,
-    expected_models_from_env,
-    run_remote_provider_preflight_check,
+from nex_mo.model_provider_admission import (
+    ModelProviderAdmissionError,
+    admit_model_provider_readiness,
 )
+from nex_mo.providers import build_model_profile_catalog
+from nex_mo.remote_provider import build_remote_provider_preflight_configs
+from nex_mo.remote_provider import expected_models_from_env as _expected_models_from_env
 
 LIVE_PROVIDER_CHECKS = build_remote_provider_preflight_configs({})
 PROTECTED_EVIDENCE_ENV_KEYS = (
@@ -35,6 +36,15 @@ PROTECTED_EVIDENCE_ENV_KEYS = (
 )
 
 
+def expected_models_from_env(
+    value: str | None,
+    defaults: tuple[str, ...],
+) -> tuple[str, ...]:
+    """Preserve the legacy preflight helper surface for existing callers."""
+
+    return _expected_models_from_env(value, defaults)
+
+
 def run_dgx_live_provider_preflight(
     environ: dict[str, str] | None = None,
     *,
@@ -50,19 +60,39 @@ def run_dgx_live_provider_preflight(
             "model_profiles": selected_profile_summary(env),
         }
 
-    configs = build_remote_provider_preflight_configs(env)
-    checks = [
-        run_remote_provider_preflight_check(config, requester=requester)
-        if requester is not None
-        else run_remote_provider_preflight_check(config)
-        for config in configs
-    ]
-    status = "PASS" if all(check["status"] == "PASS" for check in checks) else "FAIL"
+    effective_env = {
+        **env,
+        "NEX_MO_PROVIDER_MODE": "live",
+        "NEX_MO_PROVIDER_DEPENDENCY_PROFILE": "rag",
+    }
+    try:
+        admission = admit_model_provider_readiness(
+            effective_env,
+            requester=requester,
+            require_live=True,
+        )
+    except (ModelProviderAdmissionError, ValueError):
+        admission = {
+            "status": "FAIL",
+            "admission_status": "BLOCKED",
+            "failure_code": "model_provider_admission_evaluation_failed",
+            "checks": [],
+            "dependency_readiness": [],
+            "readiness_status": "NOT_READY",
+        }
     return {
         "preflight_schema_version": "dgx_live_provider_preflight.v1",
-        "status": status,
-        "checks": checks,
-        "model_profiles": selected_profile_summary(env),
+        "status": admission["status"],
+        "checks": admission["checks"],
+        "model_profiles": selected_profile_summary(effective_env),
+        "canonical_admission": {
+            "schema_version": admission.get("schema_version"),
+            "admission_status": admission.get("admission_status"),
+            "readiness_status": admission.get("readiness_status"),
+            "profile": admission.get("profile"),
+            "dependency_readiness": admission.get("dependency_readiness", []),
+            "failure_code": admission.get("failure_code"),
+        },
     }
 
 
@@ -184,5 +214,5 @@ def _utc_now() -> str:
     return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover
     raise SystemExit(main())

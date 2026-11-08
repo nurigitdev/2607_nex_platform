@@ -1,0 +1,6 @@
+﻿Issue,Status,Title,Closure
+E2E08-PCG-01,CLOSED,RuntimeJob/JobQueue duplicate-delivery contract,RuntimeJob/Attempt schema + SQL + typed protocol added.
+E2E08-PCG-02,CLOSED,Durable idempotency ledger/conflict contract,IdempotencyRecord schema + unique SQL + typed reserve/replay/conflict protocol added.
+E2E09-P1-01,CLOSED,NSLResultSummary commit/verification typing,Canonical enums and UNKNOWN/COMMITTED conditions enforced.
+E2E09-PCG-01,CLOSED,Unknown-commit reconciliation bridge,ReconciliationEvidence/Case/Outcome/Job + SQL/protocol added.
+E2E10-P1-01,CLOSED,No-WRITE-retry machine disposition,RetrySafety + RetryDisposition + typed result mapper enforce COMMITTED→DO_NOT_RETRY.

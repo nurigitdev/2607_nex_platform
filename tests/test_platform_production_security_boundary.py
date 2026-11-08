@@ -86,4 +86,3 @@ def test_text_summary_and_main_branches(tmp_path: Path, monkeypatch, capsys) -> 
         boundary, "run_platform_production_security_boundary", lambda: failing
     )
     assert boundary.main([]) == 1
-

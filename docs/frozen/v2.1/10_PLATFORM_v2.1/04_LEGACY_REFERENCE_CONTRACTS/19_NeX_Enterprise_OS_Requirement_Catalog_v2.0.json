@@ -1,0 +1,1078 @@
+{
+  "schema_version": "2.0",
+  "document": "19_NeX_Enterprise_OS_System_SRS_v2.0",
+  "requirements": [
+    {
+      "id": "NEX-EOS-CORE-FR-001",
+      "priority": "MUST",
+      "requirement": "Enterprise OS는 NVT/Project, Formal Approval, Voucher/Expense, Project Financial Ledger 및 P/L의 authoritative Business Transaction Source of Truth여야 한다.",
+      "verification": "Architecture Test",
+      "parent": "ADR-017/018"
+    },
+    {
+      "id": "NEX-EOS-CORE-FR-002",
+      "priority": "MUST",
+      "requirement": "Enterprise OS는 NeX-WC WorkItem 상태를 소유하거나 직접 수정해서는 안 된다.",
+      "verification": "Architecture Test",
+      "parent": "ADR-006/07"
+    },
+    {
+      "id": "NEX-EOS-CORE-FR-003",
+      "priority": "MUST",
+      "requirement": "Enterprise OS는 Employee/RoleBinding Identity의 SoR가 아니며 NeX-OA stable refs를 사용해야 한다.",
+      "verification": "Architecture Test",
+      "parent": "05/07/09"
+    },
+    {
+      "id": "NEX-EOS-CORE-FR-004",
+      "priority": "MUST",
+      "requirement": "Enterprise OS는 WorkActivity/WorkAsset의 SoR가 아니며 Business Event/refs를 NeX-WA에 제공해야 한다.",
+      "verification": "Architecture Test",
+      "parent": "ADR-019/020"
+    },
+    {
+      "id": "NEX-EOS-CORE-FR-005",
+      "priority": "MUST",
+      "requirement": "Business transaction write는 Canonical API/Certified Skill을 통해 수행되고 cross-service direct DB write를 허용해서는 안 된다.",
+      "verification": "Architecture Test",
+      "parent": "08/16/17"
+    },
+    {
+      "id": "NEX-EOS-CORE-FR-006",
+      "priority": "MUST",
+      "requirement": "Enterprise OS가 생성하는 모든 authoritative transaction/entity는 immutable stable ID를 가져야 한다.",
+      "verification": "Schema Test",
+      "parent": "07"
+    },
+    {
+      "id": "NEX-EOS-CORE-FR-007",
+      "priority": "MUST",
+      "requirement": "모든 주요 transaction은 correlation_id/causation_id와 source WorkItem/AgentExecution/PlanStep refs를 보존할 수 있어야 한다.",
+      "verification": "Trace Test",
+      "parent": "08"
+    },
+    {
+      "id": "NEX-EOS-CORE-FR-008",
+      "priority": "MUST",
+      "requirement": "Business transaction은 Artifact/Evidence refs를 stable refs로 연결할 수 있어야 한다.",
+      "verification": "Contract Test",
+      "parent": "07/25 target"
+    },
+    {
+      "id": "NEX-EOS-CORE-FR-009",
+      "priority": "MUST",
+      "requirement": "Business transaction lifecycle state는 LLM 자유텍스트가 아니라 deterministic domain state machine으로 관리되어야 한다.",
+      "verification": "State Test",
+      "parent": "P-07"
+    },
+    {
+      "id": "NEX-EOS-CORE-FR-010",
+      "priority": "SHOULD",
+      "requirement": "Enterprise OS는 초기 구현에서 modular monolith/monorepo 형태로 Bounded Context를 강제하고 필요 시 후속 service split을 허용할 수 있어야 한다.",
+      "verification": "Inspection",
+      "parent": "Architecture baseline"
+    },
+    {
+      "id": "NEX-EOS-PRJ-FR-001",
+      "priority": "MUST",
+      "requirement": "Enterprise OS는 NVT Project, Mother Project, Child Project를 구분하여 관리해야 한다.",
+      "verification": "Schema Test",
+      "parent": "Master Plan/07"
+    },
+    {
+      "id": "NEX-EOS-PRJ-FR-002",
+      "priority": "MUST",
+      "requirement": "모든 Mother Project는 하나의 NVT Project에 연결되어야 한다.",
+      "verification": "Invariant Test",
+      "parent": "Project baseline"
+    },
+    {
+      "id": "NEX-EOS-PRJ-FR-003",
+      "priority": "MUST",
+      "requirement": "Child Project는 하나의 Mother Project에 연결되어야 하며 직접 NVT roll-up이 가능해야 한다.",
+      "verification": "Invariant Test",
+      "parent": "Project baseline"
+    },
+    {
+      "id": "NEX-EOS-PRJ-FR-004",
+      "priority": "MUST",
+      "requirement": "Project는 project_id, project_code, name, project_type, status, owner refs, date range, currency, financial scope를 가져야 한다.",
+      "verification": "Schema Test",
+      "parent": "07"
+    },
+    {
+      "id": "NEX-EOS-PRJ-FR-005",
+      "priority": "MUST",
+      "requirement": "Project code/display name과 immutable project_id를 구분해야 한다.",
+      "verification": "Schema Test",
+      "parent": "Canonical ID"
+    },
+    {
+      "id": "NEX-EOS-PRJ-FR-006",
+      "priority": "MUST",
+      "requirement": "Project는 DRAFT/ACTIVE/ON_HOLD/CLOSED/CANCELLED 등 deterministic lifecycle을 지원해야 한다.",
+      "verification": "State Test",
+      "parent": "Project DD target"
+    },
+    {
+      "id": "NEX-EOS-PRJ-FR-007",
+      "priority": "MUST",
+      "requirement": "CLOSED Project에 새 Business Transaction을 posting하려면 명시적 reopen/exception policy가 필요해야 한다.",
+      "verification": "Negative Test",
+      "parent": "Financial integrity"
+    },
+    {
+      "id": "NEX-EOS-PRJ-FR-008",
+      "priority": "MUST",
+      "requirement": "WBS 또는 cost/revenue sub-scope를 optional 구조로 확장할 수 있어야 한다.",
+      "verification": "Inspection",
+      "parent": "Future expansion"
+    },
+    {
+      "id": "NEX-EOS-PRJ-FR-009",
+      "priority": "MUST",
+      "requirement": "Common Work Project는 실제 특정 Project와 무관한 공통업무용으로 별도 관리되어야 한다.",
+      "verification": "Test",
+      "parent": "ADR-023"
+    },
+    {
+      "id": "NEX-EOS-PRJ-FR-010",
+      "priority": "MUST",
+      "requirement": "Project 미지정을 이유로 transaction을 자동으로 Common Work Project에 귀속해서는 안 된다.",
+      "verification": "Negative Test",
+      "parent": "ADR-023"
+    },
+    {
+      "id": "NEX-EOS-PRJ-FR-011",
+      "priority": "MUST",
+      "requirement": "Project Resolution은 Selector/Candidate→Canonical stable ID 절차를 사용해야 한다.",
+      "verification": "Test",
+      "parent": "ADR-015"
+    },
+    {
+      "id": "NEX-EOS-PRJ-FR-012",
+      "priority": "MUST",
+      "requirement": "Project 변경/병합/종료 이력은 과거 Transaction/Ledger linkage를 손상시키지 않아야 한다.",
+      "verification": "Data Test",
+      "parent": "Audit"
+    },
+    {
+      "id": "NEX-EOS-PRJ-FR-013",
+      "priority": "SHOULD",
+      "requirement": "Project hierarchy와 financial roll-up은 NVT→Mother→Child drill-down/up query를 지원해야 한다.",
+      "verification": "Query Test",
+      "parent": "P/L"
+    },
+    {
+      "id": "NEX-EOS-ATTR-FR-001",
+      "priority": "MUST",
+      "requirement": "Business Transaction은 가능한 경우 실제 관련 ProjectRef를 가져야 한다.",
+      "verification": "Test",
+      "parent": "ADR-022/023"
+    },
+    {
+      "id": "NEX-EOS-ATTR-FR-002",
+      "priority": "MUST",
+      "requirement": "Project Attribution 우선순위는 WorkItem Project → Transaction Project → Workspace Current Project → Parent/Requester inheritance → Candidate+Human Confirm → Multi-project Split → Common Work 순서를 지원해야 한다.",
+      "verification": "Policy Test",
+      "parent": "Master Plan v2.1"
+    },
+    {
+      "id": "NEX-EOS-ATTR-FR-003",
+      "priority": "MUST",
+      "requirement": "Agent/LLM이 Project를 확정하지 않고 Candidate만 제안할 수 있어야 한다.",
+      "verification": "Adversarial Test",
+      "parent": "ADR-015"
+    },
+    {
+      "id": "NEX-EOS-ATTR-FR-004",
+      "priority": "MUST",
+      "requirement": "Ambiguous Project candidate는 Human Confirmation 또는 explicit resolution 없이는 Business Write에 사용해서는 안 된다.",
+      "verification": "Negative Test",
+      "parent": "16/18"
+    },
+    {
+      "id": "NEX-EOS-ATTR-FR-005",
+      "priority": "MUST",
+      "requirement": "Transaction Project 변경은 DRAFT 상태에서만 허용하고 posting 이후에는 reversal/adjustment 등 correction path를 사용해야 한다.",
+      "verification": "State Test",
+      "parent": "Financial integrity"
+    },
+    {
+      "id": "NEX-EOS-ATTR-FR-006",
+      "priority": "MUST",
+      "requirement": "Shared Service 업무/transaction도 실제 Project 지원이면 해당 Project 귀속을 허용해야 한다.",
+      "verification": "Test",
+      "parent": "ADR-022"
+    },
+    {
+      "id": "NEX-EOS-ATTR-FR-007",
+      "priority": "MUST",
+      "requirement": "Project Attribution decision source와 confirmation/evidence를 Audit할 수 있어야 한다.",
+      "verification": "Audit Test",
+      "parent": "WA/Labor"
+    },
+    {
+      "id": "NEX-EOS-ATTR-FR-008",
+      "priority": "SHOULD",
+      "requirement": "Multi-project business activity는 향후 explicit split rule/allocations를 지원할 수 있어야 한다.",
+      "verification": "Inspection",
+      "parent": "Labor/WA target"
+    },
+    {
+      "id": "NEX-EOS-ACC-FR-001",
+      "priority": "MUST",
+      "requirement": "Enterprise OS는 Accounting/Management Posting에 사용하는 Account Master를 관리해야 한다.",
+      "verification": "Schema Test",
+      "parent": "EOS"
+    },
+    {
+      "id": "NEX-EOS-ACC-FR-002",
+      "priority": "MUST",
+      "requirement": "Account는 immutable account_id와 unique account_code를 구분해야 한다.",
+      "verification": "Schema Test",
+      "parent": "Canonical ID"
+    },
+    {
+      "id": "NEX-EOS-ACC-FR-003",
+      "priority": "MUST",
+      "requirement": "Account는 category/type, effective period, active status, allowed transaction types, P/L mapping을 표현할 수 있어야 한다.",
+      "verification": "Schema Test",
+      "parent": "Ledger/P&L"
+    },
+    {
+      "id": "NEX-EOS-ACC-FR-004",
+      "priority": "MUST",
+      "requirement": "비활성/만료 Account는 신규 transaction line에 사용할 수 없어야 한다.",
+      "verification": "Negative Test",
+      "parent": "Accounting rule"
+    },
+    {
+      "id": "NEX-EOS-ACC-FR-005",
+      "priority": "MUST",
+      "requirement": "Account Search는 LLM/사용자에게 Candidate 목록을 제공할 수 있지만 최종 stable ID는 Canonical Resolution되어야 한다.",
+      "verification": "Test",
+      "parent": "ADR-015"
+    },
+    {
+      "id": "NEX-EOS-ACC-FR-006",
+      "priority": "MUST",
+      "requirement": "Posting된 historical Ledger Entry는 이후 Account rename/deactivation에도 당시 Account reference/snapshot을 재현할 수 있어야 한다.",
+      "verification": "Data Test",
+      "parent": "Audit"
+    },
+    {
+      "id": "NEX-EOS-ACC-FR-007",
+      "priority": "MUST",
+      "requirement": "Account Master 변경은 version/audit 및 authorized governance를 요구해야 한다.",
+      "verification": "Security Test",
+      "parent": "09"
+    },
+    {
+      "id": "NEX-EOS-ACC-FR-008",
+      "priority": "SHOULD",
+      "requirement": "Management P/L category와 statutory/general-ledger category를 분리 Mapping할 수 있는 구조를 지원해야 한다.",
+      "verification": "Inspection",
+      "parent": "Future accounting integration"
+    },
+    {
+      "id": "NEX-EOS-VCH-FR-001",
+      "priority": "MUST",
+      "requirement": "Voucher는 DRAFT→SUBMITTED→APPROVAL_PENDING→APPROVED/REJECTED→POSTED/REVERSED 등 deterministic lifecycle을 지원해야 한다.",
+      "verification": "State Test",
+      "parent": "Golden A"
+    },
+    {
+      "id": "NEX-EOS-VCH-FR-002",
+      "priority": "MUST",
+      "requirement": "Voucher는 하나의 ProjectRef, currency, transaction date/posting date, description, requester/source refs를 가져야 한다.",
+      "verification": "Schema Test",
+      "parent": "Voucher"
+    },
+    {
+      "id": "NEX-EOS-VCH-FR-003",
+      "priority": "MUST",
+      "requirement": "Voucher는 하나 이상의 line을 가지며 line별 AccountRef, debit/credit 또는 signed amount, economic category, evidence refs를 표현해야 한다.",
+      "verification": "Schema Test",
+      "parent": "Accounting"
+    },
+    {
+      "id": "NEX-EOS-VCH-FR-004",
+      "priority": "MUST",
+      "requirement": "일반 회계 Voucher는 posting 전 debit/credit balance invariant 또는 해당 transaction type의 equivalent balance rule을 만족해야 한다.",
+      "verification": "Invariant Test",
+      "parent": "Accounting"
+    },
+    {
+      "id": "NEX-EOS-VCH-FR-005",
+      "priority": "MUST",
+      "requirement": "Money/Decimal 값을 사용하고 binary Float 기반 Financial amount를 허용해서는 안 된다.",
+      "verification": "Type Test",
+      "parent": "NSL v0.2"
+    },
+    {
+      "id": "NEX-EOS-VCH-FR-006",
+      "priority": "MUST",
+      "requirement": "Voucher Draft 생성은 R3 Controlled Write로 idempotent해야 한다.",
+      "verification": "Fault Test",
+      "parent": "08/16/17"
+    },
+    {
+      "id": "NEX-EOS-VCH-FR-007",
+      "priority": "MUST",
+      "requirement": "Voucher Submit/important state transition은 expected_version 기반 stale write 차단을 지원해야 한다.",
+      "verification": "Concurrency Test",
+      "parent": "08"
+    },
+    {
+      "id": "NEX-EOS-VCH-FR-008",
+      "priority": "MUST",
+      "requirement": "Voucher에 연결된 Project/Account/Evidence/Amount 변경은 Confirmation/Approval hash binding과 일치해야 한다.",
+      "verification": "Security Test",
+      "parent": "18"
+    },
+    {
+      "id": "NEX-EOS-VCH-FR-009",
+      "priority": "MUST",
+      "requirement": "Formal Approval이 필요한 Voucher는 ApprovalInstance와 exact payload/intent proof를 연결해야 한다.",
+      "verification": "Integration Test",
+      "parent": "18"
+    },
+    {
+      "id": "NEX-EOS-VCH-FR-010",
+      "priority": "MUST",
+      "requirement": "POSTED Voucher를 overwrite/delete하여 수정해서는 안 되고 reversal/adjustment transaction을 생성해야 한다.",
+      "verification": "Negative Test",
+      "parent": "Financial audit"
+    },
+    {
+      "id": "NEX-EOS-VCH-FR-011",
+      "priority": "MUST",
+      "requirement": "Voucher posting은 Project Financial Ledger Entry와 deterministic lineage를 생성해야 한다.",
+      "verification": "Integration Test",
+      "parent": "ADR-018"
+    },
+    {
+      "id": "NEX-EOS-VCH-FR-012",
+      "priority": "MUST",
+      "requirement": "Voucher와 Ledger posting의 commit 결과가 불명확하면 UNKNOWN_COMMIT_STATE/Reconciliation path를 제공해야 한다.",
+      "verification": "Fault Test",
+      "parent": "08/17"
+    },
+    {
+      "id": "NEX-EOS-VCH-FR-013",
+      "priority": "MUST",
+      "requirement": "Voucher Result는 WorkItem/AgentExecution/NSL Skill/Artifact/Evidence refs와 trace 가능해야 한다.",
+      "verification": "E2E Trace",
+      "parent": "Golden A"
+    },
+    {
+      "id": "NEX-EOS-APR-FR-001",
+      "priority": "MUST",
+      "requirement": "Formal Approval은 Enterprise OS가 authoritative ApprovalPolicy/Instance/Stage/Decision/Proof를 소유해야 한다.",
+      "verification": "Architecture Test",
+      "parent": "18"
+    },
+    {
+      "id": "NEX-EOS-APR-FR-002",
+      "priority": "MUST",
+      "requirement": "Approval Request는 exact protected operation/write_intent_hash/payload_hash와 연결되어야 한다.",
+      "verification": "Security Test",
+      "parent": "18"
+    },
+    {
+      "id": "NEX-EOS-APR-FR-003",
+      "priority": "MUST",
+      "requirement": "ApprovalPolicy는 domain/risk/amount/project/account/transaction type 등에 따라 stage/quorum/SoD를 결정할 수 있어야 한다.",
+      "verification": "Policy Test",
+      "parent": "18"
+    },
+    {
+      "id": "NEX-EOS-APR-FR-004",
+      "priority": "MUST",
+      "requirement": "Approver authority는 decision time의 OA RoleBinding/PDP decision evidence를 보존해야 한다.",
+      "verification": "Audit Test",
+      "parent": "18"
+    },
+    {
+      "id": "NEX-EOS-APR-FR-005",
+      "priority": "MUST",
+      "requirement": "ApprovalDecision은 append-only이며 historical decision을 overwrite해서는 안 된다.",
+      "verification": "Data Test",
+      "parent": "18"
+    },
+    {
+      "id": "NEX-EOS-APR-FR-006",
+      "priority": "MUST",
+      "requirement": "APPROVED 이후 material payload/operation change가 있으면 proof invalidation/new approval을 요구해야 한다.",
+      "verification": "Negative Test",
+      "parent": "18"
+    },
+    {
+      "id": "NEX-EOS-APR-FR-007",
+      "priority": "MUST",
+      "requirement": "Approval expiration/cancellation/invalidation은 이미 COMMITTED된 transaction을 rollback하지 않아야 한다.",
+      "verification": "Test",
+      "parent": "18"
+    },
+    {
+      "id": "NEX-EOS-APR-FR-008",
+      "priority": "MUST",
+      "requirement": "Approval events는 AE Runtime WAITING_APPROVAL Resume를 지원해야 한다.",
+      "verification": "Integration Test",
+      "parent": "12/18"
+    },
+    {
+      "id": "NEX-EOS-APR-FR-009",
+      "priority": "MUST",
+      "requirement": "Formal Approval을 WorkResult review/ack와 동일 개념으로 취급해서는 안 된다.",
+      "verification": "Inspection/Test",
+      "parent": "WC/18"
+    },
+    {
+      "id": "NEX-EOS-LDG-FR-001",
+      "priority": "MUST",
+      "requirement": "Project Financial Ledger는 Project P/L 계산의 authoritative financial fact source여야 한다.",
+      "verification": "Architecture Test",
+      "parent": "ADR-018"
+    },
+    {
+      "id": "NEX-EOS-LDG-FR-002",
+      "priority": "MUST",
+      "requirement": "Ledger Entry는 immutable ledger_entry_id, project_ref, source_transaction_ref, category, amount, currency, posting_date, period_ref를 가져야 한다.",
+      "verification": "Schema Test",
+      "parent": "Ledger"
+    },
+    {
+      "id": "NEX-EOS-LDG-FR-003",
+      "priority": "MUST",
+      "requirement": "Ledger category는 최소 REVENUE, LABOR, MATERIAL, DIRECT_EXPENSE, COMMON_COST, ADJUSTMENT를 지원해야 한다.",
+      "verification": "Schema Test",
+      "parent": "Master Plan"
+    },
+    {
+      "id": "NEX-EOS-LDG-FR-004",
+      "priority": "MUST",
+      "requirement": "Ledger posting은 source transaction과 deterministic one-to-many/aggregate lineage를 제공해야 한다.",
+      "verification": "Trace Test",
+      "parent": "P/L"
+    },
+    {
+      "id": "NEX-EOS-LDG-FR-005",
+      "priority": "MUST",
+      "requirement": "Ledger Entry를 직접 delete/update하여 재무 이력을 변경해서는 안 되며 reversal/adjustment entries를 사용해야 한다.",
+      "verification": "Negative Test",
+      "parent": "Financial audit"
+    },
+    {
+      "id": "NEX-EOS-LDG-FR-006",
+      "priority": "MUST",
+      "requirement": "Reversal Entry는 original ledger_entry_ref와 reversal reason/actor/source transaction을 보존해야 한다.",
+      "verification": "Schema Test",
+      "parent": "Audit"
+    },
+    {
+      "id": "NEX-EOS-LDG-FR-007",
+      "priority": "MUST",
+      "requirement": "Ledger posting은 idempotency를 지원하여 동일 source operation이 중복 posting되지 않아야 한다.",
+      "verification": "Fault Test",
+      "parent": "08"
+    },
+    {
+      "id": "NEX-EOS-LDG-FR-008",
+      "priority": "MUST",
+      "requirement": "Ledger posting은 valid/open Project/period/account/category policies를 검증해야 한다.",
+      "verification": "Invariant Test",
+      "parent": "Project/period"
+    },
+    {
+      "id": "NEX-EOS-LDG-FR-009",
+      "priority": "MUST",
+      "requirement": "LABOR entry는 향후 LaborAllocation에서 전달되는 posted allocation을 수용하되 Human Effort/MM 계산 자체를 Enterprise OS에서 수행하지 않아야 한다.",
+      "verification": "Architecture Test",
+      "parent": "ADR-021/024"
+    },
+    {
+      "id": "NEX-EOS-LDG-FR-010",
+      "priority": "MUST",
+      "requirement": "Ledger query는 Project/period/category/source transaction 기준 drill-down을 지원해야 한다.",
+      "verification": "Query Test",
+      "parent": "P/L"
+    },
+    {
+      "id": "NEX-EOS-LDG-FR-011",
+      "priority": "MUST",
+      "requirement": "Ledger posting/reversal/adjustment는 high-risk capability로 분류하고 Human Gate/permission policy를 적용할 수 있어야 한다.",
+      "verification": "Security Test",
+      "parent": "09/18"
+    },
+    {
+      "id": "NEX-EOS-PL-FR-001",
+      "priority": "MUST",
+      "requirement": "Enterprise OS는 Project Financial Ledger를 기반으로 Project P/L을 계산/조회해야 한다.",
+      "verification": "Query Test",
+      "parent": "ADR-018"
+    },
+    {
+      "id": "NEX-EOS-PL-FR-002",
+      "priority": "MUST",
+      "requirement": "Project P/L은 최소 Revenue, Labor, Material, Direct Expense, Common Cost, Adjustment 및 Profit을 제공해야 한다.",
+      "verification": "Query Test",
+      "parent": "Master Plan"
+    },
+    {
+      "id": "NEX-EOS-PL-FR-003",
+      "priority": "MUST",
+      "requirement": "P/L은 period view와 cumulative view를 지원해야 한다.",
+      "verification": "Query Test",
+      "parent": "Project economics"
+    },
+    {
+      "id": "NEX-EOS-PL-FR-004",
+      "priority": "MUST",
+      "requirement": "Child Project P/L은 Mother Project에 roll-up되고 Mother는 NVT Project에 roll-up될 수 있어야 한다.",
+      "verification": "Aggregation Test",
+      "parent": "Project hierarchy"
+    },
+    {
+      "id": "NEX-EOS-PL-FR-005",
+      "priority": "MUST",
+      "requirement": "P/L 결과에서 category→ledger entry→source transaction→artifact/evidence까지 drill-down할 수 있어야 한다.",
+      "verification": "E2E Trace",
+      "parent": "25 target"
+    },
+    {
+      "id": "NEX-EOS-PL-FR-006",
+      "priority": "MUST",
+      "requirement": "P/L은 Transaction/Ledger 사실을 LLM summary로 대체해서는 안 된다.",
+      "verification": "Negative Test",
+      "parent": "P-07"
+    },
+    {
+      "id": "NEX-EOS-PL-FR-007",
+      "priority": "SHOULD",
+      "requirement": "Management view는 labor nature(DIRECT/SHARED_SERVICE/CORPORATE_COMMON) 또는 strategic classification을 별도 dimension으로 표시할 수 있어야 한다.",
+      "verification": "Query Test",
+      "parent": "Labor target"
+    },
+    {
+      "id": "NEX-EOS-PL-FR-008",
+      "priority": "SHOULD",
+      "requirement": "Project deliberate loss/strategic investment classification을 P/L 설명 metadata로 지원할 수 있어야 한다.",
+      "verification": "Inspection",
+      "parent": "Management accounting"
+    },
+    {
+      "id": "NEX-EOS-PL-FR-009",
+      "priority": "MUST",
+      "requirement": "P/L 조회는 기준 currency/환산정책이 필요한 경우 versioned exchange/management policy를 명시적으로 적용해야 한다.",
+      "verification": "Policy Test",
+      "parent": "Finance"
+    },
+    {
+      "id": "NEX-EOS-COST-FR-001",
+      "priority": "MUST",
+      "requirement": "Enterprise OS는 Revenue transaction 또는 Revenue ledger posting source를 Project에 연결할 수 있어야 한다.",
+      "verification": "Schema Test",
+      "parent": "P/L"
+    },
+    {
+      "id": "NEX-EOS-COST-FR-002",
+      "priority": "MUST",
+      "requirement": "Procurement Requisition/RFQ/PO 등의 상세 workflow는 후속 transaction design에서 다루되 Project/Approval/Evidence/Cost linkage contract를 지원해야 한다.",
+      "verification": "Integration Test",
+      "parent": "Phase2 register"
+    },
+    {
+      "id": "NEX-EOS-COST-FR-003",
+      "priority": "MUST",
+      "requirement": "Procurement Cost가 실제 발생/인식되는 시점과 PO Draft/Approval 시점을 구분해야 한다.",
+      "verification": "State Test",
+      "parent": "Accounting"
+    },
+    {
+      "id": "NEX-EOS-COST-FR-004",
+      "priority": "MUST",
+      "requirement": "Material/Direct Expense/Common Cost posting source는 명시적 business transaction type을 가져야 한다.",
+      "verification": "Schema Test",
+      "parent": "Ledger"
+    },
+    {
+      "id": "NEX-EOS-COST-FR-005",
+      "priority": "MUST",
+      "requirement": "외부 ERP/MES/Finance에서 수신한 transaction도 adapter validation 후 canonical source_transaction_ref를 가지고 Ledger에 반영되어야 한다.",
+      "verification": "Integration Test",
+      "parent": "Legacy coexistence"
+    },
+    {
+      "id": "NEX-EOS-COST-FR-006",
+      "priority": "MUST",
+      "requirement": "외부 transaction import는 duplicate detection/idempotency와 reconciliation을 지원해야 한다.",
+      "verification": "Fault Test",
+      "parent": "Legacy"
+    },
+    {
+      "id": "NEX-EOS-COST-FR-007",
+      "priority": "SHOULD",
+      "requirement": "Committed procurement amount와 actual invoice/expense 차이를 adjustment로 표현할 수 있는 구조를 지원해야 한다.",
+      "verification": "Inspection",
+      "parent": "Future design"
+    },
+    {
+      "id": "NEX-EOS-PER-FR-001",
+      "priority": "MUST",
+      "requirement": "Enterprise OS는 fiscal/accounting period를 관리하고 Ledger Entry에 period_ref를 부여해야 한다.",
+      "verification": "Schema Test",
+      "parent": "Ledger"
+    },
+    {
+      "id": "NEX-EOS-PER-FR-002",
+      "priority": "MUST",
+      "requirement": "CLOSED period에는 일반 posting을 차단하고 authorized adjustment/reopen policy만 허용해야 한다.",
+      "verification": "Negative Test",
+      "parent": "Accounting control"
+    },
+    {
+      "id": "NEX-EOS-PER-FR-003",
+      "priority": "MUST",
+      "requirement": "Period close/reopen은 authorized Human/Governance action과 audit reason을 요구해야 한다.",
+      "verification": "Security Test",
+      "parent": "09"
+    },
+    {
+      "id": "NEX-EOS-PER-FR-004",
+      "priority": "MUST",
+      "requirement": "Period reopen이 과거 Ledger Entry를 overwrite하게 해서는 안 된다.",
+      "verification": "Data Test",
+      "parent": "Audit"
+    },
+    {
+      "id": "NEX-EOS-PER-FR-005",
+      "priority": "MUST",
+      "requirement": "Late transaction은 policy에 따라 current period adjustment 또는 explicit reopened period posting으로 처리되어야 한다.",
+      "verification": "Policy Test",
+      "parent": "Accounting"
+    },
+    {
+      "id": "NEX-EOS-PER-FR-006",
+      "priority": "SHOULD",
+      "requirement": "Project close와 fiscal period close는 별개 lifecycle로 관리되어야 한다.",
+      "verification": "Inspection",
+      "parent": "Project/Finance"
+    },
+    {
+      "id": "NEX-EOS-API-FR-001",
+      "priority": "MUST",
+      "requirement": "Enterprise OS는 PROJECT.*, ACCOUNT.*, APPROVAL.*, FINANCE.*, LEDGER.*, PROCUREMENT.* Canonical namespaces를 제공해야 한다.",
+      "verification": "Contract Test",
+      "parent": "08"
+    },
+    {
+      "id": "NEX-EOS-API-FR-002",
+      "priority": "MUST",
+      "requirement": "Query와 Command를 구분하고 Side Effect Command에 idempotency/expected_version/commit semantics를 적용해야 한다.",
+      "verification": "Contract Test",
+      "parent": "08"
+    },
+    {
+      "id": "NEX-EOS-API-FR-003",
+      "priority": "MUST",
+      "requirement": "Command Request의 actor/role fields를 권한 Source로 사용하지 않고 server-side Effective Authority를 사용해야 한다.",
+      "verification": "Security Test",
+      "parent": "09"
+    },
+    {
+      "id": "NEX-EOS-API-FR-004",
+      "priority": "MUST",
+      "requirement": "Project/Voucher/Ledger/Approval stable refs를 Canonical Response EntityRef로 반환할 수 있어야 한다.",
+      "verification": "Contract Test",
+      "parent": "08"
+    },
+    {
+      "id": "NEX-EOS-API-FR-005",
+      "priority": "MUST",
+      "requirement": "최소 PROJECT_CREATED/PROJECT_STATE_CHANGED/APPROVAL_*/BUSINESS_TRANSACTION_COMMITTED/LEDGER_ENTRY_POSTED/LEDGER_ENTRY_REVERSED events를 지원해야 한다.",
+      "verification": "Event Test",
+      "parent": "08"
+    },
+    {
+      "id": "NEX-EOS-API-FR-006",
+      "priority": "MUST",
+      "requirement": "Domain Event는 Transactional Outbox/at-least-once delivery/event_id dedup contract를 따라야 한다.",
+      "verification": "Fault Test",
+      "parent": "08"
+    },
+    {
+      "id": "NEX-EOS-API-FR-007",
+      "priority": "MUST",
+      "requirement": "Business commit과 Event publication failure를 동일 DB rollback으로 가정해서는 안 된다.",
+      "verification": "Fault Test",
+      "parent": "08"
+    },
+    {
+      "id": "NEX-EOS-API-FR-008",
+      "priority": "MUST",
+      "requirement": "MCP exposure는 Capability risk/exposure policy를 따르고 low-level LEDGER.POST는 기본적으로 MCP_PROHIBITED/Internal only여야 한다.",
+      "verification": "Security Test",
+      "parent": "08/09"
+    },
+    {
+      "id": "NEX-EOS-LEG-FR-001",
+      "priority": "MUST",
+      "requirement": "Enterprise OS 도입은 Legacy ERP/Groupware/MES/Finance의 Big-bang 폐기를 전제로 해서는 안 된다.",
+      "verification": "Inspection",
+      "parent": "P-02"
+    },
+    {
+      "id": "NEX-EOS-LEG-FR-002",
+      "priority": "MUST",
+      "requirement": "Legacy integration은 stable Canonical API/Adapter를 사용하고 신규 EOS가 Legacy DB에 임의 direct write하지 않아야 한다.",
+      "verification": "Architecture Test",
+      "parent": "Migration"
+    },
+    {
+      "id": "NEX-EOS-LEG-FR-003",
+      "priority": "MUST",
+      "requirement": "Business Domain별 SoR transition 상태를 LEGACY→READ_SYNC→DUAL_RUN_VALIDATION→NEW_SYSTEM→LEGACY_READ_ONLY→ARCHIVED로 표현할 수 있어야 한다.",
+      "verification": "Migration Test",
+      "parent": "Master baseline"
+    },
+    {
+      "id": "NEX-EOS-LEG-FR-004",
+      "priority": "MUST",
+      "requirement": "DUAL_RUN_VALIDATION은 결과 비교를 의미하며 uncontrolled dual-write를 허용해서는 안 된다.",
+      "verification": "Negative Test",
+      "parent": "10"
+    },
+    {
+      "id": "NEX-EOS-LEG-FR-005",
+      "priority": "MUST",
+      "requirement": "각 transition 단계의 authoritative write owner가 명확해야 한다.",
+      "verification": "Migration Test",
+      "parent": "10"
+    },
+    {
+      "id": "NEX-EOS-LEG-FR-006",
+      "priority": "MUST",
+      "requirement": "Legacy import/backfill은 row count만이 아니라 business invariant/reconciliation으로 검증해야 한다.",
+      "verification": "Migration Test",
+      "parent": "10"
+    },
+    {
+      "id": "NEX-EOS-LEG-FR-007",
+      "priority": "MUST",
+      "requirement": "Legacy source의 old/new code mapping과 canonical stable ID mapping을 보존해야 한다.",
+      "verification": "Data Test",
+      "parent": "Migration"
+    },
+    {
+      "id": "NEX-EOS-LEG-FR-008",
+      "priority": "SHOULD",
+      "requirement": "Legacy reconciliation mismatch를 queue/evidence로 관리할 수 있어야 한다.",
+      "verification": "Ops Test",
+      "parent": "10"
+    },
+    {
+      "id": "NEX-EOS-SEC-NFR-001",
+      "priority": "MUST",
+      "requirement": "모든 Business Command는 authenticated principal/service와 current Effective Authority 기반으로 authorization되어야 한다.",
+      "verification": "Security Test",
+      "parent": "09"
+    },
+    {
+      "id": "NEX-EOS-SEC-NFR-002",
+      "priority": "MUST",
+      "requirement": "Project/Account/Voucher/Ledger/Approval 권한은 RoleBinding + Project/Org/Resource Scope + Risk policy를 적용해야 한다.",
+      "verification": "Security Test",
+      "parent": "09"
+    },
+    {
+      "id": "NEX-EOS-SEC-NFR-003",
+      "priority": "MUST",
+      "requirement": "R4/R5 transaction은 Human Gate/approval/kill switch 정책을 지원해야 한다.",
+      "verification": "Security Test",
+      "parent": "18"
+    },
+    {
+      "id": "NEX-EOS-SEC-NFR-004",
+      "priority": "MUST",
+      "requirement": "Raw secret/credential을 Voucher/Ledger/Approval payload/audit에 저장해서는 안 된다.",
+      "verification": "Security Scan",
+      "parent": "09"
+    },
+    {
+      "id": "NEX-EOS-SEC-NFR-005",
+      "priority": "MUST",
+      "requirement": "Financial correction/period close/account master change는 별도 high-risk governance/audit를 적용해야 한다.",
+      "verification": "Security Test",
+      "parent": "Finance control"
+    },
+    {
+      "id": "NEX-EOS-SEC-NFR-006",
+      "priority": "MUST",
+      "requirement": "Low-level direct ledger write capability는 Agent/MCP에 기본 노출하지 않아야 한다.",
+      "verification": "Security Test",
+      "parent": "08/09"
+    },
+    {
+      "id": "NEX-EOS-SEC-NFR-007",
+      "priority": "MUST",
+      "requirement": "Audit은 actor/business actor/role/policy/transaction/ledger/trace refs를 보존해야 한다.",
+      "verification": "Audit Test",
+      "parent": "09"
+    },
+    {
+      "id": "NEX-EOS-REL-NFR-001",
+      "priority": "MUST",
+      "requirement": "Project/Voucher/Ledger/Approval state는 durable transactional PostgreSQL store 또는 동등 수준 저장소에 저장되어야 한다.",
+      "verification": "Inspection",
+      "parent": "05"
+    },
+    {
+      "id": "NEX-EOS-REL-NFR-002",
+      "priority": "MUST",
+      "requirement": "Financial write는 idempotency와 optimistic concurrency를 지원해야 한다.",
+      "verification": "Fault/Concurrency Test",
+      "parent": "08"
+    },
+    {
+      "id": "NEX-EOS-REL-NFR-003",
+      "priority": "MUST",
+      "requirement": "UNKNOWN_COMMIT_STATE를 명시적으로 감지/전파하고 blind retry를 금지해야 한다.",
+      "verification": "Fault Test",
+      "parent": "08/17"
+    },
+    {
+      "id": "NEX-EOS-REL-NFR-004",
+      "priority": "MUST",
+      "requirement": "Ledger Entry와 posted financial facts는 append/reversal 기반으로 보존해야 한다.",
+      "verification": "Data Test",
+      "parent": "Audit"
+    },
+    {
+      "id": "NEX-EOS-REL-NFR-005",
+      "priority": "MUST",
+      "requirement": "Transactional Outbox를 통해 committed state와 event publication gap을 관리해야 한다.",
+      "verification": "Fault Test",
+      "parent": "08"
+    },
+    {
+      "id": "NEX-EOS-REL-NFR-006",
+      "priority": "MUST",
+      "requirement": "Consumer/event duplicate가 duplicate ledger posting을 유발하지 않아야 한다.",
+      "verification": "Fault Test",
+      "parent": "08"
+    },
+    {
+      "id": "NEX-EOS-REL-NFR-007",
+      "priority": "MUST",
+      "requirement": "Backup/restore 후 transaction→ledger→P/L lineage가 보존되어야 한다.",
+      "verification": "Recovery Test",
+      "parent": "Phase4"
+    },
+    {
+      "id": "NEX-EOS-PERF-NFR-001",
+      "priority": "MUST",
+      "requirement": "Project/Account/Voucher/Ledger query는 project/period/state/category 기준 indexable pagination을 지원해야 한다.",
+      "verification": "Performance Test",
+      "parent": "EOS"
+    },
+    {
+      "id": "NEX-EOS-PERF-NFR-002",
+      "priority": "SHOULD",
+      "requirement": "일반 Project/Account Query와 Voucher Draft Command는 Interactive Agent workflow를 방해하지 않는 latency budget을 가져야 한다.",
+      "verification": "Performance Test",
+      "parent": "SLA TBD"
+    },
+    {
+      "id": "NEX-EOS-PERF-NFR-003",
+      "priority": "MUST",
+      "requirement": "P/L query는 ledger volume 증가에 따라 pre-aggregation/read model을 사용할 수 있어야 하되 authoritative facts는 Ledger에 남아야 한다.",
+      "verification": "Performance Test",
+      "parent": "ADR-018"
+    },
+    {
+      "id": "NEX-EOS-PERF-NFR-004",
+      "priority": "MUST",
+      "requirement": "Period/category/project roll-up은 NVT/Mother/Child hierarchy 증가에도 bounded query path를 제공해야 한다.",
+      "verification": "Performance Test",
+      "parent": "Project economics"
+    },
+    {
+      "id": "NEX-EOS-PERF-NFR-005",
+      "priority": "SHOULD",
+      "requirement": "대량 import/backfill은 online transaction path와 분리된 batch/reconciliation path를 지원할 수 있어야 한다.",
+      "verification": "Load Test",
+      "parent": "Migration"
+    },
+    {
+      "id": "NEX-EOS-OBS-NFR-001",
+      "priority": "MUST",
+      "requirement": "모든 transaction은 correlation_id로 AE/WC/NSL/Approval/Ledger/WA까지 연결되어야 한다.",
+      "verification": "E2E Trace",
+      "parent": "08/25"
+    },
+    {
+      "id": "NEX-EOS-OBS-NFR-002",
+      "priority": "MUST",
+      "requirement": "Voucher state counts, approval wait age, ledger posting/reversal counts, reconciliation backlog, P/L refresh latency를 관측 가능해야 한다.",
+      "verification": "Monitoring Test",
+      "parent": "Ops"
+    },
+    {
+      "id": "NEX-EOS-OBS-NFR-003",
+      "priority": "MUST",
+      "requirement": "Financial security denial, approval denial, period-close denial, idempotency conflict, unknown commit을 metric으로 제공해야 한다.",
+      "verification": "Monitoring Test",
+      "parent": "09"
+    },
+    {
+      "id": "NEX-EOS-OBS-NFR-004",
+      "priority": "MUST",
+      "requirement": "P/L drill-down은 source transaction/evidence refs와 함께 재현 가능해야 한다.",
+      "verification": "Audit Test",
+      "parent": "ADR-018"
+    },
+    {
+      "id": "NEX-EOS-OBS-NFR-005",
+      "priority": "SHOULD",
+      "requirement": "Management dashboard는 transaction facts와 LLM narrative를 시각/데이터적으로 구분할 수 있어야 한다.",
+      "verification": "UI Test",
+      "parent": "P-07"
+    },
+    {
+      "id": "NEX-EOS-DATA-NFR-001",
+      "priority": "MUST",
+      "requirement": "Financial transaction/ledger/approval history는 overwrite보다 immutable/version/reversal을 우선해야 한다.",
+      "verification": "Data Test",
+      "parent": "Audit"
+    },
+    {
+      "id": "NEX-EOS-DATA-NFR-002",
+      "priority": "MUST",
+      "requirement": "Cross-service refs는 stable entity refs를 사용하고 다른 service DB physical FK를 요구해서는 안 된다.",
+      "verification": "Architecture Test",
+      "parent": "07"
+    },
+    {
+      "id": "NEX-EOS-DATA-NFR-003",
+      "priority": "MUST",
+      "requirement": "Financial/audit retention은 법/회사정책에 따른 configurable retention을 지원해야 한다.",
+      "verification": "Governance Test",
+      "parent": "09"
+    },
+    {
+      "id": "NEX-EOS-DATA-NFR-004",
+      "priority": "MUST",
+      "requirement": "Project/account master의 이름/상태 변경 후에도 historical transaction snapshot/reference를 재현할 수 있어야 한다.",
+      "verification": "Data Test",
+      "parent": "Audit"
+    },
+    {
+      "id": "NEX-EOS-DATA-NFR-005",
+      "priority": "SHOULD",
+      "requirement": "장기 ledger volume에 대해 partition/archive 전략을 지원할 수 있어야 한다.",
+      "verification": "Performance Test",
+      "parent": "Phase4"
+    },
+    {
+      "id": "NEX-EOS-TST-NFR-001",
+      "priority": "MUST",
+      "requirement": "Unit test statement coverage 목표 95% 이상, branch coverage 목표 85% 이상을 유지해야 한다.",
+      "verification": "Coverage",
+      "parent": "Project quality"
+    },
+    {
+      "id": "NEX-EOS-TST-NFR-002",
+      "priority": "MUST",
+      "requirement": "Project hierarchy/invariant, voucher balance, approval binding, ledger posting/reversal, period close, P/L roll-up에 automated unit/integration tests가 있어야 한다.",
+      "verification": "Test Inspection",
+      "parent": "EOS"
+    },
+    {
+      "id": "NEX-EOS-TST-NFR-003",
+      "priority": "MUST",
+      "requirement": "DB integration test는 격리된 test database를 초기화하여 수행해야 한다.",
+      "verification": "Test Inspection",
+      "parent": "Project quality"
+    },
+    {
+      "id": "NEX-EOS-TST-NFR-004",
+      "priority": "MUST",
+      "requirement": "duplicate command/event, concurrent submit/post, unknown commit, reversal failure에 Fault/Robustness tests를 제공해야 한다.",
+      "verification": "Fault Test",
+      "parent": "08/10"
+    },
+    {
+      "id": "NEX-EOS-TST-NFR-005",
+      "priority": "MUST",
+      "requirement": "Golden Slice A natural-language expense→NSL→Voucher→Approval→Ledger→P/L을 E2E acceptance로 유지해야 한다.",
+      "verification": "E2E Test",
+      "parent": "Master Plan"
+    },
+    {
+      "id": "NEX-EOS-TST-NFR-006",
+      "priority": "MUST",
+      "requirement": "E2E test는 Project/Amount/Account ambiguity, approval reject/expire, duplicate command, closed period, ledger reconciliation failure를 포함해야 한다.",
+      "verification": "E2E Test",
+      "parent": "EOS"
+    },
+    {
+      "id": "NEX-EOS-TST-NFR-007",
+      "priority": "MUST",
+      "requirement": "Source 변경 후 unit/regression/smoke pass가 merge/release gate가 되어야 한다.",
+      "verification": "CI Inspection",
+      "parent": "Project quality"
+    }
+  ],
+  "acceptance_scenarios": [
+    {
+      "id": "EOS-GS-01",
+      "scenario": "Accounting Expense Golden Slice",
+      "flow": "‘출장비 84,000원을 A 프로젝트에 처리해줘’ → Resolve Project/Account → NSL Draft → Confirmation/Approval → Ledger → Project P/L",
+      "focus": "E2E-01/E2E-07/E2E-08"
+    },
+    {
+      "id": "EOS-GS-02",
+      "scenario": "Ambiguous Project",
+      "flow": "Natural language ‘A 프로젝트’ maps to multiple candidates → no Voucher write until explicit resolution/confirmation",
+      "focus": "Stable ID / Project Attribution"
+    },
+    {
+      "id": "EOS-GS-03",
+      "scenario": "Duplicate Voucher Command",
+      "flow": "Timeout/retry same idempotency key → exactly one Voucher Draft / Ledger posting",
+      "focus": "Idempotency"
+    },
+    {
+      "id": "EOS-GS-04",
+      "scenario": "Approval Payload Change",
+      "flow": "Amount/project changes after approval → old proof invalid → new gate required",
+      "focus": "Human Gate binding"
+    },
+    {
+      "id": "EOS-GS-05",
+      "scenario": "Closed Period",
+      "flow": "Approved Voucher posting targets closed period → posting denied or explicit adjustment/reopen policy",
+      "focus": "Financial integrity"
+    },
+    {
+      "id": "EOS-GS-06",
+      "scenario": "Ledger Reversal",
+      "flow": "Posted expense correction → reversal/adjustment entries → original history preserved → P/L updated",
+      "focus": "Audit/Reversal"
+    },
+    {
+      "id": "EOS-GS-07",
+      "scenario": "Project Roll-up",
+      "flow": "Child Project entries roll to Mother and NVT P/L with drill-down to source Voucher/Evidence",
+      "focus": "Project economics"
+    },
+    {
+      "id": "EOS-GS-08",
+      "scenario": "Legacy Dual-run Validation",
+      "flow": "Legacy and EOS compute same sample financial slice → compare/reconcile; only one system is authoritative writer",
+      "focus": "Migration"
+    }
+  ]
+}

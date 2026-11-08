@@ -1,0 +1,294 @@
+openapi: 3.1.0
+info:
+  title: NeX Work Asset API
+  version: 2.1.0-p9-s28
+  description: Protected WorkEvidence intake, privacy-scoped reads, Job recovery, and bounded operations.
+servers:
+  - url: http://127.0.0.1:8108
+tags:
+  - name: Platform
+  - name: Evidence
+  - name: Operations
+paths:
+  /health:
+    get:
+      operationId: getWaHealth
+      tags: [Platform]
+      responses:
+        "200": {description: Process liveness is healthy.}
+  /ready:
+    get:
+      operationId: getWaReadiness
+      tags: [Platform]
+      responses:
+        "200": {description: Database and migration dependencies are ready.}
+        "503": {description: A required dependency is unavailable.}
+  /internal/v1/evidence-intake:
+    post:
+      operationId: admitWaEvidenceIntake
+      tags: [Evidence]
+      security: [{serviceBearer: []}]
+      x-nex-required-caller: nex-ae-api
+      x-nex-required-scopes: [service:call, work:evidence:ingest]
+      x-nex-route-class: WRITE
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/EvidenceIntakeRequest"}
+      responses:
+        "202": {description: Evidence intake Job was durably admitted.}
+        "400": {description: Intake request is invalid.}
+        "403": {description: Caller or scope is forbidden.}
+        "409": {description: Source identity conflicts with stored semantics.}
+        "503": {description: Intake persistence is unavailable.}
+  /internal/v1/work-evidence/{work_evidence_id}:
+    get:
+      operationId: getWaWorkEvidence
+      tags: [Evidence]
+      security: [{serviceBearer: []}]
+      x-nex-required-scopes: [service:call, work:evidence:read, work:evidence:detail:read]
+      parameters:
+        - {$ref: "#/components/parameters/TenantId"}
+        - name: work_evidence_id
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+      responses:
+        "200":
+          description: Exact tenant-scoped WorkEvidence.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/WorkEvidence"}
+        "401": {description: Service claim is missing or invalid.}
+        "403": {description: Caller or detail scope is forbidden.}
+        "404": {description: WorkEvidence does not exist in the tenant.}
+  /internal/v1/work-assets/{work_asset_id}:
+    get:
+      operationId: getWaWorkAsset
+      tags: [Evidence]
+      security: [{serviceBearer: []}]
+      x-nex-required-scopes: [service:call, work:evidence:read]
+      parameters:
+        - {$ref: "#/components/parameters/TenantId"}
+        - name: work_asset_id
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+      responses:
+        "200":
+          description: Bounded tenant-scoped WorkAsset summary without evidence lineage.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/WorkAssetSummary"}
+        "401": {description: Service claim is missing or invalid.}
+        "403": {description: Caller or read scope is forbidden.}
+        "404": {description: WorkAsset does not exist in the tenant.}
+  /internal/v1/work-evidence/{work_evidence_id}/audit:
+    get:
+      operationId: getWaWorkEvidenceAudit
+      tags: [Evidence]
+      security: [{serviceBearer: []}]
+      x-nex-required-scopes: [service:call, work:evidence:read, work:evidence:detail:read, work:evidence:audit:read]
+      parameters:
+        - {$ref: "#/components/parameters/TenantId"}
+        - name: work_evidence_id
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+      responses:
+        "200":
+          description: Bounded supersession, replay, and conflict-policy provenance.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/WorkEvidenceAudit"}
+        "401": {description: Service claim is missing or invalid.}
+        "403": {description: Caller or audit scope is forbidden.}
+        "404": {description: WorkEvidence does not exist in the tenant.}
+  /internal/v1/work-assets/{work_asset_id}/evidence:
+    get:
+      operationId: getWaWorkAssetEvidenceLineage
+      tags: [Evidence]
+      security: [{serviceBearer: []}]
+      x-nex-required-scopes: [service:call, work:evidence:read, work:evidence:detail:read]
+      parameters:
+        - {$ref: "#/components/parameters/TenantId"}
+        - name: work_asset_id
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+      responses:
+        "200":
+          description: Ordered PRIMARY and SUPPORTING WorkEvidence lineage.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/WorkAssetEvidenceLineage"}
+        "401": {description: Service claim is missing or invalid.}
+        "403": {description: Caller or detail scope is forbidden.}
+        "404": {description: WorkAsset does not exist in the tenant.}
+  /internal/v1/jobs/{job_id}:
+    get:
+      operationId: getWaServiceJob
+      tags: [Operations]
+      security: [{serviceBearer: []}]
+      x-nex-required-scopes: [service:call]
+      x-nex-route-class: READ
+      parameters:
+        - {$ref: "#/components/parameters/JobId"}
+      responses:
+        "200": {description: Bounded Job state without private payload.}
+        "401": {description: Service claim is missing or invalid.}
+        "404": {description: Job does not exist.}
+  /internal/v1/jobs/{job_id}/cancel:
+    post:
+      operationId: cancelWaServiceJob
+      tags: [Operations]
+      security: [{serviceBearer: []}]
+      x-nex-required-scopes: [service:call]
+      x-nex-route-class: WRITE
+      parameters:
+        - {$ref: "#/components/parameters/JobId"}
+      responses:
+        "200": {description: Active Job was cancelled.}
+        "401": {description: Service claim is missing or invalid.}
+        "409": {description: Job state cannot be cancelled.}
+  /internal/v1/jobs/{job_id}/retry:
+    post:
+      operationId: retryWaServiceJob
+      tags: [Operations]
+      security: [{serviceBearer: []}]
+      x-nex-required-scopes: [service:call]
+      x-nex-route-class: WRITE
+      parameters:
+        - {$ref: "#/components/parameters/JobId"}
+      responses:
+        "200": {description: Running Job was requeued or dead-lettered.}
+        "401": {description: Service claim is missing or invalid.}
+        "409": {description: Job state cannot be retried.}
+  /internal/v1/jobs/{job_id}/replay:
+    post:
+      operationId: replayWaServiceJob
+      tags: [Operations]
+      security: [{serviceBearer: []}]
+      x-nex-required-scopes: [service:call]
+      x-nex-route-class: WRITE
+      parameters:
+        - {$ref: "#/components/parameters/JobId"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [replay_job_id, idempotency_key, requested_by, reason]
+              properties:
+                replay_job_id: {type: string, minLength: 1}
+                idempotency_key: {type: string, minLength: 1}
+                requested_by: {type: string, minLength: 1}
+                reason: {type: string, minLength: 1, maxLength: 512}
+                observed_at: {type: string, format: date-time}
+      responses:
+        "200": {description: A new replay Job with operator lineage was admitted.}
+        "401": {description: Service claim is missing or invalid.}
+        "409": {description: Source Job is not a dead-letter.}
+        "422": {description: Operator identity or reason is invalid.}
+  /internal/v1/operations/summary:
+    get:
+      operationId: getWaOperationsSummary
+      tags: [Operations]
+      security: [{serviceBearer: []}]
+      x-nex-required-scopes: [service:call, work:operations:read]
+      x-nex-route-class: READ
+      responses:
+        "200":
+          description: Bounded queue, outcome, and consumer heartbeat metrics.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/OperationsSummary"}
+        "401": {description: Service claim or scope is missing or invalid.}
+        "403": {description: Caller is not NeX-AG.}
+        "503": {description: Operational projection is unavailable.}
+components:
+  securitySchemes:
+    serviceBearer:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  parameters:
+    TenantId:
+      name: X-NeX-Tenant-Id
+      in: header
+      required: true
+      schema: {type: string, minLength: 1, maxLength: 128}
+    JobId:
+      name: job_id
+      in: path
+      required: true
+      schema: {type: string, minLength: 1, maxLength: 256}
+  schemas:
+    OperationsSummary:
+      type: object
+      additionalProperties: false
+      required: [schema_version, service_id, observed_at, queue, outcomes, consumer]
+      properties:
+        schema_version: {const: wa_operations_summary.v1}
+        service_id: {const: nex-wa}
+        observed_at: {type: string, format: date-time}
+        queue: {type: object, additionalProperties: false, required: [queued, running, succeeded, failed, dead_lettered, oldest_runnable_age_seconds], properties: {queued: {type: integer, minimum: 0}, running: {type: integer, minimum: 0}, succeeded: {type: integer, minimum: 0}, failed: {type: integer, minimum: 0}, dead_lettered: {type: integer, minimum: 0}, oldest_runnable_age_seconds: {type: [number, "null"], minimum: 0}}}
+        outcomes: {type: object, additionalProperties: {type: integer, minimum: 0}}
+        consumer: {type: object, additionalProperties: true}
+    EvidenceIntakeRequest:
+      type: object
+      additionalProperties: false
+      required: [schema_version, tenant_id, source_type, source_ref, source_revision_ref, source_hash, occurred_at, correlation_id]
+      properties:
+        schema_version: {const: wa_evidence_intake_request.v1}
+        tenant_id: {type: string, minLength: 1, maxLength: 128}
+        source_type: {enum: [AE_AGENT_RESULT, AE_ARTIFACT]}
+        source_ref: {type: string, minLength: 1, maxLength: 512}
+        source_revision_ref: {type: string, minLength: 1, maxLength: 256}
+        source_hash: {type: string, pattern: "^sha256:[0-9a-f]{64}$"}
+        occurred_at: {type: string, format: date-time}
+        correlation_id: {type: string, minLength: 1, maxLength: 128}
+    WorkEvidence:
+      type: object
+      additionalProperties: true
+      required: [schema_version, tenant_id, work_evidence_id, evidence_hash]
+      properties:
+        schema_version: {const: wa_work_evidence.v1}
+        tenant_id: {type: string}
+        work_evidence_id: {type: string, format: uuid}
+        evidence_hash: {type: string, pattern: "^sha256:[0-9a-f]{64}$"}
+    WorkAssetSummary:
+      type: object
+      additionalProperties: true
+      required: [schema_version, tenant_id, work_asset_id, asset_hash, evidence_count]
+      properties:
+        schema_version: {const: wa_work_asset_summary.v1}
+        tenant_id: {type: string}
+        work_asset_id: {type: string, format: uuid}
+        asset_hash: {type: string, pattern: "^sha256:[0-9a-f]{64}$"}
+        evidence_count: {type: integer, minimum: 0}
+    WorkAssetEvidenceLineage:
+      type: object
+      additionalProperties: false
+      required: [schema_version, tenant_id, work_asset_id, items]
+      properties:
+        schema_version: {const: wa_work_asset_evidence_lineage.v1}
+        tenant_id: {type: string}
+        work_asset_id: {type: string, format: uuid}
+        items: {type: array, items: {type: object}}
+    WorkEvidenceAudit:
+      type: object
+      additionalProperties: false
+      required: [schema_version, tenant_id, work_evidence_id, source_type, source_ref, replay_policy, conflict_policy, items]
+      properties:
+        schema_version: {const: wa_work_evidence_audit.v1}
+        tenant_id: {type: string}
+        work_evidence_id: {type: string, format: uuid}
+        source_type: {type: string}
+        source_ref: {type: string}
+        replay_policy: {const: SAME_IDENTITY_SAME_HASH_REUSE}
+        conflict_policy: {const: SAME_IDENTITY_DIFFERENT_HASH_REJECT}
+        items: {type: array, minItems: 1, items: {type: object}}

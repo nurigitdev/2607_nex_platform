@@ -1,0 +1,1378 @@
+{
+  "document": "42_Vertical_Slice_PRD_Governance_and_Recovery_Pilot_v2.0",
+  "version": "v2.0",
+  "date": "2026-09-07",
+  "status": "PHASE 5 VERTICAL SLICE PRD — GOVERNANCE & RECOVERY PILOT",
+  "repository_evidence": "PENDING",
+  "counts": {
+    "MUST": 119,
+    "SHOULD": 20
+  },
+  "requirement_count": 139,
+  "requirements": [
+    {
+      "section": "4.1 Slice Scope & Repository Evidence Gate",
+      "id": "NEX-PRD42-SCP-001",
+      "priority": "MUST",
+      "requirement": "PRD42의 핵심 사용자 가치는 운영자가 NeX-AG에서 장애를 탐지하고 범위를 격리한 뒤 owning service의 복구/재조정을 실행하여 authoritative state와 audit evidence까지 검증하고 Incident를 종료하는 것이다.",
+      "verification": "Ops E2E",
+      "parent": "30/32/34/36"
+    },
+    {
+      "section": "4.1 Slice Scope & Repository Evidence Gate",
+      "id": "NEX-PRD42-SCP-002",
+      "priority": "MUST",
+      "requirement": "본 Slice는 AG Dashboard→Health/Alert→Kill Switch→Queue/Worker 장애→Reconciliation→Recovery→Audit Evidence→Human Operator Action의 수평 흐름을 구현해야 한다.",
+      "verification": "Trace Review",
+      "parent": "30~36"
+    },
+    {
+      "section": "4.1 Slice Scope & Repository Evidence Gate",
+      "id": "NEX-PRD42-SCP-003",
+      "priority": "MUST",
+      "requirement": "AG는 운영 Projection/Control Plane이며 WC/AE/CX/MO/NSL/EOS의 authoritative state를 AG DB에서 직접 수정해서는 안 된다.",
+      "verification": "Architecture Test",
+      "parent": "30/31/32"
+    },
+    {
+      "section": "4.1 Slice Scope & Repository Evidence Gate",
+      "id": "NEX-PRD42-SCP-004",
+      "priority": "MUST",
+      "requirement": "Repository Evidence가 미확정인 동안 실제 module/class/table/endpoint/infra object 명칭은 PENDING으로 유지하고 논리 Contract와 Acceptance를 먼저 고정해야 한다.",
+      "verification": "Repository Gate",
+      "parent": "36"
+    },
+    {
+      "section": "4.1 Slice Scope & Repository Evidence Gate",
+      "id": "NEX-PRD42-SCP-005",
+      "priority": "MUST",
+      "requirement": "PRD42는 30 AG, 32 Reliability, 33 Test, 34 Operations Baseline을 재설계하지 않고 운영 Vertical Slice로 결합해야 한다.",
+      "verification": "Baseline Review",
+      "parent": "30/32~34"
+    },
+    {
+      "section": "4.1 Slice Scope & Repository Evidence Gate",
+      "id": "NEX-PRD42-SCP-006",
+      "priority": "MUST",
+      "requirement": "Kill Switch는 이미 COMMITTED된 business effect를 rollback하는 기능으로 사용해서는 안 된다.",
+      "verification": "Architecture Test",
+      "parent": "30/32"
+    },
+    {
+      "section": "4.1 Slice Scope & Repository Evidence Gate",
+      "id": "NEX-PRD42-SCP-007",
+      "priority": "MUST",
+      "requirement": "Service Health가 GREEN이라는 이유만으로 Recovery 완료로 판정해서는 안 되며 queue/reconciliation/authoritative SoR/audit 상태를 함께 확인해야 한다.",
+      "verification": "Recovery Acceptance",
+      "parent": "32/34"
+    },
+    {
+      "section": "4.1 Slice Scope & Repository Evidence Gate",
+      "id": "NEX-PRD42-SCP-008",
+      "priority": "SHOULD",
+      "requirement": "Pilot은 Golden A controlled write를 synthetic fault workload로 사용하되 production accounting policy나 실제 endpoint를 확정하지 않아야 한다.",
+      "verification": "Fixture Review",
+      "parent": "37/42"
+    },
+    {
+      "section": "4.2 Pilot Fixture & Incident Model",
+      "id": "NEX-PRD42-PIL-001",
+      "priority": "MUST",
+      "requirement": "Primary Pilot Scenario는 controlled business write 수행 중 worker/process fault 또는 remote timeout으로 commit 결과가 불명확해지고 reconciliation이 필요한 상황을 포함해야 한다.",
+      "verification": "Fault E2E",
+      "parent": "32/37"
+    },
+    {
+      "section": "4.2 Pilot Fixture & Incident Model",
+      "id": "NEX-PRD42-PIL-002",
+      "priority": "MUST",
+      "requirement": "Primary fixture는 synthetic project/skill/worker/operation reference를 사용하고 실제 회계 전표나 production credential을 사용하지 않아야 한다.",
+      "verification": "Test Data Review",
+      "parent": "33/42"
+    },
+    {
+      "section": "4.2 Pilot Fixture & Incident Model",
+      "id": "NEX-PRD42-PIL-003",
+      "priority": "MUST",
+      "requirement": "Pilot Incident는 최소 incident_id, severity, target scope, correlation_id, detected_at, current state, owner, alerts, control refs, reconciliation refs를 가져야 한다.",
+      "verification": "Schema Test",
+      "parent": "30/42"
+    },
+    {
+      "section": "4.2 Pilot Fixture & Incident Model",
+      "id": "NEX-PRD42-PIL-004",
+      "priority": "MUST",
+      "requirement": "Incident lifecycle은 DETECTED→ACKNOWLEDGED→CONTAINED→RECONCILING→RECOVERING→VERIFIED→RESOLVED를 기본으로 지원하고 ESCALATED/FAILED_RECOVERY 경로를 가질 수 있어야 한다.",
+      "verification": "State Test",
+      "parent": "42"
+    },
+    {
+      "section": "4.2 Pilot Fixture & Incident Model",
+      "id": "NEX-PRD42-PIL-005",
+      "priority": "MUST",
+      "requirement": "동일 root cause/target/correlation의 중복 Alert는 하나의 Incident로 묶을 수 있어야 하며 Alert history는 잃지 않아야 한다.",
+      "verification": "Dedup Test",
+      "parent": "30/42"
+    },
+    {
+      "section": "4.2 Pilot Fixture & Incident Model",
+      "id": "NEX-PRD42-PIL-006",
+      "priority": "MUST",
+      "requirement": "Incident 상태 전이는 actor/system source, reason, timestamp, evidence refs와 함께 append-only timeline으로 남아야 한다.",
+      "verification": "Audit Test",
+      "parent": "30/42"
+    },
+    {
+      "section": "4.2 Pilot Fixture & Incident Model",
+      "id": "NEX-PRD42-PIL-007",
+      "priority": "MUST",
+      "requirement": "Incident Resolution은 모든 scoped Kill Switch release, unresolved reconciliation, stale worker, critical backlog가 없는지 확인한 후에만 허용해야 한다.",
+      "verification": "Closure Test",
+      "parent": "32/42"
+    },
+    {
+      "section": "4.2 Pilot Fixture & Incident Model",
+      "id": "NEX-PRD42-PIL-008",
+      "priority": "SHOULD",
+      "requirement": "Secondary variants로 stale worker only, queue backlog only, unknown-control-state, reconciliation-still-unknown을 독립 실행할 수 있어야 한다.",
+      "verification": "Fault Matrix",
+      "parent": "32/42"
+    },
+    {
+      "section": "4.3 AG Dashboard & Projection Freshness",
+      "id": "NEX-PRD42-DASH-001",
+      "priority": "MUST",
+      "requirement": "AG Dashboard는 Service, Job/Worker, Runtime/Work, Reconciliation, Kill Switch, Alert/Incident, Audit/Recovery 상태를 하나의 drill-down 흐름으로 제공해야 한다.",
+      "verification": "UI E2E",
+      "parent": "30/33"
+    },
+    {
+      "section": "4.3 AG Dashboard & Projection Freshness",
+      "id": "NEX-PRD42-DASH-002",
+      "priority": "MUST",
+      "requirement": "각 Projection에는 source_timestamp, collected_at, freshness/lag를 표시하여 stale telemetry를 정상 상태로 오인하지 않아야 한다.",
+      "verification": "Projection Test",
+      "parent": "30"
+    },
+    {
+      "section": "4.3 AG Dashboard & Projection Freshness",
+      "id": "NEX-PRD42-DASH-003",
+      "priority": "MUST",
+      "requirement": "Dashboard Summary는 service health, queued/running/failed jobs, stale workers, reconciliation backlog, active kill switches, open incidents, critical alerts를 최소 표시해야 한다.",
+      "verification": "UI Test",
+      "parent": "30/42"
+    },
+    {
+      "section": "4.3 AG Dashboard & Projection Freshness",
+      "id": "NEX-PRD42-DASH-004",
+      "priority": "MUST",
+      "requirement": "운영자는 correlation_id/work_item_id/execution_id/skill_ref/operation_ref 중 하나로 관련 incident와 trace를 탐색할 수 있어야 한다.",
+      "verification": "Trace UI",
+      "parent": "30/31"
+    },
+    {
+      "section": "4.3 AG Dashboard & Projection Freshness",
+      "id": "NEX-PRD42-DASH-005",
+      "priority": "MUST",
+      "requirement": "Dashboard의 Job/Worker/Reconciliation count는 AG가 소유하는 business state가 아니라 owning service projection임을 source badge/detail에 표시해야 한다.",
+      "verification": "UX/Architecture",
+      "parent": "30/32"
+    },
+    {
+      "section": "4.3 AG Dashboard & Projection Freshness",
+      "id": "NEX-PRD42-DASH-006",
+      "priority": "MUST",
+      "requirement": "ACTIVE Kill Switch와 RECONCILIATION_REQUIRED는 Overview와 관련 대상 상세 화면에서 prominent state로 표시되어야 한다.",
+      "verification": "UI Test",
+      "parent": "30/32"
+    },
+    {
+      "section": "4.3 AG Dashboard & Projection Freshness",
+      "id": "NEX-PRD42-DASH-007",
+      "priority": "MUST",
+      "requirement": "Partial telemetry 또는 target unreachable은 UNKNOWN/STALE로 표현하고 0건/정상으로 표시해서는 안 된다.",
+      "verification": "Fault UI",
+      "parent": "30/42"
+    },
+    {
+      "section": "4.3 AG Dashboard & Projection Freshness",
+      "id": "NEX-PRD42-DASH-008",
+      "priority": "SHOULD",
+      "requirement": "Operator는 Incident 기준으로 관련 Alert, Control, Reconciliation, Recovery Action, Audit Evidence를 하나의 timeline view에서 확인할 수 있어야 한다.",
+      "verification": "UI Test",
+      "parent": "42"
+    },
+    {
+      "section": "4.3 AG Dashboard & Projection Freshness",
+      "id": "NEX-PRD42-DASH-009",
+      "priority": "SHOULD",
+      "requirement": "Dashboard는 운영자 역할과 scope에 따라 action button과 sensitive detail을 제한해야 한다.",
+      "verification": "RBAC UI",
+      "parent": "26/30"
+    },
+    {
+      "section": "4.4 Health / Alert / Incident Detection",
+      "id": "NEX-PRD42-ALT-001",
+      "priority": "MUST",
+      "requirement": "Health는 UP/DEGRADED/DOWN/MAINTENANCE 또는 동등한 정규화 상태와 raw source detail을 함께 보존해야 한다.",
+      "verification": "State Test",
+      "parent": "30"
+    },
+    {
+      "section": "4.4 Health / Alert / Incident Detection",
+      "id": "NEX-PRD42-ALT-002",
+      "priority": "MUST",
+      "requirement": "Worker stale 판정은 heartbeat/lease 기반 deterministic rule로 수행하고 LLM 판단만으로 stale을 선언해서는 안 된다.",
+      "verification": "Rule Test",
+      "parent": "30/32"
+    },
+    {
+      "section": "4.4 Health / Alert / Incident Detection",
+      "id": "NEX-PRD42-ALT-003",
+      "priority": "MUST",
+      "requirement": "Queue backlog와 oldest-job-age는 서비스별 versioned threshold/window로 Alert 평가가 가능해야 한다.",
+      "verification": "Alert Test",
+      "parent": "30/32"
+    },
+    {
+      "section": "4.4 Health / Alert / Incident Detection",
+      "id": "NEX-PRD42-ALT-004",
+      "priority": "MUST",
+      "requirement": "Reconciliation backlog/count/oldest-age는 일반 failed job과 구분된 operational signal로 표시되어야 한다.",
+      "verification": "Monitoring Test",
+      "parent": "30/32"
+    },
+    {
+      "section": "4.4 Health / Alert / Incident Detection",
+      "id": "NEX-PRD42-ALT-005",
+      "priority": "MUST",
+      "requirement": "Alert lifecycle은 OPEN→ACKNOWLEDGED→RESOLVED 및 필요 시 SUPPRESSED를 지원해야 한다.",
+      "verification": "State Test",
+      "parent": "30"
+    },
+    {
+      "section": "4.4 Health / Alert / Incident Detection",
+      "id": "NEX-PRD42-ALT-006",
+      "priority": "MUST",
+      "requirement": "Alert dedup/cooldown은 storm을 줄이되 underlying metric/event history를 잃어서는 안 된다.",
+      "verification": "Fault Test",
+      "parent": "30"
+    },
+    {
+      "section": "4.4 Health / Alert / Incident Detection",
+      "id": "NEX-PRD42-ALT-007",
+      "priority": "MUST",
+      "requirement": "Critical Alert acknowledgement에는 operator identity, reason, timestamp가 필요해야 한다.",
+      "verification": "Audit Test",
+      "parent": "30/42"
+    },
+    {
+      "section": "4.4 Health / Alert / Incident Detection",
+      "id": "NEX-PRD42-ALT-008",
+      "priority": "MUST",
+      "requirement": "Alert가 자동으로 Incident Resolution이나 Kill Switch Release를 결정해서는 안 된다.",
+      "verification": "Governance Test",
+      "parent": "30/42"
+    },
+    {
+      "section": "4.4 Health / Alert / Incident Detection",
+      "id": "NEX-PRD42-ALT-009",
+      "priority": "MUST",
+      "requirement": "Alert source가 stale/unavailable인 경우 severity downgrade를 자동 수행하지 않고 telemetry quality를 별도 표시해야 한다.",
+      "verification": "Fault Test",
+      "parent": "30"
+    },
+    {
+      "section": "4.4 Health / Alert / Incident Detection",
+      "id": "NEX-PRD42-ALT-010",
+      "priority": "SHOULD",
+      "requirement": "Alert/Incident에 recommended runbook_ref를 연결할 수 있으나 실제 action 실행은 current state/authorization을 다시 확인해야 한다.",
+      "verification": "Runbook Test",
+      "parent": "34/42"
+    },
+    {
+      "section": "4.5 Kill Switch Containment",
+      "id": "NEX-PRD42-KILL-001",
+      "priority": "MUST",
+      "requirement": "운영자는 GLOBAL/SERVICE/PROFILE/SKILL/CAPABILITY/CONNECTOR 등 policy-defined scope 중 허용된 최소 범위로 Kill Switch를 활성화할 수 있어야 한다.",
+      "verification": "Control Test",
+      "parent": "30"
+    },
+    {
+      "section": "4.5 Kill Switch Containment",
+      "id": "NEX-PRD42-KILL-002",
+      "priority": "MUST",
+      "requirement": "Kill Switch action은 target_ref, scope, reason_code, severity, actor, authority_ref, policy_ref, request_id를 가져야 한다.",
+      "verification": "Schema Test",
+      "parent": "30/42"
+    },
+    {
+      "section": "4.5 Kill Switch Containment",
+      "id": "NEX-PRD42-KILL-003",
+      "priority": "MUST",
+      "requirement": "Activation은 OA current admin authorization을 거치고 target service/PDP/PEP에 bounded propagation되어야 한다.",
+      "verification": "Security E2E",
+      "parent": "26/30"
+    },
+    {
+      "section": "4.5 Kill Switch Containment",
+      "id": "NEX-PRD42-KILL-004",
+      "priority": "MUST",
+      "requirement": "ACTIVE Kill Switch는 신규 execution, Resume, R3+ side effect에서 강제되어야 한다.",
+      "verification": "Security E2E",
+      "parent": "30/32"
+    },
+    {
+      "section": "4.5 Kill Switch Containment",
+      "id": "NEX-PRD42-KILL-005",
+      "priority": "MUST",
+      "requirement": "이미 COMMITTED된 business object를 Kill Switch로 취소/rollback했다고 표시해서는 안 된다.",
+      "verification": "Architecture Test",
+      "parent": "30/42"
+    },
+    {
+      "section": "4.5 Kill Switch Containment",
+      "id": "NEX-PRD42-KILL-006",
+      "priority": "MUST",
+      "requirement": "Target별 propagation status는 REQUESTED/SENT/ACKNOWLEDGED/SUCCEEDED/FAILED/UNKNOWN_CONTROL_STATE 또는 동등한 상태로 추적해야 한다.",
+      "verification": "Control State Test",
+      "parent": "30"
+    },
+    {
+      "section": "4.5 Kill Switch Containment",
+      "id": "NEX-PRD42-KILL-007",
+      "priority": "MUST",
+      "requirement": "UNKNOWN_CONTROL_STATE에서는 blind retry 대신 대상의 현재 적용 상태를 reconciliation해야 한다.",
+      "verification": "Fault Test",
+      "parent": "30/32"
+    },
+    {
+      "section": "4.5 Kill Switch Containment",
+      "id": "NEX-PRD42-KILL-008",
+      "priority": "MUST",
+      "requirement": "Kill Switch Release는 별도 authorized action이며 root cause/evidence/recovery verification이 없으면 기본 차단해야 한다.",
+      "verification": "Governance Test",
+      "parent": "30/42"
+    },
+    {
+      "section": "4.5 Kill Switch Containment",
+      "id": "NEX-PRD42-KILL-009",
+      "priority": "MUST",
+      "requirement": "Release 직후 Resume/side effect는 current OA authority/policy를 다시 확인해야 한다.",
+      "verification": "Security Test",
+      "parent": "26/32"
+    },
+    {
+      "section": "4.5 Kill Switch Containment",
+      "id": "NEX-PRD42-KILL-010",
+      "priority": "SHOULD",
+      "requirement": "Pilot은 capability/skill-scoped Kill Switch를 기본 containment 예제로 사용하여 전체 서비스 중단을 피해야 한다.",
+      "verification": "Pilot Review",
+      "parent": "42"
+    },
+    {
+      "section": "4.6 JobQueue / Worker Fault Handling",
+      "id": "NEX-PRD42-JOB-001",
+      "priority": "MUST",
+      "requirement": "Job/Worker authoritative state는 owning service local PostgreSQL에 유지하고 AG는 projection/control만 수행해야 한다.",
+      "verification": "Architecture Test",
+      "parent": "32"
+    },
+    {
+      "section": "4.6 JobQueue / Worker Fault Handling",
+      "id": "NEX-PRD42-JOB-002",
+      "priority": "MUST",
+      "requirement": "Stale worker detection은 last_heartbeat/lease_until을 사용하고 임의 admin 판단으로 running job을 중복 실행해서는 안 된다.",
+      "verification": "Reliability Test",
+      "parent": "32"
+    },
+    {
+      "section": "4.6 JobQueue / Worker Fault Handling",
+      "id": "NEX-PRD42-JOB-003",
+      "priority": "MUST",
+      "requirement": "Lease reclaim은 worker ownership만 변경하며 business idempotency key를 새로 발급해서는 안 된다.",
+      "verification": "Fault Test",
+      "parent": "32"
+    },
+    {
+      "section": "4.6 JobQueue / Worker Fault Handling",
+      "id": "NEX-PRD42-JOB-004",
+      "priority": "MUST",
+      "requirement": "Worker restart/reclaim 이후 completed side effect의 중복 실행이 0이어야 한다.",
+      "verification": "Golden Fault",
+      "parent": "32/33"
+    },
+    {
+      "section": "4.6 JobQueue / Worker Fault Handling",
+      "id": "NEX-PRD42-JOB-005",
+      "priority": "MUST",
+      "requirement": "Queue backlog recovery는 priority/fairness 정책을 존중하고 운영자가 AG DB row를 직접 수정하는 방식으로 수행해서는 안 된다.",
+      "verification": "Ops Test",
+      "parent": "30/32"
+    },
+    {
+      "section": "4.6 JobQueue / Worker Fault Handling",
+      "id": "NEX-PRD42-JOB-006",
+      "priority": "MUST",
+      "requirement": "Cancel/Retry/Drain은 owning service의 typed Admin Contract를 통해 요청되어야 한다.",
+      "verification": "Contract Test",
+      "parent": "30/34"
+    },
+    {
+      "section": "4.6 JobQueue / Worker Fault Handling",
+      "id": "NEX-PRD42-JOB-007",
+      "priority": "MUST",
+      "requirement": "Retry는 retry classification을 따르고 UNKNOWN_COMMIT_STATE를 retryable failure로 분류해서는 안 된다.",
+      "verification": "Classifier Test",
+      "parent": "32"
+    },
+    {
+      "section": "4.6 JobQueue / Worker Fault Handling",
+      "id": "NEX-PRD42-JOB-008",
+      "priority": "MUST",
+      "requirement": "Worker drain은 신규 claim을 중단하고 in-flight 작업을 safe point/checkpoint까지 이동시킨 후 종료해야 한다.",
+      "verification": "Drain Test",
+      "parent": "34"
+    },
+    {
+      "section": "4.6 JobQueue / Worker Fault Handling",
+      "id": "NEX-PRD42-JOB-009",
+      "priority": "MUST",
+      "requirement": "Recovery Scanner는 expired lease, stranded wait, stuck outbox 등 정책 대상 문제를 탐지할 수 있어야 한다.",
+      "verification": "Recovery Test",
+      "parent": "32"
+    },
+    {
+      "section": "4.6 JobQueue / Worker Fault Handling",
+      "id": "NEX-PRD42-JOB-010",
+      "priority": "SHOULD",
+      "requirement": "AG Dashboard에서 recovery/reclaim의 전후 worker/job state를 동일 correlation으로 비교할 수 있어야 한다.",
+      "verification": "UI Test",
+      "parent": "42"
+    },
+    {
+      "section": "4.7 Unknown Commit / Reconciliation",
+      "id": "NEX-PRD42-REC-001",
+      "priority": "MUST",
+      "requirement": "Canonical write 결과가 불명확하면 runtime은 SUCCEEDED/FAILED로 추측하지 않고 RECONCILIATION_REQUIRED로 전환해야 한다.",
+      "verification": "Fault E2E",
+      "parent": "17/32"
+    },
+    {
+      "section": "4.7 Unknown Commit / Reconciliation",
+      "id": "NEX-PRD42-REC-002",
+      "priority": "MUST",
+      "requirement": "ReconciliationCase는 operation_ref, idempotency_key, business object hint, correlation_id, originating execution/step, opened_at, status를 포함해야 한다.",
+      "verification": "Schema Test",
+      "parent": "32/42"
+    },
+    {
+      "section": "4.7 Unknown Commit / Reconciliation",
+      "id": "NEX-PRD42-REC-003",
+      "priority": "MUST",
+      "requirement": "AG는 ReconciliationCase의 projection을 표시하되 case의 authoritative state를 직접 수정해서는 안 된다.",
+      "verification": "Architecture Test",
+      "parent": "30/32"
+    },
+    {
+      "section": "4.7 Unknown Commit / Reconciliation",
+      "id": "NEX-PRD42-REC-004",
+      "priority": "MUST",
+      "requirement": "Reconciliation은 authoritative Enterprise OS/Canonical API를 operation_ref/idempotency_key로 조회하여 결과를 확인해야 한다.",
+      "verification": "Integration Test",
+      "parent": "17/32"
+    },
+    {
+      "section": "4.7 Unknown Commit / Reconciliation",
+      "id": "NEX-PRD42-REC-005",
+      "priority": "MUST",
+      "requirement": "결과는 최소 CONFIRMED_COMMITTED/CONFIRMED_NOT_COMMITTED/STILL_UNKNOWN/CONFLICT를 구분해야 한다.",
+      "verification": "State Test",
+      "parent": "32"
+    },
+    {
+      "section": "4.7 Unknown Commit / Reconciliation",
+      "id": "NEX-PRD42-REC-006",
+      "priority": "MUST",
+      "requirement": "CONFIRMED_COMMITTED이면 기존 operation의 business result를 복원하고 동일 write를 재호출해서는 안 된다.",
+      "verification": "Fault Acceptance",
+      "parent": "32/42"
+    },
+    {
+      "section": "4.7 Unknown Commit / Reconciliation",
+      "id": "NEX-PRD42-REC-007",
+      "priority": "MUST",
+      "requirement": "CONFIRMED_NOT_COMMITTED일 때만 policy가 허용하고 current authority/kill state가 허용하는 경우 동일 idempotency key로 safe retry를 고려할 수 있어야 한다.",
+      "verification": "Security/Reliability",
+      "parent": "26/32"
+    },
+    {
+      "section": "4.7 Unknown Commit / Reconciliation",
+      "id": "NEX-PRD42-REC-008",
+      "priority": "MUST",
+      "requirement": "STILL_UNKNOWN은 자동 success/retry/incident close를 금지하고 escalation/manual verification 경로를 유지해야 한다.",
+      "verification": "Fault Test",
+      "parent": "32"
+    },
+    {
+      "section": "4.7 Unknown Commit / Reconciliation",
+      "id": "NEX-PRD42-REC-009",
+      "priority": "MUST",
+      "requirement": "CONFLICT는 evidence를 보존하고 operator/security/owner escalation을 요구해야 한다.",
+      "verification": "Incident Test",
+      "parent": "32/42"
+    },
+    {
+      "section": "4.7 Unknown Commit / Reconciliation",
+      "id": "NEX-PRD42-REC-010",
+      "priority": "MUST",
+      "requirement": "Reconciliation action과 결과는 original incident, alert, operation, job/worker, kill switch refs와 causation으로 연결되어야 한다.",
+      "verification": "Trace Test",
+      "parent": "32/34"
+    },
+    {
+      "section": "4.7 Unknown Commit / Reconciliation",
+      "id": "NEX-PRD42-REC-011",
+      "priority": "MUST",
+      "requirement": "Reconciliation backlog가 임계치/age를 넘으면 deterministic Alert를 발생시켜야 한다.",
+      "verification": "Alert Test",
+      "parent": "30/32"
+    },
+    {
+      "section": "4.7 Unknown Commit / Reconciliation",
+      "id": "NEX-PRD42-REC-012",
+      "priority": "SHOULD",
+      "requirement": "Operator는 case detail에서 raw secret 없이 authoritative verification evidence/ref를 확인할 수 있어야 한다.",
+      "verification": "UI/Security",
+      "parent": "30/42"
+    },
+    {
+      "section": "4.8 Recovery / Drain / Restart / Runbook",
+      "id": "NEX-PRD42-RCV-001",
+      "priority": "MUST",
+      "requirement": "Recovery action은 versioned Runbook 또는 typed Admin Contract를 참조하여 실행하고 raw SSH/SQL/script를 AG UI의 일반 기능으로 제공해서는 안 된다.",
+      "verification": "Ops Security",
+      "parent": "30/34"
+    },
+    {
+      "section": "4.8 Recovery / Drain / Restart / Runbook",
+      "id": "NEX-PRD42-RCV-002",
+      "priority": "MUST",
+      "requirement": "Runbook은 trigger, diagnosis, safe action, verification, escalation, rollback/recovery를 포함해야 한다.",
+      "verification": "Runbook Review",
+      "parent": "34"
+    },
+    {
+      "section": "4.8 Recovery / Drain / Restart / Runbook",
+      "id": "NEX-PRD42-RCV-003",
+      "priority": "MUST",
+      "requirement": "Operator는 action 직전 target current state/version을 재조회하여 stale assumption으로 복구하지 않아야 한다.",
+      "verification": "Concurrency Test",
+      "parent": "34"
+    },
+    {
+      "section": "4.8 Recovery / Drain / Restart / Runbook",
+      "id": "NEX-PRD42-RCV-004",
+      "priority": "MUST",
+      "requirement": "Service restart는 가능한 경우 drain→restart→readiness→business smoke 순으로 수행해야 한다.",
+      "verification": "Ops Drill",
+      "parent": "34"
+    },
+    {
+      "section": "4.8 Recovery / Drain / Restart / Runbook",
+      "id": "NEX-PRD42-RCV-005",
+      "priority": "MUST",
+      "requirement": "Recovery 완료 검증은 service/process health 외 queue age, stale worker, reconciliation, outbox/inbox, authoritative SoR consistency를 포함해야 한다.",
+      "verification": "Recovery Acceptance",
+      "parent": "32/34"
+    },
+    {
+      "section": "4.8 Recovery / Drain / Restart / Runbook",
+      "id": "NEX-PRD42-RCV-006",
+      "priority": "MUST",
+      "requirement": "Recovery 중 새로운 R3+ side effect는 active kill/policy에 따라 차단될 수 있어야 한다.",
+      "verification": "Security Drill",
+      "parent": "30/34"
+    },
+    {
+      "section": "4.8 Recovery / Drain / Restart / Runbook",
+      "id": "NEX-PRD42-RCV-007",
+      "priority": "MUST",
+      "requirement": "Recovery 실패 또는 반복 실패 시 Incident는 RESOLVED가 아니라 ESCALATED/FAILED_RECOVERY 상태를 유지해야 한다.",
+      "verification": "State Test",
+      "parent": "42"
+    },
+    {
+      "section": "4.8 Recovery / Drain / Restart / Runbook",
+      "id": "NEX-PRD42-RCV-008",
+      "priority": "MUST",
+      "requirement": "Recovery action 자체가 UNKNOWN_CONTROL_STATE인 경우 target status reconciliation을 수행해야 한다.",
+      "verification": "Fault Test",
+      "parent": "30/34"
+    },
+    {
+      "section": "4.8 Recovery / Drain / Restart / Runbook",
+      "id": "NEX-PRD42-RCV-009",
+      "priority": "MUST",
+      "requirement": "Runbook version과 실제 Admin Contract drift는 staging/game-day에서 검증 가능해야 한다.",
+      "verification": "Regression Test",
+      "parent": "33/34"
+    },
+    {
+      "section": "4.8 Recovery / Drain / Restart / Runbook",
+      "id": "NEX-PRD42-RCV-010",
+      "priority": "SHOULD",
+      "requirement": "Pilot 종료 후 recovery duration, detection-to-containment, reconciliation age, operator action count를 evidence로 수집해야 한다.",
+      "verification": "Ops Metrics",
+      "parent": "42"
+    },
+    {
+      "section": "4.9 Human Operator Action & Authorization",
+      "id": "NEX-PRD42-OPR-001",
+      "priority": "MUST",
+      "requirement": "모든 governance/recovery control은 OA current Principal/RoleBinding/Org/Scope/PDP authorization을 사용해야 한다.",
+      "verification": "Security Test",
+      "parent": "26/30"
+    },
+    {
+      "section": "4.9 Human Operator Action & Authorization",
+      "id": "NEX-PRD42-OPR-002",
+      "priority": "MUST",
+      "requirement": "Operator UI는 조회 권한과 제어 권한을 분리하고 Auditor가 제어 action을 수행할 수 없도록 해야 한다.",
+      "verification": "RBAC Test",
+      "parent": "26/30"
+    },
+    {
+      "section": "4.9 Human Operator Action & Authorization",
+      "id": "NEX-PRD42-OPR-003",
+      "priority": "MUST",
+      "requirement": "Critical control action은 target, impact, reason, current state, expected effect를 보여주는 structured review를 제공해야 한다.",
+      "verification": "UI Test",
+      "parent": "29A/30"
+    },
+    {
+      "section": "4.9 Human Operator Action & Authorization",
+      "id": "NEX-PRD42-OPR-004",
+      "priority": "MUST",
+      "requirement": "Kill activation/release, restart/drain, reconciliation action에는 reason/comment가 필수여야 한다.",
+      "verification": "Audit Test",
+      "parent": "30/42"
+    },
+    {
+      "section": "4.9 Human Operator Action & Authorization",
+      "id": "NEX-PRD42-OPR-005",
+      "priority": "MUST",
+      "requirement": "Operator는 LLM 추천만으로 control을 확정하지 않으며 deterministic policy/current telemetry를 확인해야 한다.",
+      "verification": "Governance Test",
+      "parent": "30"
+    },
+    {
+      "section": "4.9 Human Operator Action & Authorization",
+      "id": "NEX-PRD42-OPR-006",
+      "priority": "MUST",
+      "requirement": "승인/step-up이 필요한 high-risk admin action은 OA policy에 따라 별도 gate를 요구할 수 있어야 한다.",
+      "verification": "Security Test",
+      "parent": "26/30"
+    },
+    {
+      "section": "4.9 Human Operator Action & Authorization",
+      "id": "NEX-PRD42-OPR-007",
+      "priority": "MUST",
+      "requirement": "Operator action 결과는 success/failure/unknown을 명시적으로 표시하고 optimistic success UI를 금지해야 한다.",
+      "verification": "Fault UI",
+      "parent": "30"
+    },
+    {
+      "section": "4.9 Human Operator Action & Authorization",
+      "id": "NEX-PRD42-OPR-008",
+      "priority": "SHOULD",
+      "requirement": "UI는 action 전후 대상 상태 diff와 related Incident/Runbook/Audit link를 제공해야 한다.",
+      "verification": "UX Test",
+      "parent": "42"
+    },
+    {
+      "section": "4.9 Human Operator Action & Authorization",
+      "id": "NEX-PRD42-OPR-009",
+      "priority": "SHOULD",
+      "requirement": "Operator 실수 방지를 위해 destructive/global scope action은 별도 confirmation/impact preview를 사용할 수 있어야 한다.",
+      "verification": "UX/Safety",
+      "parent": "30/42"
+    },
+    {
+      "section": "4.10 Audit / Recovery Evidence Package",
+      "id": "NEX-PRD42-AUD-001",
+      "priority": "MUST",
+      "requirement": "AG admin action은 append-only audit에 principal, authority, action, target, reason, before/after refs, request/result state, timestamp를 기록해야 한다.",
+      "verification": "Audit Test",
+      "parent": "30"
+    },
+    {
+      "section": "4.10 Audit / Recovery Evidence Package",
+      "id": "NEX-PRD42-AUD-002",
+      "priority": "MUST",
+      "requirement": "Incident timeline은 Alert, Kill Switch, Job/Worker, Reconciliation, Recovery Action, Verification refs를 correlation/causation으로 연결해야 한다.",
+      "verification": "Trace Test",
+      "parent": "30/31"
+    },
+    {
+      "section": "4.10 Audit / Recovery Evidence Package",
+      "id": "NEX-PRD42-AUD-003",
+      "priority": "MUST",
+      "requirement": "Audit에는 raw password/token/OTP/private key/secret을 저장해서는 안 된다.",
+      "verification": "Security Scan",
+      "parent": "26/30"
+    },
+    {
+      "section": "4.10 Audit / Recovery Evidence Package",
+      "id": "NEX-PRD42-AUD-004",
+      "priority": "MUST",
+      "requirement": "Recovery Evidence Package는 incident_id, fault injection/trigger, observed metrics, control actions, reconciliation result, authoritative verification, final state, operator sign-off를 포함해야 한다.",
+      "verification": "Package Test",
+      "parent": "33/42"
+    },
+    {
+      "section": "4.10 Audit / Recovery Evidence Package",
+      "id": "NEX-PRD42-AUD-005",
+      "priority": "MUST",
+      "requirement": "Evidence Package는 mutable dashboard snapshot만이 아니라 source refs/hash/version을 포함해야 한다.",
+      "verification": "Repro Test",
+      "parent": "30/33"
+    },
+    {
+      "section": "4.10 Audit / Recovery Evidence Package",
+      "id": "NEX-PRD42-AUD-006",
+      "priority": "MUST",
+      "requirement": "Incident RESOLVED 시점의 open critical alert/reconciliation/kill state를 evidence에 포함해야 한다.",
+      "verification": "Closure Audit",
+      "parent": "42"
+    },
+    {
+      "section": "4.10 Audit / Recovery Evidence Package",
+      "id": "NEX-PRD42-AUD-007",
+      "priority": "MUST",
+      "requirement": "Audit export/view에는 Data Classification과 Auditor/Admin scope를 적용해야 한다.",
+      "verification": "Security Test",
+      "parent": "26/30"
+    },
+    {
+      "section": "4.10 Audit / Recovery Evidence Package",
+      "id": "NEX-PRD42-AUD-008",
+      "priority": "SHOULD",
+      "requirement": "Game-day/fault injection 결과는 동일 Evidence Package schema로 저장하여 실제 incident evidence와 비교 가능해야 한다.",
+      "verification": "Ops Test",
+      "parent": "33/42"
+    },
+    {
+      "section": "4.10 Audit / Recovery Evidence Package",
+      "id": "NEX-PRD42-AUD-009",
+      "priority": "SHOULD",
+      "requirement": "Evidence Package hash/sign-off를 Release/Acceptance evidence에 연결할 수 있어야 한다.",
+      "verification": "Acceptance Trace",
+      "parent": "33/36"
+    },
+    {
+      "section": "4.11 Cross-Service Contract / State Ownership",
+      "id": "NEX-PRD42-INT-001",
+      "priority": "MUST",
+      "requirement": "OA는 operator/runtime current authorization SoR를 유지하고 AG는 OA DB를 직접 수정해서는 안 된다.",
+      "verification": "Architecture Test",
+      "parent": "26/30"
+    },
+    {
+      "section": "4.11 Cross-Service Contract / State Ownership",
+      "id": "NEX-PRD42-INT-002",
+      "priority": "MUST",
+      "requirement": "AG는 health/job/worker/reconciliation projection을 service Admin/Telemetry Contract로 수집하고 service DB를 직접 조회/수정하지 않아야 한다.",
+      "verification": "Integration Test",
+      "parent": "30/32"
+    },
+    {
+      "section": "4.11 Cross-Service Contract / State Ownership",
+      "id": "NEX-PRD42-INT-003",
+      "priority": "MUST",
+      "requirement": "NSL/AE owning runtime은 UNKNOWN_COMMIT/Reconciliation state를 소유하고 AG는 projection과 control refs만 보관해야 한다.",
+      "verification": "Boundary Test",
+      "parent": "17/32"
+    },
+    {
+      "section": "4.11 Cross-Service Contract / State Ownership",
+      "id": "NEX-PRD42-INT-004",
+      "priority": "MUST",
+      "requirement": "Enterprise OS는 실제 business object/commit state의 최종 authoritative source여야 한다.",
+      "verification": "SoR Test",
+      "parent": "31/32"
+    },
+    {
+      "section": "4.11 Cross-Service Contract / State Ownership",
+      "id": "NEX-PRD42-INT-005",
+      "priority": "MUST",
+      "requirement": "Kill Switch enforcement는 AG admin action, OA policy/PIP/PDP, service PEP 경계가 함께 동작해야 한다.",
+      "verification": "Security E2E",
+      "parent": "26/30"
+    },
+    {
+      "section": "4.11 Cross-Service Contract / State Ownership",
+      "id": "NEX-PRD42-INT-006",
+      "priority": "MUST",
+      "requirement": "Cross-service event/control은 correlation_id/request_id/event_id/idempotency key를 목적별로 구분해야 한다.",
+      "verification": "Contract Test",
+      "parent": "31/32"
+    },
+    {
+      "section": "4.11 Cross-Service Contract / State Ownership",
+      "id": "NEX-PRD42-INT-007",
+      "priority": "SHOULD",
+      "requirement": "AG 장애 시 이미 배포된 current policy/kill state enforcement가 즉시 사라지지 않도록 runtime-local enforcement를 유지해야 한다.",
+      "verification": "Resilience Test",
+      "parent": "30/34"
+    },
+    {
+      "section": "4.11 Cross-Service Contract / State Ownership",
+      "id": "NEX-PRD42-INT-008",
+      "priority": "SHOULD",
+      "requirement": "AG 복구 후 projection resync가 owning service state를 덮어쓰지 않고 최신 source state를 재수집해야 한다.",
+      "verification": "Recovery Test",
+      "parent": "30/34"
+    },
+    {
+      "section": "5.1 Security NFR",
+      "id": "NEX-PRD42-SEC-001",
+      "priority": "MUST",
+      "requirement": "Unauthorized operator는 kill/restart/retry/reconciliation action을 수행할 수 없어야 한다.",
+      "verification": "Security E2E",
+      "parent": "26/30"
+    },
+    {
+      "section": "5.1 Security NFR",
+      "id": "NEX-PRD42-SEC-002",
+      "priority": "MUST",
+      "requirement": "Admin control request는 CSRF/request replay/forged authority에 대한 방어를 가져야 한다.",
+      "verification": "Security Test",
+      "parent": "30/42"
+    },
+    {
+      "section": "5.1 Security NFR",
+      "id": "NEX-PRD42-SEC-003",
+      "priority": "MUST",
+      "requirement": "Global/Service-level containment은 최소권한 원칙과 별도 authorization policy를 적용해야 한다.",
+      "verification": "Policy Test",
+      "parent": "26/30"
+    },
+    {
+      "section": "5.1 Security NFR",
+      "id": "NEX-PRD42-SEC-004",
+      "priority": "MUST",
+      "requirement": "Kill Switch active 상태를 UI에서 숨기거나 LLM이 우회하도록 해서는 안 된다.",
+      "verification": "Security Test",
+      "parent": "30"
+    },
+    {
+      "section": "5.1 Security NFR",
+      "id": "NEX-PRD42-SEC-005",
+      "priority": "MUST",
+      "requirement": "Recovery/Incident detail의 evidence는 Data Classification에 따라 redaction/authorization되어야 한다.",
+      "verification": "Data Security",
+      "parent": "26/30"
+    },
+    {
+      "section": "5.1 Security NFR",
+      "id": "NEX-PRD42-SEC-006",
+      "priority": "MUST",
+      "requirement": "Secret rotation/credential incident recovery는 secret value를 AG audit에 기록하지 않아야 한다.",
+      "verification": "Security Scan",
+      "parent": "34"
+    },
+    {
+      "section": "5.1 Security NFR",
+      "id": "NEX-PRD42-SEC-007",
+      "priority": "MUST",
+      "requirement": "Admin action audit tampering 또는 삭제가 일반 operator 권한으로 가능해서는 안 된다.",
+      "verification": "Audit Security",
+      "parent": "30"
+    },
+    {
+      "section": "5.1 Security NFR",
+      "id": "NEX-PRD42-SEC-008",
+      "priority": "SHOULD",
+      "requirement": "High-risk operator action은 configurable step-up/dual-control policy를 적용할 수 있어야 한다.",
+      "verification": "Security Policy",
+      "parent": "26/30"
+    },
+    {
+      "section": "5.2 Reliability NFR",
+      "id": "NEX-PRD42-REL-001",
+      "priority": "MUST",
+      "requirement": "Duplicate alert/event/control delivery가 duplicate business effect나 duplicate resume를 만들지 않아야 한다.",
+      "verification": "Fault Injection",
+      "parent": "32/33"
+    },
+    {
+      "section": "5.2 Reliability NFR",
+      "id": "NEX-PRD42-REL-002",
+      "priority": "MUST",
+      "requirement": "Worker crash/reclaim은 at-least-once execution 환경에서도 stable idempotency를 유지해야 한다.",
+      "verification": "Fault Injection",
+      "parent": "32"
+    },
+    {
+      "section": "5.2 Reliability NFR",
+      "id": "NEX-PRD42-REL-003",
+      "priority": "MUST",
+      "requirement": "AG projection failure가 owner service job/worker execution 자체를 중단시키지 않아야 한다.",
+      "verification": "Resilience Test",
+      "parent": "30/32"
+    },
+    {
+      "section": "5.2 Reliability NFR",
+      "id": "NEX-PRD42-REL-004",
+      "priority": "MUST",
+      "requirement": "Control delivery partial failure를 success로 합성하지 않고 target별 상태를 보존해야 한다.",
+      "verification": "Fault Test",
+      "parent": "30"
+    },
+    {
+      "section": "5.2 Reliability NFR",
+      "id": "NEX-PRD42-REL-005",
+      "priority": "MUST",
+      "requirement": "Reconciliation worker failure는 case를 잃지 않고 재개 가능해야 한다.",
+      "verification": "Recovery Test",
+      "parent": "32"
+    },
+    {
+      "section": "5.2 Reliability NFR",
+      "id": "NEX-PRD42-REL-006",
+      "priority": "MUST",
+      "requirement": "Incident close/reopen은 underlying unresolved blocker와 정합성을 가져야 한다.",
+      "verification": "State Test",
+      "parent": "42"
+    },
+    {
+      "section": "5.2 Reliability NFR",
+      "id": "NEX-PRD42-REL-007",
+      "priority": "MUST",
+      "requirement": "AG restart 후 open incident/active kill/reconciliation projection을 재구성할 수 있어야 한다.",
+      "verification": "Restart Test",
+      "parent": "30/34"
+    },
+    {
+      "section": "5.2 Reliability NFR",
+      "id": "NEX-PRD42-REL-008",
+      "priority": "SHOULD",
+      "requirement": "운영 control과 evidence package 생성은 request_id/hash 기반 중복 제출에 안전해야 한다.",
+      "verification": "Idempotency Test",
+      "parent": "42"
+    },
+    {
+      "section": "5.3 Performance / Capacity NFR",
+      "id": "NEX-PRD42-PERF-001",
+      "priority": "MUST",
+      "requirement": "AG Overview/Incident drill-down의 p95 latency baseline을 Pilot에서 측정해야 한다.",
+      "verification": "Performance Test",
+      "parent": "30/42"
+    },
+    {
+      "section": "5.3 Performance / Capacity NFR",
+      "id": "NEX-PRD42-PERF-002",
+      "priority": "MUST",
+      "requirement": "Health/worker/reconciliation projection lag를 운영 metric으로 측정하고 stale threshold를 정의해야 한다.",
+      "verification": "Monitoring Test",
+      "parent": "30"
+    },
+    {
+      "section": "5.3 Performance / Capacity NFR",
+      "id": "NEX-PRD42-PERF-003",
+      "priority": "MUST",
+      "requirement": "Alert rule evaluation backlog가 자체 장애를 만들지 않도록 throughput/cooldown baseline을 측정해야 한다.",
+      "verification": "Load Test",
+      "parent": "30"
+    },
+    {
+      "section": "5.3 Performance / Capacity NFR",
+      "id": "NEX-PRD42-PERF-004",
+      "priority": "MUST",
+      "requirement": "Recovery/reconciliation 작업이 production DB/API에 주는 부하를 측정하고 throttle 가능해야 한다.",
+      "verification": "Ops Load Test",
+      "parent": "32/34"
+    },
+    {
+      "section": "5.3 Performance / Capacity NFR",
+      "id": "NEX-PRD42-PERF-005",
+      "priority": "SHOULD",
+      "requirement": "Game-day에서 detection-to-alert, alert-to-ack, ack-to-containment, reconciliation-to-verified 시간을 기록해야 한다.",
+      "verification": "Ops Metrics",
+      "parent": "42"
+    },
+    {
+      "section": "5.4 Observability NFR",
+      "id": "NEX-PRD42-OBS-001",
+      "priority": "MUST",
+      "requirement": "최소 metric은 open_alerts, stale_workers, queue_backlog, oldest_job_age, reconciliation_backlog, oldest_reconciliation_age, active_kill_switches를 포함해야 한다.",
+      "verification": "Metric Test",
+      "parent": "30/32"
+    },
+    {
+      "section": "5.4 Observability NFR",
+      "id": "NEX-PRD42-OBS-002",
+      "priority": "MUST",
+      "requirement": "Control request success/failure/unknown과 target ack latency를 metric으로 제공해야 한다.",
+      "verification": "Monitoring Test",
+      "parent": "30"
+    },
+    {
+      "section": "5.4 Observability NFR",
+      "id": "NEX-PRD42-OBS-003",
+      "priority": "MUST",
+      "requirement": "Incident별 correlation trace completeness를 측정할 수 있어야 한다.",
+      "verification": "Trace Test",
+      "parent": "31/42"
+    },
+    {
+      "section": "5.4 Observability NFR",
+      "id": "NEX-PRD42-OBS-004",
+      "priority": "MUST",
+      "requirement": "Recovery 완료 후 queue/reconciliation/health/kill 상태가 baseline으로 복귀했는지 검증 metric을 남겨야 한다.",
+      "verification": "Recovery Test",
+      "parent": "42"
+    },
+    {
+      "section": "5.4 Observability NFR",
+      "id": "NEX-PRD42-OBS-005",
+      "priority": "SHOULD",
+      "requirement": "Runbook별 사용 횟수/성공률/평균 복구시간을 운영 개선 evidence로 사용할 수 있어야 한다.",
+      "verification": "Ops Analytics",
+      "parent": "34/42"
+    },
+    {
+      "section": "5.5 Test / Acceptance NFR",
+      "id": "NEX-PRD42-TST-001",
+      "priority": "MUST",
+      "requirement": "PRD42는 Unit→Contract→Integration→Fault Injection→Ops E2E→Acceptance→Regression Gate를 적용해야 한다.",
+      "verification": "Test Strategy",
+      "parent": "33"
+    },
+    {
+      "section": "5.5 Test / Acceptance NFR",
+      "id": "NEX-PRD42-TST-002",
+      "priority": "MUST",
+      "requirement": "Fault Injection은 worker kill, heartbeat loss, queue backlog, duplicate event, unknown commit, partial control ack를 최소 포함해야 한다.",
+      "verification": "Fault Campaign",
+      "parent": "32/33"
+    },
+    {
+      "section": "5.5 Test / Acceptance NFR",
+      "id": "NEX-PRD42-TST-003",
+      "priority": "MUST",
+      "requirement": "Kill Switch active 동안 신규/Resume/R3+ protected write가 0회인지 검증해야 한다.",
+      "verification": "Security Acceptance",
+      "parent": "30/33"
+    },
+    {
+      "section": "5.5 Test / Acceptance NFR",
+      "id": "NEX-PRD42-TST-004",
+      "priority": "MUST",
+      "requirement": "UNKNOWN_COMMIT_STATE에서 blind retry 횟수가 0인지 검증해야 한다.",
+      "verification": "Reliability Acceptance",
+      "parent": "32/33"
+    },
+    {
+      "section": "5.5 Test / Acceptance NFR",
+      "id": "NEX-PRD42-TST-005",
+      "priority": "MUST",
+      "requirement": "CONFIRMED_COMMITTED recovery에서 동일 business effect 재실행이 0인지 검증해야 한다.",
+      "verification": "Golden Fault",
+      "parent": "32/42"
+    },
+    {
+      "section": "5.5 Test / Acceptance NFR",
+      "id": "NEX-PRD42-TST-006",
+      "priority": "MUST",
+      "requirement": "AG outage/restart 후 open Incident/kill/projection이 정합적으로 복원되는지 검증해야 한다.",
+      "verification": "Recovery Test",
+      "parent": "30/34"
+    },
+    {
+      "section": "5.5 Test / Acceptance NFR",
+      "id": "NEX-PRD42-TST-007",
+      "priority": "MUST",
+      "requirement": "Playwright 또는 동등한 UI E2E로 Dashboard→Alert→Incident→Kill→Reconciliation→Recovery→Resolve 흐름을 검증해야 한다.",
+      "verification": "UI E2E",
+      "parent": "29A/33"
+    },
+    {
+      "section": "5.5 Test / Acceptance NFR",
+      "id": "NEX-PRD42-TST-008",
+      "priority": "MUST",
+      "requirement": "Acceptance는 Operations/Security/Architecture owner sign-off와 Recovery Evidence Package를 요구해야 한다.",
+      "verification": "Acceptance Review",
+      "parent": "33/42"
+    },
+    {
+      "section": "5.5 Test / Acceptance NFR",
+      "id": "NEX-PRD42-TST-009",
+      "priority": "MUST",
+      "requirement": "critical security/reliability blocker가 있으면 CONDITIONAL_PASS로 release하지 않아야 한다.",
+      "verification": "Release Gate",
+      "parent": "33"
+    },
+    {
+      "section": "5.5 Test / Acceptance NFR",
+      "id": "NEX-PRD42-TST-010",
+      "priority": "SHOULD",
+      "requirement": "Repository Evidence 확인 후 logical contract와 실제 API/table/module mapping regression을 추가해야 한다.",
+      "verification": "Repository Gate",
+      "parent": "36/42"
+    }
+  ],
+  "implementation_tasks": [
+    {
+      "id": "T42-01",
+      "area": "Repository Evidence Gate",
+      "deliverable": "AG/AE/NSL/EOS actual admin API, schemas, worker runtime mapping 확인; 미확정은 PENDING 유지"
+    },
+    {
+      "id": "T42-02",
+      "area": "Synthetic Incident Fixture",
+      "deliverable": "controlled-write timeout + worker heartbeat loss fixture 구성"
+    },
+    {
+      "id": "T42-03",
+      "area": "Ops Overview ViewModel",
+      "deliverable": "health/jobs/workers/reconciliation/kill/alerts/incidents summary"
+    },
+    {
+      "id": "T42-04",
+      "area": "Projection Freshness",
+      "deliverable": "source/collector timestamp 및 stale 계산"
+    },
+    {
+      "id": "T42-05",
+      "area": "Alert Rules",
+      "deliverable": "stale worker, queue backlog, reconciliation age deterministic rules"
+    },
+    {
+      "id": "T42-06",
+      "area": "Incident Timeline",
+      "deliverable": "alert dedup, incident lifecycle, owner/notes/timeline"
+    },
+    {
+      "id": "T42-07",
+      "area": "Kill Switch Control",
+      "deliverable": "scoped activation/release + structured review + OA authorization"
+    },
+    {
+      "id": "T42-08",
+      "area": "Kill Propagation Status",
+      "deliverable": "target별 ACK/FAILED/UNKNOWN_CONTROL_STATE projection"
+    },
+    {
+      "id": "T42-09",
+      "area": "Queue/Worker Drill-down",
+      "deliverable": "job age, lease, heartbeat, worker state, correlation 탐색"
+    },
+    {
+      "id": "T42-10",
+      "area": "Worker Reclaim/Drain",
+      "deliverable": "owning service typed recovery contract와 safe worker recovery"
+    },
+    {
+      "id": "T42-11",
+      "area": "Unknown Commit Mapping",
+      "deliverable": "runtime/NSL result → ReconciliationCase 생성"
+    },
+    {
+      "id": "T42-12",
+      "area": "Reconciliation Executor",
+      "deliverable": "operation_ref/idempotency_key authoritative verification"
+    },
+    {
+      "id": "T42-13",
+      "area": "Reconciliation Result Mapping",
+      "deliverable": "COMMITTED/NOT_COMMITTED/STILL_UNKNOWN/CONFLICT 처리"
+    },
+    {
+      "id": "T42-14",
+      "area": "Safe Retry Gate",
+      "deliverable": "confirmed not committed + kill released + current OA일 때만"
+    },
+    {
+      "id": "T42-15",
+      "area": "Versioned Runbook Link",
+      "deliverable": "incident type→runbook ref 및 current-state recheck"
+    },
+    {
+      "id": "T42-16",
+      "area": "Typed Recovery Controls",
+      "deliverable": "drain/restart/reconcile/retry/verify action wrapper"
+    },
+    {
+      "id": "T42-17",
+      "area": "Operator RBAC",
+      "deliverable": "read/control/audit scope 및 step-up 정책"
+    },
+    {
+      "id": "T42-18",
+      "area": "Operator Action UX",
+      "deliverable": "impact preview, reason, status, unknown handling"
+    },
+    {
+      "id": "T42-19",
+      "area": "Federated Audit Trace",
+      "deliverable": "incident→alert→control→job→reconciliation→SoR evidence"
+    },
+    {
+      "id": "T42-20",
+      "area": "Recovery Evidence Package",
+      "deliverable": "machine-readable evidence hash/sign-off"
+    },
+    {
+      "id": "T42-21",
+      "area": "Ops Metrics",
+      "deliverable": "MTTD/containment/reconciliation/recovery metrics"
+    },
+    {
+      "id": "T42-22",
+      "area": "Fault Injection Harness",
+      "deliverable": "kill worker, duplicate event, partial control ack, unknown commit"
+    },
+    {
+      "id": "T42-23",
+      "area": "Playwright Ops E2E",
+      "deliverable": "Dashboard부터 Incident Resolve까지 UI 자동화"
+    },
+    {
+      "id": "T42-24",
+      "area": "Release/Acceptance Gate",
+      "deliverable": "Ops/Security/Architecture sign-off + regression suite"
+    }
+  ],
+  "acceptance_criteria": [
+    {
+      "id": "AC42-01",
+      "acceptance": "Dashboard에서 stale worker와 queue backlog를 source freshness와 함께 표시한다."
+    },
+    {
+      "id": "AC42-02",
+      "acceptance": "Reconciliation backlog/oldest age를 일반 failed job과 구분해 표시한다."
+    },
+    {
+      "id": "AC42-03",
+      "acceptance": "동일 root cause의 반복 alert가 incident를 중복 생성하지 않는다."
+    },
+    {
+      "id": "AC42-04",
+      "acceptance": "운영자가 alert를 acknowledge하면 actor/reason/time이 audit에 남는다."
+    },
+    {
+      "id": "AC42-05",
+      "acceptance": "권한 없는 사용자는 Kill Switch/Restart/Reconcile action을 실행할 수 없다."
+    },
+    {
+      "id": "AC42-06",
+      "acceptance": "Scoped Kill Switch activation이 OA current authorization을 통과한다."
+    },
+    {
+      "id": "AC42-07",
+      "acceptance": "Kill Switch active 동안 신규 protected execution/Resume/R3+ write가 0회이다."
+    },
+    {
+      "id": "AC42-08",
+      "acceptance": "이미 COMMITTED된 business effect를 Kill Switch가 rollback하지 않는다."
+    },
+    {
+      "id": "AC42-09",
+      "acceptance": "Partial target ACK는 success로 합성되지 않고 UNKNOWN_CONTROL_STATE로 노출된다."
+    },
+    {
+      "id": "AC42-10",
+      "acceptance": "UNKNOWN_CONTROL_STATE에서 blind control retry를 하지 않고 target state를 재확인한다."
+    },
+    {
+      "id": "AC42-11",
+      "acceptance": "Worker lease reclaim 시 business idempotency key가 변경되지 않는다."
+    },
+    {
+      "id": "AC42-12",
+      "acceptance": "Worker crash/reclaim 후 duplicate business effect가 0이다."
+    },
+    {
+      "id": "AC42-13",
+      "acceptance": "UNKNOWN_COMMIT_STATE는 RECONCILIATION_REQUIRED로 전환되고 blind retry가 0회이다."
+    },
+    {
+      "id": "AC42-14",
+      "acceptance": "ReconciliationCase가 operation_ref/idempotency_key/correlation/execution refs를 가진다."
+    },
+    {
+      "id": "AC42-15",
+      "acceptance": "CONFIRMED_COMMITTED면 authoritative result를 복원하고 write를 재호출하지 않는다."
+    },
+    {
+      "id": "AC42-16",
+      "acceptance": "CONFIRMED_NOT_COMMITTED라도 kill active 또는 current OA deny면 retry하지 않는다."
+    },
+    {
+      "id": "AC42-17",
+      "acceptance": "STILL_UNKNOWN은 Incident를 resolve하지 않고 escalation 상태를 유지한다."
+    },
+    {
+      "id": "AC42-18",
+      "acceptance": "CONFLICT는 evidence를 보존하고 human escalation이 발생한다."
+    },
+    {
+      "id": "AC42-19",
+      "acceptance": "Service restart는 drain→restart→readiness→business smoke 순서를 따른다."
+    },
+    {
+      "id": "AC42-20",
+      "acceptance": "service health green만으로 recovery complete가 되지 않는다."
+    },
+    {
+      "id": "AC42-21",
+      "acceptance": "recovery complete 시 stale worker/critical queue/reconciliation/kill blocker가 없다."
+    },
+    {
+      "id": "AC42-22",
+      "acceptance": "Kill Switch release는 별도 current authorization과 reason을 요구한다."
+    },
+    {
+      "id": "AC42-23",
+      "acceptance": "Kill release 직후 resume/write가 current OA policy를 다시 검증한다."
+    },
+    {
+      "id": "AC42-24",
+      "acceptance": "AG가 owner service DB row를 직접 수정하지 않는다."
+    },
+    {
+      "id": "AC42-25",
+      "acceptance": "AG restart 후 open incident/active kill/projection이 source state에서 복원된다."
+    },
+    {
+      "id": "AC42-26",
+      "acceptance": "Incident timeline이 alert/control/job/reconciliation/recovery refs를 correlation으로 연결한다."
+    },
+    {
+      "id": "AC42-27",
+      "acceptance": "Recovery Evidence Package가 trigger, metrics, actions, SoR verification, final state, sign-off를 포함한다."
+    },
+    {
+      "id": "AC42-28",
+      "acceptance": "Audit export에 raw secret/token/private key가 없다."
+    },
+    {
+      "id": "AC42-29",
+      "acceptance": "Operator UI는 action의 success/failure/unknown을 명시적으로 구분한다."
+    },
+    {
+      "id": "AC42-30",
+      "acceptance": "Playwright Ops E2E가 Dashboard→Alert→Kill→Reconcile→Recover→Resolve를 통과한다."
+    },
+    {
+      "id": "AC42-31",
+      "acceptance": "Fault Injection campaign에서 worker kill/duplicate event/unknown commit/partial ACK가 모두 기대 복구 경로를 따른다."
+    },
+    {
+      "id": "AC42-32",
+      "acceptance": "Operations/Security/Architecture owner sign-off가 모두 PASS일 때만 Slice Acceptance를 PASS로 한다."
+    }
+  ]
+}

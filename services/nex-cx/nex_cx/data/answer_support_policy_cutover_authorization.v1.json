@@ -1,0 +1,46 @@
+{
+  "activation_bundle_hash": "sha256:6d5c631c9e18418ae2787d4053d06cdf87cc49a3cbc67aea6258b11f29893a06",
+  "authorization_hash": "sha256:fe45b9267af3e81095b957c0488ee86dba7f88114b3fff99708ccc812108fc00",
+  "authorization_schema_version": "cx_answer_support_policy_cutover_authorization.v1",
+  "decision_receipt": {
+    "activation_bundle_hash": "sha256:6d5c631c9e18418ae2787d4053d06cdf87cc49a3cbc67aea6258b11f29893a06",
+    "approved_scope": "CONTROLLED_ANSWER_SUPPORT_USER_VISIBLE_POLICY_CUTOVER",
+    "decided_at": "2026-11-06T02:22:04.997151Z",
+    "decision": "CONTROLLED_ANSWER_SUPPORT_POLICY_CUTOVER_APPROVED",
+    "decision_status": "APPROVED_NOT_EXECUTED",
+    "design_hash": "sha256:67caf7cd029bca7422b70b0bd15b097d39b4b04e2ec123f0e45b99cac8aa2304",
+    "manifest_hash": "sha256:e8c73a47aad709da1bdbca9370f37ccd53e265959e6c1853d0826c2a392fa2a6",
+    "next_boundary": "ANSWER_SUPPORT_POLICY_CUTOVER_AND_ROLLBACK_ACCEPTANCE",
+    "operator_decision_hash": "sha256:2ad36debb60868f6712805c779d65779c3b9bc160ce39fd8f418bf45b354e2ff",
+    "policy_cutover_approved": true,
+    "policy_cutover_executed": false,
+    "production_cutover_permitted": false,
+    "receipt_hash": "sha256:eb8cfb71a05d08dca37196e1b57608e2f90584e2d932635a881e7c14ac14f23c",
+    "receipt_schema_version": "cx_answer_support_policy_cutover_operator_decision_receipt.v1",
+    "runtime_changed": false,
+    "selected_policy_hash": "sha256:c81f7a0bf3d3d72d7bbc5de1f564ada3b415f2206689c1939fcb925f172168cb",
+    "source_review_receipt_hash": "sha256:f93bf3806460b539951473535dcf3cc89dcd49a4186e37c8a850f52f7cc04e9b",
+    "status": "PASS",
+    "user_visible_policy_change_approved": true,
+    "user_visible_policy_change_executed": false
+  },
+  "fallback_policy": "CURRENT_ACTIVE_RETRIEVAL_CONFIDENCE_POLICY",
+  "provider_binding_hash": "sha256:e16f1c5a52d8a423383a82b6afab80561a4de376b574f3a1b91b9d139dde3012",
+  "rollback_policy": {
+    "feedback_p95_slo_breach": "ROLLBACK_PENDING_OPERATOR_REVIEW",
+    "interactive_e2e_p95_slo_breach": "ROLLBACK_PENDING_OPERATOR_REVIEW",
+    "non_retryable_overload": "IMMEDIATE_ROLLBACK",
+    "progress_sink_failure": "IMMEDIATE_ROLLBACK",
+    "provider_error": "IMMEDIATE_ROLLBACK",
+    "provider_p95_slo_breach": "ROLLBACK_PENDING_OPERATOR_REVIEW",
+    "source_binding_drift": "IMMEDIATE_ROLLBACK"
+  },
+  "safety": {
+    "candidate_order_mutation_permitted": false,
+    "holdout_access_permitted": false,
+    "permission_scope_mutation_permitted": false,
+    "production_cutover_permitted": false
+  },
+  "selected_policy_hash": "sha256:c81f7a0bf3d3d72d7bbc5de1f564ada3b415f2206689c1939fcb925f172168cb",
+  "status": "APPROVED_FOR_CONTROLLED_CUTOVER"
+}

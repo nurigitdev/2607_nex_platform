@@ -1,0 +1,39 @@
+{
+  "schema_version": "1.0",
+  "agent_context_ref": "AE:AGENT_CONTEXT:44444444-4444-4444-8444-444444444444:1",
+  "agent_context_hash": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+  "runtime_context_entries": [
+    {
+      "path": "user.team_id",
+      "value": "TEAM-FINANCE",
+      "classification": "INTERNAL",
+      "source_ref": "AE:AGENT_CONTEXT:44444444-4444-4444-8444-444444444444:1"
+    }
+  ],
+  "explicit_resource_refs": [],
+  "verified_principal": {
+    "tenant_id": "tenant-p6-golden",
+    "subject_id": "employee-100",
+    "actor_type": "USER",
+    "roles": ["EMPLOYEE"],
+    "scopes": [
+      "nsl:skill:execute",
+      "project:budget:read"
+    ],
+    "auth_context_ref": "OA:AUTH_CONTEXT:p6-golden",
+    "verification": "VERIFIED",
+    "on_behalf_of": null
+  },
+  "authority": {
+    "effective_role_bindings": ["EMPLOYEE"],
+    "org_scope": ["ORG-FINANCE"],
+    "project_scope": null
+  },
+  "data_policy": {
+    "policy_ref": "OA:DATA_POLICY:p6-golden",
+    "max_trace_classification": "CONFIDENTIAL",
+    "snapshot_retention_days": 30,
+    "audit_retention_days": 90
+  },
+  "projection_hash": "sha256:4a1c010daa3f6daae5c4b29f29e2ba617ab12afd25dfd40ed684dbc23ba9f91c"
+}

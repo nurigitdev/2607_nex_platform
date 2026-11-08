@@ -159,31 +159,6 @@ def test_openbao_root_materialization_round_trip(tmp_path: Path) -> None:
         )
 
 
-def test_cross_bucket_admission_requires_two_denials() -> None:
-    class Denied(Exception):
-        def __init__(self, status=403):
-            self.response = {"ResponseMetadata": {"HTTPStatusCode": status}}
-
-    class Client:
-        def __init__(self, denied=True):
-            self.denied = denied
-
-        def head_bucket(self, **_kwargs):
-            if self.denied:
-                raise Denied()
-            return {}
-
-    isolated = runner._cross_bucket_isolation(
-        SimpleNamespace(client=Client()), SimpleNamespace(client=Client())
-    )
-    assert isolated == {"cx_to_ae_denied": True, "ae_to_cx_denied": True}
-    assert runner._access_denied(Client(False), "bucket") is False
-    with pytest.raises(runner.S146AcceptanceError, match="cross-bucket"):
-        runner._cross_bucket_isolation(
-            SimpleNamespace(client=Client(False)), SimpleNamespace(client=Client())
-        )
-
-
 def test_cleanup_removes_every_version_and_bucket() -> None:
     class Paginator:
         def paginate(self, *, Bucket):

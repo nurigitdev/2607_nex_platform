@@ -41,8 +41,21 @@ def _source(*, extension_ok: bool = True) -> dict:
             "cx_retrieval_persisted": True,
             "cx_generation_persisted": True,
             "all_live_provider_capabilities_called": True,
+            "answer_support_runtime_matches_requested_mode": True,
             "ae_chat_persisted": True,
             **extension_checks,
+        },
+        "answer_support_observation": {
+            "primary_policy_installed": True,
+            "steady_state_policy_installed": True,
+            "selected_policy_hash": smoke.CANONICAL_ANSWER_SUPPORT_POLICY_HASH,
+            "steady_state_state": "ACTIVE",
+            "cutover_state": "ACTIVE",
+        },
+        "provider_observation": {
+            "embedding": {"model": "hf:" + "1" * 40, "success_count": 2},
+            "reranking": {"model": "hf:" + "2" * 40, "success_count": 1},
+            "generation": {"model": "hf:" + "3" * 40, "success_count": 2},
         },
         "extension_observation": {
             "artifact_status": "READY",
@@ -90,8 +103,8 @@ def test_protected_smoke_composes_correlated_live_evidence() -> None:
     assert result["status"] == "PASS"
     assert result["failed_checks"] == []
     assert result["summary"] == {
-        "check_count": 8,
-        "passed_check_count": 8,
+        "check_count": 9,
+        "passed_check_count": 9,
         "provider_capability_count": 3,
         "database_count": 2,
     }
@@ -100,8 +113,14 @@ def test_protected_smoke_composes_correlated_live_evidence() -> None:
         "rendered_file_count": 2,
         "private_payload_included": False,
     }
+    assert result["provider_observation"]["generation"]["success_count"] == 2
     assert calls[0][smoke.base.SMOKE_ENV] == "1"
     assert calls[0]["NEX_MO_PROVIDER_MODE"] == "live"
+    assert calls[0]["NEX_MO_VLLM_MODEL"] == "Qwen3.5-9B"
+    assert calls[0]["NEX_MO_VLLM_DEPLOYMENT_ID"] == (
+        "dgx-qwen3-5-9b-9116"
+    )
+    assert calls[0]["NEX_CX_ANSWER_SUPPORT_STEADY_STATE_MODE"] == "CONTROLLED"
 
 
 def test_protected_smoke_fails_closed_for_source_or_residue() -> None:
@@ -247,7 +266,7 @@ def test_summary_and_cli(monkeypatch, capsys) -> None:
         {"status": "FAIL", "failure_code": "broken"}
     )
     assert smoke.summary_line(passing) == (
-        "platform_grounded_artifact_live=pass checks=8/8 "
+        "platform_grounded_artifact_live=pass checks=9/9 "
         "providers=3 databases=2 residue=0"
     )
 
@@ -257,7 +276,7 @@ def test_summary_and_cli(monkeypatch, capsys) -> None:
         lambda: passing,
     )
     assert smoke.main(["--summary"]) == 0
-    assert "checks=8/8" in capsys.readouterr().out
+    assert "checks=9/9" in capsys.readouterr().out
     assert smoke.main([]) == 0
     assert '"status": "PASS"' in capsys.readouterr().out
     monkeypatch.setattr(

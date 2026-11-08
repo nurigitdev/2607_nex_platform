@@ -1,0 +1,1331 @@
+{
+  "document": "38_Vertical_Slice_PRD_Approval_Suspend_Resume_v2.0",
+  "version": "v2.0",
+  "date": "2026-09-04",
+  "repository_evidence_status": "PENDING",
+  "scenario": {
+    "scenario_id": "GSA-APPROVAL-RESUME-001",
+    "base_prompt": "A 프로젝트 출장비 84,000원을 전표로 등록해줘.",
+    "policy_fixture": {
+      "human_confirmation_required": true,
+      "formal_approval_required": true,
+      "approval_policy_ref": "TEST:ACCOUNTING_VOUCHER_APPROVAL_V1",
+      "stages": 1,
+      "quorum": 1,
+      "self_approval_allowed": false,
+      "required_approver_role": "ACCOUNTING_APPROVER"
+    },
+    "cx_required": false
+  },
+  "counts": {
+    "MUST": 102,
+    "SHOULD": 12
+  },
+  "requirements": [
+    {
+      "section": "4.1 Slice Scope & Evidence Gate",
+      "id": "NEX-PRD38-SCP-FR-001",
+      "priority": "MUST",
+      "requirement": "PRD 38의 핵심 사용자 가치는 PRD37의 protected voucher write가 Formal Approval을 요구할 때 업무를 안전하게 suspend하고 승인 후 재개하여 authoritative business result를 얻는 것이다.",
+      "verification": "Business Review",
+      "parent": "37/18/36"
+    },
+    {
+      "section": "4.1 Slice Scope & Evidence Gate",
+      "id": "NEX-PRD38-SCP-FR-002",
+      "priority": "MUST",
+      "requirement": "본 PRD는 00~37 Architecture Baseline을 재정의하지 않고 Formal Approval wait/resume integration만 얇은 Vertical Slice로 구현해야 한다.",
+      "verification": "Traceability Review",
+      "parent": "36/37"
+    },
+    {
+      "section": "4.1 Slice Scope & Evidence Gate",
+      "id": "NEX-PRD38-SCP-FR-003",
+      "priority": "MUST",
+      "requirement": "Repository Evidence가 미확인된 component의 실제 repo/path/class/table/endpoint 이름은 확정하지 않고 logical contract/task 수준으로 유지해야 한다.",
+      "verification": "Evidence Gate",
+      "parent": "36"
+    },
+    {
+      "section": "4.1 Slice Scope & Evidence Gate",
+      "id": "NEX-PRD38-SCP-FR-004",
+      "priority": "MUST",
+      "requirement": "기존 코드 변경은 repo/branch/commit/schema/API/test evidence가 연결되기 전 NOT ASSESSED 또는 PROVISIONAL 상태를 유지해야 한다.",
+      "verification": "Implementation Review",
+      "parent": "36/02/10"
+    },
+    {
+      "section": "4.1 Slice Scope & Evidence Gate",
+      "id": "NEX-PRD38-SCP-FR-005",
+      "priority": "MUST",
+      "requirement": "Formal Approval state/proof의 Source of Truth는 Enterprise OS Approval Engine이며 AE는 이를 복제하여 authority로 사용해서는 안 된다.",
+      "verification": "Architecture Test",
+      "parent": "18/31"
+    },
+    {
+      "section": "4.1 Slice Scope & Evidence Gate",
+      "id": "NEX-PRD38-SCP-FR-006",
+      "priority": "MUST",
+      "requirement": "WAITING_APPROVAL/checkpoint/resume의 Source of Truth는 AE Unified Runtime이며 NSL Runtime은 장기 wait를 소유하지 않아야 한다.",
+      "verification": "Architecture Test",
+      "parent": "12/18/29/31"
+    },
+    {
+      "section": "4.1 Slice Scope & Evidence Gate",
+      "id": "NEX-PRD38-SCP-FR-007",
+      "priority": "SHOULD",
+      "requirement": "Golden fixture는 CX/WA/A2A를 hard dependency로 요구하지 않고 approval suspend/resume 핵심 경계를 독립 검증할 수 있어야 한다.",
+      "verification": "Test Fixture Review",
+      "parent": "37/31"
+    },
+    {
+      "section": "4.2 Approval Trigger & Canonical Plan",
+      "id": "NEX-PRD38-PLAN-FR-001",
+      "priority": "MUST",
+      "requirement": "PRD37과 동일한 canonical voucher payload가 production policy fixture에서 formal_approval_required=true로 평가되면 Compiler는 protected write 앞에 FORMAL_APPROVAL step을 삽입해야 한다.",
+      "verification": "Compiler Test",
+      "parent": "11/12/18/37"
+    },
+    {
+      "section": "4.2 Approval Trigger & Canonical Plan",
+      "id": "NEX-PRD38-PLAN-FR-002",
+      "priority": "MUST",
+      "requirement": "Formal Approval 필요 여부는 LLM 판단이 아니라 versioned policy/risk/capability 결과로 결정해야 한다.",
+      "verification": "Security Test",
+      "parent": "09/18/26"
+    },
+    {
+      "section": "4.2 Approval Trigger & Canonical Plan",
+      "id": "NEX-PRD38-PLAN-FR-003",
+      "priority": "MUST",
+      "requirement": "FORMAL_APPROVAL step은 exact protected_step_id, skill_id/version, capability_id, operation_key를 고정해야 한다.",
+      "verification": "Schema/Compiler",
+      "parent": "12/18"
+    },
+    {
+      "section": "4.2 Approval Trigger & Canonical Plan",
+      "id": "NEX-PRD38-PLAN-FR-004",
+      "priority": "MUST",
+      "requirement": "gate requirement는 canonical payload snapshot, payload_hash, write_intent_hash를 포함하거나 immutable ref로 연결해야 한다.",
+      "verification": "Hash Binding Test",
+      "parent": "18"
+    },
+    {
+      "section": "4.2 Approval Trigger & Canonical Plan",
+      "id": "NEX-PRD38-PLAN-FR-005",
+      "priority": "MUST",
+      "requirement": "승인 요청 이후 amount/project/account/capability/operation이 materially 변경되면 기존 approval을 재사용하지 않고 replan/new gate가 필요해야 한다.",
+      "verification": "Mutation Test",
+      "parent": "18"
+    },
+    {
+      "section": "4.2 Approval Trigger & Canonical Plan",
+      "id": "NEX-PRD38-PLAN-FR-006",
+      "priority": "MUST",
+      "requirement": "ExecutablePlan은 ApprovalInstance/Proof 자체를 authority token처럼 저장하지 않고 stable gate/approval reference와 provenance만 보존해야 한다.",
+      "verification": "Security Inspection",
+      "parent": "12/18"
+    },
+    {
+      "section": "4.2 Approval Trigger & Canonical Plan",
+      "id": "NEX-PRD38-PLAN-FR-007",
+      "priority": "MUST",
+      "requirement": "Formal Approval과 OA Step-up Authentication은 별도 step/contract로 유지되어야 하며 한쪽 성공을 다른 쪽 성공으로 간주해서는 안 된다.",
+      "verification": "E2E Security",
+      "parent": "18/26/29/31"
+    },
+    {
+      "section": "4.2 Approval Trigger & Canonical Plan",
+      "id": "NEX-PRD38-PLAN-FR-008",
+      "priority": "SHOULD",
+      "requirement": "사용자 Plan Summary는 승인 대기와 승인 후 등록 단계를 이해 가능한 수준으로 표시하되 내부 policy/schema/secret을 노출하지 않아야 한다.",
+      "verification": "UX Test",
+      "parent": "29/37"
+    },
+    {
+      "section": "4.3 Formal Approval Request Creation & Binding",
+      "id": "NEX-PRD38-APR-FR-001",
+      "priority": "MUST",
+      "requirement": "AE는 FORMAL_APPROVAL step 진입 시 Enterprise OS canonical APPROVAL.CREATE_REQUEST를 사용해 approval instance를 생성해야 하며 EOS DB를 직접 쓰지 않아야 한다.",
+      "verification": "Integration Test",
+      "parent": "18/31/37"
+    },
+    {
+      "section": "4.3 Formal Approval Request Creation & Binding",
+      "id": "NEX-PRD38-APR-FR-002",
+      "priority": "MUST",
+      "requirement": "Approval request 생성은 stable request/idempotency key를 가져 retry 시 duplicate approval instance를 만들지 않아야 한다.",
+      "verification": "Fault Test",
+      "parent": "18/32"
+    },
+    {
+      "section": "4.3 Formal Approval Request Creation & Binding",
+      "id": "NEX-PRD38-APR-FR-003",
+      "priority": "MUST",
+      "requirement": "Approval request는 exact execution_id/work_item_ref/plan_step_id/skill/version/capability/operation_key를 포함해야 한다.",
+      "verification": "Contract Test",
+      "parent": "18"
+    },
+    {
+      "section": "4.3 Formal Approval Request Creation & Binding",
+      "id": "NEX-PRD38-APR-FR-004",
+      "priority": "MUST",
+      "requirement": "Approval request는 requester/business actor/project/org/classification context를 stable refs로 연결해야 한다.",
+      "verification": "Schema Test",
+      "parent": "18/26"
+    },
+    {
+      "section": "4.3 Formal Approval Request Creation & Binding",
+      "id": "NEX-PRD38-APR-FR-005",
+      "priority": "MUST",
+      "requirement": "ApprovalPolicy exact version/ref는 request 생성 시 고정되어야 하며 pending instance가 latest policy 변화에 의해 조용히 의미가 바뀌어서는 안 된다.",
+      "verification": "Version Test",
+      "parent": "18/30"
+    },
+    {
+      "section": "4.3 Formal Approval Request Creation & Binding",
+      "id": "NEX-PRD38-APR-FR-006",
+      "priority": "MUST",
+      "requirement": "APPROVAL.CREATE_REQUEST 응답은 approval_instance_ref, initial state, policy/stage summary, expiry/ref를 반환할 수 있어야 한다.",
+      "verification": "Contract Test",
+      "parent": "18"
+    },
+    {
+      "section": "4.3 Formal Approval Request Creation & Binding",
+      "id": "NEX-PRD38-APR-FR-007",
+      "priority": "MUST",
+      "requirement": "Approval request 생성 실패 시 AE는 WAITING_APPROVAL로 전환해서는 안 되며 no-side-effect error/retry classification을 적용해야 한다.",
+      "verification": "Fault Test",
+      "parent": "18/32"
+    },
+    {
+      "section": "4.3 Formal Approval Request Creation & Binding",
+      "id": "NEX-PRD38-APR-FR-008",
+      "priority": "MUST",
+      "requirement": "Approval request 성공 후 AE local checkpoint transaction 실패 시 orphan approval을 탐지/연결할 수 있는 correlation/causation refs를 보존해야 한다.",
+      "verification": "Recovery Test",
+      "parent": "18/32"
+    },
+    {
+      "section": "4.3 Formal Approval Request Creation & Binding",
+      "id": "NEX-PRD38-APR-FR-009",
+      "priority": "MUST",
+      "requirement": "Approval payload에는 raw access token/secret이 포함되어서는 안 된다.",
+      "verification": "Security Scan",
+      "parent": "18/26"
+    },
+    {
+      "section": "4.4 WAITING_APPROVAL, Checkpoint & Worker Release",
+      "id": "NEX-PRD38-WAIT-FR-001",
+      "priority": "MUST",
+      "requirement": "Approval instance 생성 이후 AE는 checkpoint + execution_wait + WAITING_APPROVAL state + outbox event를 하나의 local durable transaction으로 기록해야 한다.",
+      "verification": "Transaction Test",
+      "parent": "12/18/32"
+    },
+    {
+      "section": "4.4 WAITING_APPROVAL, Checkpoint & Worker Release",
+      "id": "NEX-PRD38-WAIT-FR-002",
+      "priority": "MUST",
+      "requirement": "Checkpoint는 executable_plan/version, current/next step, approval_ref, wait condition, stable entity refs, completed output refs, trace refs를 포함해야 한다.",
+      "verification": "Schema Test",
+      "parent": "12/18"
+    },
+    {
+      "section": "4.4 WAITING_APPROVAL, Checkpoint & Worker Release",
+      "id": "NEX-PRD38-WAIT-FR-003",
+      "priority": "MUST",
+      "requirement": "Checkpoint는 long-lived user access/refresh token 또는 immutable authority grant를 저장해서는 안 된다.",
+      "verification": "Security Test",
+      "parent": "12/26"
+    },
+    {
+      "section": "4.4 WAITING_APPROVAL, Checkpoint & Worker Release",
+      "id": "NEX-PRD38-WAIT-FR-004",
+      "priority": "MUST",
+      "requirement": "WAITING_APPROVAL 전환 후 현재 Worker job은 완료/해제되어야 하며 Worker thread/process가 approval을 polling하며 점유해서는 안 된다.",
+      "verification": "Worker Test",
+      "parent": "12/18/32"
+    },
+    {
+      "section": "4.4 WAITING_APPROVAL, Checkpoint & Worker Release",
+      "id": "NEX-PRD38-WAIT-FR-005",
+      "priority": "MUST",
+      "requirement": "execution_wait는 expected event type APPROVAL_APPROVED 및 approval_instance_ref를 stable condition으로 가져야 한다.",
+      "verification": "Schema Test",
+      "parent": "12/18"
+    },
+    {
+      "section": "4.4 WAITING_APPROVAL, Checkpoint & Worker Release",
+      "id": "NEX-PRD38-WAIT-FR-006",
+      "priority": "MUST",
+      "requirement": "동일 execution/approval에 대한 active wait는 dedup/unique policy로 중복 생성되지 않아야 한다.",
+      "verification": "Concurrency Test",
+      "parent": "12/32"
+    },
+    {
+      "section": "4.4 WAITING_APPROVAL, Checkpoint & Worker Release",
+      "id": "NEX-PRD38-WAIT-FR-007",
+      "priority": "MUST",
+      "requirement": "WAITING_APPROVAL 상태는 사용자/운영자에게 approval owner/state/ref와 함께 표시 가능해야 한다.",
+      "verification": "UI/Monitoring",
+      "parent": "29/30"
+    },
+    {
+      "section": "4.4 WAITING_APPROVAL, Checkpoint & Worker Release",
+      "id": "NEX-PRD38-WAIT-FR-008",
+      "priority": "MUST",
+      "requirement": "Worker crash가 checkpoint commit 이후 발생해도 wait 상태와 approval link는 durable해야 한다.",
+      "verification": "Crash Test",
+      "parent": "12/32"
+    },
+    {
+      "section": "4.4 WAITING_APPROVAL, Checkpoint & Worker Release",
+      "id": "NEX-PRD38-WAIT-FR-009",
+      "priority": "SHOULD",
+      "requirement": "Approval wait가 장기화되어도 background worker capacity가 wait 수에 비례해 고갈되지 않아야 한다.",
+      "verification": "Load Test",
+      "parent": "12/32"
+    },
+    {
+      "section": "4.5 Approval Policy, Approver Authority & SoD",
+      "id": "NEX-PRD38-AUTH-FR-001",
+      "priority": "MUST",
+      "requirement": "Approver candidate resolution은 Enterprise OS approval policy와 OA current RoleBinding/org/project/resource scope를 사용해야 하며 LLM이 approver를 결정해서는 안 된다.",
+      "verification": "Security Test",
+      "parent": "18/26"
+    },
+    {
+      "section": "4.5 Approval Policy, Approver Authority & SoD",
+      "id": "NEX-PRD38-AUTH-FR-002",
+      "priority": "MUST",
+      "requirement": "Golden fixture는 최소 1-stage/1-approver policy를 반복 가능하게 제공하되 production stage/quorum은 versioned EOS policy를 따라야 한다.",
+      "verification": "Fixture/Policy Test",
+      "parent": "18"
+    },
+    {
+      "section": "4.5 Approval Policy, Approver Authority & SoD",
+      "id": "NEX-PRD38-AUTH-FR-003",
+      "priority": "MUST",
+      "requirement": "Approval decision 시 approver_ref, active role_binding_ref, PDP decision ref를 evidence로 저장해야 한다.",
+      "verification": "Audit Test",
+      "parent": "18/26"
+    },
+    {
+      "section": "4.5 Approval Policy, Approver Authority & SoD",
+      "id": "NEX-PRD38-AUTH-FR-004",
+      "priority": "MUST",
+      "requirement": "Separation of Duties policy가 requester==approver 또는 conflicting role을 금지하면 self-approval은 fail-closed해야 한다.",
+      "verification": "SoD Test",
+      "parent": "18/26"
+    },
+    {
+      "section": "4.5 Approval Policy, Approver Authority & SoD",
+      "id": "NEX-PRD38-AUTH-FR-005",
+      "priority": "MUST",
+      "requirement": "결정 시점에 required RoleBinding이 만료/취소된 사용자는 approve할 수 없어야 한다.",
+      "verification": "Security Test",
+      "parent": "18/26"
+    },
+    {
+      "section": "4.5 Approval Policy, Approver Authority & SoD",
+      "id": "NEX-PRD38-AUTH-FR-006",
+      "priority": "MUST",
+      "requirement": "Approver role이 approval 이후 변경되어도 historical decision 자체는 rewrite하지 않아야 한다.",
+      "verification": "History Test",
+      "parent": "18"
+    },
+    {
+      "section": "4.5 Approval Policy, Approver Authority & SoD",
+      "id": "NEX-PRD38-AUTH-FR-007",
+      "priority": "MUST",
+      "requirement": "Formal Approval은 Human-only 기본 정책으로 두며 Agent/LLM message를 approval decision으로 취급하지 않아야 한다.",
+      "verification": "Adversarial Test",
+      "parent": "18/29"
+    },
+    {
+      "section": "4.5 Approval Policy, Approver Authority & SoD",
+      "id": "NEX-PRD38-AUTH-FR-008",
+      "priority": "SHOULD",
+      "requirement": "Delegated approver는 explicit policy와 OA/PDP delegation support가 확인된 경우에만 허용해야 한다.",
+      "verification": "Policy Test",
+      "parent": "18/26"
+    },
+    {
+      "section": "4.5 Approval Policy, Approver Authority & SoD",
+      "id": "NEX-PRD38-AUTH-FR-009",
+      "priority": "MUST",
+      "requirement": "Approval stage/quorum concurrency는 duplicate/competing decision이 final state를 비결정적으로 만들지 않도록 version/locking rule을 가져야 한다.",
+      "verification": "Concurrency Test",
+      "parent": "18"
+    },
+    {
+      "section": "4.6 Approval Decision, Proof & Canonical Events",
+      "id": "NEX-PRD38-EVT-FR-001",
+      "priority": "MUST",
+      "requirement": "APPROVAL_APPROVED는 모든 required stage/quorum이 만족된 경우에만 발생해야 한다.",
+      "verification": "State Test",
+      "parent": "18"
+    },
+    {
+      "section": "4.6 Approval Decision, Proof & Canonical Events",
+      "id": "NEX-PRD38-EVT-FR-002",
+      "priority": "MUST",
+      "requirement": "Approval proof는 proof_id, approval/gate refs, actor/role, exact execution/step/skill/capability/operation, payload/write-intent hashes, policy version, issued/expires를 포함해야 한다.",
+      "verification": "Schema Test",
+      "parent": "18"
+    },
+    {
+      "section": "4.6 Approval Decision, Proof & Canonical Events",
+      "id": "NEX-PRD38-EVT-FR-003",
+      "priority": "MUST",
+      "requirement": "Proof는 client approved=true boolean이 아니라 trusted owner service에서 발급/조회되는 server object여야 한다.",
+      "verification": "Security Test",
+      "parent": "18"
+    },
+    {
+      "section": "4.6 Approval Decision, Proof & Canonical Events",
+      "id": "NEX-PRD38-EVT-FR-004",
+      "priority": "MUST",
+      "requirement": "EOS는 approval decision/proof와 APPROVAL_* event outbox를 같은 owner transaction boundary로 commit해야 한다.",
+      "verification": "Transaction Test",
+      "parent": "18/32"
+    },
+    {
+      "section": "4.6 Approval Decision, Proof & Canonical Events",
+      "id": "NEX-PRD38-EVT-FR-005",
+      "priority": "MUST",
+      "requirement": "APPROVAL_REJECTED/CANCELLED/EXPIRED/INVALIDATED는 protected write로 진행 가능한 proof를 제공해서는 안 된다.",
+      "verification": "Negative Test",
+      "parent": "18"
+    },
+    {
+      "section": "4.6 Approval Decision, Proof & Canonical Events",
+      "id": "NEX-PRD38-EVT-FR-006",
+      "priority": "MUST",
+      "requirement": "APPROVAL_APPROVED event에는 stable event_id, approval_ref, proof_ref, correlation/causation refs가 있어야 한다.",
+      "verification": "Event Contract",
+      "parent": "18/31"
+    },
+    {
+      "section": "4.6 Approval Decision, Proof & Canonical Events",
+      "id": "NEX-PRD38-EVT-FR-007",
+      "priority": "MUST",
+      "requirement": "APPROVAL_STAGE_COMPLETED는 final approval과 구분되며 해당 event만으로 protected write를 resume해서는 안 된다.",
+      "verification": "State Test",
+      "parent": "18"
+    },
+    {
+      "section": "4.6 Approval Decision, Proof & Canonical Events",
+      "id": "NEX-PRD38-EVT-FR-008",
+      "priority": "MUST",
+      "requirement": "Approval event payload에 raw secret/token을 포함해서는 안 된다.",
+      "verification": "Security Scan",
+      "parent": "18/26"
+    },
+    {
+      "section": "4.6 Approval Decision, Proof & Canonical Events",
+      "id": "NEX-PRD38-EVT-FR-009",
+      "priority": "SHOULD",
+      "requirement": "Approval UI/history는 EOS authoritative stage/decision state를 표시하고 AE local projection이 stale하면 재조회해야 한다.",
+      "verification": "UX/Fault Test",
+      "parent": "29/18"
+    },
+    {
+      "section": "4.7 Event Inbox, Dedup & Resume Scheduling",
+      "id": "NEX-PRD38-RESUME-FR-001",
+      "priority": "MUST",
+      "requirement": "AE event inbox는 approval event를 at-least-once로 수신할 수 있다고 가정하고 event_id로 dedup해야 한다.",
+      "verification": "Fault Test",
+      "parent": "12/18/32"
+    },
+    {
+      "section": "4.7 Event Inbox, Dedup & Resume Scheduling",
+      "id": "NEX-PRD38-RESUME-FR-002",
+      "priority": "MUST",
+      "requirement": "동일 APPROVAL_APPROVED event가 반복 전달되어도 Resume Job은 active wait당 1개만 enqueue되어야 한다.",
+      "verification": "Dedup Test",
+      "parent": "12/18/32"
+    },
+    {
+      "section": "4.7 Event Inbox, Dedup & Resume Scheduling",
+      "id": "NEX-PRD38-RESUME-FR-003",
+      "priority": "MUST",
+      "requirement": "Event가 wait row 생성보다 먼저 도착하는 race에서도 inbox evidence를 잃지 않고 이후 wait와 match/reconcile할 수 있어야 한다.",
+      "verification": "Race Test",
+      "parent": "18/32"
+    },
+    {
+      "section": "4.7 Event Inbox, Dedup & Resume Scheduling",
+      "id": "NEX-PRD38-RESUME-FR-004",
+      "priority": "MUST",
+      "requirement": "APPROVAL_REJECTED/CANCELLED/EXPIRED/INVALIDATED event는 wait를 종료시키되 protected step resume가 아니라 explicit blocked/rejected/cancel/re-request policy로 매핑되어야 한다.",
+      "verification": "State Test",
+      "parent": "18/12"
+    },
+    {
+      "section": "4.7 Event Inbox, Dedup & Resume Scheduling",
+      "id": "NEX-PRD38-RESUME-FR-005",
+      "priority": "MUST",
+      "requirement": "Resume Job은 checkpoint_id/execution_id/approval_ref를 고정하고 중복 resume dedup key를 가져야 한다.",
+      "verification": "Job Test",
+      "parent": "12/32"
+    },
+    {
+      "section": "4.7 Event Inbox, Dedup & Resume Scheduling",
+      "id": "NEX-PRD38-RESUME-FR-006",
+      "priority": "MUST",
+      "requirement": "Resume Worker가 stale lease/token으로 execution state를 완료 처리할 수 없어야 한다.",
+      "verification": "Lease Test",
+      "parent": "12/32"
+    },
+    {
+      "section": "4.7 Event Inbox, Dedup & Resume Scheduling",
+      "id": "NEX-PRD38-RESUME-FR-007",
+      "priority": "MUST",
+      "requirement": "Event consumer/outbox 장애 후 recovery scanner가 stuck/unmatched approval event 및 stranded wait를 발견할 수 있어야 한다.",
+      "verification": "Recovery Test",
+      "parent": "32/34"
+    },
+    {
+      "section": "4.7 Event Inbox, Dedup & Resume Scheduling",
+      "id": "NEX-PRD38-RESUME-FR-008",
+      "priority": "SHOULD",
+      "requirement": "Approval wait age와 unmatched event age는 AG monitoring/alerting으로 노출할 수 있어야 한다.",
+      "verification": "Monitoring Test",
+      "parent": "30/34"
+    },
+    {
+      "section": "4.8 Current OA Reauthorization & Freshness",
+      "id": "NEX-PRD38-REAUTH-FR-001",
+      "priority": "MUST",
+      "requirement": "Resume 시 PRD37에서 사용한 과거 EAC/access token을 재사용하지 않고 OA에서 current Effective Authority Context를 rebuild해야 한다.",
+      "verification": "Security Test",
+      "parent": "26/12/18"
+    },
+    {
+      "section": "4.8 Current OA Reauthorization & Freshness",
+      "id": "NEX-PRD38-REAUTH-FR-002",
+      "priority": "MUST",
+      "requirement": "Current reauthorization은 Principal/Business Actor/RoleBinding/Org Scope/Project Scope/Capability/Risk/Auth Level/Kill Switch를 재평가해야 한다.",
+      "verification": "Authorization Test",
+      "parent": "26"
+    },
+    {
+      "section": "4.8 Current OA Reauthorization & Freshness",
+      "id": "NEX-PRD38-REAUTH-FR-003",
+      "priority": "MUST",
+      "requirement": "Approval 대기 중 requester RoleBinding이 revoke/expire되었으면 approval이 APPROVED여도 protected write를 실행해서는 안 된다.",
+      "verification": "Security E2E",
+      "parent": "18/26"
+    },
+    {
+      "section": "4.8 Current OA Reauthorization & Freshness",
+      "id": "NEX-PRD38-REAUTH-FR-004",
+      "priority": "MUST",
+      "requirement": "Approval 대기 중 Project가 closed/inactive 또는 business state가 변경되면 current business precondition을 재검증해야 한다.",
+      "verification": "Business State Test",
+      "parent": "18/31"
+    },
+    {
+      "section": "4.8 Current OA Reauthorization & Freshness",
+      "id": "NEX-PRD38-REAUTH-FR-005",
+      "priority": "MUST",
+      "requirement": "Approval 대기 중 Skill/Capability가 SUSPENDED/REVALIDATION_REQUIRED/disabled이면 protected step을 block/replan/escalate해야 한다.",
+      "verification": "Security Test",
+      "parent": "17/30"
+    },
+    {
+      "section": "4.8 Current OA Reauthorization & Freshness",
+      "id": "NEX-PRD38-REAUTH-FR-006",
+      "priority": "MUST",
+      "requirement": "Approval proof validity/expiry/revocation/invalidation은 Resume 시 owner service에서 current status를 검증해야 한다.",
+      "verification": "Proof Test",
+      "parent": "18"
+    },
+    {
+      "section": "4.8 Current OA Reauthorization & Freshness",
+      "id": "NEX-PRD38-REAUTH-FR-007",
+      "priority": "MUST",
+      "requirement": "Resume reauthorization 실패는 approval historical decision을 삭제/변경하지 않고 execution을 BLOCKED/ESCALATED로 남겨야 한다.",
+      "verification": "State/Audit Test",
+      "parent": "18/26"
+    },
+    {
+      "section": "4.8 Current OA Reauthorization & Freshness",
+      "id": "NEX-PRD38-REAUTH-FR-008",
+      "priority": "SHOULD",
+      "requirement": "OA step-up이 current policy에서 새로 요구되면 approval과 별도로 step-up flow를 요청해야 한다.",
+      "verification": "E2E Security",
+      "parent": "26/29"
+    },
+    {
+      "section": "4.9 NSL Proof Validation & Canonical Write",
+      "id": "NEX-PRD38-NSL-FR-001",
+      "priority": "MUST",
+      "requirement": "Resume 후 LOCAL_SKILL 실행에는 exact CertifiedSkillVersion과 approval proof_ref, stable operation/idempotency key를 ExecutionContext로 전달해야 한다.",
+      "verification": "Contract Test",
+      "parent": "17/29/37"
+    },
+    {
+      "section": "4.9 NSL Proof Validation & Canonical Write",
+      "id": "NEX-PRD38-NSL-FR-002",
+      "priority": "MUST",
+      "requirement": "NSL Runtime은 proof를 trusted GateProofProvider에서 fetch하고 client/AE projection에 포함된 approval boolean을 신뢰해서는 안 된다.",
+      "verification": "Security Test",
+      "parent": "17/18"
+    },
+    {
+      "section": "4.9 NSL Proof Validation & Canonical Write",
+      "id": "NEX-PRD38-NSL-FR-003",
+      "priority": "MUST",
+      "requirement": "NSL은 WRITE 직전에 skill/version, execution_id, plan_step_id, capability_id, operation_key를 proof와 exact match해야 한다.",
+      "verification": "Proof Test",
+      "parent": "17/18"
+    },
+    {
+      "section": "4.9 NSL Proof Validation & Canonical Write",
+      "id": "NEX-PRD38-NSL-FR-004",
+      "priority": "MUST",
+      "requirement": "NSL은 canonical write payload로 payload_hash/write_intent_hash를 재계산하고 approval proof와 일치해야 한다.",
+      "verification": "Hash Test",
+      "parent": "17/18"
+    },
+    {
+      "section": "4.9 NSL Proof Validation & Canonical Write",
+      "id": "NEX-PRD38-NSL-FR-005",
+      "priority": "MUST",
+      "requirement": "Proof expired/revoked/invalidated/mismatched이면 canonical provider WRITE call count는 0이어야 한다.",
+      "verification": "Negative Test",
+      "parent": "17/18"
+    },
+    {
+      "section": "4.9 NSL Proof Validation & Canonical Write",
+      "id": "NEX-PRD38-NSL-FR-006",
+      "priority": "MUST",
+      "requirement": "Current PDP/RoleBinding/Scope/Risk/Kill Switch가 최종 WRITE 직전에도 통과해야 한다.",
+      "verification": "Security Test",
+      "parent": "17/18/26"
+    },
+    {
+      "section": "4.9 NSL Proof Validation & Canonical Write",
+      "id": "NEX-PRD38-NSL-FR-007",
+      "priority": "MUST",
+      "requirement": "Canonical Business API는 동일 PRD37 operation identity/idempotency semantics를 유지하여 resume/retry로 duplicate voucher를 만들지 않아야 한다.",
+      "verification": "Idempotency Test",
+      "parent": "32/37"
+    },
+    {
+      "section": "4.9 NSL Proof Validation & Canonical Write",
+      "id": "NEX-PRD38-NSL-FR-008",
+      "priority": "MUST",
+      "requirement": "APPROVED proof가 있어도 Canonical API commit state는 COMMITTED/NOT_COMMITTED/UNKNOWN_COMMIT_STATE로 별도 처리되어야 한다.",
+      "verification": "Reliability Test",
+      "parent": "17/32/37"
+    },
+    {
+      "section": "4.9 NSL Proof Validation & Canonical Write",
+      "id": "NEX-PRD38-NSL-FR-009",
+      "priority": "MUST",
+      "requirement": "UNKNOWN_COMMIT_STATE는 success나 approval failure로 오인하지 않고 RECONCILIATION_REQUIRED로 전환해야 한다.",
+      "verification": "Fault Test",
+      "parent": "32/37"
+    },
+    {
+      "section": "4.9 NSL Proof Validation & Canonical Write",
+      "id": "NEX-PRD38-NSL-FR-010",
+      "priority": "MUST",
+      "requirement": "Business effect가 COMMITTED된 뒤 approval proof가 invalidate/cancel되어도 자동 rollback하지 않고 domain reversal/follow-up 절차를 사용해야 한다.",
+      "verification": "Post-commit Test",
+      "parent": "18/21/32"
+    },
+    {
+      "section": "4.9 NSL Proof Validation & Canonical Write",
+      "id": "NEX-PRD38-NSL-FR-011",
+      "priority": "MUST",
+      "requirement": "성공 후 proof consumption은 exact operation_key와 audit linkage로 기록되어야 한다.",
+      "verification": "Audit Test",
+      "parent": "17/18"
+    },
+    {
+      "section": "4.9 NSL Proof Validation & Canonical Write",
+      "id": "NEX-PRD38-NSL-FR-012",
+      "priority": "SHOULD",
+      "requirement": "동일 proof+동일 operation/idempotency의 safe retry는 proof가 여전히 valid한 경우에만 허용할 수 있어야 한다.",
+      "verification": "Retry Test",
+      "parent": "17/18/32"
+    },
+    {
+      "section": "4.10 Failure, Cancel, Expire & Invalidate",
+      "id": "NEX-PRD38-FAIL-FR-001",
+      "priority": "MUST",
+      "requirement": "APPROVAL_REJECTED는 zero protected write를 보장하고 user/result에 business rejection으로 명확히 표시해야 한다.",
+      "verification": "E2E Test",
+      "parent": "18/29"
+    },
+    {
+      "section": "4.10 Failure, Cancel, Expire & Invalidate",
+      "id": "NEX-PRD38-FAIL-FR-002",
+      "priority": "MUST",
+      "requirement": "APPROVAL_CANCELLED는 zero protected write를 보장하고 execution을 cancel/escalate/replan 중 policy-defined state로 종료해야 한다.",
+      "verification": "State Test",
+      "parent": "18"
+    },
+    {
+      "section": "4.10 Failure, Cancel, Expire & Invalidate",
+      "id": "NEX-PRD38-FAIL-FR-003",
+      "priority": "MUST",
+      "requirement": "APPROVAL_EXPIRED는 zero protected write를 보장하고 자동 무한 re-request를 금지해야 한다.",
+      "verification": "Fault Test",
+      "parent": "18/32"
+    },
+    {
+      "section": "4.10 Failure, Cancel, Expire & Invalidate",
+      "id": "NEX-PRD38-FAIL-FR-004",
+      "priority": "MUST",
+      "requirement": "APPROVAL_INVALIDATED는 material payload/business state change reason을 audit하고 기존 proof를 재사용하지 않아야 한다.",
+      "verification": "Security Test",
+      "parent": "18"
+    },
+    {
+      "section": "4.10 Failure, Cancel, Expire & Invalidate",
+      "id": "NEX-PRD38-FAIL-FR-005",
+      "priority": "MUST",
+      "requirement": "Approval decision 직후 AE가 crash해도 owner outbox/event 또는 status reconciliation으로 resume를 복구할 수 있어야 한다.",
+      "verification": "Crash Test",
+      "parent": "18/32"
+    },
+    {
+      "section": "4.10 Failure, Cancel, Expire & Invalidate",
+      "id": "NEX-PRD38-FAIL-FR-006",
+      "priority": "MUST",
+      "requirement": "Approval APPROVED와 checkpoint commit이 경합하는 race에서도 lost wake-up이 발생하지 않아야 한다.",
+      "verification": "Race Test",
+      "parent": "18/32"
+    },
+    {
+      "section": "4.10 Failure, Cancel, Expire & Invalidate",
+      "id": "NEX-PRD38-FAIL-FR-007",
+      "priority": "MUST",
+      "requirement": "Duplicate approve/reject 클릭은 owner idempotency/concurrency control로 하나의 일관된 instance state를 유지해야 한다.",
+      "verification": "Concurrency Test",
+      "parent": "18"
+    },
+    {
+      "section": "4.10 Failure, Cancel, Expire & Invalidate",
+      "id": "NEX-PRD38-FAIL-FR-008",
+      "priority": "MUST",
+      "requirement": "Resume 중 current auth deny는 approval rejection으로 재작성하지 않고 authorization blocked outcome으로 구분해야 한다.",
+      "verification": "State/Audit Test",
+      "parent": "18/26"
+    },
+    {
+      "section": "4.10 Failure, Cancel, Expire & Invalidate",
+      "id": "NEX-PRD38-FAIL-FR-009",
+      "priority": "MUST",
+      "requirement": "Approval 후 payload 변경이 필요한 replan은 새 plan version + 새 gate requirement를 생성해야 한다.",
+      "verification": "Replan Test",
+      "parent": "12/18"
+    },
+    {
+      "section": "4.10 Failure, Cancel, Expire & Invalidate",
+      "id": "NEX-PRD38-FAIL-FR-010",
+      "priority": "SHOULD",
+      "requirement": "Poisoned/stuck approval wait는 운영자가 quarantine/escalate할 수 있으나 raw DB state를 직접 수정하지 않아야 한다.",
+      "verification": "Ops Test",
+      "parent": "30/32/34"
+    },
+    {
+      "section": "4.11 Workspace, Approver UX & Notification",
+      "id": "NEX-PRD38-UX-FR-001",
+      "priority": "MUST",
+      "requirement": "AE Workspace는 WAITING_APPROVAL 상태에서 approval summary, authoritative state, approver/stage history link, expected next action을 표시해야 한다.",
+      "verification": "Playwright",
+      "parent": "29/18"
+    },
+    {
+      "section": "4.11 Workspace, Approver UX & Notification",
+      "id": "NEX-PRD38-UX-FR-002",
+      "priority": "MUST",
+      "requirement": "Requester UI의 일반 채팅 텍스트를 approval decision으로 해석해서는 안 된다.",
+      "verification": "Adversarial UI Test",
+      "parent": "29/18"
+    },
+    {
+      "section": "4.11 Workspace, Approver UX & Notification",
+      "id": "NEX-PRD38-UX-FR-003",
+      "priority": "MUST",
+      "requirement": "Approver UI는 exact amount/project/account/capability/operation/effect summary를 EOS authoritative object에서 표시해야 한다.",
+      "verification": "UI/Contract Test",
+      "parent": "18/29"
+    },
+    {
+      "section": "4.11 Workspace, Approver UX & Notification",
+      "id": "NEX-PRD38-UX-FR-004",
+      "priority": "MUST",
+      "requirement": "Sensitive value는 data classification/redaction policy에 따라 requester/approver 역할별로 마스킹할 수 있어야 한다.",
+      "verification": "Privacy Test",
+      "parent": "26/29"
+    },
+    {
+      "section": "4.11 Workspace, Approver UX & Notification",
+      "id": "NEX-PRD38-UX-FR-005",
+      "priority": "MUST",
+      "requirement": "Approval approve/reject/cancel/expire 상태는 Notification과 Runtime wait state에 일관되게 반영되어야 한다.",
+      "verification": "E2E Test",
+      "parent": "29/18"
+    },
+    {
+      "section": "4.11 Workspace, Approver UX & Notification",
+      "id": "NEX-PRD38-UX-FR-006",
+      "priority": "MUST",
+      "requirement": "이미 결정/만료된 approval notification action은 current owner state를 재조회하여 stale action을 무효화해야 한다.",
+      "verification": "Fault UI Test",
+      "parent": "29"
+    },
+    {
+      "section": "4.11 Workspace, Approver UX & Notification",
+      "id": "NEX-PRD38-UX-FR-007",
+      "priority": "MUST",
+      "requirement": "Resume 후 사용자에게 approval 완료와 business write 결과를 별도 상태로 표시하여 APPROVED ≠ COMMITTED를 유지해야 한다.",
+      "verification": "UX State Test",
+      "parent": "18/37"
+    },
+    {
+      "section": "4.11 Workspace, Approver UX & Notification",
+      "id": "NEX-PRD38-UX-FR-008",
+      "priority": "SHOULD",
+      "requirement": "승인 대기 시간/현재 stage를 사용자에게 표시할 수 있으나 SLA를 보장하지 않는 추정치는 명확히 구분해야 한다.",
+      "verification": "UX Test",
+      "parent": "29/30"
+    },
+    {
+      "section": "4.12 Trace, Audit, WA & Observability",
+      "id": "NEX-PRD38-OBS-FR-001",
+      "priority": "MUST",
+      "requirement": "correlation_id로 request→execution→plan→approval→checkpoint→event→resume→skill→operation→business result를 재구성할 수 있어야 한다.",
+      "verification": "Trace Test",
+      "parent": "18/25/31"
+    },
+    {
+      "section": "4.12 Trace, Audit, WA & Observability",
+      "id": "NEX-PRD38-OBS-FR-002",
+      "priority": "MUST",
+      "requirement": "Audit은 approval policy/stage/quorum, approver role/PDP decision, proof/hash, requester reauthorization, NSL verification, commit outcome을 연결해야 한다.",
+      "verification": "Audit Test",
+      "parent": "18/25/26"
+    },
+    {
+      "section": "4.12 Trace, Audit, WA & Observability",
+      "id": "NEX-PRD38-OBS-FR-003",
+      "priority": "MUST",
+      "requirement": "Approval wait age, decision outcome, SoD denied, duplicate event, proof validation failure, resume outcome을 metric으로 제공해야 한다.",
+      "verification": "Monitoring Test",
+      "parent": "18/30"
+    },
+    {
+      "section": "4.12 Trace, Audit, WA & Observability",
+      "id": "NEX-PRD38-OBS-FR-004",
+      "priority": "MUST",
+      "requirement": "NeX-WA integration seam이 존재하면 wait/approval/resume/write 결과를 asynchronous Work Activity event로 projection할 수 있어야 한다.",
+      "verification": "Integration Test",
+      "parent": "22/23/31"
+    },
+    {
+      "section": "4.12 Trace, Audit, WA & Observability",
+      "id": "NEX-PRD38-OBS-FR-005",
+      "priority": "MUST",
+      "requirement": "WA/AG projection 실패가 approval decision 또는 business commit을 rollback하거나 duplicate write를 유발해서는 안 된다.",
+      "verification": "Fault Test",
+      "parent": "31/32"
+    },
+    {
+      "section": "4.12 Trace, Audit, WA & Observability",
+      "id": "NEX-PRD38-OBS-FR-006",
+      "priority": "MUST",
+      "requirement": "Raw token/private key/secret은 audit/metric/notification에 저장하지 않아야 한다.",
+      "verification": "Security Scan",
+      "parent": "26"
+    },
+    {
+      "section": "4.12 Trace, Audit, WA & Observability",
+      "id": "NEX-PRD38-OBS-FR-007",
+      "priority": "SHOULD",
+      "requirement": "운영자는 approval_ref로 관련 execution/checkpoint/event/proof/business result까지 drill-down할 수 있어야 한다.",
+      "verification": "Ops UX Test",
+      "parent": "30"
+    },
+    {
+      "section": "4.13 Test, Acceptance & Release Gate",
+      "id": "NEX-PRD38-TST-FR-001",
+      "priority": "MUST",
+      "requirement": "Changed code는 statement 95%/branch 85% target과 affected regression gate를 적용해야 한다.",
+      "verification": "Coverage Gate",
+      "parent": "33/36"
+    },
+    {
+      "section": "4.13 Test, Acceptance & Release Gate",
+      "id": "NEX-PRD38-TST-FR-002",
+      "priority": "MUST",
+      "requirement": "PostgreSQL integration test는 격리된 test DB를 초기화하여 approval/checkpoint/event race를 반복 가능하게 실행해야 한다.",
+      "verification": "Test Inspection",
+      "parent": "33"
+    },
+    {
+      "section": "4.13 Test, Acceptance & Release Gate",
+      "id": "NEX-PRD38-TST-FR-003",
+      "priority": "MUST",
+      "requirement": "Golden happy fixture는 same voucher payload + formal approval required + one-stage one-approver + self-approval denied 정책으로 반복 가능해야 한다.",
+      "verification": "Golden Test",
+      "parent": "18/33"
+    },
+    {
+      "section": "4.13 Test, Acceptance & Release Gate",
+      "id": "NEX-PRD38-TST-FR-004",
+      "priority": "MUST",
+      "requirement": "Mandatory fault suite는 reject/cancel/expire/invalidate, approver role expiry, requester role revoke, duplicate approved event, approval-before-wait race, worker crash, payload mutation을 포함해야 한다.",
+      "verification": "Fault Suite",
+      "parent": "18/32/33"
+    },
+    {
+      "section": "4.13 Test, Acceptance & Release Gate",
+      "id": "NEX-PRD38-TST-FR-005",
+      "priority": "MUST",
+      "requirement": "NSL fault suite는 proof mismatch/expiry/revocation/different operation, current PDP deny, idempotency conflict, unknown commit을 포함해야 한다.",
+      "verification": "NSL Integration",
+      "parent": "17/18/33"
+    },
+    {
+      "section": "4.13 Test, Acceptance & Release Gate",
+      "id": "NEX-PRD38-TST-FR-006",
+      "priority": "MUST",
+      "requirement": "Playwright E2E는 requester waiting UI, approver decision, notification, resume, final result 및 denied/rejected variants를 자동화해야 한다.",
+      "verification": "Playwright",
+      "parent": "29/33"
+    },
+    {
+      "section": "4.13 Test, Acceptance & Release Gate",
+      "id": "NEX-PRD38-TST-FR-007",
+      "priority": "MUST",
+      "requirement": "Acceptance Package는 business/approval/security/reliability/trace/UX/operations evidence와 Critical blocker=0을 포함해야 한다.",
+      "verification": "Acceptance Gate",
+      "parent": "33/34/36"
+    },
+    {
+      "section": "4.13 Test, Acceptance & Release Gate",
+      "id": "NEX-PRD38-TST-FR-008",
+      "priority": "MUST",
+      "requirement": "RC 배포 전 33 Acceptance Evidence와 34 canary/smoke/rollback readiness가 있어야 한다.",
+      "verification": "Release Gate",
+      "parent": "33/34"
+    },
+    {
+      "section": "4.13 Test, Acceptance & Release Gate",
+      "id": "NEX-PRD38-TST-FR-009",
+      "priority": "MUST",
+      "requirement": "PRD38 regression suite는 완료 후 permanent 33 regression contract로 편입되어야 한다.",
+      "verification": "CI Inspection",
+      "parent": "33/36"
+    },
+    {
+      "section": "4.13 Test, Acceptance & Release Gate",
+      "id": "NEX-PRD38-TST-FR-010",
+      "priority": "SHOULD",
+      "requirement": "Repository Evidence 확인 후 physical endpoint/schema mapping 변경 시 logical acceptance IDs를 유지하고 contract regression을 재실행해야 한다.",
+      "verification": "Traceability Review",
+      "parent": "36"
+    }
+  ],
+  "tasks": [
+    {
+      "task_id": "T38-01",
+      "area": "Repository Evidence Gate",
+      "deliverable": "AE/EOS/OA/NSL approval integration의 실제 repo/schema/API/test evidence 수집; 미확인 부분은 PROVISIONAL 유지",
+      "depends": "36",
+      "evidence": "evidence checklist"
+    },
+    {
+      "task_id": "T38-02",
+      "area": "Golden Approval Policy Fixture",
+      "deliverable": "PRD37 payload + formal_approval_required=true + 1-stage/1-approver + self-approval denied test fixture",
+      "depends": "T38-01",
+      "evidence": "repeatable fixture"
+    },
+    {
+      "task_id": "T38-03",
+      "area": "Plan Compiler Formal Gate",
+      "deliverable": "policy 결과로 FORMAL_APPROVAL step/HumanGateRequirement 삽입",
+      "depends": "T38-02",
+      "evidence": "compiler tests"
+    },
+    {
+      "task_id": "T38-04",
+      "area": "Payload / Write Intent Binding",
+      "deliverable": "canonical payload snapshot + payload_hash/write_intent_hash + exact operation binding",
+      "depends": "T38-03",
+      "evidence": "hash mutation tests"
+    },
+    {
+      "task_id": "T38-05",
+      "area": "AE→EOS Approval Create Adapter",
+      "deliverable": "idempotent APPROVAL.CREATE_REQUEST logical adapter",
+      "depends": "T38-04",
+      "evidence": "contract/fault tests"
+    },
+    {
+      "task_id": "T38-06",
+      "area": "Approval Policy / Approver / SoD",
+      "deliverable": "EOS policy stage/quorum + OA role/scope + self-approval denial",
+      "depends": "T38-02,T38-05",
+      "evidence": "policy/security tests"
+    },
+    {
+      "task_id": "T38-07",
+      "area": "AE Suspend Transaction",
+      "deliverable": "checkpoint + execution_wait + WAITING_APPROVAL + outbox local TX",
+      "depends": "T38-05",
+      "evidence": "transaction/crash tests"
+    },
+    {
+      "task_id": "T38-08",
+      "area": "Worker Release & Recovery",
+      "deliverable": "no polling, lease release, stranded wait/orphan approval recovery",
+      "depends": "T38-07",
+      "evidence": "load/recovery tests"
+    },
+    {
+      "task_id": "T38-09",
+      "area": "Approval UI / Inbox",
+      "deliverable": "AE requester wait UI + EOS authoritative approver view/history",
+      "depends": "T38-05,T38-06",
+      "evidence": "Playwright/UX"
+    },
+    {
+      "task_id": "T38-10",
+      "area": "EOS Decision / Proof / Outbox",
+      "deliverable": "append-only decision, trusted proof, canonical approval events",
+      "depends": "T38-06",
+      "evidence": "state/concurrency tests"
+    },
+    {
+      "task_id": "T38-11",
+      "area": "AE Event Inbox / Dedup",
+      "deliverable": "event_id dedup, early-event race, one resume job",
+      "depends": "T38-07,T38-10",
+      "evidence": "fault/race tests"
+    },
+    {
+      "task_id": "T38-12",
+      "area": "Resume Current Reauthorization",
+      "deliverable": "OA EAC rebuild + current role/scope/capability/risk/kill/business state",
+      "depends": "T38-11",
+      "evidence": "security E2E"
+    },
+    {
+      "task_id": "T38-13",
+      "area": "NSL Approval Proof Adapter",
+      "deliverable": "trusted proof fetch + exact skill/step/op/hash/current PDP validation",
+      "depends": "T38-12",
+      "evidence": "zero-write negative tests"
+    },
+    {
+      "task_id": "T38-14",
+      "area": "Canonical Write Continuation",
+      "deliverable": "same operation/idempotency semantics + explicit commit state after resume",
+      "depends": "T38-13",
+      "evidence": "business/reliability tests"
+    },
+    {
+      "task_id": "T38-15",
+      "area": "Proof Consumption",
+      "deliverable": "exact operation consumption audit; same-operation retry policy",
+      "depends": "T38-14",
+      "evidence": "audit/retry tests"
+    },
+    {
+      "task_id": "T38-16",
+      "area": "Failure State Mapping",
+      "deliverable": "reject/cancel/expire/invalidate/reauth deny/unknown commit outcome mapping",
+      "depends": "T38-10~15",
+      "evidence": "state/fault suite"
+    },
+    {
+      "task_id": "T38-17",
+      "area": "Notification / Result UX",
+      "deliverable": "approval wait/decision/resume/result state separation; APPROVED≠COMMITTED",
+      "depends": "T38-09,T38-16",
+      "evidence": "Playwright"
+    },
+    {
+      "task_id": "T38-18",
+      "area": "Audit / Metrics / WA Seam",
+      "deliverable": "full correlation chain + approval metrics + asynchronous WA projection",
+      "depends": "T38-10~17",
+      "evidence": "trace/monitoring"
+    },
+    {
+      "task_id": "T38-19",
+      "area": "Automated Fault Injection",
+      "deliverable": "duplicate event, approval-before-wait, crash, role revoke, payload change, proof invalidation",
+      "depends": "T38-07~18",
+      "evidence": "33 fault evidence"
+    },
+    {
+      "task_id": "T38-20",
+      "area": "Golden E2E Automation",
+      "deliverable": "requester→wait→approver→event→resume→write→result Playwright+API suite",
+      "depends": "T38-19",
+      "evidence": "Acceptance package"
+    },
+    {
+      "task_id": "T38-21",
+      "area": "RC Deploy / Smoke / Rollback",
+      "deliverable": "release manifest, canary, post-deploy approval/resume smoke, rollback readiness",
+      "depends": "T38-20",
+      "evidence": "34 operational acceptance"
+    },
+    {
+      "task_id": "T38-22",
+      "area": "Baseline Tag & Regression Adoption",
+      "deliverable": "AC signoff, trace matrix, permanent regression inclusion",
+      "depends": "T38-21",
+      "evidence": "baseline tag + evidence package"
+    }
+  ],
+  "acceptance_criteria": [
+    {
+      "id": "AC-PRD38-001",
+      "category": "Business",
+      "condition": "formal approval-required fixture에서 approval 이전 protected WRITE call은 0이다.",
+      "evidence": "provider call evidence",
+      "critical": "YES"
+    },
+    {
+      "id": "AC-PRD38-002",
+      "category": "Business",
+      "condition": "APPROVAL_APPROVED 후 current checks를 통과하면 authoritative voucher business result가 정확히 1회 생성된다.",
+      "evidence": "EOS result/read-back",
+      "critical": "YES"
+    },
+    {
+      "id": "AC-PRD38-003",
+      "category": "Approval",
+      "condition": "approval request가 exact payload/operation/skill/step 및 policy version에 binding된다.",
+      "evidence": "approval/proof snapshot",
+      "critical": "YES"
+    },
+    {
+      "id": "AC-PRD38-004",
+      "category": "Approval",
+      "condition": "Golden fixture는 self-approval을 거부하고 required approver role만 approve할 수 있다.",
+      "evidence": "SoD/PDP evidence",
+      "critical": "YES"
+    },
+    {
+      "id": "AC-PRD38-005",
+      "category": "Approval",
+      "condition": "APPROVAL_STAGE_COMPLETED만으로는 Resume/WRITE가 발생하지 않는다.",
+      "evidence": "event/state trace",
+      "critical": "YES"
+    },
+    {
+      "id": "AC-PRD38-006",
+      "category": "Approval",
+      "condition": "REJECTED/CANCELLED/EXPIRED/INVALIDATED 각각 protected WRITE call count=0이다.",
+      "evidence": "negative E2E",
+      "critical": "YES"
+    },
+    {
+      "id": "AC-PRD38-007",
+      "category": "Runtime",
+      "condition": "WAITING_APPROVAL checkpoint 후 worker가 release되고 장기 polling thread가 없다.",
+      "evidence": "worker/lease metrics",
+      "critical": "YES"
+    },
+    {
+      "id": "AC-PRD38-008",
+      "category": "Runtime",
+      "condition": "worker restart 후에도 approval wait/checkpoint가 durable하고 정상 resume 가능하다.",
+      "evidence": "crash test",
+      "critical": "YES"
+    },
+    {
+      "id": "AC-PRD38-009",
+      "category": "Reliability",
+      "condition": "동일 APPROVAL_APPROVED event N회 전달에도 Resume Job과 protected write는 각각 1회다.",
+      "evidence": "dedup fault test",
+      "critical": "YES"
+    },
+    {
+      "id": "AC-PRD38-010",
+      "category": "Reliability",
+      "condition": "approval decision이 wait commit보다 먼저 발생해도 lost wake-up 없이 resume된다.",
+      "evidence": "race injection",
+      "critical": "YES"
+    },
+    {
+      "id": "AC-PRD38-011",
+      "category": "Security",
+      "condition": "Resume는 과거 EAC/token을 재사용하지 않고 current OA EAC/PDP를 rebuild한다.",
+      "evidence": "auth trace",
+      "critical": "YES"
+    },
+    {
+      "id": "AC-PRD38-012",
+      "category": "Security",
+      "condition": "approval 대기 중 requester RoleBinding revoke 시 APPROVED여도 write=0, execution blocked/escalated다.",
+      "evidence": "security E2E",
+      "critical": "YES"
+    },
+    {
+      "id": "AC-PRD38-013",
+      "category": "Security",
+      "condition": "payload/project/account/operation 변경은 old proof mismatch/new gate를 요구한다.",
+      "evidence": "hash mutation test",
+      "critical": "YES"
+    },
+    {
+      "id": "AC-PRD38-014",
+      "category": "Security",
+      "condition": "proof expired/revoked/invalidated 또는 different operation이면 NSL provider WRITE=0이다.",
+      "evidence": "NSL negative test",
+      "critical": "YES"
+    },
+    {
+      "id": "AC-PRD38-015",
+      "category": "Security",
+      "condition": "LLM/클라이언트가 approver/approved=true를 주입해도 EOS/OA/NSL 경계를 우회하지 못한다.",
+      "evidence": "adversarial test",
+      "critical": "YES"
+    },
+    {
+      "id": "AC-PRD38-016",
+      "category": "NSL",
+      "condition": "ExecutablePlan과 Runtime은 동일 exact CertifiedSkillVersion을 사용한다.",
+      "evidence": "plan/runtime provenance",
+      "critical": "YES"
+    },
+    {
+      "id": "AC-PRD38-017",
+      "category": "NSL",
+      "condition": "NSL이 proof를 trusted owner에서 fetch하고 write-intent/payload hash를 재계산한다.",
+      "evidence": "proof validation trace",
+      "critical": "YES"
+    },
+    {
+      "id": "AC-PRD38-018",
+      "category": "Reliability",
+      "condition": "resume 이후 duplicate/network retry가 동일 business idempotency key를 유지하여 voucher 중복이 없다.",
+      "evidence": "idempotency test",
+      "critical": "YES"
+    },
+    {
+      "id": "AC-PRD38-019",
+      "category": "Reliability",
+      "condition": "UNKNOWN_COMMIT_STATE는 RECONCILIATION_REQUIRED이며 blind retry=0이다.",
+      "evidence": "fault/reconciliation evidence",
+      "critical": "YES"
+    },
+    {
+      "id": "AC-PRD38-020",
+      "category": "State",
+      "condition": "APPROVED, RUNNING, COMMITTED, Ledger/P&L projected 상태가 각각 구분된다.",
+      "evidence": "state/UI test",
+      "critical": "YES"
+    },
+    {
+      "id": "AC-PRD38-021",
+      "category": "Trace",
+      "condition": "request→approval→decision/proof→checkpoint→event→resume→skill→operation→voucher chain이 재구성된다.",
+      "evidence": "trace export",
+      "critical": "YES"
+    },
+    {
+      "id": "AC-PRD38-022",
+      "category": "Audit",
+      "condition": "policy/stage/quorum, approver authority, current requester authority, proof hashes, commit outcome이 연결된다.",
+      "evidence": "audit package",
+      "critical": "YES"
+    },
+    {
+      "id": "AC-PRD38-023",
+      "category": "UX",
+      "condition": "requester는 approval pending/rejected/expired/approved/resumed/result를 구분해 본다.",
+      "evidence": "Playwright",
+      "critical": "YES"
+    },
+    {
+      "id": "AC-PRD38-024",
+      "category": "UX",
+      "condition": "approver는 EOS authoritative exact payload/effect와 stage/history를 확인하고 결정한다.",
+      "evidence": "Playwright/contract",
+      "critical": "YES"
+    },
+    {
+      "id": "AC-PRD38-025",
+      "category": "Architecture",
+      "condition": "AE/NSL은 EOS approval/business DB를 직접 쓰지 않고 canonical contracts/events만 사용한다.",
+      "evidence": "architecture test",
+      "critical": "YES"
+    },
+    {
+      "id": "AC-PRD38-026",
+      "category": "Architecture",
+      "condition": "actual file/class/table/endpoint mapping은 repository evidence 전 provisional로 유지된다.",
+      "evidence": "implementation record",
+      "critical": "YES"
+    },
+    {
+      "id": "AC-PRD38-027",
+      "category": "Operations",
+      "condition": "wait age/decision/SoD denied/duplicate event/proof failure/resume outcome metrics가 보인다.",
+      "evidence": "monitoring snapshot",
+      "critical": "NO"
+    },
+    {
+      "id": "AC-PRD38-028",
+      "category": "Operations",
+      "condition": "Golden happy + mandatory fault PASS, critical blocker=0, canary/smoke/rollback readiness가 있다.",
+      "evidence": "Acceptance Evidence Package",
+      "critical": "YES"
+    },
+    {
+      "id": "AC-PRD38-029",
+      "category": "Regression",
+      "condition": "PRD38 suite가 33 permanent regression suite에 편입된다.",
+      "evidence": "CI config/test catalog",
+      "critical": "NO"
+    }
+  ],
+  "open_decisions": [
+    {
+      "id": "OD-38-01",
+      "topic": "Protected business operation",
+      "decision": "Formal Approval이 실제 Voucher CREATE/CREATE_DRAFT/후속 SUBMIT 중 어느 capability를 보호하는지 EOS accounting contract 확인 후 확정",
+      "status": "OPEN - physical/business mapping pending"
+    },
+    {
+      "id": "OD-38-02",
+      "topic": "Approval policy source",
+      "decision": "실제 production approval policy/stage/quorum/approver source의 repo/API mapping",
+      "status": "OPEN - 18 logical owner is EOS"
+    },
+    {
+      "id": "OD-38-03",
+      "topic": "Approval UI hosting",
+      "decision": "AE Workspace embedded/proxy view와 EOS native approval view 간 실제 UX/endpoint boundary",
+      "status": "OPEN - owner state remains EOS"
+    },
+    {
+      "id": "OD-38-04",
+      "topic": "Event transport",
+      "decision": "초기 HTTP polling/DB outbox bridge/SSE 등 physical transport 선택; canonical event semantics는 고정",
+      "status": "OPEN - no Kafka requirement implied"
+    },
+    {
+      "id": "OD-38-05",
+      "topic": "Physical schemas/endpoints",
+      "decision": "AE/EOS/OA/NSL repository evidence 전 logical names only",
+      "status": "OPEN - INC-0 evidence gate"
+    }
+  ]
+}

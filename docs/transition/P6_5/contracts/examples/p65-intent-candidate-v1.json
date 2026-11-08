@@ -1,0 +1,26 @@
+{
+  "schema_version": "p65.intent_candidate.v1",
+  "intent_label": "analyze_project_budget",
+  "suggested_execution_mode": "GROUNDED_ANSWER",
+  "entity_selectors": [
+    {
+      "selector_id": "E1",
+      "selector_type": "QUERY_TERM",
+      "value": "프로젝트 예산 집행 잔액",
+      "confidence": 0.94
+    }
+  ],
+  "parameter_candidates": [
+    {
+      "name": "report_language",
+      "value": "ko-KR",
+      "confidence": 0.99
+    }
+  ],
+  "clarification": {
+    "required": false,
+    "reasons": [],
+    "questions": []
+  },
+  "confidence": 0.92
+}

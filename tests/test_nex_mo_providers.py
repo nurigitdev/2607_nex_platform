@@ -120,6 +120,7 @@ def test_generation_model_profiles_support_custom_selected_profile() -> None:
             "NEX_MO_MODEL_ROOT": "/models",
             "NEX_MO_GENERATION_PROFILE": "kai_local_trial_v1",
             "NEX_MO_GENERATION_MODEL_NAME": "K-AI local trial v1",
+            "NEX_MO_GENERATION_MODEL_PRECISION": "BF16",
             "NEX_MO_GENERATION_MODEL_PATH": "/models/kai-local-trial-v1",
         }
     )
@@ -130,6 +131,7 @@ def test_generation_model_profiles_support_custom_selected_profile() -> None:
     assert len(GENERATION_PROFILE_CANDIDATES) == 3
     assert generation_profiles[-1].profile_name == "kai_local_trial_v1"
     assert generation_profiles[-1].model_name == "K-AI local trial v1"
+    assert generation_profiles[-1].precision == "BF16"
     assert generation_profiles[-1].candidate_role == "custom"
     assert generation_profiles[-1].selected is True
     assert generation_profiles[0].selected is False

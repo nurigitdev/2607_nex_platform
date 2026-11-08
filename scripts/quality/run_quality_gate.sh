@@ -5,11 +5,11 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT_DIR"
 
 PYTHON_BIN="${PYTHON_BIN:-./.venv/bin/python}"
-STATEMENT_COVERAGE_MIN="${STATEMENT_COVERAGE_MIN:-95}"
-BRANCH_COVERAGE_MIN="${BRANCH_COVERAGE_MIN:-85}"
+STATEMENT_COVERAGE_MIN="${STATEMENT_COVERAGE_MIN:-96}"
+BRANCH_COVERAGE_MIN="${BRANCH_COVERAGE_MIN:-94}"
 REPORT_DIR="${REPORT_DIR:-reports/coverage}"
 
-export PYTHONPATH="services/_shared:services/nex-oa:services/nex-ag:services/nex-ae-api:services/nex-cx:services/nex-mo:providers/nex-compatible-provider:scripts/db:scripts/dev:scripts/smoke:scripts/quality${PYTHONPATH:+:$PYTHONPATH}"
+export PYTHONPATH="services/_shared:services/nex-oa:services/nex-ag:services/nex-ae-api:services/nex-cx:services/nex-mo:services/nex-wc:services/nex-eos:services/nex-wa:providers/nex-compatible-provider:scripts/db:scripts/dev:scripts/smoke:scripts/quality${PYTHONPATH:+:$PYTHONPATH}"
 
 mkdir -p "$REPORT_DIR"
 
@@ -28,7 +28,14 @@ mkdir -p "$REPORT_DIR"
   "$STATEMENT_COVERAGE_MIN" \
   "$BRANCH_COVERAGE_MIN"
 
+"$PYTHON_BIN" scripts/quality/report_coverage_hotspots.py \
+  "$REPORT_DIR/coverage.json" \
+  --output "$REPORT_DIR/coverage-hotspots.json" \
+  --summary
+
 "$PYTHON_BIN" scripts/quality/validate_contracts.py
+"$PYTHON_BIN" scripts/quality/run_golden_journey_transition_audit.py --summary
+"$PYTHON_BIN" scripts/quality/run_demo_product_dependency_audit.py --summary
 
 "$PYTHON_BIN" scripts/smoke/run_ae_web_static_browser_smoke.py --summary
 "$PYTHON_BIN" scripts/smoke/run_ae_web_retrieval_quality_warning_smoke.py --summary
@@ -818,3 +825,8 @@ npm test --prefix apps/nex-ae-web
 "$PYTHON_BIN" scripts/smoke/run_s150_release_decision.py --summary
 "$PYTHON_BIN" scripts/smoke/run_s150_protected_acceptance.py --summary
 "$PYTHON_BIN" scripts/smoke/run_s150_production_release_closure.py --summary
+"$PYTHON_BIN" scripts/smoke/run_p5_planning_execution_foundation_closure.py --summary
+"$PYTHON_BIN" scripts/smoke/run_p6_ca02_s8_runtime_profile_acceptance.py --summary
+"$PYTHON_BIN" scripts/smoke/run_p8_s06_nsl_compatibility.py --summary
+"$PYTHON_BIN" scripts/smoke/run_p8_s68_golden_a_evidence_package.py --execute --summary
+"$PYTHON_BIN" scripts/deployment/run_p8_demo_s12_release_operations_closure.py --summary

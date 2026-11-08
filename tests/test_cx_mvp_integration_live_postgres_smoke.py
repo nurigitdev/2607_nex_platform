@@ -117,6 +117,15 @@ def test_configuration_reports_missing_models_shapes_and_generation_url() -> Non
     }
     assert any("CHAT_COMPLETIONS" in item["field"] for item in issues)
 
+    current = _live_env(NEX_MO_VLLM_MODEL="Qwen3.5-9B")
+    current_issues = smoke.configuration_issues(
+        current,
+        expected_models={**smoke.EXPECTED_MODELS, "generation": "Qwen3.5-9B"},
+    )
+    assert not any(
+        item.get("field") == "NEX_MO_VLLM_MODEL" for item in current_issues
+    )
+
 
 def test_successful_execution_builds_redacted_live_evidence(monkeypatch) -> None:
     _patch_database(monkeypatch)

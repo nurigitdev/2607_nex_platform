@@ -1,0 +1,67 @@
+{
+  "schema_version": "1.0",
+  "agent_plan_id": "AP-0001",
+  "agent_plan_version": 1,
+  "execution_id": "AE-EXEC-0001",
+  "work_intent_id": "WI-INTENT-0001",
+  "plan_kind": "DIRECT",
+  "steps": [
+    {
+      "step_id": "S1",
+      "step_type": "LOCAL_CAPABILITY",
+      "title": "출장비 전표 초안 생성",
+      "depends_on": [],
+      "required_capability": "accounting.voucher.create_draft",
+      "input_bindings": {
+        "project": {
+          "source": "ENTITY_SELECTOR",
+          "selector_id": "E1"
+        },
+        "amount": {
+          "source": "WORK_INTENT_PARAMETER",
+          "parameter_name": "amount"
+        },
+        "expense_category": {
+          "source": "WORK_INTENT_PARAMETER",
+          "parameter_name": "expense_category"
+        },
+        "currency": {
+          "source": "WORK_INTENT_PARAMETER",
+          "parameter_name": "currency"
+        }
+      },
+      "output_contract": {
+        "schema_ref": "contract://accounting/voucher-draft-result/v1",
+        "artifact_type": null,
+        "evidence_required": true
+      },
+      "operation_semantics": "COMMAND_CANDIDATE"
+    }
+  ],
+  "completion_criteria": [
+    {
+      "criterion_id": "C1",
+      "description": "전표 초안 결과가 생성되고 검증 가능한 business reference를 반환한다.",
+      "required_terminal_step_refs": [
+        "S1"
+      ]
+    }
+  ],
+  "planning_constraints": {
+    "max_plan_steps": 12,
+    "max_delegation_depth": 2,
+    "replan_allowed": true
+  },
+  "user_safe_rationale_summary": "전표 초안 생성을 위한 단일 Certified Capability 경로를 사용합니다.",
+  "source_plan_template": null,
+  "supersedes_agent_plan_id": null,
+  "replan_reason": null,
+  "provenance": {
+    "builder_type": "DIRECT_BINDER",
+    "prompt_template_ref": null,
+    "model_profile": null,
+    "model_ref": null,
+    "input_context_hash": "sha256:EXAMPLE_CONTEXT_HASH",
+    "routing_decision_ref": "ROUTE-0001"
+  }
+}

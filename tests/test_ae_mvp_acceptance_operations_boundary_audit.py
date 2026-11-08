@@ -82,6 +82,8 @@ def test_boundary_audit_advances_across_resolution_documents(
         document = tmp_path / f"docs/slices/{number}0_s{number}_closure.md"
         document.parent.mkdir(parents=True, exist_ok=True)
         document.write_text("closure\n", encoding="utf-8")
+    unrelated = tmp_path / "docs/slices/p8_s104_nvt_project_gap_closure.md"
+    unrelated.write_text("different requirement namespace\n", encoding="utf-8")
     for relative_path in tuple(audit.GAP_RESOLUTION_PATHS.values())[:3]:
         path = tmp_path / relative_path
         path.parent.mkdir(parents=True, exist_ok=True)

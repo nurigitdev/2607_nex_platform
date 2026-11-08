@@ -1,0 +1,59 @@
+{
+  "activation_boundary": {
+    "approved_scope": "CONTROLLED_ANSWER_SUPPORT_POLICY_STEADY_STATE_OPERATIONS",
+    "current_operations_mode": "CONTROLLED_SUSTAINED_OPERATIONS",
+    "current_policy": "ANSWER_SUPPORT_POLICY_CUTOVER_ACTIVE",
+    "current_runtime_continues_unchanged": true,
+    "decision_status": "APPROVED_NOT_EXECUTED",
+    "next_boundary": "ANSWER_SUPPORT_POLICY_STEADY_STATE_OPERATIONS_ACTIVATION_AND_ROLLBACK_ACCEPTANCE",
+    "production_release_requires_separate_decision": true,
+    "steady_state_activation_permitted_in_this_slice": false,
+    "steady_state_activation_requires_installed_acceptance": true
+  },
+  "decision_policy": {
+    "automatic_activation_permitted": false,
+    "maximum_e2e_p95_latency_ms": 20000,
+    "maximum_provider_p95_latency_ms": 15000,
+    "operator_decision_required": true,
+    "required_activation_status": "NOT_ACTIVATED",
+    "required_maximum_concurrency": 4,
+    "required_profile_status": "READY_FOR_OPERATOR_DECISION",
+    "required_provider_call_count": 12,
+    "required_readiness_decision": "READY_FOR_ANSWER_SUPPORT_POLICY_STEADY_STATE_OPERATOR_DECISION",
+    "required_readiness_status": "PASS",
+    "required_review_sample_interval": 12
+  },
+  "design_hash": "sha256:2830f5cc6dcd1ea9d118b047ded212d1f432e0ecf9111b7be6b3d02cb3fa8347",
+  "design_id": "cx-answer-support-policy-steady-state-operator-decision-v1",
+  "design_schema_version": "cx_answer_support_policy_steady_state_decision_design.v1",
+  "rollback_policy": {
+    "cutover_terminal_state": "ROLLBACK_STATE_DOMINANT",
+    "e2e_p95_slo_breach": "ROLLBACK_PENDING_OPERATOR_REVIEW",
+    "fallback_decision": "IMMEDIATE_ROLLBACK_REQUIRED",
+    "fallback_policy": "CURRENT_ANSWER_SUPPORT_POLICY_FALLBACK",
+    "provider_failure": "IMMEDIATE_ROLLBACK_REQUIRED",
+    "provider_p95_slo_breach": "ROLLBACK_PENDING_OPERATOR_REVIEW",
+    "review_cadence_reached": "OPERATOR_REVIEW_REQUIRED",
+    "rollback_target": "CURRENT_CONTROLLED_ANSWER_SUPPORT_POLICY"
+  },
+  "safety": {
+    "database_call_permitted": false,
+    "holdout_access_permitted": false,
+    "production_cutover_permitted": false,
+    "provider_call_permitted": false,
+    "runtime_mutation_permitted": false,
+    "steady_state_activation_permitted": false,
+    "threshold_or_profile_reselection_permitted": false
+  },
+  "source_binding": {
+    "operations_profile_hash": "sha256:a7332978f9779253959c555bf9e4186ff59020363431d0962b9442d4712d5376",
+    "readiness_design_hash": "sha256:057728a73784d92a4748dd8dda4f5184c2c9d8d18aa03e80fd025eac890e5042",
+    "readiness_manifest_hash": "sha256:16d69053d45efee055e660945db6da7badfcb8b043429dd6316b1a0f5b80d483",
+    "readiness_report_hash": "sha256:ddf9a611c952329470cd3b923868600ce9b8bb400fb74db368ee67489e384bbe",
+    "review_receipt_hash": "sha256:2290062fe78edb246940a1b85fd9f0a3e984477079d1f65eec266a7f9341131f",
+    "selected_policy_hash": "sha256:c81f7a0bf3d3d72d7bbc5de1f564ada3b415f2206689c1939fcb925f172168cb",
+    "source_evidence_hash": "sha256:dd021190d164c1b0eb1a66af09cd8d8169b5926500cc75d1e1d547c7f78889a8",
+    "sustained_policy_hash": "sha256:4524e2e54929f42fe1c2e60b6c93941a373a0359ead5810126045c3668c99f6a"
+  },
+  "status": "FROZEN_OPERATOR_DECISION"
+}

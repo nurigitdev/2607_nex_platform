@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "NSPPackageGovernanceProjection v2.1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "package_ref",
+    "package_version",
+    "package_hash",
+    "publisher_ref",
+    "governance_status"
+  ],
+  "properties": {
+    "package_ref": {
+      "type": "string"
+    },
+    "package_version": {
+      "type": "string"
+    },
+    "package_hash": {
+      "type": "string"
+    },
+    "skill_ref": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "skill_semantic_hash": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "publisher_ref": {
+      "type": "string"
+    },
+    "signing_key_ref": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "governance_status": {
+      "enum": [
+        "ACTIVE",
+        "SUSPENDED",
+        "REVALIDATION_REQUIRED",
+        "REVOKED",
+        "DEPRECATED"
+      ]
+    },
+    "decision_refs": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "evidence_refs": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}

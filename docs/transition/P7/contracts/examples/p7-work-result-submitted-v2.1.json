@@ -1,0 +1,25 @@
+{
+  "schema_version": "2.1",
+  "event_id": "event-p7-golden-001",
+  "event_name": "WORK_RESULT_SUBMITTED",
+  "tenant_id": "tenant-a",
+  "work_item_id": "work-p7-golden-001",
+  "result_id": "work-result-p7-golden-001",
+  "revision_no": 1,
+  "result_type": "PROJECT_BUDGET_ANALYSIS",
+  "result_schema_ref": "contract://nex/wc/project-budget-analysis/v1",
+  "technical_outcome": "SUCCEEDED",
+  "business_outcome": "PENDING_VERIFICATION",
+  "source_execution_ref": "execution-child-001",
+  "claim_ref": "claim-p7-golden-001",
+  "claim_generation": 1,
+  "assignment_ref": "assignment-p7-golden-001",
+  "submitted_by": {
+    "entity_type": "AGENT",
+    "entity_id": "agent-pa-project-alpha"
+  },
+  "resume_match_ref": "work-p7-golden-001",
+  "correlation_id": "corr-p7-golden-001",
+  "causation_id": "work-result-p7-golden-001",
+  "occurred_at": "2026-10-18T01:00:10Z"
+}

@@ -1,0 +1,23 @@
+﻿Probe,Check,PASS,Detail
+E08-R01,RUNNING RuntimeJob with lease validates,True,
+E08-R02,RUNNING RuntimeJob without lease token rejected,True,conditional schema
+E08-R03,RuntimeJob SQL enforces unique tenant+dedup_key,True,duplicate logical enqueue suppressed
+E08-R04,IdempotencyRecord validates,True,
+E08-R05,Idempotency SQL unique key + BO/WriteNode,True,durable conflict domain
+E08-R06,same key/same payload → REPLAY_OR_CONTINUE,True,
+E08-R07,same key/different payload → IDEMPOTENCY_CONFLICT,True,Provider WRITE=0 contract
+E09-R01,Canonical UNKNOWN result validates,True,
+E09-R02,UNKNOWN + COMPLETED rejected,True,
+E09-R03,Non-canonical CommitState rejected,True,
+E09-R04,recon_evidence,True,
+E09-R05,recon_case,True,
+E09-R06,recon_outcome,True,
+E09-R07,recon_outcome,True,
+E09-R08,CONFIRMED_COMMITTED + SAFE_TO_RETRY rejected,True,
+E09-R09,RECONCILE_EXECUTION RuntimeJob validates,True,
+E10-R01,COMMITTED + FAILED + UNSAFE validates,True,
+E10-R02,COMMITTED + SAFE_TO_RETRY rejected,True,
+E10-R03,COMMITTED with null VerificationStatus rejected,True,
+E10-R04,Typed NSLResultMapper maps COMMITTED → DO_NOT_RETRY,True,
+E10-R05,AE mandatory retry disposition COMMITTED → DO_NOT_RETRY,True,
+E09-R10,AE mandatory retry disposition UNKNOWN → RECONCILE_FIRST,True,
