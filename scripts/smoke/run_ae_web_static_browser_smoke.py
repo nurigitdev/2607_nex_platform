@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import os
 import signal
+import socket
 import subprocess
 import sys
 import time
@@ -47,6 +48,12 @@ def validate_html(
 ) -> tuple[str, ...]:
     expected = anchors or required_anchors()
     return tuple(anchor for anchor in expected if anchor not in html)
+
+
+def find_available_port() -> int:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as listener:
+        listener.bind(("127.0.0.1", 0))
+        return int(listener.getsockname()[1])
 
 
 def run_static_browser_smoke(
@@ -174,15 +181,16 @@ def format_summary(result: BrowserSmokeResult) -> str:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--port", type=int, default=DEFAULT_PORT)
+    parser.add_argument("--port", type=int)
     parser.add_argument("--slice-label", default=DEFAULT_SLICE_LABEL)
     parser.add_argument("--timeout", type=float, default=10.0)
     parser.add_argument("--no-start-server", action="store_true")
     parser.add_argument("--summary", action="store_true")
     args = parser.parse_args(argv)
 
+    port = args.port if args.port is not None else find_available_port()
     result = run_static_browser_smoke(
-        port=args.port,
+        port=port,
         slice_label=args.slice_label,
         timeout_seconds=args.timeout,
         start_server=not args.no_start_server,
