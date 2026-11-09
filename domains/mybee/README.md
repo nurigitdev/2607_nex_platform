@@ -20,7 +20,10 @@ recorded in `docs/mybee_phase1/baselines/repo_compatibility_owners.md`.
 ```bash
 ./.venv/bin/pytest -q \
   tests/mybee_phase1/test_bootstrap.py \
-  tests/mybee_phase1/test_boundary_imports.py
+  tests/mybee_phase1/test_boundary_imports.py \
+  tests/mybee_phase1/contracts/test_nex_api_compatibility.py
+
+./domains/mybee/compatibility/check_lock.py --root . --summary
 ```
 
 All integration uses canonical versioned contracts. Direct service-private

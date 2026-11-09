@@ -17,7 +17,7 @@ FULL_GATE_PATH = "scripts/quality/run_quality_gate.sh"
 DEFAULT_STATEMENT_MIN = 95.0
 DEFAULT_BRANCH_MIN = 94.0
 SAFE_COVERAGE_TARGET = re.compile(r"^[A-Za-z0-9_./-]+$")
-ALLOWED_COVERAGE_PREFIXES = ("services/", "providers/", "scripts/")
+ALLOWED_COVERAGE_PREFIXES = ("services/", "providers/", "scripts/", "domains/")
 
 
 @dataclass(frozen=True)
@@ -377,7 +377,7 @@ def _validated_coverage_target(root: Path, raw: str) -> str:
         raise ValueError(f"invalid coverage target: {raw}")
     if not raw.startswith(ALLOWED_COVERAGE_PREFIXES):
         raise ValueError(
-            "coverage target must be a services/, providers/, or scripts/ path"
+            "coverage target must be a services/, providers/, scripts/, or domains/ path"
         )
     if not (root / raw).exists():
         raise ValueError(f"coverage path does not exist: {raw}")
@@ -391,7 +391,7 @@ def _coverage_source_argument(target: str) -> str:
     parts = path.parts
     if parts[0] == "scripts" and len(parts) == 3:
         return path.stem
-    if parts[0] in {"services", "providers"} and len(parts) >= 4:
+    if parts[0] in {"services", "providers", "domains"} and len(parts) >= 4:
         return ".".join((*parts[2:-1], path.stem))
     raise ValueError(f"Python coverage file is outside an import root: {target}")
 

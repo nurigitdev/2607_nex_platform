@@ -21,6 +21,7 @@ def _minimal_root(tmp_path: Path) -> Path:
         "tests/test_s97_example_closure.py",
         "scripts/smoke/run_current_smoke.py",
         "services/nex-cx/nex_cx/module.py",
+        "domains/mybee/mybee_ax/module.py",
         "scripts/smoke/extra.py",
     ):
         target = tmp_path / path
@@ -186,7 +187,7 @@ def test_platform_slice_profile_requires_explicit_changed_coverage_scope(
         (
             gate.build_slice_plan,
             {"service": "nex-cx", "coverage_targets": ["nex_cx.module"]},
-            "services/, providers/, or scripts/ path",
+            "services/, providers/, scripts/, or domains/ path",
         ),
         (
             gate.build_slice_plan,
@@ -271,6 +272,7 @@ def test_execute_plan_stops_on_failure_and_writes_safe_evidence(
 
 
 def test_execute_plan_success_and_helpers(tmp_path: Path) -> None:
+    source_root = _minimal_root(tmp_path / "source")
     plan = gate.GatePlan(
         tier="checkpoint",
         service=None,
@@ -306,9 +308,18 @@ def test_execute_plan_success_and_helpers(tmp_path: Path) -> None:
         )
         == "nex_compatible_provider.app"
     )
+    assert (
+        gate._coverage_source_argument(
+            "domains/mybee/mybee_ax/compatibility.py"
+        )
+        == "mybee_ax.compatibility"
+    )
     assert gate._coverage_source_argument("services/nex-cx/nex_cx") == (
         "services/nex-cx/nex_cx"
     )
+    assert gate._validated_coverage_target(
+        source_root, "domains/mybee/mybee_ax"
+    ) == "domains/mybee/mybee_ax"
     with pytest.raises(ValueError, match="outside an import root"):
         gate._coverage_source_argument("scripts/nested/path/module.py")
 
