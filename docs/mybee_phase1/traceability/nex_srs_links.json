@@ -1,0 +1,55 @@
+{
+  "schema_version": "nex.mybee.srs-links.v1",
+  "slice_id": "S0-03",
+  "status": "TRACEABILITY_BASELINE_SOURCE_PDF_GATE_OPEN",
+  "canonical_srs": {
+    "path": "docs/transition/MyBee_Phase1/NeX_MyBee_D04_D12_EOS_SRS_v1.0.md",
+    "sha256": "sha256:7facf0620ce5e8b9d14c4a0c4895e6a2fb55e67edbe3578a6eb2536c661616fe",
+    "requirement_count": 116
+  },
+  "source_documents": {
+    "D04_v1.9.pdf": {
+      "repository": "nurigitdev/2611_MyBee_Blueprint",
+      "status": "REGISTERED_PAGE_LEVEL_RECONCILIATION_OPEN"
+    },
+    "D12_v2.8.pdf": {
+      "repository": "nurigitdev/2611_MyBee_Blueprint",
+      "status": "REGISTERED_PAGE_LEVEL_RECONCILIATION_OPEN"
+    }
+  },
+  "source_release_gate": {
+    "gate_id": "G-SRC-PDF",
+    "status": "OPEN",
+    "required_before": "M2_RELEASE",
+    "acceptance": "D04 and D12 page/section semantic reconciliation with named owner sign-off"
+  },
+  "canonical_nex_contracts": {
+    "frozen_authority": "docs/frozen/v2.1/10_PLATFORM_v2.1/05_NORMATIVE_BASELINE/NeX_Platform_v2.1_Architecture_Consistency_Closure_and_Unified_Change_Ledger_v1.0.md",
+    "eos_openapi": "contracts/openapi/nex-eos.openapi.yaml",
+    "oa_openapi": "contracts/openapi/nex-oa.openapi.yaml",
+    "wc_openapi": "contracts/openapi/nex-wc.openapi.yaml",
+    "ae_openapi": "contracts/openapi/nex-ae-api.openapi.yaml",
+    "wa_openapi": "contracts/openapi/nex-wa.openapi.yaml"
+  },
+  "requirement_families": {
+    "ACC": 7,
+    "ALC": 15,
+    "APR": 8,
+    "ARCH": 10,
+    "COM": 2,
+    "DOC": 7,
+    "FX": 24,
+    "MST": 4,
+    "PER": 4,
+    "PNL": 10,
+    "PRJ": 8,
+    "SEC": 9,
+    "VCH": 8
+  },
+  "change_control": {
+    "frozen_semantics": "CONTROLLED_AMENDMENT_REQUIRED",
+    "new_nsl_tool_activation": false,
+    "silent_requirement_deletion_allowed": false,
+    "implementation_pass_claimed": false
+  }
+}

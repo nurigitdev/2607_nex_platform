@@ -1,0 +1,2716 @@
+{
+  "schema_version": "nex.mybee.requirement-traceability.v1",
+  "slice_id": "S0-03",
+  "status": "PLANNED_NOT_IMPLEMENTED",
+  "source_srs": {
+    "path": "docs/transition/MyBee_Phase1/NeX_MyBee_D04_D12_EOS_SRS_v1.0.md",
+    "sha256": "sha256:7facf0620ce5e8b9d14c4a0c4895e6a2fb55e67edbe3578a6eb2536c661616fe"
+  },
+  "source_execution_matrix": {
+    "path": "docs/transition/MyBee_Phase1/NeX_MyBee_Implementation_Slice_Plan_Execution_Matrix_v1.2.json",
+    "sha256": "sha256:e8017d251abb54078b5d989726f62395974f761d17a63f5e433a55c8ca216aab"
+  },
+  "requirement_count": 116,
+  "requirements": [
+    {
+      "requirement_id": "SRS-ACC-001",
+      "primary_packet_id": "S1-02",
+      "canonical_api": "FINANCE.ACCOUNT.CATALOG_GET; FINANCE.ACCOUNT.CREATE_APPROVED",
+      "canonical_nsl_tool": "READ: FINANCE.ACCOUNT.CATALOG_GET; governed CREATE",
+      "pytest_path": "tests/test_nex_eos_mybee_account_policy.py",
+      "gates": [
+        "G-COA",
+        "PG-ACCOUNT"
+      ],
+      "source_existing": [
+        "accounts.py",
+        "account_api.py",
+        "2505_eos_account.sql"
+      ],
+      "source_new": [
+        "account_catalog.py",
+        "account_policy_api.py"
+      ],
+      "eos_migration_files": [
+        "database/nex-eos/migrations/2517_eos_account_catalog_accounting_period.sql"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED"
+    },
+    {
+      "requirement_id": "SRS-ACC-002",
+      "primary_packet_id": "S1-02",
+      "canonical_api": "FINANCE.ACCOUNT.CATALOG_GET; FINANCE.ACCOUNT.CREATE_APPROVED",
+      "canonical_nsl_tool": "READ: FINANCE.ACCOUNT.CATALOG_GET; governed CREATE",
+      "pytest_path": "tests/test_nex_eos_mybee_account_policy.py",
+      "gates": [
+        "G-COA",
+        "PG-ACCOUNT"
+      ],
+      "source_existing": [
+        "accounts.py",
+        "account_api.py",
+        "2505_eos_account.sql"
+      ],
+      "source_new": [
+        "account_catalog.py",
+        "account_policy_api.py"
+      ],
+      "eos_migration_files": [
+        "database/nex-eos/migrations/2517_eos_account_catalog_accounting_period.sql"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED"
+    },
+    {
+      "requirement_id": "SRS-ACC-003",
+      "primary_packet_id": "S1-02",
+      "canonical_api": "FINANCE.ACCOUNT.CATALOG_GET; FINANCE.ACCOUNT.CREATE_APPROVED",
+      "canonical_nsl_tool": "READ: FINANCE.ACCOUNT.CATALOG_GET; governed CREATE",
+      "pytest_path": "tests/test_nex_eos_mybee_account_policy.py",
+      "gates": [
+        "G-COA",
+        "PG-ACCOUNT"
+      ],
+      "source_existing": [
+        "accounts.py",
+        "account_api.py",
+        "2505_eos_account.sql"
+      ],
+      "source_new": [
+        "account_catalog.py",
+        "account_policy_api.py"
+      ],
+      "eos_migration_files": [
+        "database/nex-eos/migrations/2517_eos_account_catalog_accounting_period.sql"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED"
+    },
+    {
+      "requirement_id": "SRS-ACC-004",
+      "primary_packet_id": "S3-02",
+      "canonical_api": "FINANCE.VOUCHER_CANDIDATE.VALIDATE",
+      "canonical_nsl_tool": "READ/validation Tool; no GL side-effect",
+      "pytest_path": "tests/test_nex_eos_mybee_voucher_fx_validation.py",
+      "gates": [
+        "G-FX",
+        "G-CANDIDATE"
+      ],
+      "source_existing": [
+        "vouchers.py",
+        "accounts.py",
+        "nsl_eos_write_execution.py"
+      ],
+      "source_new": [
+        "candidate_validation.py"
+      ],
+      "eos_migration_files": [
+        "database/nex-eos/migrations/2522_eos_voucher_candidate_v2.sql"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED"
+    },
+    {
+      "requirement_id": "SRS-ACC-005",
+      "primary_packet_id": "S1-02",
+      "canonical_api": "FINANCE.ACCOUNT.CATALOG_GET; FINANCE.ACCOUNT.CREATE_APPROVED",
+      "canonical_nsl_tool": "READ: FINANCE.ACCOUNT.CATALOG_GET; governed CREATE",
+      "pytest_path": "tests/test_nex_eos_mybee_account_policy.py",
+      "gates": [
+        "G-COA",
+        "PG-ACCOUNT"
+      ],
+      "source_existing": [
+        "accounts.py",
+        "account_api.py",
+        "2505_eos_account.sql"
+      ],
+      "source_new": [
+        "account_catalog.py",
+        "account_policy_api.py"
+      ],
+      "eos_migration_files": [
+        "database/nex-eos/migrations/2517_eos_account_catalog_accounting_period.sql"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED"
+    },
+    {
+      "requirement_id": "SRS-ACC-006",
+      "primary_packet_id": "S1-02",
+      "canonical_api": "FINANCE.ACCOUNT.CATALOG_GET; FINANCE.ACCOUNT.CREATE_APPROVED",
+      "canonical_nsl_tool": "READ: FINANCE.ACCOUNT.CATALOG_GET; governed CREATE",
+      "pytest_path": "tests/test_nex_eos_mybee_account_policy.py",
+      "gates": [
+        "G-COA",
+        "PG-ACCOUNT"
+      ],
+      "source_existing": [
+        "accounts.py",
+        "account_api.py",
+        "2505_eos_account.sql"
+      ],
+      "source_new": [
+        "account_catalog.py",
+        "account_policy_api.py"
+      ],
+      "eos_migration_files": [
+        "database/nex-eos/migrations/2517_eos_account_catalog_accounting_period.sql"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED"
+    },
+    {
+      "requirement_id": "SRS-ACC-007",
+      "primary_packet_id": "S4-02",
+      "canonical_api": "FINANCE.JOURNAL.GET/VERIFY",
+      "canonical_nsl_tool": "READ verification + signed journal result",
+      "pytest_path": "tests/test_nex_eos_mybee_journal_immutable_pg.py",
+      "gates": [
+        "G-GL-ACID",
+        "PG-IMMUTABLE"
+      ],
+      "source_existing": [
+        "business_transactions.py",
+        "2506_eos_voucher_draft.sql KEEP"
+      ],
+      "source_new": [
+        "journals.py",
+        "journal_verification.py"
+      ],
+      "eos_migration_files": [
+        "database/nex-eos/migrations/2523_eos_posted_journal_posting.sql"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED"
+    },
+    {
+      "requirement_id": "SRS-ALC-001",
+      "primary_packet_id": "S6-01",
+      "canonical_api": "Cost source pool internal read admission",
+      "canonical_nsl_tool": "READ eligible component; no manual GL duplication",
+      "pytest_path": "tests/test_nex_eos_mybee_cost_pool.py",
+      "gates": [
+        "G-ALLOCATION",
+        "PG-POOL"
+      ],
+      "source_existing": [
+        "journals.py",
+        "account_catalog.py"
+      ],
+      "source_new": [
+        "cost_source_pools.py"
+      ],
+      "eos_migration_files": [
+        "database/nex-eos/migrations/2525_eos_cost_source_allocation.sql"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED"
+    },
+    {
+      "requirement_id": "SRS-ALC-002",
+      "primary_packet_id": "S6-01",
+      "canonical_api": "Cost source pool internal read admission",
+      "canonical_nsl_tool": "READ eligible component; no manual GL duplication",
+      "pytest_path": "tests/test_nex_eos_mybee_cost_pool.py",
+      "gates": [
+        "G-ALLOCATION",
+        "PG-POOL"
+      ],
+      "source_existing": [
+        "journals.py",
+        "account_catalog.py"
+      ],
+      "source_new": [
+        "cost_source_pools.py"
+      ],
+      "eos_migration_files": [
+        "database/nex-eos/migrations/2525_eos_cost_source_allocation.sql"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED"
+    },
+    {
+      "requirement_id": "SRS-ALC-003",
+      "primary_packet_id": "S6-01",
+      "canonical_api": "Cost source pool internal read admission",
+      "canonical_nsl_tool": "READ eligible component; no manual GL duplication",
+      "pytest_path": "tests/test_nex_eos_mybee_cost_pool.py",
+      "gates": [
+        "G-ALLOCATION",
+        "PG-POOL"
+      ],
+      "source_existing": [
+        "journals.py",
+        "account_catalog.py"
+      ],
+      "source_new": [
+        "cost_source_pools.py"
+      ],
+      "eos_migration_files": [
+        "database/nex-eos/migrations/2525_eos_cost_source_allocation.sql"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED"
+    },
+    {
+      "requirement_id": "SRS-ALC-004",
+      "primary_packet_id": "S6-04",
+      "canonical_api": "D08/D15 source ingest → approved candidate v2",
+      "canonical_nsl_tool": "NSL domain Skill invokes canonical EOS tools",
+      "pytest_path": "tests/test_mybee_domain_cost_pilots.py",
+      "gates": [
+        "G-ALLOCATION",
+        "G-PRIVACY"
+      ],
+      "source_existing": [
+        "allocation_plans.py",
+        "journals.py"
+      ],
+      "source_new": [
+        "mybee_cost_source_adapters.py"
+      ],
+      "eos_migration_files": [
+        "database/nex-eos/migrations/2525_eos_cost_source_allocation.sql"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED"
+    },
+    {
+      "requirement_id": "SRS-ALC-005",
+      "primary_packet_id": "S7-03",
+      "canonical_api": "FINANCE.PROJECT_PNL.GET; FINANCE.NVT_PNL.GET",
+      "canonical_nsl_tool": "READ classification EAC/OA scope",
+      "pytest_path": "tests/test_nex_eos_mybee_pnl_privacy.py",
+      "gates": [
+        "G-PRIVACY",
+        "PG-RLS"
+      ],
+      "source_existing": [
+        "authorization.py",
+        "voucher_access.py"
+      ],
+      "source_new": [
+        "pnl_privacy.py",
+        "pnl_access.py"
+      ],
+      "eos_migration_files": [
+        "database/nex-eos/migrations/2527_eos_project_pnl_projection.sql"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED"
+    },
+    {
+      "requirement_id": "SRS-ALC-006",
+      "primary_packet_id": "S6-03",
+      "canonical_api": "FINANCE.COST_ALLOCATION.RUN/VERIFY",
+      "canonical_nsl_tool": "WRITE CREATE batch + READ VERIFY",
+      "pytest_path": "tests/test_nex_eos_mybee_allocation_pg.py",
+      "gates": [
+        "G-ALLOCATION",
+        "PG-CONSERVE"
+      ],
+      "source_existing": [
+        "business_transactions.py",
+        "outbox_publication.py"
+      ],
+      "source_new": [
+        "cost_allocations.py",
+        "allocation_reconciliation.py"
+      ],
+      "eos_migration_files": [
+        "database/nex-eos/migrations/2525_eos_cost_source_allocation.sql"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED"
+    },
+    {
+      "requirement_id": "SRS-ALC-007",
+      "primary_packet_id": "S6-03",
+      "canonical_api": "FINANCE.COST_ALLOCATION.RUN/VERIFY",
+      "canonical_nsl_tool": "WRITE CREATE batch + READ VERIFY",
+      "pytest_path": "tests/test_nex_eos_mybee_allocation_pg.py",
+      "gates": [
+        "G-ALLOCATION",
+        "PG-CONSERVE"
+      ],
+      "source_existing": [
+        "business_transactions.py",
+        "outbox_publication.py"
+      ],
+      "source_new": [
+        "cost_allocations.py",
+        "allocation_reconciliation.py"
+      ],
+      "eos_migration_files": [
+        "database/nex-eos/migrations/2525_eos_cost_source_allocation.sql"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED"
+    },
+    {
+      "requirement_id": "SRS-ALC-008",
+      "primary_packet_id": "S6-03",
+      "canonical_api": "FINANCE.COST_ALLOCATION.RUN/VERIFY",
+      "canonical_nsl_tool": "WRITE CREATE batch + READ VERIFY",
+      "pytest_path": "tests/test_nex_eos_mybee_allocation_pg.py",
+      "gates": [
+        "G-ALLOCATION",
+        "PG-CONSERVE"
+      ],
+      "source_existing": [
+        "business_transactions.py",
+        "outbox_publication.py"
+      ],
+      "source_new": [
+        "cost_allocations.py",
+        "allocation_reconciliation.py"
+      ],
+      "eos_migration_files": [
+        "database/nex-eos/migrations/2525_eos_cost_source_allocation.sql"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED"
+    },
+    {
+      "requirement_id": "SRS-ALC-009",
+      "primary_packet_id": "S6-03",
+      "canonical_api": "FINANCE.COST_ALLOCATION.RUN/VERIFY",
+      "canonical_nsl_tool": "WRITE CREATE batch + READ VERIFY",
+      "pytest_path": "tests/test_nex_eos_mybee_allocation_pg.py",
+      "gates": [
+        "G-ALLOCATION",
+        "PG-CONSERVE"
+      ],
+      "source_existing": [
+        "business_transactions.py",
+        "outbox_publication.py"
+      ],
+      "source_new": [
+        "cost_allocations.py",
+        "allocation_reconciliation.py"
+      ],
+      "eos_migration_files": [
+        "database/nex-eos/migrations/2525_eos_cost_source_allocation.sql"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED"
+    },
+    {
+      "requirement_id": "SRS-ALC-010",
+      "primary_packet_id": "S6-01",
+      "canonical_api": "Cost source pool internal read admission",
+      "canonical_nsl_tool": "READ eligible component; no manual GL duplication",
+      "pytest_path": "tests/test_nex_eos_mybee_cost_pool.py",
+      "gates": [
+        "G-ALLOCATION",
+        "PG-POOL"
+      ],
+      "source_existing": [
+        "journals.py",
+        "account_catalog.py"
+      ],
+      "source_new": [
+        "cost_source_pools.py"
+      ],
+      "eos_migration_files": [
+        "database/nex-eos/migrations/2525_eos_cost_source_allocation.sql"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED"
+    },
+    {
+      "requirement_id": "SRS-ALC-011",
+      "primary_packet_id": "S6-01",
+      "canonical_api": "Cost source pool internal read admission",
+      "canonical_nsl_tool": "READ eligible component; no manual GL duplication",
+      "pytest_path": "tests/test_nex_eos_mybee_cost_pool.py",
+      "gates": [
+        "G-ALLOCATION",
+        "PG-POOL"
+      ],
+      "source_existing": [
+        "journals.py",
+        "account_catalog.py"
+      ],
+      "source_new": [
+        "cost_source_pools.py"
+      ],
+      "eos_migration_files": [
+        "database/nex-eos/migrations/2525_eos_cost_source_allocation.sql"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED"
+    },
+    {
+      "requirement_id": "SRS-ALC-012",
+      "primary_packet_id": "S6-01",
+      "canonical_api": "Cost source pool internal read admission",
+      "canonical_nsl_tool": "READ eligible component; no manual GL duplication",
+      "pytest_path": "tests/test_nex_eos_mybee_cost_pool.py",
+      "gates": [
+        "G-ALLOCATION",
+        "PG-POOL"
+      ],
+      "source_existing": [
+        "journals.py",
+        "account_catalog.py"
+      ],
+      "source_new": [
+        "cost_source_pools.py"
+      ],
+      "eos_migration_files": [
+        "database/nex-eos/migrations/2525_eos_cost_source_allocation.sql"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED"
+    },
+    {
+      "requirement_id": "SRS-ALC-013",
+      "primary_packet_id": "S6-03",
+      "canonical_api": "FINANCE.COST_ALLOCATION.RUN/VERIFY",
+      "canonical_nsl_tool": "WRITE CREATE batch + READ VERIFY",
+      "pytest_path": "tests/test_nex_eos_mybee_allocation_pg.py",
+      "gates": [
+        "G-ALLOCATION",
+        "PG-CONSERVE"
+      ],
+      "source_existing": [
+        "business_transactions.py",
+        "outbox_publication.py"
+      ],
+      "source_new": [
+        "cost_allocations.py",
+        "allocation_reconciliation.py"
+      ],
+      "eos_migration_files": [
+        "database/nex-eos/migrations/2525_eos_cost_source_allocation.sql"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED"
+    },
+    {
+      "requirement_id": "SRS-ALC-014",
+      "primary_packet_id": "S6-03",
+      "canonical_api": "FINANCE.COST_ALLOCATION.RUN/VERIFY",
+      "canonical_nsl_tool": "WRITE CREATE batch + READ VERIFY",
+      "pytest_path": "tests/test_nex_eos_mybee_allocation_pg.py",
+      "gates": [
+        "G-ALLOCATION",
+        "PG-CONSERVE"
+      ],
+      "source_existing": [
+        "business_transactions.py",
+        "outbox_publication.py"
+      ],
+      "source_new": [
+        "cost_allocations.py",
+        "allocation_reconciliation.py"
+      ],
+      "eos_migration_files": [
+        "database/nex-eos/migrations/2525_eos_cost_source_allocation.sql"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED"
+    },
+    {
+      "requirement_id": "SRS-ALC-015",
+      "primary_packet_id": "S6-04",
+      "canonical_api": "D08/D15 source ingest → approved candidate v2",
+      "canonical_nsl_tool": "NSL domain Skill invokes canonical EOS tools",
+      "pytest_path": "tests/test_mybee_domain_cost_pilots.py",
+      "gates": [
+        "G-ALLOCATION",
+        "G-PRIVACY"
+      ],
+      "source_existing": [
+        "allocation_plans.py",
+        "journals.py"
+      ],
+      "source_new": [
+        "mybee_cost_source_adapters.py"
+      ],
+      "eos_migration_files": [
+        "database/nex-eos/migrations/2525_eos_cost_source_allocation.sql"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED"
+    },
+    {
+      "requirement_id": "SRS-APR-001",
+      "primary_packet_id": "S2-03",
+      "canonical_api": "FINANCE.ACCOUNTING_APPROVAL.REQUEST + WC event",
+      "canonical_nsl_tool": "No agent self-approve; OA human finance:journal:approve",
+      "pytest_path": "tests/test_nex_eos_mybee_approval_human.py",
+      "gates": [
+        "G-HUMAN",
+        "PG-OA"
+      ],
+      "source_existing": [
+        "approval_decision_api.py",
+        "approval_transitions.py",
+        "authorization.py"
+      ],
+      "source_new": [
+        "accounting_approval.py",
+        "accounting_approval_api.py"
+      ],
+      "eos_migration_files": [
+        "database/nex-eos/migrations/2521_eos_scoped_approval_case_v2.sql"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED"
+    },
+    {
+      "requirement_id": "SRS-APR-002",
+      "primary_packet_id": "S2-03",
+      "canonical_api": "FINANCE.ACCOUNTING_APPROVAL.REQUEST + WC event",
+      "canonical_nsl_tool": "No agent self-approve; OA human finance:journal:approve",
+      "pytest_path": "tests/test_nex_eos_mybee_approval_human.py",
+      "gates": [
+        "G-HUMAN",
+        "PG-OA"
+      ],
+      "source_existing": [
+        "approval_decision_api.py",
+        "approval_transitions.py",
+        "authorization.py"
+      ],
+      "source_new": [
+        "accounting_approval.py",
+        "accounting_approval_api.py"
+      ],
+      "eos_migration_files": [
+        "database/nex-eos/migrations/2521_eos_scoped_approval_case_v2.sql"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED"
+    },
+    {
+      "requirement_id": "SRS-APR-003",
+      "primary_packet_id": "S2-03",
+      "canonical_api": "FINANCE.ACCOUNTING_APPROVAL.REQUEST + WC event",
+      "canonical_nsl_tool": "No agent self-approve; OA human finance:journal:approve",
+      "pytest_path": "tests/test_nex_eos_mybee_approval_human.py",
+      "gates": [
+        "G-HUMAN",
+        "PG-OA"
+      ],
+      "source_existing": [
+        "approval_decision_api.py",
+        "approval_transitions.py",
+        "authorization.py"
+      ],
+      "source_new": [
+        "accounting_approval.py",
+        "accounting_approval_api.py"
+      ],
+      "eos_migration_files": [
+        "database/nex-eos/migrations/2521_eos_scoped_approval_case_v2.sql"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED"
+    },
+    {
+      "requirement_id": "SRS-APR-004",
+      "primary_packet_id": "S4-01",
+      "canonical_api": "FINANCE.VOUCHER.APPROVE_AND_POST (admission)",
+      "canonical_nsl_tool": "NSL WRITE R5; OA freshness + exact human proof",
+      "pytest_path": "tests/test_nex_eos_mybee_accountant_proof.py",
+      "gates": [
+        "G-HUMAN",
+        "G-GL-ACID"
+      ],
+      "source_existing": [
+        "approval_transitions.py",
+        "authorization.py",
+        "approval_instances.py"
+      ],
+      "source_new": [
+        "accounting_posting_admission.py"
+      ],
+      "eos_migration_files": [
+        "database/nex-eos/migrations/2523_eos_posted_journal_posting.sql"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED"
+    },
+    {
+      "requirement_id": "SRS-APR-005",
+      "primary_packet_id": "S2-03",
+      "canonical_api": "FINANCE.ACCOUNTING_APPROVAL.REQUEST + WC event",
+      "canonical_nsl_tool": "No agent self-approve; OA human finance:journal:approve",
+      "pytest_path": "tests/test_nex_eos_mybee_approval_human.py",
+      "gates": [
+        "G-HUMAN",
+        "PG-OA"
+      ],
+      "source_existing": [
+        "approval_decision_api.py",
+        "approval_transitions.py",
+        "authorization.py"
+      ],
+      "source_new": [
+        "accounting_approval.py",
+        "accounting_approval_api.py"
+      ],
+      "eos_migration_files": [
+        "database/nex-eos/migrations/2521_eos_scoped_approval_case_v2.sql"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED"
+    },
+    {
+      "requirement_id": "SRS-APR-006",
+      "primary_packet_id": "S4-04",
+      "canonical_api": "FINANCE.JOURNAL.RECONCILE",
+      "canonical_nsl_tool": "READ authoritative business operation; NSL typed UNKNOWN",
+      "pytest_path": "tests/test_nex_eos_mybee_posting_replay_pg.py",
+      "gates": [
+        "G-GL-ACID",
+        "G-RECOVERY"
+      ],
+      "source_existing": [
+        "business_transactions.py",
+        "outbox_publication.py",
+        "nsl_eos_reconciliation.py"
+      ],
+      "source_new": [
+        "journal_operations.py",
+        "journal_outbox_events.py"
+      ],
+      "eos_migration_files": [
+        "database/nex-eos/migrations/2523_eos_posted_journal_posting.sql"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED"
+    },
+    {
+      "requirement_id": "SRS-APR-007",
+      "primary_packet_id": "S4-01",
+      "canonical_api": "FINANCE.VOUCHER.APPROVE_AND_POST (admission)",
+      "canonical_nsl_tool": "NSL WRITE R5; OA freshness + exact human proof",
+      "pytest_path": "tests/test_nex_eos_mybee_accountant_proof.py",
+      "gates": [
+        "G-HUMAN",
+        "G-GL-ACID"
+      ],
+      "source_existing": [
+        "approval_transitions.py",
+        "authorization.py",
+        "approval_instances.py"
+      ],
+      "source_new": [
+        "accounting_posting_admission.py"
+      ],
+      "eos_migration_files": [
+        "database/nex-eos/migrations/2523_eos_posted_journal_posting.sql"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED"
+    },
+    {
+      "requirement_id": "SRS-APR-008",
+      "primary_packet_id": "S2-03",
+      "canonical_api": "FINANCE.ACCOUNTING_APPROVAL.REQUEST + WC event",
+      "canonical_nsl_tool": "No agent self-approve; OA human finance:journal:approve",
+      "pytest_path": "tests/test_nex_eos_mybee_approval_human.py",
+      "gates": [
+        "G-HUMAN",
+        "PG-OA"
+      ],
+      "source_existing": [
+        "approval_decision_api.py",
+        "approval_transitions.py",
+        "authorization.py"
+      ],
+      "source_new": [
+        "accounting_approval.py",
+        "accounting_approval_api.py"
+      ],
+      "eos_migration_files": [
+        "database/nex-eos/migrations/2521_eos_scoped_approval_case_v2.sql"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED"
+    },
+    {
+      "requirement_id": "SRS-ARCH-001",
+      "primary_packet_id": "S0-01",
+      "canonical_api": "보안/권한/DB 소유권 검증",
+      "canonical_nsl_tool": "N/A (runtime tool 미변경)",
+      "pytest_path": "tests/test_mybee_d04d12_architecture_snapshot.py",
+      "gates": [
+        "G-ARCH"
+      ],
+      "source_existing": [
+        "docs/frozen/v2.1/10_PLATFORM_v2.1/05_NORMATIVE_BASELINE/NeX_Platform_v2.1_Architecture_Consistency_Closure_and_Unified_Change_Ledger_v1.0.md",
+        "database/nex-eos/README.md"
+      ],
+      "source_new": [
+        "docs/mybee_d04d12/baselines/source_manifest.json"
+      ],
+      "eos_migration_files": [],
+      "status": "PLANNED_NOT_IMPLEMENTED"
+    },
+    {
+      "requirement_id": "SRS-ARCH-002",
+      "primary_packet_id": "S0-01",
+      "canonical_api": "보안/권한/DB 소유권 검증",
+      "canonical_nsl_tool": "N/A (runtime tool 미변경)",
+      "pytest_path": "tests/test_mybee_d04d12_architecture_snapshot.py",
+      "gates": [
+        "G-ARCH"
+      ],
+      "source_existing": [
+        "docs/frozen/v2.1/10_PLATFORM_v2.1/05_NORMATIVE_BASELINE/NeX_Platform_v2.1_Architecture_Consistency_Closure_and_Unified_Change_Ledger_v1.0.md",
+        "database/nex-eos/README.md"
+      ],
+      "source_new": [
+        "docs/mybee_d04d12/baselines/source_manifest.json"
+      ],
+      "eos_migration_files": [],
+      "status": "PLANNED_NOT_IMPLEMENTED"
+    },
+    {
+      "requirement_id": "SRS-ARCH-003",
+      "primary_packet_id": "S0-03",
+      "canonical_api": "Schema/Operation registry 충돌 예비검사",
+      "canonical_nsl_tool": "No new Tool activation",
+      "pytest_path": "tests/test_mybee_d04d12_traceability.py",
+      "gates": [
+        "G-ARCH",
+        "G-SRC-PDF"
+      ],
+      "source_existing": [
+        "contracts/openapi/nex-eos.openapi.yaml",
+        "docs/frozen/v2.1"
+      ],
+      "source_new": [
+        "docs/mybee_d04d12/traceability/requirements.json"
+      ],
+      "eos_migration_files": [],
+      "status": "PLANNED_NOT_IMPLEMENTED"
+    },
+    {
+      "requirement_id": "SRS-ARCH-004",
+      "primary_packet_id": "S0-01",
+      "canonical_api": "보안/권한/DB 소유권 검증",
+      "canonical_nsl_tool": "N/A (runtime tool 미변경)",
+      "pytest_path": "tests/test_mybee_d04d12_architecture_snapshot.py",
+      "gates": [
+        "G-ARCH"
+      ],
+      "source_existing": [
+        "docs/frozen/v2.1/10_PLATFORM_v2.1/05_NORMATIVE_BASELINE/NeX_Platform_v2.1_Architecture_Consistency_Closure_and_Unified_Change_Ledger_v1.0.md",
+        "database/nex-eos/README.md"
+      ],
+      "source_new": [
+        "docs/mybee_d04d12/baselines/source_manifest.json"
+      ],
+      "eos_migration_files": [],
+      "status": "PLANNED_NOT_IMPLEMENTED"
+    },
+    {
+      "requirement_id": "SRS-ARCH-005",
+      "primary_packet_id": "S0-02",
+      "canonical_api": "기존 /internal/v1/finance/voucher-drafts READ/CREATE",
+      "canonical_nsl_tool": "FINANCE.CREATE_VOUCHER_DRAFT (v1 unchanged)",
+      "pytest_path": "tests/test_nex_eos_p8_s15_voucher_draft.py",
+      "gates": [
+        "G-V1"
+      ],
+      "source_existing": [
+        "vouchers.py",
+        "voucher_commands.py",
+        "approval_transitions.py",
+        "nsl_eos_write_execution.py"
+      ],
+      "source_new": [
+        "docs/mybee_d04d12/baselines/v1_regression_results.md"
+      ],
+      "eos_migration_files": [],
+      "status": "PLANNED_NOT_IMPLEMENTED"
+    },
+    {
+      "requirement_id": "SRS-ARCH-006",
+      "primary_packet_id": "S4-04",
+      "canonical_api": "FINANCE.JOURNAL.RECONCILE",
+      "canonical_nsl_tool": "READ authoritative business operation; NSL typed UNKNOWN",
+      "pytest_path": "tests/test_nex_eos_mybee_posting_replay_pg.py",
+      "gates": [
+        "G-GL-ACID",
+        "G-RECOVERY"
+      ],
+      "source_existing": [
+        "business_transactions.py",
+        "outbox_publication.py",
+        "nsl_eos_reconciliation.py"
+      ],
+      "source_new": [
+        "journal_operations.py",
+        "journal_outbox_events.py"
+      ],
+      "eos_migration_files": [
+        "database/nex-eos/migrations/2523_eos_posted_journal_posting.sql"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED"
+    },
+    {
+      "requirement_id": "SRS-ARCH-007",
+      "primary_packet_id": "S3-02",
+      "canonical_api": "FINANCE.VOUCHER_CANDIDATE.VALIDATE",
+      "canonical_nsl_tool": "READ/validation Tool; no GL side-effect",
+      "pytest_path": "tests/test_nex_eos_mybee_voucher_fx_validation.py",
+      "gates": [
+        "G-FX",
+        "G-CANDIDATE"
+      ],
+      "source_existing": [
+        "vouchers.py",
+        "accounts.py",
+        "nsl_eos_write_execution.py"
+      ],
+      "source_new": [
+        "candidate_validation.py"
+      ],
+      "eos_migration_files": [
+        "database/nex-eos/migrations/2522_eos_voucher_candidate_v2.sql"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED"
+    },
+    {
+      "requirement_id": "SRS-ARCH-008",
+      "primary_packet_id": "S4-03",
+      "canonical_api": "FINANCE.VOUCHER.APPROVE_AND_POST",
+      "canonical_nsl_tool": "WRITE CREATE immutable journal; no POST OperationKind",
+      "pytest_path": "tests/test_nex_eos_mybee_posting_atomic_pg.py",
+      "gates": [
+        "G-GL-ACID",
+        "PG-FAULT"
+      ],
+      "source_existing": [
+        "business_transactions.py",
+        "persistence.py",
+        "outbox_publication.py"
+      ],
+      "source_new": [
+        "journal_posting.py",
+        "finance_v2_api.py"
+      ],
+      "eos_migration_files": [
+        "database/nex-eos/migrations/2523_eos_posted_journal_posting.sql"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED"
+    },
+    {
+      "requirement_id": "SRS-ARCH-009",
+      "primary_packet_id": "S4-03",
+      "canonical_api": "FINANCE.VOUCHER.APPROVE_AND_POST",
+      "canonical_nsl_tool": "WRITE CREATE immutable journal; no POST OperationKind",
+      "pytest_path": "tests/test_nex_eos_mybee_posting_atomic_pg.py",
+      "gates": [
+        "G-GL-ACID",
+        "PG-FAULT"
+      ],
+      "source_existing": [
+        "business_transactions.py",
+        "persistence.py",
+        "outbox_publication.py"
+      ],
+      "source_new": [
+        "journal_posting.py",
+        "finance_v2_api.py"
+      ],
+      "eos_migration_files": [
+        "database/nex-eos/migrations/2523_eos_posted_journal_posting.sql"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED"
+    },
+    {
+      "requirement_id": "SRS-ARCH-010",
+      "primary_packet_id": "S7-03",
+      "canonical_api": "FINANCE.PROJECT_PNL.GET; FINANCE.NVT_PNL.GET",
+      "canonical_nsl_tool": "READ classification EAC/OA scope",
+      "pytest_path": "tests/test_nex_eos_mybee_pnl_privacy.py",
+      "gates": [
+        "G-PRIVACY",
+        "PG-RLS"
+      ],
+      "source_existing": [
+        "authorization.py",
+        "voucher_access.py"
+      ],
+      "source_new": [
+        "pnl_privacy.py",
+        "pnl_access.py"
+      ],
+      "eos_migration_files": [
+        "database/nex-eos/migrations/2527_eos_project_pnl_projection.sql"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED"
+    },
+    {
+      "requirement_id": "SRS-COM-001",
+      "primary_packet_id": "S0-03",
+      "canonical_api": "Schema/Operation registry 충돌 예비검사",
+      "canonical_nsl_tool": "No new Tool activation",
+      "pytest_path": "tests/test_mybee_d04d12_traceability.py",
+      "gates": [
+        "G-ARCH",
+        "G-SRC-PDF"
+      ],
+      "source_existing": [
+        "contracts/openapi/nex-eos.openapi.yaml",
+        "docs/frozen/v2.1"
+      ],
+      "source_new": [
+        "docs/mybee_d04d12/traceability/requirements.json"
+      ],
+      "eos_migration_files": [],
+      "status": "PLANNED_NOT_IMPLEMENTED"
+    },
+    {
+      "requirement_id": "SRS-COM-002",
+      "primary_packet_id": "S8-02",
+      "canonical_api": "AE-to-EOS v2 tool binding",
+      "canonical_nsl_tool": "WRITE CREATE, typed UNKNOWN, READ_AFTER_WRITE_STRONG",
+      "pytest_path": "tests/test_nex_ae_mybee_nsl_eos_integration.py",
+      "gates": [
+        "G-NSL",
+        "G-RECOVERY"
+      ],
+      "source_existing": [
+        "nsl_eos_write_execution.py",
+        "nsl_eos_reconciliation.py",
+        "nsl_eos_post_write_verification.py"
+      ],
+      "source_new": [
+        "nsl_eos_journal_execution.py",
+        "nsl_eos_journal_reconciliation.py",
+        "nsl_eos_journal_verification.py"
+      ],
+      "eos_migration_files": [],
+      "status": "PLANNED_NOT_IMPLEMENTED"
+    },
+    {
+      "requirement_id": "SRS-DOC-001",
+      "primary_packet_id": "S2-01",
+      "canonical_api": "BUSINESS.DOCUMENT_APPROVED.GET",
+      "canonical_nsl_tool": "READ proof by EOS and hash; no direct approval bypass",
+      "pytest_path": "tests/test_nex_eos_mybee_document_envelope.py",
+      "gates": [
+        "G-DOC",
+        "PG-PROOF"
+      ],
+      "source_existing": [
+        "approval_instances.py",
+        "approval_transitions.py"
+      ],
+      "source_new": [
+        "approved_documents.py",
+        "approved_document_api.py"
+      ],
+      "eos_migration_files": [
+        "database/nex-eos/migrations/2520_eos_document_approval_envelope.sql"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED"
+    },
+    {
+      "requirement_id": "SRS-DOC-002",
+      "primary_packet_id": "S2-01",
+      "canonical_api": "BUSINESS.DOCUMENT_APPROVED.GET",
+      "canonical_nsl_tool": "READ proof by EOS and hash; no direct approval bypass",
+      "pytest_path": "tests/test_nex_eos_mybee_document_envelope.py",
+      "gates": [
+        "G-DOC",
+        "PG-PROOF"
+      ],
+      "source_existing": [
+        "approval_instances.py",
+        "approval_transitions.py"
+      ],
+      "source_new": [
+        "approved_documents.py",
+        "approved_document_api.py"
+      ],
+      "eos_migration_files": [
+        "database/nex-eos/migrations/2520_eos_document_approval_envelope.sql"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED"
+    },
+    {
+      "requirement_id": "SRS-DOC-003",
+      "primary_packet_id": "S2-04",
+      "canonical_api": "Document allowance GET; Consumption EOS-only in S4 Posting",
+      "canonical_nsl_tool": "READ validation; no stand-alone consumption WRITE",
+      "pytest_path": "tests/test_nex_eos_mybee_doc_consumption_pg.py",
+      "gates": [
+        "G-DOC",
+        "PG-CONCURRENCY"
+      ],
+      "source_existing": [
+        "business_transactions.py",
+        "approval_instances.py"
+      ],
+      "source_new": [
+        "approved_document_consumption.py"
+      ],
+      "eos_migration_files": [
+        "database/nex-eos/migrations/2520_eos_document_approval_envelope.sql"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED"
+    },
+    {
+      "requirement_id": "SRS-DOC-004",
+      "primary_packet_id": "S2-04",
+      "canonical_api": "Document allowance GET; Consumption EOS-only in S4 Posting",
+      "canonical_nsl_tool": "READ validation; no stand-alone consumption WRITE",
+      "pytest_path": "tests/test_nex_eos_mybee_doc_consumption_pg.py",
+      "gates": [
+        "G-DOC",
+        "PG-CONCURRENCY"
+      ],
+      "source_existing": [
+        "business_transactions.py",
+        "approval_instances.py"
+      ],
+      "source_new": [
+        "approved_document_consumption.py"
+      ],
+      "eos_migration_files": [
+        "database/nex-eos/migrations/2520_eos_document_approval_envelope.sql"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED"
+    },
+    {
+      "requirement_id": "SRS-DOC-005",
+      "primary_packet_id": "S2-04",
+      "canonical_api": "Document allowance GET; Consumption EOS-only in S4 Posting",
+      "canonical_nsl_tool": "READ validation; no stand-alone consumption WRITE",
+      "pytest_path": "tests/test_nex_eos_mybee_doc_consumption_pg.py",
+      "gates": [
+        "G-DOC",
+        "PG-CONCURRENCY"
+      ],
+      "source_existing": [
+        "business_transactions.py",
+        "approval_instances.py"
+      ],
+      "source_new": [
+        "approved_document_consumption.py"
+      ],
+      "eos_migration_files": [
+        "database/nex-eos/migrations/2520_eos_document_approval_envelope.sql"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED"
+    },
+    {
+      "requirement_id": "SRS-DOC-006",
+      "primary_packet_id": "S5-01",
+      "canonical_api": "FINANCE.JOURNAL.REVERSE",
+      "canonical_nsl_tool": "WRITE CREATE new approved reversal journal",
+      "pytest_path": "tests/test_nex_eos_mybee_journal_reversal.py",
+      "gates": [
+        "G-REVERSAL",
+        "PG-IMMUTABLE"
+      ],
+      "source_existing": [
+        "vouchers.py",
+        "business_transactions.py"
+      ],
+      "source_new": [
+        "journal_reversal.py"
+      ],
+      "eos_migration_files": [
+        "database/nex-eos/migrations/2524_eos_fx_monetary_remeasurement.sql"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED"
+    },
+    {
+      "requirement_id": "SRS-DOC-007",
+      "primary_packet_id": "S2-01",
+      "canonical_api": "BUSINESS.DOCUMENT_APPROVED.GET",
+      "canonical_nsl_tool": "READ proof by EOS and hash; no direct approval bypass",
+      "pytest_path": "tests/test_nex_eos_mybee_document_envelope.py",
+      "gates": [
+        "G-DOC",
+        "PG-PROOF"
+      ],
+      "source_existing": [
+        "approval_instances.py",
+        "approval_transitions.py"
+      ],
+      "source_new": [
+        "approved_documents.py",
+        "approved_document_api.py"
+      ],
+      "eos_migration_files": [
+        "database/nex-eos/migrations/2520_eos_document_approval_envelope.sql"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED"
+    },
+    {
+      "requirement_id": "SRS-FX-001",
+      "primary_packet_id": "S1-04",
+      "canonical_api": "FINANCE.FX_RATE.IMPORT; FINANCE.FX_RATE.RESOLVE",
+      "canonical_nsl_tool": "READ: FINANCE.FX_RATE.RESOLVE; approved source WRITE",
+      "pytest_path": "tests/test_nex_eos_mybee_fx_rate.py",
+      "gates": [
+        "G-FX",
+        "G-COA",
+        "PG-FX"
+      ],
+      "source_existing": [
+        "accounts.py",
+        "business_transactions.py",
+        "nsl_eos_post_write_verification.py"
+      ],
+      "source_new": [
+        "fx_rates.py",
+        "fx_policy.py",
+        "fx_api.py"
+      ],
+      "eos_migration_files": [
+        "database/nex-eos/migrations/2518_eos_fx_rate_policy_snapshot.sql"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED"
+    },
+    {
+      "requirement_id": "SRS-FX-002",
+      "primary_packet_id": "S3-02",
+      "canonical_api": "FINANCE.VOUCHER_CANDIDATE.VALIDATE",
+      "canonical_nsl_tool": "READ/validation Tool; no GL side-effect",
+      "pytest_path": "tests/test_nex_eos_mybee_voucher_fx_validation.py",
+      "gates": [
+        "G-FX",
+        "G-CANDIDATE"
+      ],
+      "source_existing": [
+        "vouchers.py",
+        "accounts.py",
+        "nsl_eos_write_execution.py"
+      ],
+      "source_new": [
+        "candidate_validation.py"
+      ],
+      "eos_migration_files": [
+        "database/nex-eos/migrations/2522_eos_voucher_candidate_v2.sql"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED"
+    },
+    {
+      "requirement_id": "SRS-FX-003",
+      "primary_packet_id": "S3-02",
+      "canonical_api": "FINANCE.VOUCHER_CANDIDATE.VALIDATE",
+      "canonical_nsl_tool": "READ/validation Tool; no GL side-effect",
+      "pytest_path": "tests/test_nex_eos_mybee_voucher_fx_validation.py",
+      "gates": [
+        "G-FX",
+        "G-CANDIDATE"
+      ],
+      "source_existing": [
+        "vouchers.py",
+        "accounts.py",
+        "nsl_eos_write_execution.py"
+      ],
+      "source_new": [
+        "candidate_validation.py"
+      ],
+      "eos_migration_files": [
+        "database/nex-eos/migrations/2522_eos_voucher_candidate_v2.sql"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED"
+    },
+    {
+      "requirement_id": "SRS-FX-004",
+      "primary_packet_id": "S3-02",
+      "canonical_api": "FINANCE.VOUCHER_CANDIDATE.VALIDATE",
+      "canonical_nsl_tool": "READ/validation Tool; no GL side-effect",
+      "pytest_path": "tests/test_nex_eos_mybee_voucher_fx_validation.py",
+      "gates": [
+        "G-FX",
+        "G-CANDIDATE"
+      ],
+      "source_existing": [
+        "vouchers.py",
+        "accounts.py",
+        "nsl_eos_write_execution.py"
+      ],
+      "source_new": [
+        "candidate_validation.py"
+      ],
+      "eos_migration_files": [
+        "database/nex-eos/migrations/2522_eos_voucher_candidate_v2.sql"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED"
+    },
+    {
+      "requirement_id": "SRS-FX-005",
+      "primary_packet_id": "S1-04",
+      "canonical_api": "FINANCE.FX_RATE.IMPORT; FINANCE.FX_RATE.RESOLVE",
+      "canonical_nsl_tool": "READ: FINANCE.FX_RATE.RESOLVE; approved source WRITE",
+      "pytest_path": "tests/test_nex_eos_mybee_fx_rate.py",
+      "gates": [
+        "G-FX",
+        "G-COA",
+        "PG-FX"
+      ],
+      "source_existing": [
+        "accounts.py",
+        "business_transactions.py",
+        "nsl_eos_post_write_verification.py"
+      ],
+      "source_new": [
+        "fx_rates.py",
+        "fx_policy.py",
+        "fx_api.py"
+      ],
+      "eos_migration_files": [
+        "database/nex-eos/migrations/2518_eos_fx_rate_policy_snapshot.sql"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED"
+    },
+    {
+      "requirement_id": "SRS-FX-006",
+      "primary_packet_id": "S1-04",
+      "canonical_api": "FINANCE.FX_RATE.IMPORT; FINANCE.FX_RATE.RESOLVE",
+      "canonical_nsl_tool": "READ: FINANCE.FX_RATE.RESOLVE; approved source WRITE",
+      "pytest_path": "tests/test_nex_eos_mybee_fx_rate.py",
+      "gates": [
+        "G-FX",
+        "G-COA",
+        "PG-FX"
+      ],
+      "source_existing": [
+        "accounts.py",
+        "business_transactions.py",
+        "nsl_eos_post_write_verification.py"
+      ],
+      "source_new": [
+        "fx_rates.py",
+        "fx_policy.py",
+        "fx_api.py"
+      ],
+      "eos_migration_files": [
+        "database/nex-eos/migrations/2518_eos_fx_rate_policy_snapshot.sql"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED"
+    },
+    {
+      "requirement_id": "SRS-FX-007",
+      "primary_packet_id": "S1-04",
+      "canonical_api": "FINANCE.FX_RATE.IMPORT; FINANCE.FX_RATE.RESOLVE",
+      "canonical_nsl_tool": "READ: FINANCE.FX_RATE.RESOLVE; approved source WRITE",
+      "pytest_path": "tests/test_nex_eos_mybee_fx_rate.py",
+      "gates": [
+        "G-FX",
+        "G-COA",
+        "PG-FX"
+      ],
+      "source_existing": [
+        "accounts.py",
+        "business_transactions.py",
+        "nsl_eos_post_write_verification.py"
+      ],
+      "source_new": [
+        "fx_rates.py",
+        "fx_policy.py",
+        "fx_api.py"
+      ],
+      "eos_migration_files": [
+        "database/nex-eos/migrations/2518_eos_fx_rate_policy_snapshot.sql"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED"
+    },
+    {
+      "requirement_id": "SRS-FX-008",
+      "primary_packet_id": "S1-04",
+      "canonical_api": "FINANCE.FX_RATE.IMPORT; FINANCE.FX_RATE.RESOLVE",
+      "canonical_nsl_tool": "READ: FINANCE.FX_RATE.RESOLVE; approved source WRITE",
+      "pytest_path": "tests/test_nex_eos_mybee_fx_rate.py",
+      "gates": [
+        "G-FX",
+        "G-COA",
+        "PG-FX"
+      ],
+      "source_existing": [
+        "accounts.py",
+        "business_transactions.py",
+        "nsl_eos_post_write_verification.py"
+      ],
+      "source_new": [
+        "fx_rates.py",
+        "fx_policy.py",
+        "fx_api.py"
+      ],
+      "eos_migration_files": [
+        "database/nex-eos/migrations/2518_eos_fx_rate_policy_snapshot.sql"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED"
+    },
+    {
+      "requirement_id": "SRS-FX-009",
+      "primary_packet_id": "S1-04",
+      "canonical_api": "FINANCE.FX_RATE.IMPORT; FINANCE.FX_RATE.RESOLVE",
+      "canonical_nsl_tool": "READ: FINANCE.FX_RATE.RESOLVE; approved source WRITE",
+      "pytest_path": "tests/test_nex_eos_mybee_fx_rate.py",
+      "gates": [
+        "G-FX",
+        "G-COA",
+        "PG-FX"
+      ],
+      "source_existing": [
+        "accounts.py",
+        "business_transactions.py",
+        "nsl_eos_post_write_verification.py"
+      ],
+      "source_new": [
+        "fx_rates.py",
+        "fx_policy.py",
+        "fx_api.py"
+      ],
+      "eos_migration_files": [
+        "database/nex-eos/migrations/2518_eos_fx_rate_policy_snapshot.sql"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED"
+    },
+    {
+      "requirement_id": "SRS-FX-010",
+      "primary_packet_id": "S3-02",
+      "canonical_api": "FINANCE.VOUCHER_CANDIDATE.VALIDATE",
+      "canonical_nsl_tool": "READ/validation Tool; no GL side-effect",
+      "pytest_path": "tests/test_nex_eos_mybee_voucher_fx_validation.py",
+      "gates": [
+        "G-FX",
+        "G-CANDIDATE"
+      ],
+      "source_existing": [
+        "vouchers.py",
+        "accounts.py",
+        "nsl_eos_write_execution.py"
+      ],
+      "source_new": [
+        "candidate_validation.py"
+      ],
+      "eos_migration_files": [
+        "database/nex-eos/migrations/2522_eos_voucher_candidate_v2.sql"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED"
+    },
+    {
+      "requirement_id": "SRS-FX-011",
+      "primary_packet_id": "S3-02",
+      "canonical_api": "FINANCE.VOUCHER_CANDIDATE.VALIDATE",
+      "canonical_nsl_tool": "READ/validation Tool; no GL side-effect",
+      "pytest_path": "tests/test_nex_eos_mybee_voucher_fx_validation.py",
+      "gates": [
+        "G-FX",
+        "G-CANDIDATE"
+      ],
+      "source_existing": [
+        "vouchers.py",
+        "accounts.py",
+        "nsl_eos_write_execution.py"
+      ],
+      "source_new": [
+        "candidate_validation.py"
+      ],
+      "eos_migration_files": [
+        "database/nex-eos/migrations/2522_eos_voucher_candidate_v2.sql"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED"
+    },
+    {
+      "requirement_id": "SRS-FX-012",
+      "primary_packet_id": "S5-02",
+      "canonical_api": "FINANCE.FX_REMEASUREMENT.RUN",
+      "canonical_nsl_tool": "WRITE CREATE_DRAFT/CREATE candidate; Human POST later",
+      "pytest_path": "tests/test_nex_eos_mybee_fx_remeasurement_pg.py",
+      "gates": [
+        "G-FX",
+        "PG-FX-CLOSE"
+      ],
+      "source_existing": [
+        "account_catalog.py",
+        "fx_rates.py"
+      ],
+      "source_new": [
+        "fx_remeasurement.py",
+        "monetary_positions.py"
+      ],
+      "eos_migration_files": [
+        "database/nex-eos/migrations/2524_eos_fx_monetary_remeasurement.sql"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED"
+    },
+    {
+      "requirement_id": "SRS-FX-013",
+      "primary_packet_id": "S5-02",
+      "canonical_api": "FINANCE.FX_REMEASUREMENT.RUN",
+      "canonical_nsl_tool": "WRITE CREATE_DRAFT/CREATE candidate; Human POST later",
+      "pytest_path": "tests/test_nex_eos_mybee_fx_remeasurement_pg.py",
+      "gates": [
+        "G-FX",
+        "PG-FX-CLOSE"
+      ],
+      "source_existing": [
+        "account_catalog.py",
+        "fx_rates.py"
+      ],
+      "source_new": [
+        "fx_remeasurement.py",
+        "monetary_positions.py"
+      ],
+      "eos_migration_files": [
+        "database/nex-eos/migrations/2524_eos_fx_monetary_remeasurement.sql"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED"
+    },
+    {
+      "requirement_id": "SRS-FX-014",
+      "primary_packet_id": "S5-03",
+      "canonical_api": "FINANCE.PERIOD.CLOSE; settlement approved flow",
+      "canonical_nsl_tool": "CREATE_DRAFT -> Human -> CREATE journal",
+      "pytest_path": "tests/test_nex_eos_mybee_period_close_fx_pg.py",
+      "gates": [
+        "G-FX",
+        "G-PERIOD"
+      ],
+      "source_existing": [
+        "accounting_periods.py",
+        "journals.py"
+      ],
+      "source_new": [
+        "period_closing.py",
+        "fx_settlement.py"
+      ],
+      "eos_migration_files": [
+        "database/nex-eos/migrations/2524_eos_fx_monetary_remeasurement.sql"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED"
+    },
+    {
+      "requirement_id": "SRS-FX-015",
+      "primary_packet_id": "S5-02",
+      "canonical_api": "FINANCE.FX_REMEASUREMENT.RUN",
+      "canonical_nsl_tool": "WRITE CREATE_DRAFT/CREATE candidate; Human POST later",
+      "pytest_path": "tests/test_nex_eos_mybee_fx_remeasurement_pg.py",
+      "gates": [
+        "G-FX",
+        "PG-FX-CLOSE"
+      ],
+      "source_existing": [
+        "account_catalog.py",
+        "fx_rates.py"
+      ],
+      "source_new": [
+        "fx_remeasurement.py",
+        "monetary_positions.py"
+      ],
+      "eos_migration_files": [
+        "database/nex-eos/migrations/2524_eos_fx_monetary_remeasurement.sql"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED"
+    },
+    {
+      "requirement_id": "SRS-FX-016",
+      "primary_packet_id": "S5-01",
+      "canonical_api": "FINANCE.JOURNAL.REVERSE",
+      "canonical_nsl_tool": "WRITE CREATE new approved reversal journal",
+      "pytest_path": "tests/test_nex_eos_mybee_journal_reversal.py",
+      "gates": [
+        "G-REVERSAL",
+        "PG-IMMUTABLE"
+      ],
+      "source_existing": [
+        "vouchers.py",
+        "business_transactions.py"
+      ],
+      "source_new": [
+        "journal_reversal.py"
+      ],
+      "eos_migration_files": [
+        "database/nex-eos/migrations/2524_eos_fx_monetary_remeasurement.sql"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED"
+    },
+    {
+      "requirement_id": "SRS-FX-017",
+      "primary_packet_id": "S5-02",
+      "canonical_api": "FINANCE.FX_REMEASUREMENT.RUN",
+      "canonical_nsl_tool": "WRITE CREATE_DRAFT/CREATE candidate; Human POST later",
+      "pytest_path": "tests/test_nex_eos_mybee_fx_remeasurement_pg.py",
+      "gates": [
+        "G-FX",
+        "PG-FX-CLOSE"
+      ],
+      "source_existing": [
+        "account_catalog.py",
+        "fx_rates.py"
+      ],
+      "source_new": [
+        "fx_remeasurement.py",
+        "monetary_positions.py"
+      ],
+      "eos_migration_files": [
+        "database/nex-eos/migrations/2524_eos_fx_monetary_remeasurement.sql"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED"
+    },
+    {
+      "requirement_id": "SRS-FX-018",
+      "primary_packet_id": "S1-04",
+      "canonical_api": "FINANCE.FX_RATE.IMPORT; FINANCE.FX_RATE.RESOLVE",
+      "canonical_nsl_tool": "READ: FINANCE.FX_RATE.RESOLVE; approved source WRITE",
+      "pytest_path": "tests/test_nex_eos_mybee_fx_rate.py",
+      "gates": [
+        "G-FX",
+        "G-COA",
+        "PG-FX"
+      ],
+      "source_existing": [
+        "accounts.py",
+        "business_transactions.py",
+        "nsl_eos_post_write_verification.py"
+      ],
+      "source_new": [
+        "fx_rates.py",
+        "fx_policy.py",
+        "fx_api.py"
+      ],
+      "eos_migration_files": [
+        "database/nex-eos/migrations/2518_eos_fx_rate_policy_snapshot.sql"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED"
+    },
+    {
+      "requirement_id": "SRS-FX-019",
+      "primary_packet_id": "S7-02",
+      "canonical_api": "FINANCE.PROJECT_PNL.GET",
+      "canonical_nsl_tool": "READ scoped P&L, no new monetary SoR",
+      "pytest_path": "tests/test_nex_eos_mybee_project_pnl.py",
+      "gates": [
+        "G-PNL",
+        "PG-PROJECTION"
+      ],
+      "source_existing": [
+        "journals.py",
+        "outbox_publication.py",
+        "projects.py"
+      ],
+      "source_new": [
+        "project_pnl.py",
+        "pnl_projector.py"
+      ],
+      "eos_migration_files": [
+        "database/nex-eos/migrations/2527_eos_project_pnl_projection.sql"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED"
+    },
+    {
+      "requirement_id": "SRS-FX-020",
+      "primary_packet_id": "S5-04",
+      "canonical_api": "FINANCE.JOURNAL.GET/VERIFY/RECONCILE",
+      "canonical_nsl_tool": "READ post-write verification + exact hashes",
+      "pytest_path": "tests/test_nex_eos_mybee_journal_verification.py",
+      "gates": [
+        "G-RECOVERY",
+        "PG-QUERY"
+      ],
+      "source_existing": [
+        "business_queries.py",
+        "nsl_eos_post_write_verification.py"
+      ],
+      "source_new": [
+        "journal_read_api.py",
+        "journal_reconciliation.py"
+      ],
+      "eos_migration_files": [
+        "database/nex-eos/migrations/2524_eos_fx_monetary_remeasurement.sql"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED"
+    },
+    {
+      "requirement_id": "SRS-FX-021",
+      "primary_packet_id": "S1-04",
+      "canonical_api": "FINANCE.FX_RATE.IMPORT; FINANCE.FX_RATE.RESOLVE",
+      "canonical_nsl_tool": "READ: FINANCE.FX_RATE.RESOLVE; approved source WRITE",
+      "pytest_path": "tests/test_nex_eos_mybee_fx_rate.py",
+      "gates": [
+        "G-FX",
+        "G-COA",
+        "PG-FX"
+      ],
+      "source_existing": [
+        "accounts.py",
+        "business_transactions.py",
+        "nsl_eos_post_write_verification.py"
+      ],
+      "source_new": [
+        "fx_rates.py",
+        "fx_policy.py",
+        "fx_api.py"
+      ],
+      "eos_migration_files": [
+        "database/nex-eos/migrations/2518_eos_fx_rate_policy_snapshot.sql"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED"
+    },
+    {
+      "requirement_id": "SRS-FX-022",
+      "primary_packet_id": "S1-04",
+      "canonical_api": "FINANCE.FX_RATE.IMPORT; FINANCE.FX_RATE.RESOLVE",
+      "canonical_nsl_tool": "READ: FINANCE.FX_RATE.RESOLVE; approved source WRITE",
+      "pytest_path": "tests/test_nex_eos_mybee_fx_rate.py",
+      "gates": [
+        "G-FX",
+        "G-COA",
+        "PG-FX"
+      ],
+      "source_existing": [
+        "accounts.py",
+        "business_transactions.py",
+        "nsl_eos_post_write_verification.py"
+      ],
+      "source_new": [
+        "fx_rates.py",
+        "fx_policy.py",
+        "fx_api.py"
+      ],
+      "eos_migration_files": [
+        "database/nex-eos/migrations/2518_eos_fx_rate_policy_snapshot.sql"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED"
+    },
+    {
+      "requirement_id": "SRS-FX-023",
+      "primary_packet_id": "S2-03",
+      "canonical_api": "FINANCE.ACCOUNTING_APPROVAL.REQUEST + WC event",
+      "canonical_nsl_tool": "No agent self-approve; OA human finance:journal:approve",
+      "pytest_path": "tests/test_nex_eos_mybee_approval_human.py",
+      "gates": [
+        "G-HUMAN",
+        "PG-OA"
+      ],
+      "source_existing": [
+        "approval_decision_api.py",
+        "approval_transitions.py",
+        "authorization.py"
+      ],
+      "source_new": [
+        "accounting_approval.py",
+        "accounting_approval_api.py"
+      ],
+      "eos_migration_files": [
+        "database/nex-eos/migrations/2521_eos_scoped_approval_case_v2.sql"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED"
+    },
+    {
+      "requirement_id": "SRS-FX-024",
+      "primary_packet_id": "S1-04",
+      "canonical_api": "FINANCE.FX_RATE.IMPORT; FINANCE.FX_RATE.RESOLVE",
+      "canonical_nsl_tool": "READ: FINANCE.FX_RATE.RESOLVE; approved source WRITE",
+      "pytest_path": "tests/test_nex_eos_mybee_fx_rate.py",
+      "gates": [
+        "G-FX",
+        "G-COA",
+        "PG-FX"
+      ],
+      "source_existing": [
+        "accounts.py",
+        "business_transactions.py",
+        "nsl_eos_post_write_verification.py"
+      ],
+      "source_new": [
+        "fx_rates.py",
+        "fx_policy.py",
+        "fx_api.py"
+      ],
+      "eos_migration_files": [
+        "database/nex-eos/migrations/2518_eos_fx_rate_policy_snapshot.sql"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED"
+    },
+    {
+      "requirement_id": "SRS-MST-001",
+      "primary_packet_id": "S1-01",
+      "canonical_api": "FINANCE.LEGAL_ENTITY.GET; company binding command/query",
+      "canonical_nsl_tool": "READ: FINANCE.LEGAL_ENTITY.GET",
+      "pytest_path": "tests/test_nex_eos_mybee_legal_entity.py",
+      "gates": [
+        "G-MASTER",
+        "PG-FK"
+      ],
+      "source_existing": [
+        "projects.py",
+        "project_operations.py",
+        "2504_eos_project_hierarchy.sql"
+      ],
+      "source_new": [
+        "legal_entities.py",
+        "legal_entity_api.py"
+      ],
+      "eos_migration_files": [
+        "database/nex-eos/migrations/2516_eos_legal_entity_project_binding.sql"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED"
+    },
+    {
+      "requirement_id": "SRS-MST-002",
+      "primary_packet_id": "S1-01",
+      "canonical_api": "FINANCE.LEGAL_ENTITY.GET; company binding command/query",
+      "canonical_nsl_tool": "READ: FINANCE.LEGAL_ENTITY.GET",
+      "pytest_path": "tests/test_nex_eos_mybee_legal_entity.py",
+      "gates": [
+        "G-MASTER",
+        "PG-FK"
+      ],
+      "source_existing": [
+        "projects.py",
+        "project_operations.py",
+        "2504_eos_project_hierarchy.sql"
+      ],
+      "source_new": [
+        "legal_entities.py",
+        "legal_entity_api.py"
+      ],
+      "eos_migration_files": [
+        "database/nex-eos/migrations/2516_eos_legal_entity_project_binding.sql"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED"
+    },
+    {
+      "requirement_id": "SRS-MST-003",
+      "primary_packet_id": "S2-02",
+      "canonical_api": "FINANCE.ACCOUNTING_APPROVAL.REQUEST (v2 case)",
+      "canonical_nsl_tool": "WRITE CREATE request only; Human WC decision separate",
+      "pytest_path": "tests/test_nex_eos_mybee_approval_company.py",
+      "gates": [
+        "G-HUMAN",
+        "PG-SCOPE"
+      ],
+      "source_existing": [
+        "approval_policies.py",
+        "approval_instances.py",
+        "business_formal_wc.py"
+      ],
+      "source_new": [
+        "scoped_approvals.py",
+        "scoped_approval_api.py"
+      ],
+      "eos_migration_files": [
+        "database/nex-eos/migrations/2521_eos_scoped_approval_case_v2.sql"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED"
+    },
+    {
+      "requirement_id": "SRS-MST-004",
+      "primary_packet_id": "S1-01",
+      "canonical_api": "FINANCE.LEGAL_ENTITY.GET; company binding command/query",
+      "canonical_nsl_tool": "READ: FINANCE.LEGAL_ENTITY.GET",
+      "pytest_path": "tests/test_nex_eos_mybee_legal_entity.py",
+      "gates": [
+        "G-MASTER",
+        "PG-FK"
+      ],
+      "source_existing": [
+        "projects.py",
+        "project_operations.py",
+        "2504_eos_project_hierarchy.sql"
+      ],
+      "source_new": [
+        "legal_entities.py",
+        "legal_entity_api.py"
+      ],
+      "eos_migration_files": [
+        "database/nex-eos/migrations/2516_eos_legal_entity_project_binding.sql"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED"
+    },
+    {
+      "requirement_id": "SRS-PER-001",
+      "primary_packet_id": "S1-03",
+      "canonical_api": "FINANCE.PERIOD.GET; FINANCE.PERIOD.CLOSE (Close gate S5)",
+      "canonical_nsl_tool": "READ: FINANCE.PERIOD.GET; later governed WRITE",
+      "pytest_path": "tests/test_nex_eos_mybee_period_lock_pg.py",
+      "gates": [
+        "G-PERIOD",
+        "PG-RACE"
+      ],
+      "source_existing": [
+        "business_transactions.py",
+        "persistence.py"
+      ],
+      "source_new": [
+        "accounting_periods.py",
+        "accounting_period_api.py"
+      ],
+      "eos_migration_files": [
+        "database/nex-eos/migrations/2517_eos_account_catalog_accounting_period.sql"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED"
+    },
+    {
+      "requirement_id": "SRS-PER-002",
+      "primary_packet_id": "S1-03",
+      "canonical_api": "FINANCE.PERIOD.GET; FINANCE.PERIOD.CLOSE (Close gate S5)",
+      "canonical_nsl_tool": "READ: FINANCE.PERIOD.GET; later governed WRITE",
+      "pytest_path": "tests/test_nex_eos_mybee_period_lock_pg.py",
+      "gates": [
+        "G-PERIOD",
+        "PG-RACE"
+      ],
+      "source_existing": [
+        "business_transactions.py",
+        "persistence.py"
+      ],
+      "source_new": [
+        "accounting_periods.py",
+        "accounting_period_api.py"
+      ],
+      "eos_migration_files": [
+        "database/nex-eos/migrations/2517_eos_account_catalog_accounting_period.sql"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED"
+    },
+    {
+      "requirement_id": "SRS-PER-003",
+      "primary_packet_id": "S5-03",
+      "canonical_api": "FINANCE.PERIOD.CLOSE; settlement approved flow",
+      "canonical_nsl_tool": "CREATE_DRAFT -> Human -> CREATE journal",
+      "pytest_path": "tests/test_nex_eos_mybee_period_close_fx_pg.py",
+      "gates": [
+        "G-FX",
+        "G-PERIOD"
+      ],
+      "source_existing": [
+        "accounting_periods.py",
+        "journals.py"
+      ],
+      "source_new": [
+        "period_closing.py",
+        "fx_settlement.py"
+      ],
+      "eos_migration_files": [
+        "database/nex-eos/migrations/2524_eos_fx_monetary_remeasurement.sql"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED"
+    },
+    {
+      "requirement_id": "SRS-PER-004",
+      "primary_packet_id": "S5-03",
+      "canonical_api": "FINANCE.PERIOD.CLOSE; settlement approved flow",
+      "canonical_nsl_tool": "CREATE_DRAFT -> Human -> CREATE journal",
+      "pytest_path": "tests/test_nex_eos_mybee_period_close_fx_pg.py",
+      "gates": [
+        "G-FX",
+        "G-PERIOD"
+      ],
+      "source_existing": [
+        "accounting_periods.py",
+        "journals.py"
+      ],
+      "source_new": [
+        "period_closing.py",
+        "fx_settlement.py"
+      ],
+      "eos_migration_files": [
+        "database/nex-eos/migrations/2524_eos_fx_monetary_remeasurement.sql"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED"
+    },
+    {
+      "requirement_id": "SRS-PNL-001",
+      "primary_packet_id": "S7-02",
+      "canonical_api": "FINANCE.PROJECT_PNL.GET",
+      "canonical_nsl_tool": "READ scoped P&L, no new monetary SoR",
+      "pytest_path": "tests/test_nex_eos_mybee_project_pnl.py",
+      "gates": [
+        "G-PNL",
+        "PG-PROJECTION"
+      ],
+      "source_existing": [
+        "journals.py",
+        "outbox_publication.py",
+        "projects.py"
+      ],
+      "source_new": [
+        "project_pnl.py",
+        "pnl_projector.py"
+      ],
+      "eos_migration_files": [
+        "database/nex-eos/migrations/2527_eos_project_pnl_projection.sql"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED"
+    },
+    {
+      "requirement_id": "SRS-PNL-002",
+      "primary_packet_id": "S7-02",
+      "canonical_api": "FINANCE.PROJECT_PNL.GET",
+      "canonical_nsl_tool": "READ scoped P&L, no new monetary SoR",
+      "pytest_path": "tests/test_nex_eos_mybee_project_pnl.py",
+      "gates": [
+        "G-PNL",
+        "PG-PROJECTION"
+      ],
+      "source_existing": [
+        "journals.py",
+        "outbox_publication.py",
+        "projects.py"
+      ],
+      "source_new": [
+        "project_pnl.py",
+        "pnl_projector.py"
+      ],
+      "eos_migration_files": [
+        "database/nex-eos/migrations/2527_eos_project_pnl_projection.sql"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED"
+    },
+    {
+      "requirement_id": "SRS-PNL-003",
+      "primary_packet_id": "S7-04",
+      "canonical_api": "FINANCE.NVT_PNL.GET; project close check",
+      "canonical_nsl_tool": "READ authoritative receipts + governed close",
+      "pytest_path": "tests/test_nex_eos_mybee_project_close.py",
+      "gates": [
+        "G-PNL",
+        "G-PROJECT"
+      ],
+      "source_existing": [
+        "projects.py",
+        "project_operations.py"
+      ],
+      "source_new": [
+        "project_close_guards.py",
+        "nvt_pnl_rollup.py"
+      ],
+      "eos_migration_files": [
+        "database/nex-eos/migrations/2527_eos_project_pnl_projection.sql"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED"
+    },
+    {
+      "requirement_id": "SRS-PNL-004",
+      "primary_packet_id": "S7-03",
+      "canonical_api": "FINANCE.PROJECT_PNL.GET; FINANCE.NVT_PNL.GET",
+      "canonical_nsl_tool": "READ classification EAC/OA scope",
+      "pytest_path": "tests/test_nex_eos_mybee_pnl_privacy.py",
+      "gates": [
+        "G-PRIVACY",
+        "PG-RLS"
+      ],
+      "source_existing": [
+        "authorization.py",
+        "voucher_access.py"
+      ],
+      "source_new": [
+        "pnl_privacy.py",
+        "pnl_access.py"
+      ],
+      "eos_migration_files": [
+        "database/nex-eos/migrations/2527_eos_project_pnl_projection.sql"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED"
+    },
+    {
+      "requirement_id": "SRS-PNL-005",
+      "primary_packet_id": "S7-03",
+      "canonical_api": "FINANCE.PROJECT_PNL.GET; FINANCE.NVT_PNL.GET",
+      "canonical_nsl_tool": "READ classification EAC/OA scope",
+      "pytest_path": "tests/test_nex_eos_mybee_pnl_privacy.py",
+      "gates": [
+        "G-PRIVACY",
+        "PG-RLS"
+      ],
+      "source_existing": [
+        "authorization.py",
+        "voucher_access.py"
+      ],
+      "source_new": [
+        "pnl_privacy.py",
+        "pnl_access.py"
+      ],
+      "eos_migration_files": [
+        "database/nex-eos/migrations/2527_eos_project_pnl_projection.sql"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED"
+    },
+    {
+      "requirement_id": "SRS-PNL-006",
+      "primary_packet_id": "S7-02",
+      "canonical_api": "FINANCE.PROJECT_PNL.GET",
+      "canonical_nsl_tool": "READ scoped P&L, no new monetary SoR",
+      "pytest_path": "tests/test_nex_eos_mybee_project_pnl.py",
+      "gates": [
+        "G-PNL",
+        "PG-PROJECTION"
+      ],
+      "source_existing": [
+        "journals.py",
+        "outbox_publication.py",
+        "projects.py"
+      ],
+      "source_new": [
+        "project_pnl.py",
+        "pnl_projector.py"
+      ],
+      "eos_migration_files": [
+        "database/nex-eos/migrations/2527_eos_project_pnl_projection.sql"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED"
+    },
+    {
+      "requirement_id": "SRS-PNL-007",
+      "primary_packet_id": "S7-02",
+      "canonical_api": "FINANCE.PROJECT_PNL.GET",
+      "canonical_nsl_tool": "READ scoped P&L, no new monetary SoR",
+      "pytest_path": "tests/test_nex_eos_mybee_project_pnl.py",
+      "gates": [
+        "G-PNL",
+        "PG-PROJECTION"
+      ],
+      "source_existing": [
+        "journals.py",
+        "outbox_publication.py",
+        "projects.py"
+      ],
+      "source_new": [
+        "project_pnl.py",
+        "pnl_projector.py"
+      ],
+      "eos_migration_files": [
+        "database/nex-eos/migrations/2527_eos_project_pnl_projection.sql"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED"
+    },
+    {
+      "requirement_id": "SRS-PNL-008",
+      "primary_packet_id": "S7-02",
+      "canonical_api": "FINANCE.PROJECT_PNL.GET",
+      "canonical_nsl_tool": "READ scoped P&L, no new monetary SoR",
+      "pytest_path": "tests/test_nex_eos_mybee_project_pnl.py",
+      "gates": [
+        "G-PNL",
+        "PG-PROJECTION"
+      ],
+      "source_existing": [
+        "journals.py",
+        "outbox_publication.py",
+        "projects.py"
+      ],
+      "source_new": [
+        "project_pnl.py",
+        "pnl_projector.py"
+      ],
+      "eos_migration_files": [
+        "database/nex-eos/migrations/2527_eos_project_pnl_projection.sql"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED"
+    },
+    {
+      "requirement_id": "SRS-PNL-009",
+      "primary_packet_id": "S7-02",
+      "canonical_api": "FINANCE.PROJECT_PNL.GET",
+      "canonical_nsl_tool": "READ scoped P&L, no new monetary SoR",
+      "pytest_path": "tests/test_nex_eos_mybee_project_pnl.py",
+      "gates": [
+        "G-PNL",
+        "PG-PROJECTION"
+      ],
+      "source_existing": [
+        "journals.py",
+        "outbox_publication.py",
+        "projects.py"
+      ],
+      "source_new": [
+        "project_pnl.py",
+        "pnl_projector.py"
+      ],
+      "eos_migration_files": [
+        "database/nex-eos/migrations/2527_eos_project_pnl_projection.sql"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED"
+    },
+    {
+      "requirement_id": "SRS-PNL-010",
+      "primary_packet_id": "S7-02",
+      "canonical_api": "FINANCE.PROJECT_PNL.GET",
+      "canonical_nsl_tool": "READ scoped P&L, no new monetary SoR",
+      "pytest_path": "tests/test_nex_eos_mybee_project_pnl.py",
+      "gates": [
+        "G-PNL",
+        "PG-PROJECTION"
+      ],
+      "source_existing": [
+        "journals.py",
+        "outbox_publication.py",
+        "projects.py"
+      ],
+      "source_new": [
+        "project_pnl.py",
+        "pnl_projector.py"
+      ],
+      "eos_migration_files": [
+        "database/nex-eos/migrations/2527_eos_project_pnl_projection.sql"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED"
+    },
+    {
+      "requirement_id": "SRS-PRJ-001",
+      "primary_packet_id": "S0-02",
+      "canonical_api": "기존 /internal/v1/finance/voucher-drafts READ/CREATE",
+      "canonical_nsl_tool": "FINANCE.CREATE_VOUCHER_DRAFT (v1 unchanged)",
+      "pytest_path": "tests/test_nex_eos_p8_s15_voucher_draft.py",
+      "gates": [
+        "G-V1"
+      ],
+      "source_existing": [
+        "vouchers.py",
+        "voucher_commands.py",
+        "approval_transitions.py",
+        "nsl_eos_write_execution.py"
+      ],
+      "source_new": [
+        "docs/mybee_d04d12/baselines/v1_regression_results.md"
+      ],
+      "eos_migration_files": [],
+      "status": "PLANNED_NOT_IMPLEMENTED"
+    },
+    {
+      "requirement_id": "SRS-PRJ-002",
+      "primary_packet_id": "S1-05",
+      "canonical_api": "PROJECT.WORK_CODE_SET.GET/APPROVE; readiness query",
+      "canonical_nsl_tool": "READ GET; WRITE APPROVE UPDATE (admitted 0.2.1 only)",
+      "pytest_path": "tests/test_nex_eos_mybee_work_code_ready.py",
+      "gates": [
+        "G-PROJECT",
+        "PG-WORKCODE"
+      ],
+      "source_existing": [
+        "projects.py",
+        "project_operations.py",
+        "project_memberships.py"
+      ],
+      "source_new": [
+        "project_work_codes.py",
+        "project_business_api.py"
+      ],
+      "eos_migration_files": [
+        "database/nex-eos/migrations/2519_eos_project_work_code_readiness.sql"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED"
+    },
+    {
+      "requirement_id": "SRS-PRJ-003",
+      "primary_packet_id": "S1-05",
+      "canonical_api": "PROJECT.WORK_CODE_SET.GET/APPROVE; readiness query",
+      "canonical_nsl_tool": "READ GET; WRITE APPROVE UPDATE (admitted 0.2.1 only)",
+      "pytest_path": "tests/test_nex_eos_mybee_work_code_ready.py",
+      "gates": [
+        "G-PROJECT",
+        "PG-WORKCODE"
+      ],
+      "source_existing": [
+        "projects.py",
+        "project_operations.py",
+        "project_memberships.py"
+      ],
+      "source_new": [
+        "project_work_codes.py",
+        "project_business_api.py"
+      ],
+      "eos_migration_files": [
+        "database/nex-eos/migrations/2519_eos_project_work_code_readiness.sql"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED"
+    },
+    {
+      "requirement_id": "SRS-PRJ-004",
+      "primary_packet_id": "S1-05",
+      "canonical_api": "PROJECT.WORK_CODE_SET.GET/APPROVE; readiness query",
+      "canonical_nsl_tool": "READ GET; WRITE APPROVE UPDATE (admitted 0.2.1 only)",
+      "pytest_path": "tests/test_nex_eos_mybee_work_code_ready.py",
+      "gates": [
+        "G-PROJECT",
+        "PG-WORKCODE"
+      ],
+      "source_existing": [
+        "projects.py",
+        "project_operations.py",
+        "project_memberships.py"
+      ],
+      "source_new": [
+        "project_work_codes.py",
+        "project_business_api.py"
+      ],
+      "eos_migration_files": [
+        "database/nex-eos/migrations/2519_eos_project_work_code_readiness.sql"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED"
+    },
+    {
+      "requirement_id": "SRS-PRJ-005",
+      "primary_packet_id": "S1-06",
+      "canonical_api": "Project work assignment command/query",
+      "canonical_nsl_tool": "New domain Tool contract after OA admission",
+      "pytest_path": "tests/test_nex_eos_mybee_work_assignment.py",
+      "gates": [
+        "G-PROJECT",
+        "G-PRIVACY"
+      ],
+      "source_existing": [
+        "project_memberships.py",
+        "project_api.py"
+      ],
+      "source_new": [
+        "project_work_assignments.py"
+      ],
+      "eos_migration_files": [
+        "database/nex-eos/migrations/2519_eos_project_work_code_readiness.sql"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED"
+    },
+    {
+      "requirement_id": "SRS-PRJ-006",
+      "primary_packet_id": "S1-06",
+      "canonical_api": "Project work assignment command/query",
+      "canonical_nsl_tool": "New domain Tool contract after OA admission",
+      "pytest_path": "tests/test_nex_eos_mybee_work_assignment.py",
+      "gates": [
+        "G-PROJECT",
+        "G-PRIVACY"
+      ],
+      "source_existing": [
+        "project_memberships.py",
+        "project_api.py"
+      ],
+      "source_new": [
+        "project_work_assignments.py"
+      ],
+      "eos_migration_files": [
+        "database/nex-eos/migrations/2519_eos_project_work_code_readiness.sql"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED"
+    },
+    {
+      "requirement_id": "SRS-PRJ-007",
+      "primary_packet_id": "S7-04",
+      "canonical_api": "FINANCE.NVT_PNL.GET; project close check",
+      "canonical_nsl_tool": "READ authoritative receipts + governed close",
+      "pytest_path": "tests/test_nex_eos_mybee_project_close.py",
+      "gates": [
+        "G-PNL",
+        "G-PROJECT"
+      ],
+      "source_existing": [
+        "projects.py",
+        "project_operations.py"
+      ],
+      "source_new": [
+        "project_close_guards.py",
+        "nvt_pnl_rollup.py"
+      ],
+      "eos_migration_files": [
+        "database/nex-eos/migrations/2527_eos_project_pnl_projection.sql"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED"
+    },
+    {
+      "requirement_id": "SRS-PRJ-008",
+      "primary_packet_id": "S1-05",
+      "canonical_api": "PROJECT.WORK_CODE_SET.GET/APPROVE; readiness query",
+      "canonical_nsl_tool": "READ GET; WRITE APPROVE UPDATE (admitted 0.2.1 only)",
+      "pytest_path": "tests/test_nex_eos_mybee_work_code_ready.py",
+      "gates": [
+        "G-PROJECT",
+        "PG-WORKCODE"
+      ],
+      "source_existing": [
+        "projects.py",
+        "project_operations.py",
+        "project_memberships.py"
+      ],
+      "source_new": [
+        "project_work_codes.py",
+        "project_business_api.py"
+      ],
+      "eos_migration_files": [
+        "database/nex-eos/migrations/2519_eos_project_work_code_readiness.sql"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED"
+    },
+    {
+      "requirement_id": "SRS-SEC-001",
+      "primary_packet_id": "S2-02",
+      "canonical_api": "FINANCE.ACCOUNTING_APPROVAL.REQUEST (v2 case)",
+      "canonical_nsl_tool": "WRITE CREATE request only; Human WC decision separate",
+      "pytest_path": "tests/test_nex_eos_mybee_approval_company.py",
+      "gates": [
+        "G-HUMAN",
+        "PG-SCOPE"
+      ],
+      "source_existing": [
+        "approval_policies.py",
+        "approval_instances.py",
+        "business_formal_wc.py"
+      ],
+      "source_new": [
+        "scoped_approvals.py",
+        "scoped_approval_api.py"
+      ],
+      "eos_migration_files": [
+        "database/nex-eos/migrations/2521_eos_scoped_approval_case_v2.sql"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED"
+    },
+    {
+      "requirement_id": "SRS-SEC-002",
+      "primary_packet_id": "S2-03",
+      "canonical_api": "FINANCE.ACCOUNTING_APPROVAL.REQUEST + WC event",
+      "canonical_nsl_tool": "No agent self-approve; OA human finance:journal:approve",
+      "pytest_path": "tests/test_nex_eos_mybee_approval_human.py",
+      "gates": [
+        "G-HUMAN",
+        "PG-OA"
+      ],
+      "source_existing": [
+        "approval_decision_api.py",
+        "approval_transitions.py",
+        "authorization.py"
+      ],
+      "source_new": [
+        "accounting_approval.py",
+        "accounting_approval_api.py"
+      ],
+      "eos_migration_files": [
+        "database/nex-eos/migrations/2521_eos_scoped_approval_case_v2.sql"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED"
+    },
+    {
+      "requirement_id": "SRS-SEC-003",
+      "primary_packet_id": "S2-03",
+      "canonical_api": "FINANCE.ACCOUNTING_APPROVAL.REQUEST + WC event",
+      "canonical_nsl_tool": "No agent self-approve; OA human finance:journal:approve",
+      "pytest_path": "tests/test_nex_eos_mybee_approval_human.py",
+      "gates": [
+        "G-HUMAN",
+        "PG-OA"
+      ],
+      "source_existing": [
+        "approval_decision_api.py",
+        "approval_transitions.py",
+        "authorization.py"
+      ],
+      "source_new": [
+        "accounting_approval.py",
+        "accounting_approval_api.py"
+      ],
+      "eos_migration_files": [
+        "database/nex-eos/migrations/2521_eos_scoped_approval_case_v2.sql"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED"
+    },
+    {
+      "requirement_id": "SRS-SEC-004",
+      "primary_packet_id": "S7-03",
+      "canonical_api": "FINANCE.PROJECT_PNL.GET; FINANCE.NVT_PNL.GET",
+      "canonical_nsl_tool": "READ classification EAC/OA scope",
+      "pytest_path": "tests/test_nex_eos_mybee_pnl_privacy.py",
+      "gates": [
+        "G-PRIVACY",
+        "PG-RLS"
+      ],
+      "source_existing": [
+        "authorization.py",
+        "voucher_access.py"
+      ],
+      "source_new": [
+        "pnl_privacy.py",
+        "pnl_access.py"
+      ],
+      "eos_migration_files": [
+        "database/nex-eos/migrations/2527_eos_project_pnl_projection.sql"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED"
+    },
+    {
+      "requirement_id": "SRS-SEC-005",
+      "primary_packet_id": "S2-03",
+      "canonical_api": "FINANCE.ACCOUNTING_APPROVAL.REQUEST + WC event",
+      "canonical_nsl_tool": "No agent self-approve; OA human finance:journal:approve",
+      "pytest_path": "tests/test_nex_eos_mybee_approval_human.py",
+      "gates": [
+        "G-HUMAN",
+        "PG-OA"
+      ],
+      "source_existing": [
+        "approval_decision_api.py",
+        "approval_transitions.py",
+        "authorization.py"
+      ],
+      "source_new": [
+        "accounting_approval.py",
+        "accounting_approval_api.py"
+      ],
+      "eos_migration_files": [
+        "database/nex-eos/migrations/2521_eos_scoped_approval_case_v2.sql"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED"
+    },
+    {
+      "requirement_id": "SRS-SEC-006",
+      "primary_packet_id": "S7-03",
+      "canonical_api": "FINANCE.PROJECT_PNL.GET; FINANCE.NVT_PNL.GET",
+      "canonical_nsl_tool": "READ classification EAC/OA scope",
+      "pytest_path": "tests/test_nex_eos_mybee_pnl_privacy.py",
+      "gates": [
+        "G-PRIVACY",
+        "PG-RLS"
+      ],
+      "source_existing": [
+        "authorization.py",
+        "voucher_access.py"
+      ],
+      "source_new": [
+        "pnl_privacy.py",
+        "pnl_access.py"
+      ],
+      "eos_migration_files": [
+        "database/nex-eos/migrations/2527_eos_project_pnl_projection.sql"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED"
+    },
+    {
+      "requirement_id": "SRS-SEC-007",
+      "primary_packet_id": "S4-04",
+      "canonical_api": "FINANCE.JOURNAL.RECONCILE",
+      "canonical_nsl_tool": "READ authoritative business operation; NSL typed UNKNOWN",
+      "pytest_path": "tests/test_nex_eos_mybee_posting_replay_pg.py",
+      "gates": [
+        "G-GL-ACID",
+        "G-RECOVERY"
+      ],
+      "source_existing": [
+        "business_transactions.py",
+        "outbox_publication.py",
+        "nsl_eos_reconciliation.py"
+      ],
+      "source_new": [
+        "journal_operations.py",
+        "journal_outbox_events.py"
+      ],
+      "eos_migration_files": [
+        "database/nex-eos/migrations/2523_eos_posted_journal_posting.sql"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED"
+    },
+    {
+      "requirement_id": "SRS-SEC-008",
+      "primary_packet_id": "S1-04",
+      "canonical_api": "FINANCE.FX_RATE.IMPORT; FINANCE.FX_RATE.RESOLVE",
+      "canonical_nsl_tool": "READ: FINANCE.FX_RATE.RESOLVE; approved source WRITE",
+      "pytest_path": "tests/test_nex_eos_mybee_fx_rate.py",
+      "gates": [
+        "G-FX",
+        "G-COA",
+        "PG-FX"
+      ],
+      "source_existing": [
+        "accounts.py",
+        "business_transactions.py",
+        "nsl_eos_post_write_verification.py"
+      ],
+      "source_new": [
+        "fx_rates.py",
+        "fx_policy.py",
+        "fx_api.py"
+      ],
+      "eos_migration_files": [
+        "database/nex-eos/migrations/2518_eos_fx_rate_policy_snapshot.sql"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED"
+    },
+    {
+      "requirement_id": "SRS-SEC-009",
+      "primary_packet_id": "S1-01",
+      "canonical_api": "FINANCE.LEGAL_ENTITY.GET; company binding command/query",
+      "canonical_nsl_tool": "READ: FINANCE.LEGAL_ENTITY.GET",
+      "pytest_path": "tests/test_nex_eos_mybee_legal_entity.py",
+      "gates": [
+        "G-MASTER",
+        "PG-FK"
+      ],
+      "source_existing": [
+        "projects.py",
+        "project_operations.py",
+        "2504_eos_project_hierarchy.sql"
+      ],
+      "source_new": [
+        "legal_entities.py",
+        "legal_entity_api.py"
+      ],
+      "eos_migration_files": [
+        "database/nex-eos/migrations/2516_eos_legal_entity_project_binding.sql"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED"
+    },
+    {
+      "requirement_id": "SRS-VCH-001",
+      "primary_packet_id": "S3-01",
+      "canonical_api": "FINANCE.VOUCHER_CANDIDATE.CREATE_V2",
+      "canonical_nsl_tool": "WRITE CREATE_DRAFT; existing v1 unchanged",
+      "pytest_path": "tests/test_nex_eos_mybee_voucher_candidate.py",
+      "gates": [
+        "G-CANDIDATE",
+        "G-V1"
+      ],
+      "source_existing": [
+        "vouchers.py",
+        "voucher_commands.py"
+      ],
+      "source_new": [
+        "voucher_candidates.py",
+        "finance_v2_api.py"
+      ],
+      "eos_migration_files": [
+        "database/nex-eos/migrations/2522_eos_voucher_candidate_v2.sql"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED"
+    },
+    {
+      "requirement_id": "SRS-VCH-002",
+      "primary_packet_id": "S3-01",
+      "canonical_api": "FINANCE.VOUCHER_CANDIDATE.CREATE_V2",
+      "canonical_nsl_tool": "WRITE CREATE_DRAFT; existing v1 unchanged",
+      "pytest_path": "tests/test_nex_eos_mybee_voucher_candidate.py",
+      "gates": [
+        "G-CANDIDATE",
+        "G-V1"
+      ],
+      "source_existing": [
+        "vouchers.py",
+        "voucher_commands.py"
+      ],
+      "source_new": [
+        "voucher_candidates.py",
+        "finance_v2_api.py"
+      ],
+      "eos_migration_files": [
+        "database/nex-eos/migrations/2522_eos_voucher_candidate_v2.sql"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED"
+    },
+    {
+      "requirement_id": "SRS-VCH-003",
+      "primary_packet_id": "S4-03",
+      "canonical_api": "FINANCE.VOUCHER.APPROVE_AND_POST",
+      "canonical_nsl_tool": "WRITE CREATE immutable journal; no POST OperationKind",
+      "pytest_path": "tests/test_nex_eos_mybee_posting_atomic_pg.py",
+      "gates": [
+        "G-GL-ACID",
+        "PG-FAULT"
+      ],
+      "source_existing": [
+        "business_transactions.py",
+        "persistence.py",
+        "outbox_publication.py"
+      ],
+      "source_new": [
+        "journal_posting.py",
+        "finance_v2_api.py"
+      ],
+      "eos_migration_files": [
+        "database/nex-eos/migrations/2523_eos_posted_journal_posting.sql"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED"
+    },
+    {
+      "requirement_id": "SRS-VCH-004",
+      "primary_packet_id": "S3-03",
+      "canonical_api": "FINANCE.ACCOUNTING_APPROVAL.REQUEST; candidate review GET",
+      "canonical_nsl_tool": "WRITE CREATE review case; NO POST on WC result",
+      "pytest_path": "tests/test_nex_eos_mybee_candidate_review.py",
+      "gates": [
+        "G-CANDIDATE",
+        "G-HUMAN"
+      ],
+      "source_existing": [
+        "approval_transitions.py",
+        "WC ApprovalWorkItem"
+      ],
+      "source_new": [
+        "candidate_review.py",
+        "finance_v2_api.py"
+      ],
+      "eos_migration_files": [
+        "database/nex-eos/migrations/2522_eos_voucher_candidate_v2.sql"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED"
+    },
+    {
+      "requirement_id": "SRS-VCH-005",
+      "primary_packet_id": "S3-02",
+      "canonical_api": "FINANCE.VOUCHER_CANDIDATE.VALIDATE",
+      "canonical_nsl_tool": "READ/validation Tool; no GL side-effect",
+      "pytest_path": "tests/test_nex_eos_mybee_voucher_fx_validation.py",
+      "gates": [
+        "G-FX",
+        "G-CANDIDATE"
+      ],
+      "source_existing": [
+        "vouchers.py",
+        "accounts.py",
+        "nsl_eos_write_execution.py"
+      ],
+      "source_new": [
+        "candidate_validation.py"
+      ],
+      "eos_migration_files": [
+        "database/nex-eos/migrations/2522_eos_voucher_candidate_v2.sql"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED"
+    },
+    {
+      "requirement_id": "SRS-VCH-006",
+      "primary_packet_id": "S0-02",
+      "canonical_api": "기존 /internal/v1/finance/voucher-drafts READ/CREATE",
+      "canonical_nsl_tool": "FINANCE.CREATE_VOUCHER_DRAFT (v1 unchanged)",
+      "pytest_path": "tests/test_nex_eos_p8_s15_voucher_draft.py",
+      "gates": [
+        "G-V1"
+      ],
+      "source_existing": [
+        "vouchers.py",
+        "voucher_commands.py",
+        "approval_transitions.py",
+        "nsl_eos_write_execution.py"
+      ],
+      "source_new": [
+        "docs/mybee_d04d12/baselines/v1_regression_results.md"
+      ],
+      "eos_migration_files": [],
+      "status": "PLANNED_NOT_IMPLEMENTED"
+    },
+    {
+      "requirement_id": "SRS-VCH-007",
+      "primary_packet_id": "S4-04",
+      "canonical_api": "FINANCE.JOURNAL.RECONCILE",
+      "canonical_nsl_tool": "READ authoritative business operation; NSL typed UNKNOWN",
+      "pytest_path": "tests/test_nex_eos_mybee_posting_replay_pg.py",
+      "gates": [
+        "G-GL-ACID",
+        "G-RECOVERY"
+      ],
+      "source_existing": [
+        "business_transactions.py",
+        "outbox_publication.py",
+        "nsl_eos_reconciliation.py"
+      ],
+      "source_new": [
+        "journal_operations.py",
+        "journal_outbox_events.py"
+      ],
+      "eos_migration_files": [
+        "database/nex-eos/migrations/2523_eos_posted_journal_posting.sql"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED"
+    },
+    {
+      "requirement_id": "SRS-VCH-008",
+      "primary_packet_id": "S5-01",
+      "canonical_api": "FINANCE.JOURNAL.REVERSE",
+      "canonical_nsl_tool": "WRITE CREATE new approved reversal journal",
+      "pytest_path": "tests/test_nex_eos_mybee_journal_reversal.py",
+      "gates": [
+        "G-REVERSAL",
+        "PG-IMMUTABLE"
+      ],
+      "source_existing": [
+        "vouchers.py",
+        "business_transactions.py"
+      ],
+      "source_new": [
+        "journal_reversal.py"
+      ],
+      "eos_migration_files": [
+        "database/nex-eos/migrations/2524_eos_fx_monetary_remeasurement.sql"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED"
+    }
+  ]
+}
