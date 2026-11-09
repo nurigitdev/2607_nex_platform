@@ -11,9 +11,9 @@ ROOT = Path(__file__).resolve().parents[2]
 SCHEMA_VERSION = "s44_ae_web_artifact_delivery_closure.v1"
 
 REQUIRED_FILES = (
-    "apps/nex-ae-web/src/main.js",
+    "apps/nex-ae-web/src/features/artifacts/ArtifactRuntimeRoute.tsx",
     "apps/nex-ae-web/src/artifactClient.js",
-    "apps/nex-ae-web/src/artifactCard.js",
+    "apps/nex-ae-web/src/features/artifacts/ArtifactPage.tsx",
     "apps/nex-ae-web/src/artifactPreviewPanel.js",
     "apps/nex-ae-web/src/artifactVersionPanel.js",
     "apps/nex-ae-web/src/artifactDownloadSaveAdapter.js",
@@ -21,14 +21,14 @@ REQUIRED_FILES = (
     "apps/nex-ae-web/src/artifactExportResultReadModel.js",
     "apps/nex-ae-web/src/artifactDownloadFormatSelector.js",
     "apps/nex-ae-web/scripts/runArtifactPlaywrightSmoke.mjs",
-    "apps/nex-ae-web/scripts/runArtifactDeliveryAccessibilitySmoke.mjs",
+    "apps/nex-ae-web/scripts/runModernArtifactPlaywrightSmoke.mjs",
     "apps/nex-ae-web/package.json",
     "apps/nex-ae-web/README.md",
     "apps/nex-ae-web/test/artifactDownloadSaveAdapter.test.mjs",
     "apps/nex-ae-web/test/artifactDeliveryActionState.test.mjs",
     "apps/nex-ae-web/test/artifactExportResultReadModel.test.mjs",
     "apps/nex-ae-web/test/artifactDownloadFormatSelector.test.mjs",
-    "apps/nex-ae-web/test/artifactDeliveryAccessibilitySmoke.test.mjs",
+    "apps/nex-ae-web/src/features/artifacts/ArtifactPage.test.tsx",
     "apps/nex-ae-web/test/artifactPlaywrightSmoke.test.mjs",
     "scripts/quality/run_quality_gate.sh",
     "scripts/smoke/run_ae_web_artifact_delivery_boundary_audit.py",
@@ -79,9 +79,9 @@ TOKEN_CHECKS = (
         "run_ae_web_artifact_multiformat_playwright_postgres_smoke.py",
     ),
     (
-        "artifact_accessibility_smoke_gate",
+        "modern_artifact_accessibility_gate",
         "scripts/quality/run_quality_gate.sh",
-        "runArtifactDeliveryAccessibilitySmoke.mjs",
+        "acceptance:v2-full-web",
     ),
     (
         "download_save_adapter_schema",
@@ -114,9 +114,9 @@ TOKEN_CHECKS = (
         "AE_WEB_ARTIFACT_EXPORT_RESULT_READ_MODEL_SCHEMA_VERSION",
     ),
     (
-        "export_result_main_surface",
-        "apps/nex-ae-web/src/main.js",
-        "artifactExportResult",
+        "react_export_result_surface",
+        "apps/nex-ae-web/src/features/artifacts/ArtifactRuntimeRoute.tsx",
+        "exportArtifact",
     ),
     (
         "download_format_selector_schema",
@@ -124,14 +124,14 @@ TOKEN_CHECKS = (
         "AE_WEB_ARTIFACT_DOWNLOAD_FORMAT_SELECTOR_SCHEMA_VERSION",
     ),
     (
-        "download_format_selector_renderer",
-        "apps/nex-ae-web/src/artifactDownloadFormatSelector.js",
-        "renderArtifactDownloadFormatSelector",
+        "react_export_format_actions",
+        "apps/nex-ae-web/src/features/artifacts/ArtifactPage.tsx",
+        "DOCX 만들기",
     ),
     (
-        "selector_action_route_wiring",
-        "apps/nex-ae-web/src/main.js",
-        "data-artifact-download-route",
+        "react_download_action_wiring",
+        "apps/nex-ae-web/src/features/artifacts/ArtifactPage.tsx",
+        "controller?.download",
     ),
     (
         "playwright_file_save_evidence",
@@ -149,14 +149,14 @@ TOKEN_CHECKS = (
         "artifact_download_selector_ready",
     ),
     (
-        "accessibility_selector_evidence",
-        "apps/nex-ae-web/scripts/runArtifactDeliveryAccessibilitySmoke.mjs",
-        "selector_selected_state_visible",
+        "modern_role_selector_evidence",
+        "apps/nex-ae-web/scripts/runModernArtifactPlaywrightSmoke.mjs",
+        'getByRole("button", { name: "다운로드" })',
     ),
     (
-        "accessibility_keyboard_evidence",
-        "apps/nex-ae-web/scripts/runArtifactDeliveryAccessibilitySmoke.mjs",
-        "download_anchor_keyboard_reachable",
+        "modern_ux_acceptance_evidence",
+        "apps/nex-ae-web/scripts/runModernArtifactPlaywrightSmoke.mjs",
+        "evaluateUxAcceptanceV2Page",
     ),
     (
         "multiformat_protected_env",

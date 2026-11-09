@@ -13,7 +13,7 @@ SCHEMA_VERSION = "s43_ae_artifact_export_transform_closure.v1"
 REQUIRED_FILES = (
     "services/nex-ae-api/nex_ae_api/artifacts.py",
     "services/nex-ae-api/README.md",
-    "apps/nex-ae-web/src/main.js",
+    "apps/nex-ae-web/src/features/artifacts/ArtifactRuntimeRoute.tsx",
     "apps/nex-ae-web/src/artifactClient.js",
     "apps/nex-ae-web/src/artifactPreviewPanel.js",
     "apps/nex-ae-web/scripts/runArtifactFetchModeSmoke.mjs",

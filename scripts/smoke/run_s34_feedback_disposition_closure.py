@@ -15,7 +15,8 @@ REQUIRED_FILES = (
     "services/nex-ag/nex_ag/generation_quality_disposition.py",
     "services/nex-ag/nex_ag/generation_quality_feedback_rollup.py",
     "apps/nex-ae-web/src/generationFeedback.js",
-    "apps/nex-ae-web/src/main.js",
+    "apps/nex-ae-web/src/features/workspace/ResponseQualityActions.tsx",
+    "apps/nex-ae-web/src/features/workspace/WorkspaceRuntimeRoute.tsx",
     "scripts/smoke/run_ae_generation_feedback_postgres_smoke.py",
     "scripts/smoke/run_ag_generation_quality_disposition_postgres_smoke.py",
     "scripts/quality/run_quality_gate.sh",
@@ -57,7 +58,7 @@ TOKEN_CHECKS = (
     ),
     (
         "ae_web_feedback_surface",
-        "apps/nex-ae-web/src/main.js",
+        "apps/nex-ae-web/src/features/workspace/ResponseQualityActions.tsx",
         "data-generation-feedback-value",
     ),
     (

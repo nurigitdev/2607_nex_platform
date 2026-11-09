@@ -335,12 +335,14 @@ def _dependency_locks_are_integrity_complete(
 ) -> bool:
     python_packages = int(summary.get("python_package_count") or 0)
     python_hashes = int(summary.get("python_hash_count") or 0)
+    node_packages = int(summary.get("node_package_count") or 0)
+    node_integrities = int(summary.get("node_integrity_count") or 0)
     return (
         summary.get("lock_count") == 2
         and python_packages >= 40
         and python_hashes >= python_packages
-        and summary.get("node_package_count") == 4
-        and summary.get("node_integrity_count") == 4
+        and node_packages > 0
+        and node_integrities == node_packages
     )
 
 

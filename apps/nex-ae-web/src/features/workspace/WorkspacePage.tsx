@@ -33,6 +33,11 @@ import {
   BusinessResultCard,
   type WorkspaceResultProjection,
 } from "./BusinessResultCard";
+import {
+  ResponseQualityActions,
+  type GenerationFeedbackState,
+  type GenerationFeedbackValue,
+} from "./ResponseQualityActions";
 import styles from "./WorkspacePage.module.css";
 import type { WorkspaceExecutionIssue } from "./workspaceExecution";
 
@@ -65,6 +70,8 @@ export interface WorkspaceController {
   readonly submit: (draft: WorkspaceDraft) => Promise<void> | void;
   readonly cancel?: () => Promise<void> | void;
   readonly retry?: () => Promise<void> | void;
+  readonly submitFeedback?: (value: GenerationFeedbackValue) => Promise<void> | void;
+  readonly submitRepairedDecision?: (action: "accept_repair" | "keep_original") => Promise<void> | void;
 }
 
 export interface WorkspacePageProps {
@@ -76,6 +83,8 @@ export interface WorkspacePageProps {
   readonly recentTasks?: readonly string[];
   readonly result?: WorkspaceResultProjection | null;
   readonly issue?: WorkspaceExecutionIssue | null;
+  readonly feedback?: GenerationFeedbackState | null;
+  readonly repairedResponseReview?: unknown;
 }
 
 const RECOMMENDED_WORK = Object.freeze([
@@ -93,6 +102,8 @@ export function WorkspacePage({
   recentTasks = [],
   result = null,
   issue = null,
+  feedback = null,
+  repairedResponseReview = null,
 }: WorkspacePageProps) {
   const [prompt, setPrompt] = useState("");
   const [useEvidence, setUseEvidence] = useState(true);
@@ -260,6 +271,12 @@ export function WorkspacePage({
                 ) : null}
                 {result ? <BusinessResultCard result={result} /> : null}
                 {issue ? <WorkspaceIssue issue={issue} /> : null}
+                <ResponseQualityActions
+                  feedback={feedback}
+                  repairedResponseReview={repairedResponseReview}
+                  onFeedback={controller?.submitFeedback}
+                  onRepairedDecision={controller?.submitRepairedDecision}
+                />
               </div>
             )}
           </section>

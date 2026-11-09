@@ -78,12 +78,14 @@ def test_s44_ae_web_artifact_delivery_closure_reports_token_failures(
         / "apps"
         / "nex-ae-web"
         / "src"
-        / "artifactDownloadFormatSelector.js"
+        / "features"
+        / "artifacts"
+        / "ArtifactPage.tsx"
     )
     target.write_text(
         target.read_text(encoding="utf-8").replace(
-            "renderArtifactDownloadFormatSelector",
-            "renderDisabledArtifactDownloadFormatSelector",
+            "DOCX 만들기",
+            "DOCX 비활성",
         ),
         encoding="utf-8",
     )
@@ -96,8 +98,8 @@ def test_s44_ae_web_artifact_delivery_closure_reports_token_failures(
     failed = [item for item in evidence["token_results"] if not item["present"]]
     assert failed == [
         {
-            "check_id": "download_format_selector_renderer",
-            "path": "apps/nex-ae-web/src/artifactDownloadFormatSelector.js",
+            "check_id": "react_export_format_actions",
+            "path": "apps/nex-ae-web/src/features/artifacts/ArtifactPage.tsx",
             "present": False,
         }
     ]

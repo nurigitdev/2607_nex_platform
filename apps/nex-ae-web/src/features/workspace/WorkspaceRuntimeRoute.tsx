@@ -1,8 +1,17 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { useOptionalInstalledRuntime } from "../../app/providers/RuntimeProvider";
+import { useSession } from "../../app/providers/SessionProvider";
+import { buildGenerationFeedbackRequest } from "../../generationFeedback.js";
+import { buildRepairedResponseDecisionRequest } from "../../repairedResponseDecisionClient.js";
+import {
+  markRepairedResponseDecisionFailed,
+  markRepairedResponseDecisionRecorded,
+  markRepairedResponseDecisionSubmitting,
+} from "../../repairedResponseDecisionState.js";
 import { mapWorkState, type WorkStatePresentation } from "../../ux/workState";
 import type { WorkspaceResultProjection } from "./BusinessResultCard";
+import type { GenerationFeedbackState, GenerationFeedbackValue } from "./ResponseQualityActions";
 import {
   executeWorkspaceDraft,
   issueFromStatus,
@@ -19,6 +28,26 @@ import {
   type WorkspaceSource,
 } from "./WorkspacePage";
 
+const createGenerationFeedbackRequest = buildGenerationFeedbackRequest as unknown as (input: {
+  readonly tenantId: string;
+  readonly userId: string;
+  readonly interactionId: string;
+  readonly chatDocumentId: string;
+  readonly feedbackValue: GenerationFeedbackValue;
+  readonly feedbackReasons: readonly string[];
+}) => any;
+
+const createRepairedResponseDecisionRequest = buildRepairedResponseDecisionRequest as unknown as (input: {
+  readonly reviewSurface: any;
+  readonly action: "accept_repair" | "keep_original";
+  readonly submittedVia: "chat_review";
+  readonly actorClaimsRef: {
+    readonly actor_type: "user";
+    readonly actor_id: string;
+    readonly tenant_id: string;
+  };
+}) => any;
+
 export function WorkspaceRuntimeRoute() {
   const runtime = useOptionalInstalledRuntime();
   if (!runtime) return <WorkspacePage />;
@@ -30,12 +59,15 @@ export function InstalledWorkspaceRuntime({
 }: {
   readonly runtime: NonNullable<ReturnType<typeof useOptionalInstalledRuntime>>;
 }) {
+  const { sessionState } = useSession();
   const [workState, setWorkState] = useState(() => mapWorkState("IDLE"));
   const [progressHistory, setProgressHistory] = useState<WorkStatePresentation[]>([]);
   const [messages, setMessages] = useState<WorkspaceMessage[]>([]);
   const [sources, setSources] = useState<readonly WorkspaceSource[]>([]);
   const [result, setResult] = useState<WorkspaceResultProjection | null>(null);
   const [issue, setIssue] = useState<WorkspaceExecutionIssue | null>(null);
+  const [feedback, setFeedback] = useState<GenerationFeedbackState | null>(null);
+  const [repairedResponseReview, setRepairedResponseReview] = useState<any | null>(null);
   const workspacePromise = useRef<ReturnType<typeof runtime.clients.workspace.createWorkspace> | null>(null);
   const activeExecution = useRef<{ abort: AbortController; interactionId: string | null } | null>(null);
   const lastDraft = useRef<WorkspaceDraft | null>(null);
@@ -51,6 +83,9 @@ export function InstalledWorkspaceRuntime({
     if (update.sources) setSources(update.sources);
     if ("result" in update) setResult(update.result ?? null);
     if ("issue" in update) setIssue(update.issue ?? null);
+    if ("repairedResponseReview" in update) {
+      setRepairedResponseReview(update.repairedResponseReview ?? null);
+    }
     if (activeExecution.current && update.interactionId) {
       activeExecution.current.interactionId = update.interactionId;
     }
@@ -70,6 +105,8 @@ export function InstalledWorkspaceRuntime({
     setResult(null);
     setSources([]);
     setIssue(null);
+    setFeedback(null);
+    setRepairedResponseReview(null);
     setWorkState(mapWorkState("ACCEPTING"));
     try {
       workspacePromise.current ??= runtime.clients.workspace.createWorkspace({
@@ -77,7 +114,7 @@ export function InstalledWorkspaceRuntime({
         locale: "ko-KR",
       });
       const workspace = await workspacePromise.current;
-      await executeWorkspaceDraft({
+      const outcome = await executeWorkspaceDraft({
         draft,
         workspaceId: workspace.workspaceId,
         conversationId: workspace.conversationId,
@@ -88,6 +125,9 @@ export function InstalledWorkspaceRuntime({
         onUpdate: applyUpdate,
         signal: abort.signal,
       });
+      if (outcome.interactionId && outcome.message && outcome.status !== "ACTIVE") {
+        setFeedback({ status: "READY", value: null });
+      }
     } catch (error) {
       if (abort.signal.aborted) {
         applyUpdate({
@@ -123,7 +163,60 @@ export function InstalledWorkspaceRuntime({
     retry() {
       if (lastDraft.current) void start(lastDraft.current);
     },
-  }), [runtime]);
+    async submitFeedback(value: GenerationFeedbackValue) {
+      const interactionId = activeExecution.current?.interactionId;
+      const tenantId = sessionState.tenantRef?.id;
+      const userId = sessionState.subjectRef?.id;
+      const currentWorkspace = workspacePromise.current ? await workspacePromise.current : null;
+      if (!interactionId || !tenantId || !userId || !currentWorkspace) return;
+      setFeedback({ status: "SUBMITTING", value });
+      try {
+        const request = createGenerationFeedbackRequest({
+          tenantId,
+          userId,
+          interactionId,
+          chatDocumentId: currentWorkspace.conversationId,
+          feedbackValue: value,
+          feedbackReasons: value === "positive" ? ["helpful"] : value === "negative" ? ["not_helpful"] : [],
+        });
+        await (runtime.clients.generationFeedback as any).submitGenerationFeedback(request);
+        setFeedback({ status: "RECORDED", value });
+      } catch {
+        setFeedback({ status: "FAILED", value });
+      }
+    },
+    async submitRepairedDecision(action) {
+      const surface = repairedResponseReview;
+      const actorId = sessionState.subjectRef?.id;
+      const tenantId = sessionState.tenantRef?.id;
+      if (!surface || !actorId || !tenantId) return;
+      const client = runtime.clients.repairedResponseDecision as any;
+      const submitting = markRepairedResponseDecisionSubmitting(
+        surface.decisionState,
+        action,
+        client.clientMode,
+      );
+      setRepairedResponseReview({ ...surface, decisionState: submitting });
+      try {
+        const request = createRepairedResponseDecisionRequest({
+          reviewSurface: surface,
+          action,
+          submittedVia: "chat_review",
+          actorClaimsRef: { actor_type: "user", actor_id: actorId, tenant_id: tenantId },
+        });
+        const result = await client.submitRepairedResponseDecision(request);
+        setRepairedResponseReview({
+          ...surface,
+          decisionState: markRepairedResponseDecisionRecorded(submitting, result),
+        });
+      } catch (error) {
+        setRepairedResponseReview({
+          ...surface,
+          decisionState: markRepairedResponseDecisionFailed(submitting, action, error, client.clientMode),
+        });
+      }
+    },
+  }), [repairedResponseReview, runtime, sessionState.subjectRef?.id, sessionState.tenantRef?.id]);
 
   return (
     <WorkspacePage
@@ -134,6 +227,8 @@ export function InstalledWorkspaceRuntime({
       sources={sources}
       result={result}
       issue={issue}
+      feedback={feedback}
+      repairedResponseReview={repairedResponseReview}
     />
   );
 }

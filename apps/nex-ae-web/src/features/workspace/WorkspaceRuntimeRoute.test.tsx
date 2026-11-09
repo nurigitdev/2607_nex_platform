@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
 import type { InstalledBrowserRuntime } from "../../app/runtime/installedRuntime";
+import { SessionProvider } from "../../app/providers/SessionProvider";
 import { InstalledWorkspaceRuntime } from "./WorkspaceRuntimeRoute";
 
 describe("installed Workspace runtime route", () => {
@@ -47,6 +48,7 @@ describe("installed Workspace runtime route", () => {
         },
       },
     }));
+    const submitGenerationFeedback = vi.fn(async () => ({ status: "RECORDED" }));
     const runtime = {
       clients: {
         workspace: { clientMode: "fetch", createWorkspace },
@@ -59,11 +61,24 @@ describe("installed Workspace runtime route", () => {
           getCitationQuality: vi.fn(),
         },
         interactionAgentResult: { clientMode: "fetch", getInteractionAgentResult },
+        generationFeedback: { clientMode: "fetch", submitGenerationFeedback },
         repairedResponseReview: null,
+        repairedResponseDecision: null,
       },
     } as unknown as InstalledBrowserRuntime;
 
-    render(<InstalledWorkspaceRuntime runtime={runtime} />);
+    render(
+      <SessionProvider initialSession={{
+        status: "authenticated",
+        sessionId: "session-1",
+        tenantRef: { type: "oa.tenant", id: "VO00" },
+        subjectRef: { type: "oa.user", id: "employee-1" },
+        scopes: [],
+        roles: [],
+      }}>
+        <InstalledWorkspaceRuntime runtime={runtime} />
+      </SessionProvider>,
+    );
     await user.type(screen.getByRole("textbox", { name: "업무 요청" }), "교통비 전표를 등록해 주세요.");
     await user.click(screen.getByRole("button", { name: "보내기" }));
 
@@ -74,5 +89,14 @@ describe("installed Workspace runtime route", () => {
     expect(createWorkspace).toHaveBeenCalledWith({ title: "내 업무 공간", locale: "ko-KR" });
     expect(admitInteraction).toHaveBeenCalledOnce();
     expect(getInteractionAgentResult).toHaveBeenCalledOnce();
+    await user.click(screen.getByRole("button", { name: "도움됨" }));
+    await waitFor(() => expect(screen.getByText("저장됨")).toBeInTheDocument());
+    expect(submitGenerationFeedback).toHaveBeenCalledOnce();
+    expect(submitGenerationFeedback.mock.calls[0]?.[0].payload).toMatchObject({
+      tenant_id: "VO00",
+      user_id: "employee-1",
+      chat_document_id: "conversation-1",
+      feedback_value: "positive",
+    });
   });
 });

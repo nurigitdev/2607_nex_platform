@@ -67,6 +67,7 @@ export interface WorkspaceExecutionUpdate {
   readonly sources?: readonly WorkspaceSource[];
   readonly result?: WorkspaceResultProjection | null;
   readonly issue?: WorkspaceExecutionIssue | null;
+  readonly repairedResponseReview?: unknown;
 }
 
 export interface WorkspaceExecutionOutcome extends WorkspaceExecutionUpdate {
@@ -166,6 +167,7 @@ export async function executeWorkspaceDraft({
       sources,
       result: null,
       issue: null,
+      repairedResponseReview: presentation.repairedResponseReview ?? null,
     };
     onUpdate(outcome);
     return outcome;
@@ -182,6 +184,7 @@ export async function executeWorkspaceDraft({
     },
     result: null,
     issue,
+    repairedResponseReview: presentation.repairedResponseReview ?? null,
   };
   onUpdate(outcome);
   return outcome;
