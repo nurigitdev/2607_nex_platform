@@ -73,31 +73,31 @@ def write_source_tree(root: Path, *, forbidden: bool = False) -> Path:
                 "providerDetailIncluded: false",
             ]
         ),
-        "src/main.js": "\n".join(
+        "src/features/workspace/workspaceExecution.ts": "\n".join(
             [
-                "renderGroundedResponseQualitySurface",
-                "renderMessageGroundedResponseQuality",
-                "groundedResponseQuality",
-                "grounded_response_quality",
-                "buildMockGroundedResponseQualityContract",
+                "buildGroundedGenerationPresentation",
+                "groundedSources",
+                "citation_status",
+                "인용 검증 완료",
+                "presentation.repairedResponseReview",
             ]
         ),
-        "src/styles.css": "\n".join(
-            [".grounded-response-quality-surface", ".grounded-response-quality-chip"]
-        ),
+        "src/features/workspace/WorkspacePage.tsx": "ResponseQualityActions\nsources.length",
     }
     if forbidden:
-        files["src/main.js"] += "\nraw_prompt"
+        files["src/features/workspace/workspaceExecution.ts"] += "\nraw_prompt"
     for relative_path, text in files.items():
-        (app_dir / relative_path).write_text(text, encoding="utf-8")
+        source_path = app_dir / relative_path
+        source_path.parent.mkdir(parents=True, exist_ok=True)
+        source_path.write_text(text, encoding="utf-8")
     return app_dir
 
 
 def test_validate_html_reports_missing_grounded_quality_anchor() -> None:
-    missing = smoke.validate_html("message-list")
+    missing = smoke.validate_html("modern-root")
 
-    assert "grounded-response-quality" in missing
-    assert "message-list" not in missing
+    assert "ae-web-runtime-config" in missing
+    assert "modern-root" not in missing
 
 
 def test_validate_sources_reports_missing_and_forbidden_fragments(
@@ -115,7 +115,7 @@ def test_validate_sources_reports_missing_and_forbidden_fragments(
         "src/groundedResponseQuality.js::buildGroundedResponseQualitySurface"
         in missing
     )
-    assert "src/main.js::raw_prompt" in forbidden
+    assert "src/features/workspace/workspaceExecution.ts::raw_prompt" in forbidden
 
 
 def test_run_grounded_quality_smoke_passes_with_fake_server_and_sources(
@@ -153,21 +153,23 @@ def test_run_grounded_quality_smoke_reports_missing_html_without_server(
 
     result = smoke.run_ae_web_grounded_response_quality_smoke(
         start_server=False,
-        opener=lambda url: FakeResponse("message-list"),
+        opener=lambda url: FakeResponse("modern-root"),
         sleeper=lambda seconds: None,
         app_dir=app_dir,
     )
 
     assert result.status == "failed"
-    assert "grounded-response-quality" in result.missing_html_anchors
-    assert "missing_html=grounded-response-quality" in smoke.format_summary(result)
+    assert "ae-web-runtime-config" in result.missing_html_anchors
+    assert "missing_html=NeX-Platform,ae-web-runtime-config" in smoke.format_summary(result)
 
 
 def test_run_grounded_quality_smoke_reports_missing_source_and_forbidden(
     tmp_path: Path,
 ) -> None:
     app_dir = write_source_tree(tmp_path, forbidden=True)
-    (app_dir / "src" / "styles.css").write_text("", encoding="utf-8")
+    (app_dir / "src" / "features" / "workspace" / "WorkspacePage.tsx").write_text(
+        "", encoding="utf-8"
+    )
 
     missing_source = smoke.run_ae_web_grounded_response_quality_smoke(
         start_server=False,
@@ -177,11 +179,11 @@ def test_run_grounded_quality_smoke_reports_missing_source_and_forbidden(
     )
     assert missing_source.status == "failed"
     assert (
-        "src/styles.css::.grounded-response-quality-surface"
+        "src/features/workspace/WorkspacePage.tsx::ResponseQualityActions"
         in missing_source.missing_source_anchors
     )
     assert (
-        "missing_source=src/styles.css::.grounded-response-quality-surface"
+        "missing_source=src/features/workspace/WorkspacePage.tsx::ResponseQualityActions"
         in smoke.format_summary(missing_source)
     )
 
@@ -193,8 +195,9 @@ def test_run_grounded_quality_smoke_reports_missing_source_and_forbidden(
         app_dir=forbidden_app_dir,
     )
     assert forbidden_result.status == "failed"
-    assert "src/main.js::raw_prompt" in forbidden_result.forbidden_fragments
-    assert "forbidden=src/main.js::raw_prompt" in smoke.format_summary(
+    expected_forbidden = "src/features/workspace/workspaceExecution.ts::raw_prompt"
+    assert expected_forbidden in forbidden_result.forbidden_fragments
+    assert f"forbidden={expected_forbidden}" in smoke.format_summary(
         forbidden_result
     )
 

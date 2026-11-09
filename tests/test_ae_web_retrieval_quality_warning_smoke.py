@@ -72,29 +72,30 @@ def write_source_tree(root: Path, *, forbidden: bool = False) -> Path:
         "src/retrievalClient.js": "\n".join(
             ["qualityWarnings", "normalizeWarningKinds"]
         ),
-        "src/main.js": "\n".join(
+        "src/features/workspace/workspaceExecution.ts": "\n".join(
             [
-                "renderRetrievalQualityWarningSurface",
-                "renderMessageRetrievalQualityWarning",
-                "quality_warning",
+                "warningCount",
+                "결과에 확인이 필요한 항목이",
+                "groundedSources",
             ]
         ),
-        "src/styles.css": "\n".join(
-            [".quality-warning-surface", ".retrieval-quality-warning-chip"]
-        ),
+        "src/features/workspace/WorkspacePage.tsx": "sources.length\n<BusinessResultCard",
+        "src/features/workspace/BusinessResultCard.tsx": 'aria-label="결과 주의사항"',
     }
     if forbidden:
-        files["src/main.js"] += "\nraw_prompt"
+        files["src/features/workspace/workspaceExecution.ts"] += "\nraw_prompt"
     for relative_path, text in files.items():
-        (app_dir / relative_path).write_text(text, encoding="utf-8")
+        source_path = app_dir / relative_path
+        source_path.parent.mkdir(parents=True, exist_ok=True)
+        source_path.write_text(text, encoding="utf-8")
     return app_dir
 
 
 def test_validate_html_reports_missing_warning_anchor() -> None:
-    missing = smoke.validate_html("retrieval-feedback")
+    missing = smoke.validate_html("modern-root")
 
-    assert "retrieval-quality-warnings" in missing
-    assert "retrieval-feedback" not in missing
+    assert "ae-web-runtime-config" in missing
+    assert "modern-root" not in missing
 
 
 def test_validate_sources_reports_missing_and_forbidden_fragments(tmp_path: Path) -> None:
@@ -107,7 +108,7 @@ def test_validate_sources_reports_missing_and_forbidden_fragments(tmp_path: Path
     missing, forbidden = smoke.validate_sources(app_dir=app_dir)
 
     assert "src/retrievalQualityWarnings.js::buildRetrievalQualityWarningSurface" in missing
-    assert "src/main.js::raw_prompt" in forbidden
+    assert "src/features/workspace/workspaceExecution.ts::raw_prompt" in forbidden
 
 
 def test_run_warning_smoke_passes_with_fake_server_and_sources(tmp_path: Path) -> None:
@@ -139,19 +140,21 @@ def test_run_warning_smoke_reports_missing_html_without_server(tmp_path: Path) -
 
     result = smoke.run_ae_web_retrieval_quality_warning_smoke(
         start_server=False,
-        opener=lambda url: FakeResponse("retrieval-feedback"),
+        opener=lambda url: FakeResponse("modern-root"),
         sleeper=lambda seconds: None,
         app_dir=app_dir,
     )
 
     assert result.status == "failed"
-    assert "retrieval-quality-warnings" in result.missing_html_anchors
-    assert "missing_html=retrieval-quality-warnings" in smoke.format_summary(result)
+    assert "ae-web-runtime-config" in result.missing_html_anchors
+    assert "missing_html=NeX-Platform,ae-web-runtime-config" in smoke.format_summary(result)
 
 
 def test_run_warning_smoke_reports_missing_source_and_forbidden(tmp_path: Path) -> None:
     app_dir = write_source_tree(tmp_path, forbidden=True)
-    (app_dir / "src" / "styles.css").write_text("", encoding="utf-8")
+    (app_dir / "src" / "features" / "workspace" / "BusinessResultCard.tsx").write_text(
+        "", encoding="utf-8"
+    )
 
     missing_source = smoke.run_ae_web_retrieval_quality_warning_smoke(
         start_server=False,
@@ -160,8 +163,9 @@ def test_run_warning_smoke_reports_missing_source_and_forbidden(tmp_path: Path) 
         app_dir=app_dir,
     )
     assert missing_source.status == "failed"
-    assert "src/styles.css::.quality-warning-surface" in missing_source.missing_source_anchors
-    assert "missing_source=src/styles.css::.quality-warning-surface" in smoke.format_summary(
+    expected_missing = 'src/features/workspace/BusinessResultCard.tsx::aria-label="결과 주의사항"'
+    assert expected_missing in missing_source.missing_source_anchors
+    assert f"missing_source={expected_missing}" in smoke.format_summary(
         missing_source
     )
 
@@ -173,8 +177,9 @@ def test_run_warning_smoke_reports_missing_source_and_forbidden(tmp_path: Path) 
         app_dir=forbidden_app_dir,
     )
     assert forbidden_result.status == "failed"
-    assert "src/main.js::raw_prompt" in forbidden_result.forbidden_fragments
-    assert "forbidden=src/main.js::raw_prompt" in smoke.format_summary(
+    expected_forbidden = "src/features/workspace/workspaceExecution.ts::raw_prompt"
+    assert expected_forbidden in forbidden_result.forbidden_fragments
+    assert f"forbidden={expected_forbidden}" in smoke.format_summary(
         forbidden_result
     )
 
