@@ -43,7 +43,7 @@ REQUIRED_SERVE_TOKENS = (
     "isProxyPath",
     "proxyApiRequest",
     "proxyRequestHeaders",
-    "apiProxyTarget && isProxyPath",
+    "if (isProxyPath(url.pathname, apiProxyPrefix))",
 )
 
 REQUIRED_RUNTIME_TOKENS = (
@@ -61,7 +61,10 @@ REQUIRED_SESSION_CLIENT_TOKENS = (
     "ALLOWED_LOGIN_ROOT_SECRET_FIELDS",
 )
 
-REQUIRED_PACKAGE_TOKENS = ("\"dev\": \"node scripts/serve.mjs\"",)
+REQUIRED_PACKAGE_TOKENS = (
+    '"dev": "npm run build:v2 && node scripts/serve.mjs"',
+    '"start": "node scripts/serve.mjs"',
+)
 PROTECTED_ENV_KEYS = (PROXY_TARGET_ENV,)
 
 

@@ -47,8 +47,8 @@ MODULE_BUDGETS = (
     ),
     ModuleBudget(
         "web_application_composition",
-        "apps/nex-ae-web/src/main.js",
-        2_500,
+        "apps/nex-ae-web/src/features/workspace/WorkspaceRuntimeRoute.tsx",
+        150,
         "P1",
     ),
 )

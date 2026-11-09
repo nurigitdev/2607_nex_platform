@@ -40,7 +40,7 @@ REQUIRED_PATHS = (
         "scripts/smoke/run_s130_oa_mvp_platform_trust_closure.py",
     ),
     RequiredPath("oa_runtime", "services/nex-oa/nex_oa/main.py"),
-    RequiredPath("ae_web_runtime", "apps/nex-ae-web/src/main.js"),
+    RequiredPath("ae_web_runtime", "apps/nex-ae-web/src/app/main.tsx"),
     RequiredPath("ae_api_runtime", "services/nex-ae-api/nex_ae_api/main.py"),
     RequiredPath("cx_runtime", "services/nex-cx/nex_cx/main.py"),
     RequiredPath("mo_runtime", "services/nex-mo/nex_mo/main.py"),
@@ -77,8 +77,8 @@ TOKEN_REQUIREMENTS = (
     ),
     TokenRequirement(
         "ae_web_entry",
-        "apps/nex-ae-web/src/main.js",
-        "bootstrapAuthenticatedSessionRuntime",
+        "apps/nex-ae-web/src/app/main.tsx",
+        "createInstalledBrowserRuntime",
     ),
     TokenRequirement(
         "ae_api_entry",

@@ -64,12 +64,14 @@ def run_ae_web_grounding_journey_acceptance(root: Path = ROOT) -> dict[str, Any]
             root / "apps/nex-ae-web/test/goldenJourneyGrounding.test.mjs"
         ).is_file(),
         "main_uses_same_workflow_and_presentation": all(
-            token in _read_text(root / "apps/nex-ae-web/src/main.js")
+            token in _read_text(
+                root / "apps/nex-ae-web/src/features/workspace/workspaceExecution.ts"
+            )
             for token in (
-                "runGroundedGenerationWorkflow({",
-                "buildGroundedGenerationPresentation({",
-                "retrievalQualityWarning",
-                "groundedResponseQuality",
+                "runGroundedGenerationWorkflow",
+                "buildGroundedGenerationPresentation",
+                "groundedSources(workflow)",
+                "issueFromStatus",
             )
         ),
     }

@@ -51,12 +51,12 @@ class PlannedGap:
 REQUIRED_PATHS = (
     RequiredPath(
         "ae_web_shell",
-        ROOT / "apps" / "nex-ae-web" / "index.html",
-        "Authenticated browser workspace shell.",
+        ROOT / "apps" / "nex-ae-web" / "src" / "app" / "auth" / "LoginPage.tsx",
+        "Authentication-first browser shell.",
     ),
     RequiredPath(
         "ae_web_main",
-        ROOT / "apps" / "nex-ae-web" / "src" / "main.js",
+        ROOT / "apps" / "nex-ae-web" / "src" / "features" / "documents" / "DocumentRuntimeRoute.tsx",
         "Post-login workspace orchestration.",
     ),
     RequiredPath(
@@ -101,15 +101,15 @@ REQUIRED_PATHS = (
 )
 
 REQUIRED_HTML_ANCHORS = (
-    "credential-login-form",
-    "session-route-guard-summary",
-    "upload-surface-panel",
-    "upload-submit-button",
-    "upload-client-summary",
-    "upload-payload-preview",
-    "document-list",
-    "document-detail-panel",
-    "retrieval-scope-panel",
+    '<form className={styles.form}',
+    "if (!shell.authenticated)",
+    'path="/upload"',
+    'initialTab="upload"',
+    'aria-labelledby="documents-title"',
+    'aria-label="내 문서"',
+    'aria-labelledby="document-detail-title"',
+    'initialTab="retrieval"',
+    'aria-labelledby="retrieval-result-title"',
 )
 
 REQUIRED_SOURCE_TOKENS = (
@@ -145,20 +145,20 @@ REQUIRED_SOURCE_TOKENS = (
     ),
     TokenRequirement(
         "main",
-        ROOT / "apps" / "nex-ae-web" / "src" / "main.js",
-        "syncOwnerScopeFromSessionClaims",
+        ROOT / "apps" / "nex-ae-web" / "src" / "features" / "documents" / "DocumentRuntimeRoute.tsx",
+        "sessionState.subjectRef?.id",
         "Post-login owner scope is derived from OA session claims.",
     ),
     TokenRequirement(
         "main",
-        ROOT / "apps" / "nex-ae-web" / "src" / "main.js",
-        "documents:upload",
+        ROOT / "apps" / "nex-ae-web" / "src" / "app" / "router" / "AppRouter.tsx",
+        'path="/upload"',
         "Credential login requests include upload scope.",
     ),
     TokenRequirement(
         "main",
-        ROOT / "apps" / "nex-ae-web" / "src" / "main.js",
-        "submitUploadDraft",
+        ROOT / "apps" / "nex-ae-web" / "src" / "features" / "documents" / "DocumentRuntimeRoute.tsx",
+        "submitDocumentUpload",
         "Upload operation has a browser event path.",
     ),
     TokenRequirement(
@@ -178,8 +178,8 @@ REQUIRED_SOURCE_TOKENS = (
 PLANNED_GAPS = (
     PlannedGap(
         "file_metadata_input",
-        ROOT / "apps" / "nex-ae-web" / "index.html",
-        "upload-file-input",
+        ROOT / "apps" / "nex-ae-web" / "src" / "features" / "documents" / "DocumentWorkspacePage.tsx",
+        'type="file"',
         "Slice 0272",
         "Browser file selection metadata surface.",
     ),
@@ -286,8 +286,18 @@ def path_checks(root_dir: Path) -> list[dict[str, object]]:
 
 
 def html_anchor_checks(root_dir: Path) -> list[dict[str, object]]:
-    html = read_text(root_dir, ROOT / "apps" / "nex-ae-web" / "index.html")
-    return [{"anchor": anchor, "present": anchor in html} for anchor in REQUIRED_HTML_ANCHORS]
+    source = "\n".join(
+        read_text(root_dir, ROOT / path)
+        for path in (
+            "apps/nex-ae-web/src/app/auth/LoginPage.tsx",
+            "apps/nex-ae-web/src/app/router/AppRouter.tsx",
+            "apps/nex-ae-web/src/features/documents/DocumentWorkspacePage.tsx",
+        )
+    )
+    return [
+        {"anchor": anchor, "present": anchor in source}
+        for anchor in REQUIRED_HTML_ANCHORS
+    ]
 
 
 def source_token_checks(root_dir: Path) -> list[dict[str, object]]:

@@ -22,7 +22,9 @@ def run_ae_web_korean_golden_journey_playwright_acceptance(
         / "apps/nex-ae-web/scripts/runKoreanGoldenJourneyPlaywrightAcceptance.mjs"
     )
     package = _read_text(root / "apps/nex-ae-web/package.json")
-    main = _read_text(root / "apps/nex-ae-web/src/main.js")
+    session_adapter = _read_text(
+        root / "apps/nex-ae-web/src/app/legacyAdapters/sessionAdapter.ts"
+    )
     checks = {
         "correlated_nine_stage_runner_present": all(
             token in journey
@@ -71,11 +73,11 @@ def run_ae_web_korean_golden_journey_playwright_acceptance(
             )
         ),
         "mock_login_surface_is_executable": all(
-            token in main
+            token in session_adapter
             for token in (
                 "createMockSessionClient",
-                "buildLocalMockBrowserSessionSnapshot",
-                'reason: "login_required"',
+                "createModernSessionClient",
+                'mode = "mock"',
             )
         ),
         "package_command_present": (

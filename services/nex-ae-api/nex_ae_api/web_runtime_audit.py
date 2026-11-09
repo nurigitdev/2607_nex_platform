@@ -16,21 +16,32 @@ def build_ae_web_runtime_audit(root: Path = ROOT) -> dict[str, Any]:
     scripts_root = web_root / "scripts"
     package_path = web_root / "package.json"
     index_path = web_root / "index.html"
-    main_path = source_root / "main.js"
+    composition_paths = (
+        source_root / "app" / "main.tsx",
+        source_root / "app" / "router" / "AppRouter.tsx",
+        source_root / "app" / "shell" / "ApplicationShell.tsx",
+        source_root / "app" / "providers" / "AppProviders.tsx",
+    )
     issues = []
 
     package = _load_json_mapping(package_path)
     if not package:
         issues.append({"category": "web_package_missing_or_invalid"})
     index_source = _read_text(index_path)
-    main_source = _read_text(main_path)
+    main_source = "\n".join(_read_text(path) for path in composition_paths)
     if not index_source:
         issues.append({"category": "web_index_missing"})
-    if not main_source:
+    if not main_source.strip():
         issues.append({"category": "web_composition_missing"})
 
-    source_files = sorted(path for path in source_root.glob("*") if path.is_file())
-    test_files = sorted(test_root.glob("*.test.mjs"))
+    source_files = sorted(
+        path
+        for path in source_root.rglob("*")
+        if path.is_file() and ".test." not in path.name
+    )
+    test_files = sorted(
+        {*test_root.glob("*.test.mjs"), *source_root.rglob("*.test.ts"), *source_root.rglob("*.test.tsx")}
+    )
     playwright_scripts = sorted(
         path for path in scripts_root.glob("*.mjs") if "playwright" in path.name.lower()
     )
@@ -69,12 +80,19 @@ def build_ae_web_runtime_audit(root: Path = ROOT) -> dict[str, Any]:
         bool(re.search(r"[\uac00-\ud7a3]", line))
         for line in f"{index_source}\n{main_source}".splitlines()
     )
+    semantic_source = "\n".join(
+        (
+            index_source,
+            main_source,
+            _read_text(source_root / "features" / "documents" / "DocumentWorkspacePage.tsx"),
+        )
+    )
     semantic_tokens = {
         "document_language": '<html lang="ko">' in index_source,
-        "main_landmark": "<main" in index_source,
-        "navigation_landmark": "<nav" in index_source,
-        "live_region": 'aria-live="polite"' in index_source,
-        "label_associations": "<label for=" in index_source,
+        "main_landmark": "<main" in semantic_source,
+        "navigation_landmark": "<nav" in semantic_source,
+        "live_region": 'aria-live="polite"' in semantic_source,
+        "label_associations": "<label htmlFor=" in semantic_source,
     }
     checks = {
         "audit_inputs_present": not issues,
@@ -85,11 +103,11 @@ def build_ae_web_runtime_audit(root: Path = ROOT) -> dict[str, Any]:
             and len(playwright_scripts) == len(playwright_tests)
         ),
         "accessibility_inventory_classified": (
-            len(accessibility_scripts) == 1 and len(accessibility_tests) == 1
+            len(accessibility_scripts) == 0 and len(accessibility_tests) == 0
         ),
         "semantic_baseline_present": all(semantic_tokens.values()),
         "known_gaps_classified": (
-            main_line_count >= 2_500
+            1 <= main_line_count <= 500
             and localization_contract_present
             and "slice0227" in package_version
             and "axe-core" not in package_text
@@ -99,8 +117,8 @@ def build_ae_web_runtime_audit(root: Path = ROOT) -> dict[str, Any]:
     findings = [
         {
             "finding_id": "web_composition_size",
-            "disposition": "REFACTOR_REQUIRED",
-            "risk": "HIGH",
+            "disposition": "GOOD_BOUNDARY",
+            "risk": "LOW",
             "evidence": {"main_js_line_count": main_line_count},
         },
         {

@@ -31,7 +31,13 @@ SERVICE_ID = decision_smoke.SERVICE_ID
 DEFAULT_PROFILE = decision_smoke.DEFAULT_PROFILE
 
 WEB_DIAGNOSTICS_FILES = {
-    "main": ROOT / "apps" / "nex-ae-web" / "src" / "main.js",
+    "main": ROOT
+    / "apps"
+    / "nex-ae-web"
+    / "src"
+    / "features"
+    / "workspace"
+    / "workspaceExecution.ts",
     "runtime_diagnostics": ROOT
     / "apps"
     / "nex-ae-web"
@@ -45,11 +51,11 @@ WEB_DIAGNOSTICS_FILES = {
 }
 WEB_DIAGNOSTICS_ANCHORS = {
     "main": (
-        "buildWorkspaceRepairedResponseReviewReadModel",
-        "repairedResponseReviewReadModel:",
-        "summary.repaired_response_review_count",
-        "summary.repaired_response_actionable_count",
-        "summary.repaired_response_failed_count",
+        "repairedResponseReviewClient",
+        "presentGroundedGeneration",
+        "presentation.displayMode",
+        '"PRESENTATION_UNAVAILABLE"',
+        "buildGroundedGenerationPresentationFailure",
     ),
     "runtime_diagnostics": (
         "buildRepairedResponseReviewReadModelSummary",

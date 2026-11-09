@@ -48,9 +48,27 @@ class PlannedGap:
     purpose: str
 
 
-AE_WEB_INDEX = ROOT / "apps" / "nex-ae-web" / "index.html"
-AE_WEB_MAIN = ROOT / "apps" / "nex-ae-web" / "src" / "main.js"
-AE_WEB_STYLES = ROOT / "apps" / "nex-ae-web" / "src" / "styles.css"
+AE_WEB_INDEX = (
+    ROOT / "apps" / "nex-ae-web" / "src" / "features" / "artifacts" / "ArtifactPage.tsx"
+)
+AE_WEB_MAIN = (
+    ROOT
+    / "apps"
+    / "nex-ae-web"
+    / "src"
+    / "features"
+    / "artifacts"
+    / "ArtifactRuntimeRoute.tsx"
+)
+AE_WEB_STYLES = (
+    ROOT
+    / "apps"
+    / "nex-ae-web"
+    / "src"
+    / "features"
+    / "artifacts"
+    / "ArtifactPage.module.css"
+)
 AE_WEB_REGISTRY = ROOT / "apps" / "nex-ae-web" / "src" / "clientRegistry.js"
 AE_WEB_DIAGNOSTICS = ROOT / "apps" / "nex-ae-web" / "src" / "runtimeDiagnostics.js"
 AE_WEB_README = ROOT / "apps" / "nex-ae-web" / "README.md"
@@ -83,50 +101,50 @@ REQUIRED_SOURCE_TOKENS = (
         "current_web_surface",
         AE_WEB_INDEX,
         "artifact_panel_anchor",
-        'id="artifact-panel"',
-        "Static shell keeps a visible artifact panel anchor.",
+        'aria-labelledby="artifact-title"',
+        "React artifact page keeps a visible artifact workspace anchor.",
     ),
     TokenRequirement(
         "current_web_surface",
         AE_WEB_MAIN,
-        "workspace_artifact_ref_state",
-        "artifactRef:",
-        "Workspace state has a chat artifact ref sample.",
+        "workspace_artifact_state",
+        "setItems",
+        "Artifact route owns installed artifact collection state.",
     ),
     TokenRequirement(
         "current_web_surface",
         AE_WEB_MAIN,
-        "artifact_ref_renderer",
-        "function renderArtifactRefs",
-        "Chat messages already render artifact refs.",
+        "artifact_page_renderer",
+        "return <ArtifactPage",
+        "Artifact route projects state through the React artifact page.",
     ),
     TokenRequirement(
         "current_web_surface",
         AE_WEB_MAIN,
-        "artifact_summary_renderer",
-        "function renderArtifactSummary",
-        "Side panel already renders artifact handoff summary metadata.",
+        "artifact_detail_projection",
+        "selected={selected}",
+        "Artifact page receives normalized selected artifact metadata.",
     ),
     TokenRequirement(
         "current_web_surface",
         AE_WEB_MAIN,
         "preview_route_metadata",
-        "previewRoute",
-        "Current mock data exposes preview route metadata.",
+        "loadArtifactPreview",
+        "Installed runtime resolves artifact preview metadata.",
     ),
     TokenRequirement(
         "current_web_surface",
         AE_WEB_MAIN,
         "download_route_metadata",
-        "downloadRoutes",
-        "Current mock data exposes download route metadata.",
+        "saveArtifactFile",
+        "Installed runtime resolves artifact downloads through the client boundary.",
     ),
     TokenRequirement(
         "current_web_surface",
         AE_WEB_STYLES,
         "artifact_link_styles",
-        ".artifact-link",
-        "Current card class has stable CSS coverage.",
+        ".library",
+        "Current artifact library layout has scoped CSS coverage.",
     ),
     TokenRequirement(
         "runtime_boundary",
@@ -173,9 +191,9 @@ REQUIRED_SOURCE_TOKENS = (
     TokenRequirement(
         "safety_boundary",
         AE_WEB_MAIN,
-        "escape_html",
-        "function escapeHtml",
-        "Current inline artifact rendering escapes display data.",
+        "react_safe_projection",
+        "setError(messageFor",
+        "React projects bounded display data and safe error messages.",
     ),
     TokenRequirement(
         "safety_boundary",

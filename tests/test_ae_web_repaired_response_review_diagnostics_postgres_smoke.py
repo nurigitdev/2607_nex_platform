@@ -102,11 +102,11 @@ def test_review_diagnostics_boundary_reads_runtime_files() -> None:
 
 def test_review_diagnostics_boundary_reports_missing_anchor() -> None:
     boundary = smoke.inspect_ae_web_repaired_review_diagnostics_boundary(
-        web_contents({"main": "buildWorkspaceRepairedResponseReviewReadModel"})
+        web_contents({"main": "repairedResponseReviewClient"})
     )
 
     assert boundary["ok"] is False
-    assert "main:repairedResponseReviewReadModel:" in boundary["missing"]
+    assert "main:presentGroundedGeneration" in boundary["missing"]
     assert any(item["label"] == "main" and item["missing"] for item in boundary["files"])
 
 

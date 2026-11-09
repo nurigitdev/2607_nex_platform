@@ -41,7 +41,7 @@ REQUIRED_PATHS = (
     RequiredPath("ae_artifacts", "services/nex-ae-api/nex_ae_api/artifacts.py"),
     RequiredPath("ae_auth", "services/nex-ae-api/nex_ae_api/auth_sessions.py"),
     RequiredPath("ae_web_readme", "apps/nex-ae-web/README.md"),
-    RequiredPath("ae_web_runtime", "apps/nex-ae-web/src/main.js"),
+    RequiredPath("ae_web_runtime", "apps/nex-ae-web/src/app/main.tsx"),
     RequiredPath(
         "ae_latest_migration",
         "database/nex-ae-api/migrations/0612_ae_worker_result_persistence.sql",
@@ -98,8 +98,8 @@ TOKEN_REQUIREMENTS = (
     ),
     TokenRequirement(
         "web_runtime",
-        "apps/nex-ae-web/src/main.js",
-        "bootstrapAuthenticatedSessionRuntime",
+        "apps/nex-ae-web/src/app/main.tsx",
+        "createInstalledBrowserRuntime",
     ),
     TokenRequirement(
         "ae_api_requirements",

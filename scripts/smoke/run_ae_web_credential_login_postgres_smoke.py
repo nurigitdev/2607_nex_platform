@@ -37,16 +37,16 @@ EMPLOYEE_ID_ENV = "NEX_AE_WEB_CREDENTIAL_LOGIN_POSTGRES_SMOKE_EMPLOYEE_ID"
 
 WEB_ROOT = ROOT / "apps" / "nex-ae-web"
 REQUIRED_WEB_ANCHORS = (
-    "credential-login-panel",
-    "credential-login-form",
-    "credential-tenant-id",
-    "credential-employee-id",
-    "credential-password",
-    "credential-login-submit-button",
-    "credential-logout-button",
-    "credential-login-feedback",
-    "credential-login-summary",
-    "session-route-guard-summary",
+    'aria-labelledby="login-title"',
+    '<form className={styles.form}',
+    'name="employee_id"',
+    'name="password"',
+    'type="submit"',
+    "로그아웃",
+    'role="alert"',
+    "ProtectedShell",
+    "if (!shell.authenticated)",
+    'id="main-content"',
 )
 REQUIRED_WEB_MODULE_TOKENS = {
     "credentialLoginSurface.js": (
@@ -184,8 +184,17 @@ def _web_credential_evidence(source_evidence: Mapping[str, Any]) -> dict[str, An
 
 
 def _web_surface_evidence() -> dict[str, Any]:
-    html = (WEB_ROOT / "index.html").read_text(encoding="utf-8")
-    missing_anchors = tuple(anchor for anchor in REQUIRED_WEB_ANCHORS if anchor not in html)
+    source = "\n".join(
+        (WEB_ROOT / path).read_text(encoding="utf-8")
+        for path in (
+            "src/app/auth/LoginPage.tsx",
+            "src/app/router/AppRouter.tsx",
+            "src/app/shell/ApplicationShell.tsx",
+        )
+    )
+    missing_anchors = tuple(
+        anchor for anchor in REQUIRED_WEB_ANCHORS if anchor not in source
+    )
     module_evidence = {}
     for module_name, tokens in REQUIRED_WEB_MODULE_TOKENS.items():
         source = (WEB_ROOT / "src" / module_name).read_text(encoding="utf-8")

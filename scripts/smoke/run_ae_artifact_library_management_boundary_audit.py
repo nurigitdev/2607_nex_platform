@@ -50,7 +50,9 @@ class PlannedGap:
 
 AE_API_ARTIFACTS = ROOT / "services" / "nex-ae-api" / "nex_ae_api" / "artifacts.py"
 AE_API_README = ROOT / "services" / "nex-ae-api" / "README.md"
-AE_WEB_MAIN = ROOT / "apps" / "nex-ae-web" / "src" / "main.js"
+AE_WEB_MAIN = (
+    ROOT / "apps" / "nex-ae-web" / "src" / "features" / "artifacts" / "ArtifactPage.tsx"
+)
 AE_WEB_ARTIFACT_CLIENT = ROOT / "apps" / "nex-ae-web" / "src" / "artifactClient.js"
 AE_WEB_ARTIFACT_CARD_MODEL = (
     ROOT / "apps" / "nex-ae-web" / "src" / "artifactCardReadModel.js"
@@ -191,9 +193,9 @@ REQUIRED_SOURCE_TOKENS = (
     TokenRequirement(
         "redaction_boundary",
         AE_WEB_MAIN,
-        "escape_html",
-        "function escapeHtml",
-        "Browser rendering escapes artifact display text.",
+        "react_text_projection",
+        "{item.displayTitle}",
+        "React projects artifact display text through escaped text nodes.",
     ),
 )
 

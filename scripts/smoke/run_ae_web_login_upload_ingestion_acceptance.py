@@ -52,8 +52,8 @@ REQUIRED_TOKENS = {
         "`/api/v1/uploads/${encodeURIComponent(normalized)}/progress`",
     ),
     "main_progress_wiring": (
-        "apps/nex-ae-web/src/main.js",
-        "workspaceState.uploadProgressClient.getProgress",
+        "apps/nex-ae-web/src/features/documents/documentExperience.ts",
+        "progressClient.getProgress",
     ),
     "registry_progress_wiring": (
         "apps/nex-ae-web/src/clientRegistry.js",

@@ -67,7 +67,10 @@ def test_boundary_audit_advances_over_resolved_gap_documents(
         path.parent.mkdir(parents=True, exist_ok=True)
         existing = path.read_text(encoding="utf-8") if path.exists() else ""
         path.write_text(f"{existing}\n{token.token}\n", encoding="utf-8")
-    main_path = tmp_path / "apps/nex-ae-web/src/main.js"
+    main_path = (
+        tmp_path
+        / "apps/nex-ae-web/src/features/workspace/workspaceExecution.ts"
+    )
     main_path.write_text(
         main_path.read_text(encoding="utf-8")
         + "\nretrieval 결과와 ${format} handoff를 연결했습니다."
