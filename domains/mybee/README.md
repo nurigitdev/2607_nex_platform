@@ -24,8 +24,15 @@ recorded in `docs/mybee_phase1/baselines/repo_compatibility_owners.md`.
   tests/mybee_phase1/contracts/test_nex_api_compatibility.py
 
 ./domains/mybee/compatibility/check_lock.py --root . --summary
+
+./.venv/bin/pytest -q tests/mybee_phase1/test_work_code_registry.py
 ```
 
 All integration uses canonical versioned contracts. Direct service-private
 Python imports, cross-service database access, and a second MyBee runtime are
 forbidden.
+
+The revisioned D12 source catalog lives at
+`catalog/work_codes/catalog.v1.json`. It is source-authority attested and
+content-digest pinned, but deliberately has no active API or NSL Tool binding;
+EOS admission and runtime activation remain later provider-owned boundaries.
