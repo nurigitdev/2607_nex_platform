@@ -1,0 +1,1037 @@
+{
+  "document_id": "NEX-MYBEE-P1-INREPO-DEFER-EOS-ADR-20261109-V1.0",
+  "status": "DECISION_ACCEPTED_IMPLEMENTATION_PENDING",
+  "date": "2026-11-09",
+  "authority": "Phase-1 Repository/PR/Code Placement ONLY; frozen SoR and original SRS remain",
+  "original_input_path": "HISTORY/NeX_MyBee_D04_D12_EOS_ISP_v1.1_Repository_Ownership_Matrix.json",
+  "input_sha256": "9a27702c030061bffd3e0f26b21569a6a2ab9be34ad1e08a4c4b737fc27a3664",
+  "source_versions": {
+    "platform_master": "5e64fb1f6b9af2198797d1bcdbc82e577b098fbe",
+    "nsl_master": "f5d899bb611ee2cd65ce9f6544ed6e51b450b7d4",
+    "mybee_blueprint_main": "948b50fd43fc4e0f0d3f40ffd6335871ec741559"
+  },
+  "new_repository_required_before_phase1": false,
+  "enterprise_os_extraction_required_before_phase1": false,
+  "mandatory_git_target": "nurigitdev/2607_nex_platform/master",
+  "original_packets_preserved": 37,
+  "original_srs_requirement_ids_preserved": 116,
+  "original_postgres_fault_cases_preserved": 18,
+  "original_e2e_cases_preserved": 12,
+  "packet_overrides": [
+    {
+      "packet_id": "S0-01",
+      "title": "Frozen/HEAD·DB 기준선 고정",
+      "stage": "S0",
+      "v1_1_primary_repository": "nurigitdev/2607_nex_platform",
+      "phase1_repository": "nurigitdev/2607_nex_platform",
+      "logical_owner_from_v11": "NeX/EOS",
+      "proposed_phase1_code_location": "docs/mybee_phase1/ — 기준선·추적성·승인 원장 (제안)",
+      "srs_requirement_ids": [
+        "SRS-ARCH-001",
+        "SRS-ARCH-002",
+        "SRS-ARCH-004"
+      ],
+      "gate_ids": [
+        "G-ARCH"
+      ],
+      "existing_nex_source_paths": [
+        "docs/frozen/v2.1/10_PLATFORM_v2.1/05_NORMATIVE_BASELINE/NeX_Platform_v2.1_Architecture_Consistency_Closure_and_Unified_Change_Ledger_v1.0.md",
+        "database/nex-eos/README.md"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED",
+      "note": "경계/Source Gate 유지"
+    },
+    {
+      "packet_id": "S0-02",
+      "title": "P8 Golden A 및 기존 승인 회귀 기준선",
+      "stage": "S0",
+      "v1_1_primary_repository": "nurigitdev/2607_nex_platform",
+      "phase1_repository": "nurigitdev/2607_nex_platform",
+      "logical_owner_from_v11": "NeX/EOS",
+      "proposed_phase1_code_location": "docs/mybee_phase1/ — 기준선·추적성·승인 원장 (제안)",
+      "srs_requirement_ids": [
+        "SRS-ARCH-005",
+        "SRS-PRJ-001",
+        "SRS-VCH-006"
+      ],
+      "gate_ids": [
+        "G-V1"
+      ],
+      "existing_nex_source_paths": [
+        "services/nex-eos/nex_eos/vouchers.py",
+        "services/nex-eos/nex_eos/voucher_commands.py",
+        "services/nex-eos/nex_eos/approval_transitions.py",
+        "services/nex-ae-api/nex_ae_api/nsl_eos_write_execution.py"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED",
+      "note": "경계/Source Gate 유지"
+    },
+    {
+      "packet_id": "S0-03",
+      "title": "요구사항 추적·소스 원문·변경통제 Gate",
+      "stage": "S0",
+      "v1_1_primary_repository": "nurigitdev/2607_nex_platform",
+      "phase1_repository": "nurigitdev/2607_nex_platform",
+      "logical_owner_from_v11": "NeX/EOS",
+      "proposed_phase1_code_location": "docs/mybee_phase1/ — 기준선·추적성·승인 원장 (제안)",
+      "srs_requirement_ids": [
+        "SRS-ARCH-003",
+        "SRS-COM-001"
+      ],
+      "gate_ids": [
+        "G-ARCH",
+        "G-SRC-PDF"
+      ],
+      "existing_nex_source_paths": [
+        "contracts/openapi/nex-eos.openapi.yaml",
+        "docs/frozen/v2.1"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED",
+      "note": "경계/Source Gate 유지"
+    },
+    {
+      "packet_id": "S1-01",
+      "title": "LegalEntity와 ProjectCompanyBinding",
+      "stage": "S1",
+      "v1_1_primary_repository": "nurigitdev/2607_nex_platform",
+      "phase1_repository": "nurigitdev/2607_nex_platform",
+      "logical_owner_from_v11": "NeX/EOS",
+      "proposed_phase1_code_location": "services/nex-eos/ + database/nex-eos/; domains/mybee/catalog/ (제안)",
+      "srs_requirement_ids": [
+        "SRS-MST-001",
+        "SRS-MST-002",
+        "SRS-MST-004",
+        "SRS-SEC-009"
+      ],
+      "gate_ids": [
+        "G-MASTER",
+        "PG-FK"
+      ],
+      "existing_nex_source_paths": [
+        "services/nex-eos/nex_eos/projects.py",
+        "services/nex-eos/nex_eos/project_operations.py",
+        "database/nex-eos/migrations/2504_eos_project_hierarchy.sql"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED",
+      "note": "경계/Source Gate 유지"
+    },
+    {
+      "packet_id": "S1-02",
+      "title": "K-IFRS 채택 계정표/승인 릴리스·PostingRule",
+      "stage": "S1",
+      "v1_1_primary_repository": "nurigitdev/2607_nex_platform",
+      "phase1_repository": "nurigitdev/2607_nex_platform",
+      "logical_owner_from_v11": "NeX/EOS",
+      "proposed_phase1_code_location": "services/nex-eos/ + database/nex-eos/; domains/mybee/catalog/ (제안)",
+      "srs_requirement_ids": [
+        "SRS-ACC-001",
+        "SRS-ACC-002",
+        "SRS-ACC-003",
+        "SRS-ACC-005",
+        "SRS-ACC-006"
+      ],
+      "gate_ids": [
+        "G-COA",
+        "PG-ACCOUNT"
+      ],
+      "existing_nex_source_paths": [
+        "services/nex-eos/nex_eos/accounts.py",
+        "services/nex-eos/nex_eos/account_api.py",
+        "database/nex-eos/migrations/2505_eos_account.sql"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED",
+      "note": "경계/Source Gate 유지"
+    },
+    {
+      "packet_id": "S1-03",
+      "title": "AccountingPeriod·Close/Post 동시성 기반",
+      "stage": "S1",
+      "v1_1_primary_repository": "nurigitdev/2607_nex_platform",
+      "phase1_repository": "nurigitdev/2607_nex_platform",
+      "logical_owner_from_v11": "NeX/EOS",
+      "proposed_phase1_code_location": "services/nex-eos/ + database/nex-eos/; domains/mybee/catalog/ (제안)",
+      "srs_requirement_ids": [
+        "SRS-PER-001",
+        "SRS-PER-002"
+      ],
+      "gate_ids": [
+        "G-PERIOD",
+        "PG-RACE"
+      ],
+      "existing_nex_source_paths": [
+        "services/nex-eos/nex_eos/business_transactions.py",
+        "services/nex-eos/nex_eos/persistence.py"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED",
+      "note": "경계/Source Gate 유지"
+    },
+    {
+      "packet_id": "S1-04",
+      "title": "매매기준율 정책·FX RateSnapshot·Feed",
+      "stage": "S1",
+      "v1_1_primary_repository": "nurigitdev/2607_nex_platform",
+      "phase1_repository": "nurigitdev/2607_nex_platform",
+      "logical_owner_from_v11": "NeX/EOS",
+      "proposed_phase1_code_location": "services/nex-eos/ + database/nex-eos/; domains/mybee/catalog/ (제안)",
+      "srs_requirement_ids": [
+        "SRS-FX-001",
+        "SRS-FX-005",
+        "SRS-FX-006",
+        "SRS-FX-007",
+        "SRS-FX-008",
+        "SRS-FX-009",
+        "SRS-FX-018",
+        "SRS-FX-021",
+        "SRS-FX-022",
+        "SRS-FX-024",
+        "SRS-SEC-008"
+      ],
+      "gate_ids": [
+        "G-FX",
+        "G-COA",
+        "PG-FX"
+      ],
+      "existing_nex_source_paths": [
+        "services/nex-eos/nex_eos/accounts.py",
+        "services/nex-eos/nex_eos/business_transactions.py",
+        "services/nex-ae-api/nex_ae_api/nsl_eos_post_write_verification.py"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED",
+      "note": "경계/Source Gate 유지"
+    },
+    {
+      "packet_id": "S1-05",
+      "title": "D12 필수 5 FL코드 및 BusinessReady Gate",
+      "stage": "S1",
+      "v1_1_primary_repository": "nurigitdev/2607_nex_platform",
+      "phase1_repository": "nurigitdev/2607_nex_platform",
+      "logical_owner_from_v11": "NeX/EOS",
+      "proposed_phase1_code_location": "services/nex-eos/ + database/nex-eos/; domains/mybee/catalog/ (제안)",
+      "srs_requirement_ids": [
+        "SRS-PRJ-002",
+        "SRS-PRJ-003",
+        "SRS-PRJ-004",
+        "SRS-PRJ-008"
+      ],
+      "gate_ids": [
+        "G-PROJECT",
+        "PG-WORKCODE"
+      ],
+      "existing_nex_source_paths": [
+        "services/nex-eos/nex_eos/projects.py",
+        "services/nex-eos/nex_eos/project_operations.py",
+        "services/nex-eos/nex_eos/project_memberships.py"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED",
+      "note": "경계/Source Gate 유지"
+    },
+    {
+      "packet_id": "S1-06",
+      "title": "Project WorkAssignment·Grade/MD 계획",
+      "stage": "S1",
+      "v1_1_primary_repository": "nurigitdev/2607_nex_platform",
+      "phase1_repository": "nurigitdev/2607_nex_platform",
+      "logical_owner_from_v11": "NeX/EOS",
+      "proposed_phase1_code_location": "services/nex-eos/ + database/nex-eos/; domains/mybee/catalog/ (제안)",
+      "srs_requirement_ids": [
+        "SRS-PRJ-005",
+        "SRS-PRJ-006"
+      ],
+      "gate_ids": [
+        "G-PROJECT",
+        "G-PRIVACY"
+      ],
+      "existing_nex_source_paths": [
+        "services/nex-eos/nex_eos/project_memberships.py",
+        "services/nex-eos/nex_eos/project_api.py"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED",
+      "note": "경계/Source Gate 유지"
+    },
+    {
+      "packet_id": "S2-01",
+      "title": "기안/품의 ApprovedDocumentEnvelope",
+      "stage": "S2",
+      "v1_1_primary_repository": "nurigitdev/2607_nex_platform",
+      "phase1_repository": "nurigitdev/2607_nex_platform",
+      "logical_owner_from_v11": "NeX/EOS",
+      "proposed_phase1_code_location": "services/nex-eos/ + contracts/; domains/mybee/workflow/ (제안)",
+      "srs_requirement_ids": [
+        "SRS-DOC-001",
+        "SRS-DOC-002",
+        "SRS-DOC-007"
+      ],
+      "gate_ids": [
+        "G-DOC",
+        "PG-PROOF"
+      ],
+      "existing_nex_source_paths": [
+        "services/nex-eos/nex_eos/approval_instances.py",
+        "services/nex-eos/nex_eos/approval_transitions.py"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED",
+      "note": "경계/Source Gate 유지"
+    },
+    {
+      "packet_id": "S2-02",
+      "title": "회사/다수 Project ScopedApprovalCase v2",
+      "stage": "S2",
+      "v1_1_primary_repository": "nurigitdev/2607_nex_platform",
+      "phase1_repository": "nurigitdev/2607_nex_platform",
+      "logical_owner_from_v11": "NeX/EOS",
+      "proposed_phase1_code_location": "services/nex-eos/ + contracts/; domains/mybee/workflow/ (제안)",
+      "srs_requirement_ids": [
+        "SRS-MST-003",
+        "SRS-SEC-001"
+      ],
+      "gate_ids": [
+        "G-HUMAN",
+        "PG-SCOPE"
+      ],
+      "existing_nex_source_paths": [
+        "services/nex-eos/nex_eos/approval_policies.py",
+        "services/nex-eos/nex_eos/approval_instances.py",
+        "services/nex-eos/nex_eos/business_formal_wc.py"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED",
+      "note": "경계/Source Gate 유지"
+    },
+    {
+      "packet_id": "S2-03",
+      "title": "회계 Human SoD·OA/WC 이벤트 어댑터",
+      "stage": "S2",
+      "v1_1_primary_repository": "nurigitdev/2607_nex_platform",
+      "phase1_repository": "nurigitdev/2607_nex_platform",
+      "logical_owner_from_v11": "NeX/EOS",
+      "proposed_phase1_code_location": "services/nex-eos/ + contracts/; domains/mybee/workflow/ (제안)",
+      "srs_requirement_ids": [
+        "SRS-APR-001",
+        "SRS-APR-002",
+        "SRS-APR-003",
+        "SRS-APR-005",
+        "SRS-APR-008",
+        "SRS-FX-023",
+        "SRS-SEC-002",
+        "SRS-SEC-003",
+        "SRS-SEC-005"
+      ],
+      "gate_ids": [
+        "G-HUMAN",
+        "PG-OA"
+      ],
+      "existing_nex_source_paths": [
+        "services/nex-eos/nex_eos/approval_decision_api.py",
+        "services/nex-eos/nex_eos/approval_transitions.py",
+        "services/nex-eos/nex_eos/authorization.py"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED",
+      "note": "경계/Source Gate 유지"
+    },
+    {
+      "packet_id": "S2-04",
+      "title": "품의 승인금액 소비·중복청구 Guard",
+      "stage": "S2",
+      "v1_1_primary_repository": "nurigitdev/2607_nex_platform",
+      "phase1_repository": "nurigitdev/2607_nex_platform",
+      "logical_owner_from_v11": "NeX/EOS",
+      "proposed_phase1_code_location": "services/nex-eos/ + contracts/; domains/mybee/workflow/ (제안)",
+      "srs_requirement_ids": [
+        "SRS-DOC-003",
+        "SRS-DOC-004",
+        "SRS-DOC-005"
+      ],
+      "gate_ids": [
+        "G-DOC",
+        "PG-CONCURRENCY"
+      ],
+      "existing_nex_source_paths": [
+        "services/nex-eos/nex_eos/business_transactions.py",
+        "services/nex-eos/nex_eos/approval_instances.py"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED",
+      "note": "경계/Source Gate 유지"
+    },
+    {
+      "packet_id": "S3-01",
+      "title": "VoucherCandidate v2 불변 Revision/Line",
+      "stage": "S3",
+      "v1_1_primary_repository": "nurigitdev/2607_nex_platform",
+      "phase1_repository": "nurigitdev/2607_nex_platform",
+      "logical_owner_from_v11": "NeX/EOS",
+      "proposed_phase1_code_location": "services/nex-eos/ + contracts/ (VoucherCandidate v2)",
+      "srs_requirement_ids": [
+        "SRS-VCH-001",
+        "SRS-VCH-002"
+      ],
+      "gate_ids": [
+        "G-CANDIDATE",
+        "G-V1"
+      ],
+      "existing_nex_source_paths": [
+        "services/nex-eos/nex_eos/vouchers.py",
+        "services/nex-eos/nex_eos/voucher_commands.py"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED",
+      "note": "경계/Source Gate 유지"
+    },
+    {
+      "packet_id": "S3-02",
+      "title": "Candidate 회계규칙·FX·기간/균형 검증",
+      "stage": "S3",
+      "v1_1_primary_repository": "nurigitdev/2607_nex_platform",
+      "phase1_repository": "nurigitdev/2607_nex_platform",
+      "logical_owner_from_v11": "NeX/EOS",
+      "proposed_phase1_code_location": "services/nex-eos/ + contracts/ (VoucherCandidate v2)",
+      "srs_requirement_ids": [
+        "SRS-ACC-004",
+        "SRS-ARCH-007",
+        "SRS-FX-002",
+        "SRS-FX-003",
+        "SRS-FX-004",
+        "SRS-FX-010",
+        "SRS-FX-011",
+        "SRS-VCH-005"
+      ],
+      "gate_ids": [
+        "G-FX",
+        "G-CANDIDATE"
+      ],
+      "existing_nex_source_paths": [
+        "services/nex-eos/nex_eos/vouchers.py",
+        "services/nex-eos/nex_eos/accounts.py",
+        "services/nex-ae-api/nex_ae_api/nsl_eos_write_execution.py"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED",
+      "note": "경계/Source Gate 유지"
+    },
+    {
+      "packet_id": "S3-03",
+      "title": "Review Submit/Return/Invalidate 상태 머신",
+      "stage": "S3",
+      "v1_1_primary_repository": "nurigitdev/2607_nex_platform",
+      "phase1_repository": "nurigitdev/2607_nex_platform",
+      "logical_owner_from_v11": "NeX/EOS",
+      "proposed_phase1_code_location": "services/nex-eos/ + contracts/ (VoucherCandidate v2)",
+      "srs_requirement_ids": [
+        "SRS-VCH-004"
+      ],
+      "gate_ids": [
+        "G-CANDIDATE",
+        "G-HUMAN"
+      ],
+      "existing_nex_source_paths": [
+        "services/nex-eos/nex_eos/approval_transitions.py",
+        "WC ApprovalWorkItem"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED",
+      "note": "경계/Source Gate 유지"
+    },
+    {
+      "packet_id": "S4-01",
+      "title": "Accounting Proof 수용·현재 OA 재검증",
+      "stage": "S4",
+      "v1_1_primary_repository": "nurigitdev/2607_nex_platform",
+      "phase1_repository": "nurigitdev/2607_nex_platform",
+      "logical_owner_from_v11": "NeX/EOS",
+      "proposed_phase1_code_location": "services/nex-eos/ + database/nex-eos/ (Posting)",
+      "srs_requirement_ids": [
+        "SRS-APR-004",
+        "SRS-APR-007"
+      ],
+      "gate_ids": [
+        "G-HUMAN",
+        "G-GL-ACID"
+      ],
+      "existing_nex_source_paths": [
+        "services/nex-eos/nex_eos/approval_transitions.py",
+        "services/nex-eos/nex_eos/authorization.py",
+        "services/nex-eos/nex_eos/approval_instances.py"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED",
+      "note": "경계/Source Gate 유지"
+    },
+    {
+      "packet_id": "S4-02",
+      "title": "Immutable PostedJournal·JournalLine/DB 보호",
+      "stage": "S4",
+      "v1_1_primary_repository": "nurigitdev/2607_nex_platform",
+      "phase1_repository": "nurigitdev/2607_nex_platform",
+      "logical_owner_from_v11": "NeX/EOS",
+      "proposed_phase1_code_location": "services/nex-eos/ + database/nex-eos/ (Posting)",
+      "srs_requirement_ids": [
+        "SRS-ACC-007"
+      ],
+      "gate_ids": [
+        "G-GL-ACID",
+        "PG-IMMUTABLE"
+      ],
+      "existing_nex_source_paths": [
+        "services/nex-eos/nex_eos/business_transactions.py",
+        "2506_eos_voucher_draft.sql KEEP"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED",
+      "note": "경계/Source Gate 유지"
+    },
+    {
+      "packet_id": "S4-03",
+      "title": "Posting 원자적 단일 EOS Transaction",
+      "stage": "S4",
+      "v1_1_primary_repository": "nurigitdev/2607_nex_platform",
+      "phase1_repository": "nurigitdev/2607_nex_platform",
+      "logical_owner_from_v11": "NeX/EOS",
+      "proposed_phase1_code_location": "services/nex-eos/ + database/nex-eos/ (Posting)",
+      "srs_requirement_ids": [
+        "SRS-ARCH-008",
+        "SRS-ARCH-009",
+        "SRS-VCH-003"
+      ],
+      "gate_ids": [
+        "G-GL-ACID",
+        "PG-FAULT"
+      ],
+      "existing_nex_source_paths": [
+        "services/nex-eos/nex_eos/business_transactions.py",
+        "services/nex-eos/nex_eos/persistence.py",
+        "services/nex-eos/nex_eos/outbox_publication.py"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED",
+      "note": "경계/Source Gate 유지"
+    },
+    {
+      "packet_id": "S4-04",
+      "title": "Posting Replay·Outbox·UNKNOWN 복구",
+      "stage": "S4",
+      "v1_1_primary_repository": "nurigitdev/2607_nex_platform",
+      "phase1_repository": "nurigitdev/2607_nex_platform",
+      "logical_owner_from_v11": "NeX/EOS",
+      "proposed_phase1_code_location": "services/nex-eos/ + database/nex-eos/ (Posting)",
+      "srs_requirement_ids": [
+        "SRS-APR-006",
+        "SRS-ARCH-006",
+        "SRS-SEC-007",
+        "SRS-VCH-007"
+      ],
+      "gate_ids": [
+        "G-GL-ACID",
+        "G-RECOVERY"
+      ],
+      "existing_nex_source_paths": [
+        "services/nex-eos/nex_eos/business_transactions.py",
+        "services/nex-eos/nex_eos/outbox_publication.py",
+        "services/nex-ae-api/nex_ae_api/nsl_eos_reconciliation.py"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED",
+      "note": "경계/Source Gate 유지"
+    },
+    {
+      "packet_id": "S5-01",
+      "title": "역분개·정정 처리",
+      "stage": "S5",
+      "v1_1_primary_repository": "nurigitdev/2607_nex_platform",
+      "phase1_repository": "nurigitdev/2607_nex_platform",
+      "logical_owner_from_v11": "NeX/EOS",
+      "proposed_phase1_code_location": "services/nex-eos/ + services/nex-ae-api/ (FX/Reconcile)",
+      "srs_requirement_ids": [
+        "SRS-DOC-006",
+        "SRS-FX-016",
+        "SRS-VCH-008"
+      ],
+      "gate_ids": [
+        "G-REVERSAL",
+        "PG-IMMUTABLE"
+      ],
+      "existing_nex_source_paths": [
+        "services/nex-eos/nex_eos/vouchers.py",
+        "services/nex-eos/nex_eos/business_transactions.py"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED",
+      "note": "경계/Source Gate 유지"
+    },
+    {
+      "packet_id": "S5-02",
+      "title": "외화 화폐성 항목 기말평가",
+      "stage": "S5",
+      "v1_1_primary_repository": "nurigitdev/2607_nex_platform",
+      "phase1_repository": "nurigitdev/2607_nex_platform",
+      "logical_owner_from_v11": "NeX/EOS",
+      "proposed_phase1_code_location": "services/nex-eos/ + services/nex-ae-api/ (FX/Reconcile)",
+      "srs_requirement_ids": [
+        "SRS-FX-012",
+        "SRS-FX-013",
+        "SRS-FX-015",
+        "SRS-FX-017"
+      ],
+      "gate_ids": [
+        "G-FX",
+        "PG-FX-CLOSE"
+      ],
+      "existing_nex_source_paths": [
+        "services/nex-eos/nex_eos/account_catalog.py",
+        "services/nex-eos/nex_eos/fx_rates.py"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED",
+      "note": "경계/Source Gate 유지"
+    },
+    {
+      "packet_id": "S5-03",
+      "title": "Period Closing Gate·외화 결제·환차손익",
+      "stage": "S5",
+      "v1_1_primary_repository": "nurigitdev/2607_nex_platform",
+      "phase1_repository": "nurigitdev/2607_nex_platform",
+      "logical_owner_from_v11": "NeX/EOS",
+      "proposed_phase1_code_location": "services/nex-eos/ + services/nex-ae-api/ (FX/Reconcile)",
+      "srs_requirement_ids": [
+        "SRS-FX-014",
+        "SRS-PER-003",
+        "SRS-PER-004"
+      ],
+      "gate_ids": [
+        "G-FX",
+        "G-PERIOD"
+      ],
+      "existing_nex_source_paths": [
+        "services/nex-eos/nex_eos/accounting_periods.py",
+        "services/nex-eos/nex_eos/journals.py"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED",
+      "note": "경계/Source Gate 유지"
+    },
+    {
+      "packet_id": "S5-04",
+      "title": "Journal Verify/Recon/GL 조회·오류 복구",
+      "stage": "S5",
+      "v1_1_primary_repository": "nurigitdev/2607_nex_platform",
+      "phase1_repository": "nurigitdev/2607_nex_platform",
+      "logical_owner_from_v11": "NeX/EOS",
+      "proposed_phase1_code_location": "services/nex-eos/ + services/nex-ae-api/ (FX/Reconcile)",
+      "srs_requirement_ids": [
+        "SRS-FX-020"
+      ],
+      "gate_ids": [
+        "G-RECOVERY",
+        "PG-QUERY"
+      ],
+      "existing_nex_source_paths": [
+        "services/nex-eos/nex_eos/business_queries.py",
+        "services/nex-ae-api/nex_ae_api/nsl_eos_post_write_verification.py"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED",
+      "note": "경계/Source Gate 유지"
+    },
+    {
+      "packet_id": "S6-01",
+      "title": "POSTED GL SourcePool 적격성",
+      "stage": "S6",
+      "v1_1_primary_repository": "nurigitdev/2607_nex_platform",
+      "phase1_repository": "nurigitdev/2607_nex_platform",
+      "logical_owner_from_v11": "NeX/EOS",
+      "proposed_phase1_code_location": "services/nex-eos/; domains/mybee/integrations/ (제안)",
+      "srs_requirement_ids": [
+        "SRS-ALC-001",
+        "SRS-ALC-002",
+        "SRS-ALC-003",
+        "SRS-ALC-010",
+        "SRS-ALC-011",
+        "SRS-ALC-012"
+      ],
+      "gate_ids": [
+        "G-ALLOCATION",
+        "PG-POOL"
+      ],
+      "existing_nex_source_paths": [
+        "services/nex-eos/nex_eos/journals.py",
+        "services/nex-eos/nex_eos/account_catalog.py"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED",
+      "note": "경계/Source Gate 유지"
+    },
+    {
+      "packet_id": "S6-02",
+      "title": "Allocation Plan 릴리스·배부 정책",
+      "stage": "S6",
+      "v1_1_primary_repository": "nurigitdev/2607_nex_platform",
+      "phase1_repository": "nurigitdev/2607_nex_platform",
+      "logical_owner_from_v11": "NeX/EOS",
+      "proposed_phase1_code_location": "services/nex-eos/; domains/mybee/integrations/ (제안)",
+      "srs_requirement_ids": [],
+      "gate_ids": [
+        "G-ALLOCATION",
+        "PG-POLICY"
+      ],
+      "existing_nex_source_paths": [
+        "services/nex-eos/nex_eos/project_work_assignments.py",
+        "services/nex-eos/nex_eos/project_memberships.py"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED",
+      "note": "경계/Source Gate 유지"
+    },
+    {
+      "packet_id": "S6-03",
+      "title": "Deterministic Allocation Batch·대사",
+      "stage": "S6",
+      "v1_1_primary_repository": "nurigitdev/2607_nex_platform",
+      "phase1_repository": "nurigitdev/2607_nex_platform",
+      "logical_owner_from_v11": "NeX/EOS",
+      "proposed_phase1_code_location": "services/nex-eos/; domains/mybee/integrations/ (제안)",
+      "srs_requirement_ids": [
+        "SRS-ALC-006",
+        "SRS-ALC-007",
+        "SRS-ALC-008",
+        "SRS-ALC-009",
+        "SRS-ALC-013",
+        "SRS-ALC-014"
+      ],
+      "gate_ids": [
+        "G-ALLOCATION",
+        "PG-CONSERVE"
+      ],
+      "existing_nex_source_paths": [
+        "services/nex-eos/nex_eos/business_transactions.py",
+        "services/nex-eos/nex_eos/outbox_publication.py"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED",
+      "note": "경계/Source Gate 유지"
+    },
+    {
+      "packet_id": "S6-04",
+      "title": "D08 Payroll / D15 Purchase 최소 소스 어댑터",
+      "stage": "S6",
+      "v1_1_primary_repository": "nurigitdev/2611_MyBee_Service",
+      "phase1_repository": "nurigitdev/2607_nex_platform",
+      "logical_owner_from_v11": "MyBee Domain",
+      "proposed_phase1_code_location": "domains/mybee/integrations/{payroll,purchase}/ (제안)",
+      "srs_requirement_ids": [
+        "SRS-ALC-004",
+        "SRS-ALC-015"
+      ],
+      "gate_ids": [
+        "G-ALLOCATION",
+        "G-PRIVACY"
+      ],
+      "existing_nex_source_paths": [
+        "services/nex-eos/nex_eos/allocation_plans.py",
+        "services/nex-eos/nex_eos/journals.py"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED",
+      "note": "EOS generic SourcePool API와 분리"
+    },
+    {
+      "packet_id": "S7-01",
+      "title": "D04 Budget SoR / D12 Project Budget Link",
+      "stage": "S7",
+      "v1_1_primary_repository": "nurigitdev/2607_nex_platform",
+      "phase1_repository": "nurigitdev/2607_nex_platform",
+      "logical_owner_from_v11": "NeX/EOS",
+      "proposed_phase1_code_location": "services/nex-eos/; domains/mybee/presentation/ (제안)",
+      "srs_requirement_ids": [],
+      "gate_ids": [
+        "G-BUDGET",
+        "PG-BUDGET"
+      ],
+      "existing_nex_source_paths": [
+        "services/nex-eos/nex_eos/projects.py",
+        "services/nex-eos/nex_eos/business_transactions.py"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED",
+      "note": "경계/Source Gate 유지"
+    },
+    {
+      "packet_id": "S7-02",
+      "title": "Project P&L Query/Projection·Watermark",
+      "stage": "S7",
+      "v1_1_primary_repository": "nurigitdev/2607_nex_platform",
+      "phase1_repository": "nurigitdev/2607_nex_platform",
+      "logical_owner_from_v11": "NeX/EOS",
+      "proposed_phase1_code_location": "services/nex-eos/; domains/mybee/presentation/ (제안)",
+      "srs_requirement_ids": [
+        "SRS-FX-019",
+        "SRS-PNL-001",
+        "SRS-PNL-002",
+        "SRS-PNL-006",
+        "SRS-PNL-007",
+        "SRS-PNL-008",
+        "SRS-PNL-009",
+        "SRS-PNL-010"
+      ],
+      "gate_ids": [
+        "G-PNL",
+        "PG-PROJECTION"
+      ],
+      "existing_nex_source_paths": [
+        "services/nex-eos/nex_eos/journals.py",
+        "services/nex-eos/nex_eos/outbox_publication.py",
+        "services/nex-eos/nex_eos/projects.py"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED",
+      "note": "경계/Source Gate 유지"
+    },
+    {
+      "packet_id": "S7-03",
+      "title": "Executive P&L 보안/소인원 역산 방지",
+      "stage": "S7",
+      "v1_1_primary_repository": "nurigitdev/2607_nex_platform",
+      "phase1_repository": "nurigitdev/2607_nex_platform",
+      "logical_owner_from_v11": "NeX/EOS",
+      "proposed_phase1_code_location": "services/nex-eos/; domains/mybee/presentation/ (제안)",
+      "srs_requirement_ids": [
+        "SRS-ALC-005",
+        "SRS-ARCH-010",
+        "SRS-PNL-004",
+        "SRS-PNL-005",
+        "SRS-SEC-004",
+        "SRS-SEC-006"
+      ],
+      "gate_ids": [
+        "G-PRIVACY",
+        "PG-RLS"
+      ],
+      "existing_nex_source_paths": [
+        "services/nex-eos/nex_eos/authorization.py",
+        "services/nex-eos/nex_eos/voucher_access.py"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED",
+      "note": "경계/Source Gate 유지"
+    },
+    {
+      "packet_id": "S7-04",
+      "title": "NVT 롤업·Project 종결/미정산 검증",
+      "stage": "S7",
+      "v1_1_primary_repository": "nurigitdev/2607_nex_platform",
+      "phase1_repository": "nurigitdev/2607_nex_platform",
+      "logical_owner_from_v11": "NeX/EOS",
+      "proposed_phase1_code_location": "services/nex-eos/; domains/mybee/presentation/ (제안)",
+      "srs_requirement_ids": [
+        "SRS-PNL-003",
+        "SRS-PRJ-007"
+      ],
+      "gate_ids": [
+        "G-PNL",
+        "G-PROJECT"
+      ],
+      "existing_nex_source_paths": [
+        "services/nex-eos/nex_eos/projects.py",
+        "services/nex-eos/nex_eos/project_operations.py"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED",
+      "note": "경계/Source Gate 유지"
+    },
+    {
+      "packet_id": "S8-01",
+      "title": "NSL Tool JSON Schema·Registry·Skill Pack",
+      "stage": "S8",
+      "v1_1_primary_repository": "nurigitdev/2611_MyBee_Service",
+      "phase1_repository": "nurigitdev/2607_nex_platform",
+      "logical_owner_from_v11": "MyBee Domain",
+      "proposed_phase1_code_location": "contracts/schemas/service/nex_eos/ + domains/mybee/skills/ (제안)",
+      "srs_requirement_ids": [],
+      "gate_ids": [
+        "G-ARCH",
+        "G-NSL"
+      ],
+      "existing_nex_source_paths": [
+        "examples/voucher_draft_validation/tools_write.json [NSL repo]",
+        "contracts/schemas/service/nex_eos/create_voucher_draft_command.v1.schema.json [NeX repo]"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED",
+      "note": "Canonical Provider/EOS 및 Domain Binding 분리"
+    },
+    {
+      "packet_id": "S8-02",
+      "title": "AE Binding·NSL Postwrite Verify/Recon",
+      "stage": "S8",
+      "v1_1_primary_repository": "nurigitdev/2607_nex_platform",
+      "phase1_repository": "nurigitdev/2607_nex_platform",
+      "logical_owner_from_v11": "NeX/EOS",
+      "proposed_phase1_code_location": "contracts/ + services/nex-ae-api/; domains/mybee/skills/ (제안)",
+      "srs_requirement_ids": [
+        "SRS-COM-002"
+      ],
+      "gate_ids": [
+        "G-NSL",
+        "G-RECOVERY"
+      ],
+      "existing_nex_source_paths": [
+        "services/nex-ae-api/nex_ae_api/nsl_eos_write_execution.py",
+        "services/nex-ae-api/nex_ae_api/nsl_eos_reconciliation.py",
+        "services/nex-ae-api/nex_ae_api/nsl_eos_post_write_verification.py"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED",
+      "note": "경계/Source Gate 유지"
+    },
+    {
+      "packet_id": "S8-03",
+      "title": "Golden E2E: 승인 USD 공용전표→손익",
+      "stage": "S8",
+      "v1_1_primary_repository": "nurigitdev/2611_MyBee_Service",
+      "phase1_repository": "nurigitdev/2607_nex_platform",
+      "logical_owner_from_v11": "MyBee Domain",
+      "proposed_phase1_code_location": "tests/ (공개 API/브라우저 진입)",
+      "srs_requirement_ids": [],
+      "gate_ids": [
+        "G-E2E",
+        "G-FX"
+      ],
+      "existing_nex_source_paths": [
+        "tests/test_nex_ae_eos_p8_s66_golden_a_commit_journey.py",
+        "tests/test_nex_eos_p8_s73_approval_transition.py"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED",
+      "note": "Golden Journey 전이 금지 규정"
+    },
+    {
+      "packet_id": "S8-04",
+      "title": "Payroll·Inventory·FX settlement/close E2E",
+      "stage": "S8",
+      "v1_1_primary_repository": "nurigitdev/2611_MyBee_Service",
+      "phase1_repository": "nurigitdev/2607_nex_platform",
+      "logical_owner_from_v11": "MyBee Domain",
+      "proposed_phase1_code_location": "tests/ + domains/mybee/integrations/ (제안)",
+      "srs_requirement_ids": [],
+      "gate_ids": [
+        "G-E2E",
+        "G-PRIVACY"
+      ],
+      "existing_nex_source_paths": [
+        "docs/mybee_d04d12/traceability/requirements.json"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED",
+      "note": "외화·소스 증적 검증"
+    },
+    {
+      "packet_id": "S8-05",
+      "title": "Full Regression·Signoffs·Controlled Release Closure",
+      "stage": "S8",
+      "v1_1_primary_repository": "nurigitdev/2611_MyBee_Service",
+      "phase1_repository": "nurigitdev/2607_nex_platform",
+      "logical_owner_from_v11": "MyBee Domain",
+      "proposed_phase1_code_location": "docs/mybee_phase1/releases/ (제안)",
+      "srs_requirement_ids": [],
+      "gate_ids": [
+        "G-RELEASE",
+        "G-SRC-PDF"
+      ],
+      "existing_nex_source_paths": [
+        "scripts/quality/run_quality_gate.sh",
+        "scripts/db/run_migrations.py"
+      ],
+      "status": "PLANNED_NOT_IMPLEMENTED",
+      "note": "단일 배포 프로파일·패키지별 증적"
+    }
+  ],
+  "supplemental_mybee_packets": [
+    {
+      "packet_id": "MB0-01",
+      "original_target_repository": "nurigitdev/2611_MyBee_Service",
+      "phase1_target_repository": "nurigitdev/2607_nex_platform",
+      "phase1_rule": "DEFER_REPO_BOOTSTRAP",
+      "logical_owner": "MyBee Domain",
+      "status": "PROPOSED"
+    },
+    {
+      "packet_id": "MB0-02",
+      "original_target_repository": "nurigitdev/2611_MyBee_Service",
+      "phase1_target_repository": "nurigitdev/2607_nex_platform",
+      "phase1_rule": "SELECT_WHEN_REQUIRED_COLOCATE_IN_DOMAINS_MYBEE",
+      "logical_owner": "MyBee Domain",
+      "status": "PROPOSED"
+    },
+    {
+      "packet_id": "MB1-01",
+      "original_target_repository": "nurigitdev/2611_MyBee_Service",
+      "phase1_target_repository": "nurigitdev/2607_nex_platform",
+      "phase1_rule": "SELECT_WHEN_REQUIRED_COLOCATE_IN_DOMAINS_MYBEE",
+      "logical_owner": "MyBee Domain",
+      "status": "PROPOSED"
+    },
+    {
+      "packet_id": "MB1-02",
+      "original_target_repository": "nurigitdev/2611_MyBee_Service",
+      "phase1_target_repository": "nurigitdev/2607_nex_platform",
+      "phase1_rule": "SELECT_WHEN_REQUIRED_COLOCATE_IN_DOMAINS_MYBEE",
+      "logical_owner": "MyBee Domain",
+      "status": "PROPOSED"
+    },
+    {
+      "packet_id": "MB1-03",
+      "original_target_repository": "nurigitdev/2611_MyBee_Service",
+      "phase1_target_repository": "nurigitdev/2607_nex_platform",
+      "phase1_rule": "SELECT_WHEN_REQUIRED_COLOCATE_IN_DOMAINS_MYBEE",
+      "logical_owner": "MyBee Domain",
+      "status": "PROPOSED"
+    },
+    {
+      "packet_id": "MB1-04",
+      "original_target_repository": "nurigitdev/2611_MyBee_Service",
+      "phase1_target_repository": "nurigitdev/2607_nex_platform",
+      "phase1_rule": "SELECT_WHEN_REQUIRED_COLOCATE_IN_DOMAINS_MYBEE",
+      "logical_owner": "MyBee Domain",
+      "status": "PROPOSED"
+    },
+    {
+      "packet_id": "MB2-01",
+      "original_target_repository": "nurigitdev/2611_MyBee_Service",
+      "phase1_target_repository": "nurigitdev/2607_nex_platform",
+      "phase1_rule": "SELECT_WHEN_REQUIRED_COLOCATE_IN_DOMAINS_MYBEE",
+      "logical_owner": "MyBee Domain",
+      "status": "PROPOSED"
+    },
+    {
+      "packet_id": "MB3-01",
+      "original_target_repository": "nurigitdev/2611_MyBee_Service",
+      "phase1_target_repository": "nurigitdev/2607_nex_platform",
+      "phase1_rule": "SELECT_WHEN_REQUIRED_COLOCATE_IN_DOMAINS_MYBEE",
+      "logical_owner": "MyBee Domain",
+      "status": "PROPOSED"
+    },
+    {
+      "packet_id": "MB6-01",
+      "original_target_repository": "nurigitdev/2611_MyBee_Service",
+      "phase1_target_repository": "nurigitdev/2607_nex_platform",
+      "phase1_rule": "SELECT_WHEN_REQUIRED_COLOCATE_IN_DOMAINS_MYBEE",
+      "logical_owner": "MyBee Domain",
+      "status": "PROPOSED"
+    },
+    {
+      "packet_id": "MB6-02",
+      "original_target_repository": "nurigitdev/2611_MyBee_Service",
+      "phase1_target_repository": "nurigitdev/2607_nex_platform",
+      "phase1_rule": "SELECT_WHEN_REQUIRED_COLOCATE_IN_DOMAINS_MYBEE",
+      "logical_owner": "MyBee Domain",
+      "status": "PROPOSED"
+    },
+    {
+      "packet_id": "MB7-01",
+      "original_target_repository": "nurigitdev/2611_MyBee_Service",
+      "phase1_target_repository": "nurigitdev/2607_nex_platform",
+      "phase1_rule": "SELECT_WHEN_REQUIRED_COLOCATE_IN_DOMAINS_MYBEE",
+      "logical_owner": "MyBee Domain",
+      "status": "PROPOSED"
+    },
+    {
+      "packet_id": "MB8-01",
+      "original_target_repository": "nurigitdev/2611_MyBee_Service",
+      "phase1_target_repository": "nurigitdev/2607_nex_platform",
+      "phase1_rule": "SELECT_WHEN_REQUIRED_COLOCATE_IN_DOMAINS_MYBEE",
+      "logical_owner": "MyBee Domain",
+      "status": "PROPOSED"
+    },
+    {
+      "packet_id": "MB8-02",
+      "original_target_repository": "nurigitdev/2611_MyBee_Service",
+      "phase1_target_repository": "nurigitdev/2607_nex_platform",
+      "phase1_rule": "SELECT_WHEN_REQUIRED_COLOCATE_IN_DOMAINS_MYBEE",
+      "logical_owner": "MyBee Domain",
+      "status": "PROPOSED"
+    }
+  ],
+  "phase1_cross_repo_pr_required": false,
+  "nsl_repository_separate": true,
+  "blueprint_repository_reference_only": true,
+  "frozen_authority_unmodified": true,
+  "eos_db_migration_owner": "database/nex-eos/migrations/",
+  "eos_service_owner": "services/nex-eos/nex_eos/",
+  "mybee_domain_proposed_root": "domains/mybee/",
+  "v1_1_cross_repo_e2e_id_preserved_with_execution_semantic": "G-CROSSREPO-E2E remains as ID but run as CROSS_PACKAGE_E2E",
+  "deferred_extraction_decision_gate": "ADR-REVIEW-EOS-EXTRACT-P1",
+  "acceptance_state": "NOT_EXECUTED"
+}
