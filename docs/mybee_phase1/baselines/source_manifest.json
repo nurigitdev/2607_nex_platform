@@ -1,0 +1,83 @@
+{
+  "schema_version": "nex.mybee.source-manifest.v1",
+  "slice_id": "S0-01",
+  "status": "FROZEN_BASELINE_IMPLEMENTATION_NOT_STARTED",
+  "recorded_at": "2026-11-09T00:00:00+09:00",
+  "repository": {
+    "name": "nurigitdev/2607_nex_platform",
+    "implementation_branch": "codex/mybee-phase1-implementation",
+    "master_baseline_commit": "9fe6ddb151bd121c8fb66fbde62cc24cca29eddb",
+    "capture_commit": "9fe6ddb151bd121c8fb66fbde62cc24cca29eddb",
+    "clean_worktree_at_capture": true
+  },
+  "frozen_authority": {
+    "path": "docs/frozen/v2.1/10_PLATFORM_v2.1/05_NORMATIVE_BASELINE/NeX_Platform_v2.1_Architecture_Consistency_Closure_and_Unified_Change_Ledger_v1.0.md",
+    "sha256": "sha256:3bc08ce2b50a89150a45f25b292b8159f16ac2009707eee828fc438d82329f2a"
+  },
+  "service_ownership": {
+    "nex-oa": "identity, authentication, principal, role binding and current authorization",
+    "nex-ae-api": "agent registry, unified agent runtime, NSL integration and skill artifact gateway",
+    "nex-wc": "enterprise work, routing, claim, assignment and human approval workflow",
+    "nex-eos": "business transaction, accounting, GL, project, budget, allocation and P&L source of record",
+    "nex-wa": "work asset, evidence, post-work activity and reporting artifacts",
+    "nex-cx": "context and evidence retrieval",
+    "nex-mo": "model serving and deterministic provider routing",
+    "nex-ag": "governance, policy administration, trust and kill-switch operations",
+    "domains/mybee": "MyBee office-work domain policy, templates, catalogs and canonical API consumers"
+  },
+  "migration_heads": {
+    "nex-ae-api": {
+      "version": 2514,
+      "path": "database/nex-ae-api/migrations/2514_ae_nsl_v02_profile.sql",
+      "sha256": "sha256:e8fd710c88d1954e48e5f1cec70c7abd2b818b68c58505397145e19677b99b51"
+    },
+    "nex-ag": {
+      "version": 1477,
+      "path": "database/nex-ag/migrations/1477_ag_platform_alert_persistence.sql",
+      "sha256": "sha256:c2a2048bf05f0148b0d7d655aa0bf47a4472b07952260550633c93347974431c"
+    },
+    "nex-cx": {
+      "version": 1374,
+      "path": "database/nex-cx/migrations/1374_cx_trace_projection_indexes.sql",
+      "sha256": "sha256:362b083e52cafefef1825d4e4930d8df238fb96f044cb821121af9c664da9b0a"
+    },
+    "nex-eos": {
+      "version": 2515,
+      "path": "database/nex-eos/migrations/2515_eos_worker_heartbeat.sql",
+      "sha256": "sha256:47c88ad736d4ef95bc5b82e4e32dd82716802e9ffc6e48f013976f7e26154a02"
+    },
+    "nex-mo": {
+      "version": 1470,
+      "path": "database/nex-mo/migrations/1470_mo_model_rollout_persistence.sql",
+      "sha256": "sha256:77e035d2537de241f5c26065b381288100ffd951767e42baa7c4a90d731c6208"
+    },
+    "nex-oa": {
+      "version": 2517,
+      "path": "database/nex-oa/migrations/2517_oa_service_principal_wa.sql",
+      "sha256": "sha256:44f0810291c238222a0848a69979619233c4cdfcb7ffe91a6e9409f4d461de0f"
+    },
+    "nex-wa": {
+      "version": 2607,
+      "path": "database/nex-wa/migrations/2607_wa_service_logs.sql",
+      "sha256": "sha256:960cd1bbfe2dca338a9c458ddc4cf1535d844d752dd9ea588931228a0b6c4ec5"
+    },
+    "nex-wc": {
+      "version": 1006,
+      "path": "database/nex-wc/migrations/1006_wc_approval_foundation.sql",
+      "sha256": "sha256:e09b1cd02cc3fd239473c7cbfddb1b8d0502d49c582296f796e991486393ad5c"
+    }
+  },
+  "canonical_contracts": {
+    "nex-oa": "contracts/openapi/nex-oa.openapi.yaml",
+    "nex-ae-api": "contracts/openapi/nex-ae-api.openapi.yaml",
+    "nex-wc": "contracts/openapi/nex-wc.openapi.yaml",
+    "nex-eos": "contracts/openapi/nex-eos.openapi.yaml",
+    "nex-wa": "contracts/openapi/nex-wa.openapi.yaml"
+  },
+  "open_entry_gates": [
+    "D04_D12_PDF_PAGE_LEVEL_RECONCILIATION",
+    "ACTUAL_POSTGRESQL_MIGRATION_AND_FAULT_ACCEPTANCE",
+    "PUBLIC_API_AND_BROWSER_E2E",
+    "ACCOUNTING_TAX_FX_OWNER_SIGNOFF"
+  ]
+}
