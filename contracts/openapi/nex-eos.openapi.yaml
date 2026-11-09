@@ -362,6 +362,95 @@ paths:
           description: Tenant, subject, Project, or effective date is invalid.
         "503":
           description: OA authorization or EOS persistence is unavailable.
+  /internal/v2/finance/account-catalog:
+    get:
+      operationId: FINANCE.ACCOUNT.CATALOG_GET
+      tags: [Finance]
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes: [service:call]
+      x-nex-business-scope: finance:account:read
+      x-nex-side-effect-free: true
+      parameters:
+        - name: company_id
+          in: query
+          required: true
+          schema: {type: string, format: uuid}
+        - name: effective_on
+          in: query
+          required: true
+          schema: {type: string, format: date}
+        - name: X-NeX-Tenant-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+        - name: X-NeX-Subject-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+      responses:
+        "200":
+          description: Effective approved account catalog and PostingRule projection.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccountCatalogProjection"
+        "401":
+          description: Service claim is missing or invalid.
+        "403":
+          description: Fresh OA account-read authority is denied.
+        "404":
+          description: No approved catalog is effective for the company.
+        "409":
+          description: Effective release or PostingRule state is ambiguous or incomplete.
+        "422":
+          description: Tenant, subject, company, or date is invalid.
+        "503":
+          description: OA authorization or EOS persistence is unavailable.
+  /internal/v2/finance/accounts/approved:
+    post:
+      operationId: FINANCE.ACCOUNT.CREATE_APPROVED
+      tags: [Finance]
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes: [service:call]
+      x-nex-business-scope: finance:account:manage
+      x-nex-work-code: FL0004011
+      x-nex-route-class: WRITE
+      parameters:
+        - name: X-NeX-Tenant-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+        - name: X-NeX-Subject-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ApprovedAccountCreateCommand"
+      responses:
+        "201":
+          description: Approved Account and company policy committed or replayed exactly.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApprovedAccountCreateResult"
+        "401":
+          description: Service claim is missing or invalid.
+        "403":
+          description: Service trust or fresh OA account-manage authority is denied.
+        "404":
+          description: LegalEntity, catalog release, or PostingRule is absent.
+        "409":
+          description: Identity, policy period, parent, or release semantics conflict.
+        "422":
+          description: Account, policy, proof, currency, or effective date is invalid.
+        "503":
+          description: OA authorization or EOS persistence is unavailable.
   /internal/v1/finance/voucher-drafts:
     get:
       operationId: FINANCE.VOUCHER_DRAFT.LIST
@@ -716,6 +805,180 @@ components:
         version: {type: integer, minimum: 1}
         created_at: {type: string, format: date-time}
         updated_at: {type: string, format: date-time}
+    AccountCatalogProjection:
+      type: object
+      additionalProperties: false
+      required:
+        - tenant_id
+        - company_id
+        - effective_on
+        - catalog_release
+        - posting_rule
+        - accounts
+      properties:
+        tenant_id: {type: string, minLength: 1, maxLength: 128}
+        company_id: {type: string, format: uuid}
+        effective_on: {type: string, format: date}
+        catalog_release: {$ref: "#/components/schemas/AccountCatalogRelease"}
+        posting_rule: {$ref: "#/components/schemas/PostingRuleRelease"}
+        accounts:
+          type: array
+          minItems: 1
+          items: {$ref: "#/components/schemas/CompanyAccountProjection"}
+    AccountCatalogRelease:
+      type: object
+      additionalProperties: false
+      required:
+        - tenant_id
+        - release_id
+        - source_reference
+        - source_version
+        - source_hash
+        - effective_from
+        - published_by
+        - approved_proof_ref
+        - status
+        - created_at
+      properties:
+        tenant_id: {type: string}
+        release_id: {type: string, format: uuid}
+        source_reference: {type: string, minLength: 1, maxLength: 512}
+        source_version: {type: string, minLength: 1, maxLength: 128}
+        source_hash: {type: string, pattern: "^sha256:[0-9a-f]{64}$"}
+        effective_from: {type: string, format: date}
+        published_by: {type: string, minLength: 1, maxLength: 128}
+        approved_proof_ref: {type: string, pattern: "^sha256:[0-9a-f]{64}$"}
+        status: {type: string, enum: [DRAFT, PUBLISHED, SUPERSEDED]}
+        created_at: {type: string, format: date-time}
+    PostingRuleRelease:
+      type: object
+      additionalProperties: false
+      required:
+        - tenant_id
+        - posting_rule_id
+        - company_id
+        - catalog_release_id
+        - rule_code
+        - rule_version
+        - rule_hash
+        - effective_date
+        - account_mapping_hash
+        - approved_proof_ref
+        - status
+        - created_at
+      properties:
+        tenant_id: {type: string}
+        posting_rule_id: {type: string, format: uuid}
+        company_id: {type: string, format: uuid}
+        catalog_release_id: {type: string, format: uuid}
+        rule_code: {type: string, minLength: 1, maxLength: 128}
+        rule_version: {type: integer, minimum: 1}
+        rule_hash: {type: string, pattern: "^sha256:[0-9a-f]{64}$"}
+        effective_date: {type: string, format: date}
+        account_mapping_hash: {type: string, pattern: "^sha256:[0-9a-f]{64}$"}
+        approved_proof_ref: {type: string, pattern: "^sha256:[0-9a-f]{64}$"}
+        status: {type: string, enum: [DRAFT, PUBLISHED, SUPERSEDED]}
+        created_at: {type: string, format: date-time}
+    CompanyAccountProjection:
+      type: object
+      required:
+        - policy_id
+        - account_id
+        - account_code
+        - name
+        - category
+        - account_type
+        - is_postable_leaf
+        - is_monetary
+        - statement_line_ref
+        - allowed_currencies
+        - valid_from
+        - rule_revision
+        - approved_proof_ref
+      properties:
+        policy_id: {type: string, format: uuid}
+        account_id: {type: string, format: uuid}
+        account_code: {type: string, minLength: 1, maxLength: 64}
+        name: {type: string, minLength: 1, maxLength: 256}
+        category: {type: string, enum: [ASSET, LIABILITY, EQUITY, REVENUE, EXPENSE]}
+        account_type: {type: string, minLength: 1, maxLength: 32}
+        parent_account_id: {type: [string, "null"], format: uuid}
+        is_postable_leaf: {type: boolean}
+        is_monetary: {type: boolean}
+        statement_line_ref: {type: string, minLength: 1, maxLength: 128}
+        allowed_currencies:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items: {type: string, pattern: "^[A-Z]{3}$"}
+        valid_from: {type: string, format: date}
+        valid_until: {type: [string, "null"], format: date}
+        rule_revision: {type: integer, minimum: 1}
+        approved_proof_ref: {type: string, pattern: "^sha256:[0-9a-f]{64}$"}
+    ApprovedAccountCreateCommand:
+      type: object
+      additionalProperties: false
+      required: [account, policy]
+      properties:
+        account:
+          type: object
+          additionalProperties: false
+          required:
+            - account_id
+            - account_code
+            - name
+            - category
+            - account_type
+            - effective_from
+          properties:
+            account_id: {type: string, format: uuid}
+            account_code: {type: string, minLength: 1, maxLength: 64}
+            name: {type: string, minLength: 1, maxLength: 256}
+            category: {type: string, enum: [ASSET, LIABILITY, EQUITY, REVENUE, EXPENSE]}
+            account_type: {type: string, minLength: 1, maxLength: 32}
+            effective_from: {type: string, format: date}
+            effective_until: {type: [string, "null"], format: date}
+        policy:
+          type: object
+          additionalProperties: false
+          required:
+            - policy_id
+            - company_id
+            - catalog_release_id
+            - posting_rule_id
+            - is_postable_leaf
+            - is_monetary
+            - statement_line_ref
+            - allowed_currencies
+            - valid_from
+            - approved_proof_ref
+          properties:
+            policy_id: {type: string, format: uuid}
+            company_id: {type: string, format: uuid}
+            catalog_release_id: {type: string, format: uuid}
+            posting_rule_id: {type: string, format: uuid}
+            parent_account_id: {type: [string, "null"], format: uuid}
+            is_postable_leaf: {type: boolean}
+            is_monetary: {type: boolean}
+            statement_line_ref: {type: string, minLength: 1, maxLength: 128}
+            allowed_currencies:
+              type: array
+              minItems: 1
+              uniqueItems: true
+              items: {type: string, pattern: "^[A-Z]{3}$"}
+            valid_from: {type: string, format: date}
+            valid_until: {type: [string, "null"], format: date}
+            rule_revision: {type: integer, minimum: 1, default: 1}
+            approved_proof_ref: {type: string, pattern: "^sha256:[0-9a-f]{64}$"}
+    ApprovedAccountCreateResult:
+      type: object
+      additionalProperties: false
+      required: [account, policy]
+      properties:
+        account:
+          type: object
+        policy:
+          type: object
     NvtProjectCreateCommand:
       type: object
       x-nex-canonical-json-schema: schemas/service/nex_eos/nvt_project_create_command.v1.schema.json

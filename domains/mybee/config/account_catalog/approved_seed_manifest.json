@@ -1,0 +1,29 @@
+{
+  "schema_version": "nex.mybee.account-catalog-seed-manifest.v1",
+  "catalog_id": "mybee.finance.k-ifrs-adopted-chart",
+  "admission_status": "SOURCE_PENDING_NOT_ADMITTED",
+  "runtime_seed_allowed": false,
+  "source_reference": null,
+  "source_version": null,
+  "source_hash": null,
+  "approved_proof_ref": null,
+  "accounts": [],
+  "blocking_reason": "The actual MyBee-adopted chart of accounts and its approval evidence have not been supplied. K-IFRS does not prescribe a universal numerical chart, so this repository must not invent one.",
+  "required_admission_fields": [
+    "source_reference",
+    "source_version",
+    "source_hash",
+    "approved_proof_ref",
+    "accounts"
+  ],
+  "decision_evidence": [
+    {
+      "path": "docs/transition/MyBee_Phase1/NeX_MyBee_D04_D12_EOS_SRS_v1.0.md",
+      "sha256": "sha256:7facf0620ce5e8b9d14c4a0c4895e6a2fb55e67edbe3578a6eb2536c661616fe"
+    },
+    {
+      "path": "docs/transition/MyBee_Phase1/NeX_MyBee_Implementation_Slice_Plan_v1.2.md",
+      "sha256": "sha256:9734448832b2ef3a47dc7902566f3204fbe77fb40bcd545ef3afcc7a77edbdd8"
+    }
+  ]
+}

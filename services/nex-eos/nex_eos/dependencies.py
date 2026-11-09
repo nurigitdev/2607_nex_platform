@@ -7,6 +7,10 @@ from typing import Any
 from nex_runtime import build_service_token_admission_runtime
 from nex_runtime.service_token_admission import ServiceTokenAdmissionRuntime
 
+from .account_catalog import (
+    EosAccountCatalogService,
+    SqlAlchemyEosAccountCatalogRepository,
+)
 from .accounts import SqlAlchemyEosAccountRepository
 from .approval_instances import SqlAlchemyEosApprovalInstanceRepository
 from .approval_policies import SqlAlchemyEosApprovalPolicyRepository
@@ -59,6 +63,8 @@ class EosDependencies:
     legal_entities: SqlAlchemyEosLegalEntityRepository | None
     legal_entity_service: EosLegalEntityService | None
     accounts: SqlAlchemyEosAccountRepository | None
+    account_catalog: SqlAlchemyEosAccountCatalogRepository | None
+    account_catalog_service: EosAccountCatalogService | None
     approval_policies: SqlAlchemyEosApprovalPolicyRepository | None
     approval_instances: SqlAlchemyEosApprovalInstanceRepository | None
     approval_transition_service: EosBusinessApprovalTransitionService | None
@@ -108,6 +114,11 @@ def build_eos_dependencies(
     )
     accounts = (
         SqlAlchemyEosAccountRepository(database_runtime.session_factory)
+        if database_runtime is not None
+        else None
+    )
+    account_catalog = (
+        SqlAlchemyEosAccountCatalogRepository(database_runtime.session_factory)
         if database_runtime is not None
         else None
     )
@@ -201,6 +212,11 @@ def build_eos_dependencies(
         if legal_entities is not None and authorization_source is not None
         else None
     )
+    account_catalog_service = (
+        EosAccountCatalogService(account_catalog, authorization_source)
+        if account_catalog is not None and authorization_source is not None
+        else None
+    )
     voucher_access_service = (
         EosVoucherAccessService(
             session_factory=database_runtime.session_factory,
@@ -246,6 +262,8 @@ def build_eos_dependencies(
         legal_entities=legal_entities,
         legal_entity_service=legal_entity_service,
         accounts=accounts,
+        account_catalog=account_catalog,
+        account_catalog_service=account_catalog_service,
         approval_policies=approval_policies,
         approval_instances=approval_instances,
         approval_transition_service=approval_transition_service,
