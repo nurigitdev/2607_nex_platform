@@ -1,5 +1,4 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
 
 import {
@@ -19,11 +18,6 @@ import {
 import {
   createOperationState
 } from "../src/operationState.js";
-
-const MAIN_SOURCE = readFileSync(
-  new URL("../src/main.js", import.meta.url),
-  "utf-8"
-);
 
 function baseOperation() {
   return createOperationState({
@@ -212,15 +206,4 @@ describe("AE Web artifact delivery action state", () => {
     );
   });
 
-  it("keeps main artifact delivery wiring delegated to the action state module", () => {
-    assert.match(MAIN_SOURCE, /from "\.\/artifactDeliveryActionState\.js"/);
-    assert.match(MAIN_SOURCE, /buildArtifactDeliveryActionRunningState/);
-    assert.match(MAIN_SOURCE, /buildArtifactDeliveryDownloadSuccess/);
-    assert.match(MAIN_SOURCE, /buildArtifactDeliveryFailure/);
-    assert.match(MAIN_SOURCE, /applyArtifactDeliveryActionState/);
-    assert.doesNotMatch(
-      MAIN_SOURCE,
-      /saveArtifactDownload\(download\)|contentBase64|database_url|service_token/
-    );
-  });
 });

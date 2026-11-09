@@ -72,11 +72,19 @@ def test_s42_ae_web_artifact_experience_closure_reports_token_failures(
         target = tmp_path / relative_path
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(source, target)
-    target = tmp_path / "apps" / "nex-ae-web" / "src" / "artifactVersionPanel.js"
+    target = (
+        tmp_path
+        / "apps"
+        / "nex-ae-web"
+        / "src"
+        / "features"
+        / "artifacts"
+        / "ArtifactPage.tsx"
+    )
     target.write_text(
         target.read_text(encoding="utf-8").replace(
-            "export function renderArtifactVersionPanel(",
-            "export function renderArtifactVersionPanelDisabled(",
+            "artifact-versions-title",
+            "versions-heading-disabled",
         ),
         encoding="utf-8",
     )
@@ -89,8 +97,8 @@ def test_s42_ae_web_artifact_experience_closure_reports_token_failures(
     failed = [item for item in evidence["token_results"] if not item["present"]]
     assert failed == [
         {
-            "check_id": "artifact_version_panel_renderer",
-            "path": "apps/nex-ae-web/src/artifactVersionPanel.js",
+            "check_id": "react_artifact_version_surface",
+            "path": "apps/nex-ae-web/src/features/artifacts/ArtifactPage.tsx",
             "present": False,
         }
     ]

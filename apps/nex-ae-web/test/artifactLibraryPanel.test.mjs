@@ -7,7 +7,6 @@ import {
   buildArtifactCollectionSurface
 } from "../src/artifactClient.js";
 import {
-  AE_WEB_ARTIFACT_LIBRARY_PANEL_RENDERER_SCHEMA_VERSION,
   AE_WEB_ARTIFACT_LIBRARY_PANEL_SCHEMA_VERSION,
   ArtifactLibraryPanelError,
   assertArtifactLibraryPanelSafe,
@@ -17,8 +16,7 @@ import {
   createArtifactLibraryPanelState,
   createRunningArtifactLibraryPanelState,
   filterArtifactLibraryPanelState,
-  findSensitiveArtifactLibraryPanelKeys,
-  renderArtifactLibraryPanel
+  findSensitiveArtifactLibraryPanelKeys
 } from "../src/artifactLibraryPanel.js";
 
 function collectionItem(overrides = {}) {
@@ -137,7 +135,6 @@ describe("AE Web artifact library panel", () => {
     );
     assert.equal(buildArtifactLibraryPanelSummary(ready).ready_count, 1);
     assert.equal(running.status, "RUNNING");
-    assert.equal(renderArtifactLibraryPanel(running).severity, "running");
     assert.doesNotMatch(
       JSON.stringify(buildArtifactLibraryPanelSummary(ready)),
       /service_token|database_url|provider_url|storage_ref|\/data\/nex-platform/
@@ -147,8 +144,7 @@ describe("AE Web artifact library panel", () => {
   it("builds a library read-model from collection surfaces without private fields", () => {
     const state = buildArtifactLibraryPanelState(collectionSurface());
     const summary = buildArtifactLibraryPanelSummary(state);
-    const view = renderArtifactLibraryPanel(state);
-    const serialized = JSON.stringify({ state, summary, view });
+    const serialized = JSON.stringify({ state, summary });
 
     assert.equal(state.status, "READY");
     assert.equal(state.clientMode, "fetch");
@@ -164,13 +160,6 @@ describe("AE Web artifact library panel", () => {
     assert.equal(summary.downloadable_count, 1);
     assert.equal(summary.previewable_count, 1);
     assert.deepEqual(summary.formats, ["HTML_PREVIEW", "MD"]);
-    assert.equal(
-      view.artifact_library_panel_renderer_schema_version,
-      AE_WEB_ARTIFACT_LIBRARY_PANEL_RENDERER_SCHEMA_VERSION
-    );
-    assert.match(view.summaryHtml, /artifacts|ready|actions|formats/);
-    assert.match(view.listHtml, /Generated &lt;Report&gt;/);
-    assert.doesNotMatch(view.listHtml, /Generated <Report>/);
     assert.doesNotMatch(
       serialized,
       /storage_ref|storage_path|content_base64|rendered_markdown|\/data\/nex-platform/
@@ -188,12 +177,9 @@ describe("AE Web artifact library panel", () => {
     });
 
     assert.equal(empty.status, "EMPTY");
-    assert.equal(renderArtifactLibraryPanel(empty).severity, "pending");
-    assert.match(renderArtifactLibraryPanel(empty).listHtml, /No artifacts/);
     assert.equal(failed.status, "UNAVAILABLE");
     assert.equal(failed.retryable, true);
     assert.equal(buildArtifactLibraryPanelSummary(failed).error_status, "NETWORK_ERROR");
-    assert.equal(renderArtifactLibraryPanel(failed).severity, "danger");
   });
 
   it("filters ready, failed, downloadable, and previewable library items", () => {

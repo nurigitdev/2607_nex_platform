@@ -129,9 +129,14 @@ mkdir -p "$REPORT_DIR"
 "$PYTHON_BIN" scripts/smoke/run_ae_web_artifact_playwright_postgres_smoke.py --summary
 "$PYTHON_BIN" scripts/smoke/run_ae_web_artifact_multiformat_playwright_postgres_smoke.py --summary
 "$PYTHON_BIN" scripts/smoke/run_ae_web_artifact_library_playwright_postgres_smoke.py --summary
-node apps/nex-ae-web/scripts/runArtifactDeliveryAccessibilitySmoke.mjs --summary
-node apps/nex-ae-web/scripts/runGroundedGenerationExperienceSmoke.mjs --summary
+npm --prefix apps/nex-ae-web run audit:v2-legacy-retirement
+npm --prefix apps/nex-ae-web run audit:v2-security
+npm --prefix apps/nex-ae-web run tokens:check
 npm test --prefix apps/nex-ae-web
+npm --prefix apps/nex-ae-web run test:react
+npm --prefix apps/nex-ae-web run typecheck:v2
+npm --prefix apps/nex-ae-web run acceptance:v2-production-cutover
+npm --prefix apps/nex-ae-web run acceptance:v2-full-web
 "$PYTHON_BIN" scripts/smoke/run_s42_ae_web_artifact_experience_closure.py --summary
 "$PYTHON_BIN" scripts/smoke/run_ae_artifact_export_transform_boundary_audit.py --summary
 "$PYTHON_BIN" scripts/smoke/run_ae_artifact_export_postgres_smoke.py --summary

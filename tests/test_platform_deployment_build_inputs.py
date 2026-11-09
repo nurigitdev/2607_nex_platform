@@ -1,15 +1,26 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import run_platform_deployment_build_inputs as smoke
 from nex_runtime.deployment_locks import (
+    NODE_LOCK_PATH,
     PYTHON_LOCK_PATH,
     python_lock_package_versions,
 )
 
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def _expected_node_package_count() -> int:
+    payload = json.loads((ROOT / NODE_LOCK_PATH).read_text(encoding="utf-8"))
+    return sum(
+        1
+        for path, package in payload["packages"].items()
+        if path and isinstance(package, dict)
+    )
 
 
 def test_repository_build_input_evidence_is_complete() -> None:
@@ -22,8 +33,9 @@ def test_repository_build_input_evidence_is_complete() -> None:
     )
     assert result["summary"]["python_package_count"] == expected_python_packages
     assert result["summary"]["python_hash_count"] > 1000
-    assert result["summary"]["node_package_count"] == 4
-    assert result["summary"]["node_integrity_count"] == 4
+    expected_node_packages = _expected_node_package_count()
+    assert result["summary"]["node_package_count"] == expected_node_packages
+    assert result["summary"]["node_integrity_count"] == expected_node_packages
     assert result["decision"] == {
         "range_only_install_allowed": False,
         "python_require_hashes_required": True,

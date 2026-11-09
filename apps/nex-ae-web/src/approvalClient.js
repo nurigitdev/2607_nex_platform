@@ -4,6 +4,8 @@ export const WC_APPROVAL_GATE_DETAIL_SCHEMA_VERSION =
 export const WC_APPROVAL_DECISION_REQUEST_SCHEMA_VERSION =
   "wc_approval_decision_request.v1";
 export const HUMAN_GATE_VIEW_SCHEMA_VERSION = "human_gate_view.p8.v1";
+export const AE_USER_APPROVAL_PROJECTION_SCHEMA_VERSION =
+  "ae_user_approval_projection.v1";
 
 export const APPROVAL_DOMAINS = [
   "NSL_WRITE",
@@ -13,7 +15,12 @@ export const APPROVAL_DOMAINS = [
 
 const GATE_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const DECISIONS = new Set(["APPROVE", "REJECT"]);
+const SOURCE_STATUSES = new Set(["AVAILABLE", "OPEN"]);
 const HASH_REF = /^sha256:[0-9a-f]{64}$/;
+const AMOUNT = /^-?(0|[1-9][0-9]*)(\.[0-9]{1,4})?$/;
+const CURRENCY = /^[A-Z]{3}$/;
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+const TIMEZONE_SUFFIX = /(?:Z|[+-]\d{2}:\d{2})$/i;
 const SENSITIVE_KEY_PARTS = [
   "access_token",
   "api_key",
@@ -58,6 +65,10 @@ export function approvalDecisionRoute(gateId) {
   return `${approvalGateRoute(gateId)}/decisions`;
 }
 
+export function approvalProjectionRoute(gateId) {
+  return `${approvalGateRoute(gateId)}/user-projection`;
+}
+
 export function buildApprovalDecisionRequest({
   decision,
   decisionComment = null,
@@ -89,6 +100,9 @@ export function createFetchApprovalClient({ baseUrl = "", fetchImpl } = {}) {
   const normalizedBaseUrl = normalizeBaseUrl(baseUrl);
   return {
     clientMode: "fetch",
+    resolveResourceRoute(route) {
+      return `${normalizedBaseUrl}${requiredResourceRoute(route)}`;
+    },
     async listApprovalGates({ limit = 50 } = {}) {
       const route = approvalInboxRoute(limit);
       const payload = await fetchJson(request, `${normalizedBaseUrl}${route}`);
@@ -98,6 +112,14 @@ export function createFetchApprovalClient({ baseUrl = "", fetchImpl } = {}) {
       const route = approvalGateRoute(gateId);
       const payload = await fetchJson(request, `${normalizedBaseUrl}${route}`);
       return normalizeApprovalGateDetail(payload, { clientMode: "fetch", route });
+    },
+    async getApprovalProjection(gateId) {
+      const route = approvalProjectionRoute(gateId);
+      const payload = await fetchJson(request, `${normalizedBaseUrl}${route}`);
+      return normalizeUserApprovalProjection(payload, {
+        clientMode: "fetch",
+        route
+      });
     },
     async submitApprovalDecision(gateId, requestPayload) {
       const route = approvalDecisionRoute(gateId);
@@ -129,6 +151,9 @@ export function createMockApprovalClient({
 
   return {
     clientMode: "mock",
+    resolveResourceRoute(route) {
+      return requiredResourceRoute(route);
+    },
     async listApprovalGates({ limit = 50 } = {}) {
       const admitted = boundedLimit(limit);
       const gates = [...records.values()]
@@ -163,6 +188,17 @@ export function createMockApprovalClient({
           decision_options: ["APPROVE", "REJECT"]
         },
         { clientMode: "mock", route: approvalGateRoute(admittedId) }
+      );
+    },
+    async getApprovalProjection(gateId) {
+      const admittedId = requiredGateId(gateId);
+      const detail = await this.getApprovalGate(admittedId);
+      return normalizeUserApprovalProjection(
+        buildOpenUserApprovalProjection(initial.tenant_id, detail),
+        {
+          clientMode: "mock",
+          route: approvalProjectionRoute(admittedId)
+        }
       );
     },
     async submitApprovalDecision(gateId, requestPayload) {
@@ -320,10 +356,103 @@ export function normalizeApprovalDecision(payload, { clientMode, route } = {}) {
   };
 }
 
+export function normalizeUserApprovalProjection(
+  payload,
+  { clientMode, route } = {}
+) {
+  if (
+    !isObject(payload) ||
+    payload.schema_version !== AE_USER_APPROVAL_PROJECTION_SCHEMA_VERSION ||
+    !APPROVAL_DOMAINS.includes(payload.approval_domain) ||
+    !["PENDING", "APPROVED", "REJECTED", "EXPIRED", "CANCELLED"].includes(
+      payload.state
+    )
+  ) {
+    throw new ApprovalClientError("Approval user projection is invalid.", {
+      status: "APPROVAL_PROJECTION_INVALID"
+    });
+  }
+  assertApprovalPayloadSafe(payload);
+  const gateId = requiredGateId(payload.gate_id);
+  const requester = normalizeProjectionTextField(payload.requester, "display_name");
+  const requestedAt = normalizeProjectionTextField(payload.requested_at, "value", {
+    required: true
+  });
+  requestedAt.value = requiredDateTime(requestedAt.value);
+  const project = normalizeProjectProjection(payload.project);
+  const amount = normalizeAmountProjection(payload.amount);
+  const businessDate = normalizeProjectionTextField(payload.business_date, "value");
+  if (businessDate.status === "AVAILABLE") {
+    businessDate.value = requiredDate(businessDate.value);
+  }
+  const accounts = normalizeProjectionCollection(payload.accounts, item => ({
+    code: requiredText(item?.code, "account code"),
+    display_name: optionalText(item?.display_name)
+  }));
+  const risk = normalizeRiskProjection(payload.risk);
+  const lineItems = normalizeProjectionCollection(payload.line_items, item => {
+    if (!Number.isInteger(item?.line_no) || item.line_no < 1) {
+      throw projectionInvalid();
+    }
+    return {
+      line_no: item.line_no,
+      description: optionalText(item.description),
+      account_code: optionalText(item.account_code),
+      amount: requiredAmount(item.amount),
+      currency: requiredCurrency(item.currency)
+    };
+  });
+  if (
+    !isObject(payload.metadata) ||
+    payload.metadata.source_contract !== WC_APPROVAL_GATE_DETAIL_SCHEMA_VERSION ||
+    payload.metadata.browser_join_required !== false ||
+    payload.metadata.protected_fields_included !== false
+  ) {
+    throw projectionInvalid();
+  }
+  return {
+    schema_version: payload.schema_version,
+    tenant_id: requiredText(payload.tenant_id, "tenant_id"),
+    gate_id: gateId,
+    approval_domain: payload.approval_domain,
+    state: payload.state,
+    title: safeProjectionText(payload.title, "title"),
+    summary: safeProjectionText(payload.summary, "summary"),
+    expires_at: optionalText(payload.expires_at),
+    approval_provider_type: optionalText(payload.approval_provider_type),
+    approval_target_ref: optionalText(payload.approval_target_ref),
+    business_operation_id: optionalText(payload.business_operation_id),
+    requester,
+    requested_at: requestedAt,
+    project,
+    amount,
+    business_date: businessDate,
+    accounts,
+    risk,
+    line_items: lineItems,
+    metadata: {
+      source_contract: WC_APPROVAL_GATE_DETAIL_SCHEMA_VERSION,
+      browser_join_required: false,
+      protected_fields_included: false
+    },
+    client_mode: clientMode || "unknown",
+    route: route || approvalProjectionRoute(gateId)
+  };
+}
+
 export function isApprovalGateExpired(gate, now = new Date()) {
   if (!gate?.expires_at) return false;
   const expiresAt = new Date(gate.expires_at);
   return !Number.isNaN(expiresAt.valueOf()) && expiresAt <= now;
+}
+
+function requiredResourceRoute(route) {
+  if (typeof route !== "string" || !route.startsWith("/api/v1/")) {
+    throw new ApprovalClientError("Approval resource route is invalid.", {
+      status: "APPROVAL_RESOURCE_ROUTE_INVALID"
+    });
+  }
+  return route;
 }
 
 export function assertApprovalPayloadSafe(payload) {
@@ -395,6 +524,42 @@ export function buildDefaultMockApprovalInbox() {
     returned_count: gates.length,
     limit: 50,
     scan_truncated: false
+  };
+}
+
+function buildOpenUserApprovalProjection(tenantId, detail) {
+  const gate = detail.gate;
+  const projectId = gate.formal_approval?.project_id || null;
+  return {
+    schema_version: AE_USER_APPROVAL_PROJECTION_SCHEMA_VERSION,
+    tenant_id: tenantId,
+    gate_id: gate.gate_id,
+    approval_domain: gate.approval_domain,
+    state: gate.state,
+    title: gate.title,
+    summary: gate.summary,
+    expires_at: gate.expires_at,
+    approval_provider_type: gate.approval_provider_type,
+    approval_target_ref: gate.approval_target_ref,
+    business_operation_id: gate.business_operation_id,
+    requester: { status: "OPEN", display_name: null },
+    requested_at: { status: "AVAILABLE", value: detail.created_at },
+    project: {
+      id_status: projectId ? "AVAILABLE" : "OPEN",
+      project_id: projectId,
+      display_status: "OPEN",
+      display_name: null
+    },
+    amount: { status: "OPEN", value: null, currency: null },
+    business_date: { status: "OPEN", value: null },
+    accounts: { status: "OPEN", items: [] },
+    risk: { status: "OPEN", level: null, explanation: null },
+    line_items: { status: "OPEN", items: [] },
+    metadata: {
+      source_contract: WC_APPROVAL_GATE_DETAIL_SCHEMA_VERSION,
+      browser_join_required: false,
+      protected_fields_included: false
+    }
   };
 }
 
@@ -671,6 +836,143 @@ function normalizeDecisionRequest(payload) {
     decisionComment: payload.decision_comment,
     correlationId: payload.correlation_id,
     causationId: payload.causation_id
+  });
+}
+
+function normalizeProjectionTextField(value, field, { required = false } = {}) {
+  if (!isObject(value) || !SOURCE_STATUSES.has(value.status)) {
+    throw projectionInvalid();
+  }
+  const admitted = optionalText(value[field]);
+  if (
+    (value.status === "AVAILABLE" && admitted == null) ||
+    (value.status === "OPEN" && value[field] != null) ||
+    (required && value.status !== "AVAILABLE")
+  ) {
+    throw projectionInvalid();
+  }
+  return { status: value.status, [field]: admitted };
+}
+
+function normalizeProjectProjection(value) {
+  if (
+    !isObject(value) ||
+    !SOURCE_STATUSES.has(value.id_status) ||
+    !SOURCE_STATUSES.has(value.display_status)
+  ) {
+    throw projectionInvalid();
+  }
+  const projectId = optionalText(value.project_id);
+  const displayName = optionalText(value.display_name);
+  if (
+    (value.id_status === "AVAILABLE") !== (projectId != null) ||
+    (value.display_status === "AVAILABLE") !== (displayName != null)
+  ) {
+    throw projectionInvalid();
+  }
+  return {
+    id_status: value.id_status,
+    project_id: projectId,
+    display_status: value.display_status,
+    display_name: displayName
+  };
+}
+
+function normalizeAmountProjection(value) {
+  if (!isObject(value) || !SOURCE_STATUSES.has(value.status)) {
+    throw projectionInvalid();
+  }
+  if (value.status === "OPEN") {
+    if (value.value != null || value.currency != null) throw projectionInvalid();
+    return { status: "OPEN", value: null, currency: null };
+  }
+  return {
+    status: "AVAILABLE",
+    value: requiredAmount(value.value),
+    currency: requiredCurrency(value.currency)
+  };
+}
+
+function normalizeProjectionCollection(value, normalizeItem) {
+  if (
+    !isObject(value) ||
+    !SOURCE_STATUSES.has(value.status) ||
+    !Array.isArray(value.items)
+  ) {
+    throw projectionInvalid();
+  }
+  if (
+    (value.status === "OPEN" && value.items.length !== 0) ||
+    (value.status === "AVAILABLE" && value.items.length === 0)
+  ) {
+    throw projectionInvalid();
+  }
+  return { status: value.status, items: value.items.map(normalizeItem) };
+}
+
+function normalizeRiskProjection(value) {
+  if (!isObject(value) || !SOURCE_STATUSES.has(value.status)) {
+    throw projectionInvalid();
+  }
+  const level = optionalText(value.level);
+  const explanation = optionalText(value.explanation);
+  if (
+    (value.status === "AVAILABLE" && level == null) ||
+    (value.status === "OPEN" && (value.level != null || value.explanation != null))
+  ) {
+    throw projectionInvalid();
+  }
+  return { status: value.status, level, explanation };
+}
+
+function requiredAmount(value) {
+  if (typeof value !== "string" || !AMOUNT.test(value)) {
+    throw projectionInvalid();
+  }
+  return value;
+}
+
+function safeProjectionText(value, field) {
+  const admitted = requiredText(value, field);
+  const normalized = admitted.toLowerCase();
+  if (SENSITIVE_KEY_PARTS.some(part => normalized.includes(part))) {
+    throw projectionInvalid();
+  }
+  return admitted;
+}
+
+function requiredCurrency(value) {
+  if (typeof value !== "string" || !CURRENCY.test(value)) {
+    throw projectionInvalid();
+  }
+  return value;
+}
+
+function requiredDateTime(value) {
+  if (
+    typeof value !== "string" ||
+    !TIMEZONE_SUFFIX.test(value) ||
+    Number.isNaN(Date.parse(value))
+  ) {
+    throw projectionInvalid();
+  }
+  return value;
+}
+
+function requiredDate(value) {
+  if (typeof value !== "string" || !ISO_DATE.test(value)) {
+    throw projectionInvalid();
+  }
+  const parsed = new Date(`${value}T00:00:00Z`);
+  if (Number.isNaN(parsed.valueOf()) || parsed.toISOString().slice(0, 10) !== value) {
+    throw projectionInvalid();
+  }
+  return value;
+}
+
+function projectionInvalid() {
+  return new ApprovalClientError("Approval user projection is invalid.", {
+    status: "APPROVAL_PROJECTION_INVALID"
   });
 }
 

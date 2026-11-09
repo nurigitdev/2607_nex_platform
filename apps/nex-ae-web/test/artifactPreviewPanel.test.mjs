@@ -18,8 +18,7 @@ import {
   buildArtifactPreviewPanelSummary,
   createArtifactPreviewPanelState,
   createRunningArtifactPreviewPanelState,
-  findSensitiveArtifactPreviewPanelKeys,
-  renderArtifactPreviewPanel
+  findSensitiveArtifactPreviewPanelKeys
 } from "../src/artifactPreviewPanel.js";
 
 function artifactFile(overrides = {}) {
@@ -136,44 +135,37 @@ describe("AE Web artifact preview/download panel", () => {
     );
     assert.equal(buildArtifactPreviewPanelSummary(idle).status, "READY");
     assert.equal(running.status, "RUNNING");
-    assert.equal(renderArtifactPreviewPanel(running).severity, "running");
     assert.doesNotMatch(
       JSON.stringify(buildArtifactPreviewPanelSummary(running)),
       /service_token|database_url|provider_url|storage_ref|\/data\/nex-platform/
     );
   });
 
-  it("builds preview-ready panel state and escaped summary html", () => {
+  it("builds preview-ready panel state", () => {
     const state = buildArtifactPreviewPanelStateFromPreview(previewSurface(), {
       artifactId: "artifact-001"
     });
     const summary = buildArtifactPreviewPanelSummary(state);
-    const view = renderArtifactPreviewPanel(state);
-
     assert.equal(state.status, "PREVIEW_READY");
     assert.equal(summary.file_name, "generated-report.md");
     assert.equal(summary.truncated, false);
-    assert.match(view.bodyText, /본문 <script>/);
-    assert.doesNotMatch(view.summaryHtml, /<script>/);
-    assert.equal(view.metadata.contentRendered, true);
-    assert.equal(view.metadata.downloadedContentRendered, false);
+    assert.match(state.preview.textPreview, /본문 <script>/);
+    assert.equal(state.metadata.contentRendered, true);
+    assert.equal(state.metadata.downloadedContentRendered, false);
   });
 
-  it("keeps downloaded content out of panel state, summary, and view", () => {
+  it("keeps downloaded content out of panel state and summary", () => {
     const state = buildArtifactPreviewPanelStateFromDownload(downloadSurface(), {
       artifactId: "artifact-001"
     });
     const summary = buildArtifactPreviewPanelSummary(state);
-    const view = renderArtifactPreviewPanel(state);
-    const serialized = JSON.stringify({ state, summary, view });
+    const serialized = JSON.stringify({ state, summary });
 
     assert.equal(state.status, "DOWNLOAD_READY");
     assert.equal(summary.content_hash_present, true);
     assert.equal(summary.content_length, 53);
-    assert.match(view.bodyText, /Downloaded content is not rendered/);
     assert.doesNotMatch(serialized, /downloaded artifact body/);
     assert.equal(state.metadata.downloadedContentRendered, false);
-    assert.equal(view.metadata.downloadedContentRendered, false);
   });
 
   it("keeps binary base64 downloads as metadata-only panel state", () => {
@@ -201,8 +193,7 @@ describe("AE Web artifact preview/download panel", () => {
       { artifactId: "artifact-001" }
     );
     const summary = buildArtifactPreviewPanelSummary(state);
-    const view = renderArtifactPreviewPanel(state);
-    const serialized = JSON.stringify({ state, summary, view });
+    const serialized = JSON.stringify({ state, summary });
 
     assert.equal(state.download.downloadPayloadKind, "base64");
     assert.equal(state.download.contentEncoding, "base64");
@@ -210,9 +201,8 @@ describe("AE Web artifact preview/download panel", () => {
     assert.equal(summary.content_encoding, "base64");
     assert.equal(summary.content_length, 10);
     assert.equal(summary.encoded_content_length, contentBase64.length);
-    assert.match(view.bodyText, /Payload: base64/);
     assert.doesNotMatch(serialized, new RegExp(contentBase64));
-    assert.equal(view.metadata.downloadedContentRendered, false);
+    assert.equal(state.metadata.downloadedContentRendered, false);
   });
 
   it("normalizes failures as retryable unavailable states", () => {
@@ -226,13 +216,10 @@ describe("AE Web artifact preview/download panel", () => {
       route: "/api/v1/artifact-files/artifact-file-001/download",
       clientMode: "fetch"
     });
-    const view = renderArtifactPreviewPanel(state);
-
     assert.equal(state.status, "UNAVAILABLE");
     assert.equal(state.retryable, true);
     assert.equal(buildArtifactPreviewPanelSummary(state).client_mode, "fetch");
-    assert.equal(view.severity, "danger");
-    assert.match(view.bodyText, /NETWORK_ERROR/);
+    assert.equal(buildArtifactPreviewPanelSummary(state).error_status, "NETWORK_ERROR");
   });
 
   it("rejects unsupported states and unsafe payloads", () => {

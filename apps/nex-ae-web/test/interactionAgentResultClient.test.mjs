@@ -6,8 +6,8 @@ import {
   createFetchInteractionAgentResultClient,
   createMockInteractionAgentResultClient,
   interactionAgentResultRoute,
-  projectInteractionAgentResult,
-  renderInteractionAgentResult
+  projectBusinessResultSummary,
+  projectInteractionAgentResult
 } from "../src/interactionAgentResultClient.js";
 
 const INTERACTION_ID = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
@@ -29,6 +29,22 @@ function projection() {
       external_refs: ["EOS:VOUCHER:voucher-1"],
       artifact_refs: [],
       warnings: [],
+      business_summary: {
+        result_type: "FINANCE.VOUCHER_DRAFT",
+        summary_schema_version: "ae_business_result_summary.v1",
+        summary: {
+          outcome: "COMMITTED",
+          verification_status: "VERIFIED",
+          approval_state: "APPROVED",
+          business_operation_id: "business-1",
+          voucher_number: "voucher-1",
+          amount: "12500.00",
+          currency: "KRW",
+          account_codes: ["TRAVEL", "CASH"],
+          project_code: "NVT",
+          business_object_link: null
+        }
+      },
       delivery: {
         state: "ACKNOWLEDGED",
         workspace_activity_ref: "AE:WORKSPACE_ACTIVITY:activity-1"
@@ -39,7 +55,7 @@ function projection() {
   };
 }
 
-test("projects and renders a reference-only completed IA result", () => {
+test("projects a reference-only completed IA result", () => {
   const result = projectInteractionAgentResult(projection(), {
     clientMode: "fetch",
     route: interactionAgentResultRoute(INTERACTION_ID)
@@ -47,11 +63,8 @@ test("projects and renders a reference-only completed IA result", () => {
 
   assert.equal(result.executionState, "SUCCEEDED");
   assert.equal(result.result.deliveryState, "ACKNOWLEDGED");
+  assert.equal(result.result.businessSummary.voucherNumber, "voucher-1");
   assert.equal(result.rawResultIncluded, false);
-  const html = renderInteractionAgentResult(result);
-  assert.match(html, /업무 처리 결과/);
-  assert.match(html, /EOS:BUSINESS_OPERATION:business-1/);
-  assert.doesNotMatch(html, /prompt/i);
 });
 
 test("fetch client uses same-origin credentials and the owner result route", async () => {
@@ -100,5 +113,24 @@ test("mock client remains deterministic", async () => {
   assert.equal(
     (await client.getInteractionAgentResult(INTERACTION_ID)).result.status,
     "SUCCEEDED"
+  );
+});
+
+test("unknown business types stay generic and malformed known types fail closed", () => {
+  assert.equal(
+    projectBusinessResultSummary({
+      result_type: "UNKNOWN.RESULT",
+      summary_schema_version: "unknown.v1",
+      summary: { raw: "hidden" }
+    }),
+    null
+  );
+  assert.throws(
+    () => projectBusinessResultSummary({
+      result_type: "FINANCE.VOUCHER_DRAFT",
+      summary_schema_version: "ae_business_result_summary.v1",
+      summary: { amount: "1.00" }
+    }),
+    error => error.status === "BUSINESS_RESULT_SUMMARY_INVALID"
   );
 });

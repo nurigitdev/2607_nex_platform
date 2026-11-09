@@ -8,8 +8,7 @@ import {
 import {
   AE_WEB_REPAIRED_RESPONSE_REVIEW_CARD_SCHEMA_VERSION,
   buildRepairedResponseReviewCardSummary,
-  buildRepairedResponseReviewCardViewModel,
-  renderRepairedResponseReviewCard
+  buildRepairedResponseReviewCardViewModel
 } from "../src/repairedResponseReviewCard.js";
 
 function projection(overrides = {}) {
@@ -116,29 +115,6 @@ describe("AE Web repaired response review card", () => {
     assert.equal(summary.metadata.rawPromptRendered, false);
   });
 
-  it("renders safe escaped HTML for the chat review card", () => {
-    const html = renderRepairedResponseReviewCard(
-      surface({
-        review_card: {
-          ...projection().review_card,
-          title: "<검토 & 확인>"
-        },
-        repaired_response_summary: {
-          ...projection().repaired_response_summary,
-          output_preview: "<script>alert('x')</script> 개선 응답"
-        }
-      })
-    );
-
-    assert.match(html, /data-repaired-response-review-card="handoff-001"/);
-    assert.match(html, /&lt;검토 &amp; 확인&gt;/);
-    assert.match(html, /&lt;script&gt;alert\(&#039;x&#039;\)&lt;\/script&gt;/);
-    assert.doesNotMatch(
-      html,
-      /raw_prompt|raw_generation_output|source_text|service_token|database_url|provider_url|storage_path/i
-    );
-  });
-
   it("enables primary actions only when the decision flow is ready", () => {
     const ready = buildRepairedResponseReviewCardViewModel(surface(), {
       decisionEnabled: true
@@ -155,23 +131,6 @@ describe("AE Web repaired response review card", () => {
         decisionId: "decision-001"
       }
     });
-    const recordedHtml = renderRepairedResponseReviewCard(surface(), {
-      decisionEnabled: true,
-      decisionState: {
-        status: "RECORDED",
-        action: "accept_repair",
-        decisionId: "decision-001"
-      }
-    });
-    const failedHtml = renderRepairedResponseReviewCard(surface(), {
-      decisionEnabled: true,
-      decisionState: {
-        status: "FAILED",
-        action: "keep_original",
-        errorStatus: "NETWORK_ERROR"
-      }
-    });
-
     assert.deepEqual(
       ready.primaryActions.map(action => action.disabled),
       [false, false]
@@ -179,8 +138,7 @@ describe("AE Web repaired response review card", () => {
     assert.equal(submitting.primaryActions.every(action => action.disabled), true);
     assert.equal(recorded.primaryActions.every(action => action.disabled), true);
     assert.equal(recorded.primaryActions[0].selected, true);
-    assert.match(recordedHtml, /RECORDED · decision-001/);
-    assert.match(failedHtml, /FAILED · NETWORK_ERROR/);
+    assert.equal(recorded.decisionState.decisionId, "decision-001");
   });
 
   it("handles missing optional links, unavailable actions, and empty previews", () => {

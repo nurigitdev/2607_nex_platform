@@ -19,6 +19,10 @@ from nex_ae_api.agent_results import (
     result_hash,
     validate_agent_result,
 )
+from nex_ae_api.business_result_summary import (
+    BusinessResultSummaryError,
+    summary_from_step_results,
+)
 from nex_ae_api.executable_plans import (
     ExecutablePlanError,
     validate_executable_plan_contract,
@@ -187,6 +191,17 @@ def build_plan_agent_result(
         }
     )
     output_contracts = {item["result_contract_ref"] for item in output_results}
+    try:
+        business_summary = summary_from_step_results(results.values())
+    except BusinessResultSummaryError as exc:
+        raise _invalid("StepResult business summary is invalid.") from exc
+    structured_result: dict[str, Any] = {
+        "executable_plan_ref": _plan_ref(plan),
+        "output_step_results": output_results,
+        "external_refs": external_refs,
+    }
+    if business_summary is not None:
+        structured_result["business_summary"] = business_summary
     result: dict[str, Any] = {
         "schema_version": "2.1",
         "tenant_id": tenant_id,
@@ -214,11 +229,7 @@ def build_plan_agent_result(
             if len(output_contracts) == 1
             else "contract://nex/ae/p5-plan-result-set/v1.1"
         ),
-        "structured_result": {
-            "executable_plan_ref": _plan_ref(plan),
-            "output_step_results": output_results,
-            "external_refs": external_refs,
-        },
+        "structured_result": structured_result,
         "business_refs": business_refs,
         "child_work_result_refs": [],
         "artifact_refs": artifact_refs,

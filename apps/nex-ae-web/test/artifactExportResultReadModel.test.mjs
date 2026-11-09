@@ -1,5 +1,4 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
 
 import {
@@ -8,18 +7,8 @@ import {
   assertArtifactExportResultReadModelSafe,
   buildArtifactExportResultReadModel,
   buildArtifactExportResultSummary,
-  findSensitiveArtifactExportResultReadModelKeys,
-  renderArtifactExportResultReadModel
+  findSensitiveArtifactExportResultReadModelKeys
 } from "../src/artifactExportResultReadModel.js";
-
-const MAIN_SOURCE = readFileSync(
-  new URL("../src/main.js", import.meta.url),
-  "utf-8"
-);
-const STYLES_SOURCE = readFileSync(
-  new URL("../src/styles.css", import.meta.url),
-  "utf-8"
-);
 
 function artifactRef(overrides = {}) {
   return {
@@ -81,8 +70,7 @@ describe("AE Web artifact export result read-model", () => {
   it("builds a safe download-ready read-model from an artifact ref", () => {
     const model = buildArtifactExportResultReadModel({ artifactRef: artifactRef() });
     const summary = buildArtifactExportResultSummary(model);
-    const view = renderArtifactExportResultReadModel(model);
-    const serialized = JSON.stringify({ model, summary, view });
+    const serialized = JSON.stringify({ model, summary });
 
     assert.equal(
       model.artifact_export_result_read_model_schema_version,
@@ -92,8 +80,6 @@ describe("AE Web artifact export result read-model", () => {
     assert.equal(summary.downloadable_format_count, 2);
     assert.deepEqual(summary.downloadable_formats, ["MD", "PDF"]);
     assert.equal(summary.primary_download_format, "PDF");
-    assert.equal(view.severity, "success");
-    assert.doesNotMatch(view.summaryHtml, /<Report>/);
     assert.doesNotMatch(
       serialized,
       /storage_ref|database_url|provider_url|service_token|contentBase64|JVBERi0xLjQKJQ==/
@@ -107,8 +93,7 @@ describe("AE Web artifact export result read-model", () => {
       downloadSaveSummary: saveSummary()
     });
     const summary = buildArtifactExportResultSummary(model);
-    const view = renderArtifactExportResultReadModel(model);
-    const serialized = JSON.stringify({ model, summary, view });
+    const serialized = JSON.stringify({ model, summary });
 
     assert.equal(model.status, "SAVED");
     assert.equal(model.artifactVersionId, "artifact-version-002");
@@ -118,7 +103,6 @@ describe("AE Web artifact export result read-model", () => {
     assert.equal(summary.payload_kind, "base64");
     assert.equal(model.metadata.browserSaveAttempted, true);
     assert.equal(model.metadata.browserSaveSucceeded, true);
-    assert.match(view.feedback, /generated-report.pdf/);
     assert.doesNotMatch(serialized, /\/api\/v1\/artifact-files/);
   });
 
@@ -143,9 +127,7 @@ describe("AE Web artifact export result read-model", () => {
     });
 
     assert.equal(pending.status, "EXPORT_PENDING");
-    assert.equal(renderArtifactExportResultReadModel(pending).severity, "running");
     assert.equal(failed.status, "UNAVAILABLE");
-    assert.equal(renderArtifactExportResultReadModel(failed).severity, "danger");
     assert.equal(prepared.status, "DOWNLOAD_READY");
     assert.equal(prepared.metadata.browserSaveAttempted, true);
     assert.equal(prepared.metadata.browserSaveSucceeded, false);
@@ -196,18 +178,6 @@ describe("AE Web artifact export result read-model", () => {
       error =>
         error instanceof ArtifactExportResultReadModelError &&
         error.status === "ARTIFACT_EXPORT_RESULT_SENSITIVE_VALUE"
-    );
-  });
-
-  it("is wired into the artifact summary without raw download fields", () => {
-    assert.match(MAIN_SOURCE, /artifactExportResult: null/);
-    assert.match(MAIN_SOURCE, /refreshArtifactExportResult/);
-    assert.match(MAIN_SOURCE, /renderArtifactExportResultReadModel/);
-    assert.match(MAIN_SOURCE, /data-artifact-export-result-status/);
-    assert.match(STYLES_SOURCE, /\.artifact-export-result/);
-    assert.doesNotMatch(
-      MAIN_SOURCE,
-      /contentBase64|content_base64|storage_ref|database_url|provider_url|service_token|\/data\/nex-platform/
     );
   });
 });

@@ -230,29 +230,6 @@ export function buildArtifactPreviewPanelSummary(state) {
   return summary;
 }
 
-export function renderArtifactPreviewPanel(state) {
-  const summary = buildArtifactPreviewPanelSummary(state);
-  const current = assertArtifactPreviewPanelState(state);
-  const feedback = panelFeedback(summary);
-  const view = {
-    artifact_preview_panel_renderer_schema_version:
-      "ae_web_artifact_preview_panel_renderer.v1",
-    status: summary.status,
-    severity: feedback.severity,
-    feedback: feedback.message,
-    summaryHtml: renderSummary(summary),
-    bodyText: panelBodyText(current),
-    bodyMode: panelBodyMode(current),
-    metadata: {
-      htmlEscaped: true,
-      contentRendered: current.status === "PREVIEW_READY",
-      downloadedContentRendered: false
-    }
-  };
-  assertArtifactPreviewPanelSafe(view);
-  return view;
-}
-
 export function assertArtifactPreviewPanelSafe(payload) {
   const sensitiveKeys = findSensitiveArtifactPreviewPanelKeys(payload);
   if (sensitiveKeys.length > 0) {
@@ -418,92 +395,6 @@ function safePanelMetadata(overrides = {}) {
     previewTextRendered: Boolean(overrides.previewTextRendered),
     downloadedContentRendered: false
   };
-}
-
-function panelFeedback(summary) {
-  if (summary.status === "RUNNING") {
-    return { severity: "running", message: "아티팩트 요청을 처리하고 있습니다." };
-  }
-  if (summary.status === "PREVIEW_READY") {
-    return { severity: "success", message: "아티팩트 미리보기가 준비되었습니다." };
-  }
-  if (summary.status === "DOWNLOAD_READY") {
-    return { severity: "success", message: "다운로드 파일 메타데이터가 준비되었습니다." };
-  }
-  if (summary.status === "UNAVAILABLE") {
-    return {
-      severity: "danger",
-      message: `아티팩트 요청을 완료하지 못했습니다. ${summary.error_status || "UNAVAILABLE"}`
-    };
-  }
-  return { severity: "idle", message: "아티팩트 미리보기와 다운로드를 선택할 수 있습니다." };
-}
-
-function panelBodyText(state) {
-  if (state.status === "PREVIEW_READY") {
-    return state.preview?.textPreview || "Preview is empty.";
-  }
-  if (state.status === "DOWNLOAD_READY") {
-    const fileName = state.download?.fileName || "artifact";
-    const length = state.download?.contentLength ?? 0;
-    const payloadKind = state.download?.downloadPayloadKind || "text";
-    const encoding = state.download?.contentEncoding || "utf-8";
-    return `Download prepared: ${fileName}\nPayload: ${payloadKind} (${encoding})\nContent length: ${length} bytes\nDownloaded content is not rendered in the browser panel.`;
-  }
-  if (state.status === "RUNNING") return "Loading artifact surface...";
-  if (state.status === "UNAVAILABLE") {
-    return `Request failed: ${state.errorStatus || "UNAVAILABLE"}`;
-  }
-  return "Select Preview or Download from an artifact card.";
-}
-
-function panelBodyMode(state) {
-  if (state.status === "PREVIEW_READY") return "preview";
-  if (state.status === "DOWNLOAD_READY") return "download";
-  if (state.status === "RUNNING") return "loading";
-  if (state.status === "UNAVAILABLE") return "error";
-  return "empty";
-}
-
-function renderSummary(summary) {
-  return [
-    ["status", summary.status],
-    ["action", summary.action],
-    ["file", summary.file_name || "n/a"],
-    ["format", summary.format || "n/a"],
-    ["route", summary.route || "n/a"],
-    ["client", summary.client_mode],
-    [
-      "content",
-      summary.action === "download"
-        ? `${summary.download_payload_kind || "text"} · ${
-            summary.content_hash_present ? "hash present" : "hash empty"
-          } · ${
-            summary.content_length ?? 0
-          } bytes`
-        : summary.truncated
-          ? "preview truncated"
-          : "preview"
-    ]
-  ]
-    .map(
-      ([term, value]) => `
-      <div>
-        <dt>${escapeHtml(term)}</dt>
-        <dd>${escapeHtml(value)}</dd>
-      </div>
-    `
-    )
-    .join("");
-}
-
-function escapeHtml(value) {
-  return String(value)
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#039;");
 }
 
 function isAllowedFalseSensitiveFlag(key, value) {

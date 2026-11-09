@@ -154,27 +154,6 @@ export function buildArtifactExportResultSummary(model) {
   return summary;
 }
 
-export function renderArtifactExportResultReadModel(model) {
-  const current = assertArtifactExportResultReadModel(model);
-  const summary = buildArtifactExportResultSummary(current);
-  const view = {
-    artifact_export_result_renderer_schema_version:
-      "ae_web_artifact_export_result_renderer.v1",
-    status: current.status,
-    severity: severityForStatus(current.status),
-    feedback: feedbackForSummary(summary),
-    summaryHtml: renderSummary(summary),
-    metadata: {
-      htmlEscaped: true,
-      rawDownloadContentRendered: false,
-      rawBase64PayloadRendered: false,
-      storageLocationRendered: false
-    }
-  };
-  assertArtifactExportResultReadModelSafe(view);
-  return view;
-}
-
 export function assertArtifactExportResultReadModelSafe(payload) {
   const sensitiveKeys = findSensitiveArtifactExportResultReadModelKeys(payload);
   if (sensitiveKeys.length > 0) {
@@ -313,60 +292,6 @@ function safeExportResultMetadata(overrides = {}) {
     browserSaveAttempted: Boolean(overrides.browserSaveAttempted),
     browserSaveSucceeded: Boolean(overrides.browserSaveSucceeded)
   };
-}
-
-function severityForStatus(status) {
-  if (["SAVED", "DOWNLOAD_READY"].includes(status)) return "success";
-  if (["EXPORT_PENDING", "EXPORT_READY"].includes(status)) return "running";
-  if (status === "UNAVAILABLE") return "danger";
-  return "idle";
-}
-
-function feedbackForSummary(summary) {
-  if (summary.status === "SAVED") {
-    return `Downloaded ${summary.file_name || "artifact"} from ${
-      summary.primary_download_format || "artifact"
-    }.`;
-  }
-  if (summary.status === "DOWNLOAD_READY") {
-    return `${summary.downloadable_format_count} artifact download format(s) ready.`;
-  }
-  if (summary.status === "EXPORT_PENDING") {
-    return `Export ${summary.render_job_id || "job"} is still preparing.`;
-  }
-  if (summary.status === "UNAVAILABLE") {
-    return "Artifact export result is unavailable.";
-  }
-  return "Artifact export result is ready for a download action.";
-}
-
-function renderSummary(summary) {
-  return [
-    ["export", summary.status],
-    ["formats", summary.downloadable_formats.join(", ") || "n/a"],
-    ["render job", summary.render_job_id || "n/a"],
-    ["stage", summary.current_stage || summary.job_status || "n/a"],
-    ["save", summary.latest_save_status || "not attempted"],
-    ["file", summary.file_name || "n/a"]
-  ]
-    .map(
-      ([term, value]) => `
-      <div>
-        <dt>${escapeHtml(term)}</dt>
-        <dd>${escapeHtml(value)}</dd>
-      </div>
-    `
-    )
-    .join("");
-}
-
-function escapeHtml(value) {
-  return String(value)
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#039;");
 }
 
 function normalizeOptionalText(value) {

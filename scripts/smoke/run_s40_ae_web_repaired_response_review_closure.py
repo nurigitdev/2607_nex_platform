@@ -12,7 +12,9 @@ SCHEMA_VERSION = "s40_ae_web_repaired_response_review_closure.v1"
 
 REQUIRED_FILES = (
     "apps/nex-ae-web/src/clientRegistry.js",
-    "apps/nex-ae-web/src/main.js",
+    "apps/nex-ae-web/src/features/workspace/WorkspaceRuntimeRoute.tsx",
+    "apps/nex-ae-web/src/features/workspace/ResponseQualityActions.tsx",
+    "apps/nex-ae-web/src/features/workspace/workspaceExecution.ts",
     "apps/nex-ae-web/src/repairedResponseReviewBoundary.js",
     "apps/nex-ae-web/src/repairedResponseReviewClient.js",
     "apps/nex-ae-web/src/repairedResponseReviewCard.js",
@@ -39,7 +41,7 @@ REQUIRED_FILES = (
     "scripts/smoke/run_s40_ae_web_repaired_response_review_closure.py",
     "tests/test_ae_web_repaired_response_decision_postgres_smoke.py",
     "tests/test_ae_web_repaired_response_review_diagnostics_postgres_smoke.py",
-    "tests/test_nex_ae_web_static.py",
+    "apps/nex-ae-web/src/features/workspace/ResponseQualityActions.test.tsx",
     "tests/test_s40_ae_web_repaired_response_review_closure.py",
     "docs/README.md",
     "apps/nex-ae-web/README.md",
@@ -92,13 +94,13 @@ TOKEN_CHECKS = (
         "createFetchRepairedResponseReviewClient",
     ),
     (
-        "review_card_renderer",
+        "review_card_view_model",
         "apps/nex-ae-web/src/repairedResponseReviewCard.js",
-        "renderRepairedResponseReviewCard",
+        "buildRepairedResponseReviewCardViewModel",
     ),
     (
         "review_card_decision_actions",
-        "apps/nex-ae-web/src/repairedResponseReviewCard.js",
+        "apps/nex-ae-web/src/features/workspace/ResponseQualityActions.tsx",
         "data-repaired-response-decision-action",
     ),
     (
@@ -117,14 +119,14 @@ TOKEN_CHECKS = (
         "markRepairedResponseDecisionRecorded",
     ),
     (
-        "main_decision_click_wiring",
-        "apps/nex-ae-web/src/main.js",
-        "submitRepairedResponseDecision(",
+        "react_decision_click_wiring",
+        "apps/nex-ae-web/src/features/workspace/WorkspaceRuntimeRoute.tsx",
+        "submitRepairedDecision(action)",
     ),
     (
-        "main_review_read_model_wiring",
-        "apps/nex-ae-web/src/main.js",
-        "buildWorkspaceRepairedResponseReviewReadModel",
+        "react_review_projection_wiring",
+        "apps/nex-ae-web/src/features/workspace/workspaceExecution.ts",
+        "repairedResponseReview: presentation.repairedResponseReview",
     ),
     (
         "runtime_diagnostics_review_counts",

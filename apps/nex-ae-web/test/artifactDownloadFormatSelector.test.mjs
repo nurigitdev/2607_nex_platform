@@ -1,5 +1,4 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
 
 import {
@@ -7,14 +6,8 @@ import {
   assertArtifactDownloadFormatSelectorSafe,
   buildArtifactDownloadFormatSelector,
   buildArtifactDownloadFormatSelectorSummary,
-  findSensitiveArtifactDownloadFormatSelectorKeys,
-  renderArtifactDownloadFormatSelector
+  findSensitiveArtifactDownloadFormatSelectorKeys
 } from "../src/artifactDownloadFormatSelector.js";
-
-const MAIN_SOURCE = readFileSync(
-  new URL("../src/main.js", import.meta.url),
-  "utf-8"
-);
 
 function artifactRef(overrides = {}) {
   return {
@@ -55,7 +48,7 @@ describe("AE Web artifact download format selector", () => {
     assert.equal(summary.selected_route_present, true);
   });
 
-  it("falls back to the first enabled route and renders safe action anchors", () => {
+  it("falls back to the first enabled route", () => {
     const selector = buildArtifactDownloadFormatSelector({
       artifactRef: artifactRef({
         primaryFormat: "DOCX",
@@ -65,16 +58,12 @@ describe("AE Web artifact download format selector", () => {
       }),
       selectedFormat: "PDF"
     });
-    const view = renderArtifactDownloadFormatSelector(selector);
-
     assert.equal(selector.selectedFormat, "MD");
-    assert.match(view.html, /data-artifact-download-format="MD"/);
-    assert.match(view.html, /aria-pressed="true"/);
-    assert.match(
-      view.html,
-      /data-artifact-download-route="\/api\/v1\/artifact-files\/file-md-0437\/download"/
+    assert.equal(selector.options.find(option => option.format === "MD").selected, true);
+    assert.equal(
+      selector.options.find(option => option.format === "MD").route,
+      "/api/v1/artifact-files/file-md-0437/download"
     );
-    assert.doesNotMatch(view.html, /contentBase64|storage_ref|database_url/);
   });
 
   it("keeps unavailable selectors explicit when no download routes exist", () => {
@@ -113,13 +102,5 @@ describe("AE Web artifact download format selector", () => {
         }),
       /sensitive values/
     );
-  });
-
-  it("is wired into the artifact summary download action path", () => {
-    assert.match(MAIN_SOURCE, /from "\.\/artifactDownloadFormatSelector\.js"/);
-    assert.match(MAIN_SOURCE, /selectedArtifactDownloadFormat: "MD"/);
-    assert.match(MAIN_SOURCE, /artifactSummary\.addEventListener\("click"/);
-    assert.match(MAIN_SOURCE, /renderArtifactDownloadFormatSelector/);
-    assert.match(MAIN_SOURCE, /submitArtifactDownloadAction\(downloadTarget\)/);
   });
 });

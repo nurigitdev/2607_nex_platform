@@ -32,11 +32,6 @@ export function allowedApplicationViews(sessionState) {
   );
 }
 
-export function viewFromLocationHash(hash) {
-  const value = String(hash || "").replace(/^#/, "").trim().toLowerCase();
-  return AE_WEB_AUTHENTICATED_VIEWS.includes(value) ? value : null;
-}
-
 export function resolveApplicationShell({
   sessionState,
   requestedView = AE_WEB_DEFAULT_VIEW

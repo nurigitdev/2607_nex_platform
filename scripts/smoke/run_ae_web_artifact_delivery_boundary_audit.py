@@ -73,7 +73,15 @@ AE_WEB_PREVIEW_PANEL = (
 AE_WEB_DELIVERY_ACTION_STATE = (
     ROOT / "apps" / "nex-ae-web" / "src" / "artifactDeliveryActionState.js"
 )
-AE_WEB_MAIN = ROOT / "apps" / "nex-ae-web" / "src" / "main.js"
+AE_WEB_MAIN = (
+    ROOT
+    / "apps"
+    / "nex-ae-web"
+    / "src"
+    / "features"
+    / "artifacts"
+    / "ArtifactRuntimeRoute.tsx"
+)
 AE_WEB_INDEX = ROOT / "apps" / "nex-ae-web" / "index.html"
 AE_WEB_FETCH_SMOKE = (
     ROOT / "apps" / "nex-ae-web" / "scripts" / "runArtifactFetchModeSmoke.mjs"
@@ -196,15 +204,15 @@ REQUIRED_SOURCE_TOKENS = (
         "browser_action_boundary",
         AE_WEB_MAIN,
         "download_action_function",
-        "async function submitArtifactDownloadAction",
-        "Browser download clicks route through a dedicated action function.",
+        "async download(fileId)",
+        "Browser download clicks route through the artifact page controller.",
     ),
     TokenRequirement(
         "browser_action_boundary",
         AE_WEB_MAIN,
         "download_surface_fetch",
-        "downloadArtifactFile",
-        "Browser action fetches the normalized artifact download surface.",
+        "saveArtifactFile",
+        "Browser action resolves and saves the normalized artifact download surface.",
     ),
     TokenRequirement(
         "browser_action_boundary",

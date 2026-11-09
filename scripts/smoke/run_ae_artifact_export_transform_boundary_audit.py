@@ -65,8 +65,18 @@ class PlannedGap:
 
 AE_ARTIFACTS = ROOT / "services" / "nex-ae-api" / "nex_ae_api" / "artifacts.py"
 AE_README = ROOT / "services" / "nex-ae-api" / "README.md"
-AE_WEB_INDEX = ROOT / "apps" / "nex-ae-web" / "index.html"
-AE_WEB_MAIN = ROOT / "apps" / "nex-ae-web" / "src" / "main.js"
+AE_WEB_ARTIFACT_PAGE = (
+    ROOT / "apps" / "nex-ae-web" / "src" / "features" / "artifacts" / "ArtifactPage.tsx"
+)
+AE_WEB_ARTIFACT_EXPERIENCE = (
+    ROOT
+    / "apps"
+    / "nex-ae-web"
+    / "src"
+    / "features"
+    / "artifacts"
+    / "artifactExperience.ts"
+)
 AE_WEB_ARTIFACT_CLIENT = ROOT / "apps" / "nex-ae-web" / "src" / "artifactClient.js"
 AE_WEB_ARTIFACT_MOCK_RECORD = (
     ROOT / "apps" / "nex-ae-web" / "src" / "artifactMockRecord.js"
@@ -103,8 +113,12 @@ SLICE_0421_DOC = (
 REQUIRED_PATHS = (
     RequiredPath("ae_artifacts", AE_ARTIFACTS, "AE artifact render route module."),
     RequiredPath("ae_readme", AE_README, "AE API artifact boundary notes."),
-    RequiredPath("ae_web_index", AE_WEB_INDEX, "AE Web format selection surface."),
-    RequiredPath("ae_web_main", AE_WEB_MAIN, "AE Web chat artifact request wiring."),
+    RequiredPath("ae_web_artifact_page", AE_WEB_ARTIFACT_PAGE, "AE Web format action surface."),
+    RequiredPath(
+        "ae_web_artifact_experience",
+        AE_WEB_ARTIFACT_EXPERIENCE,
+        "AE Web artifact request orchestration.",
+    ),
     RequiredPath(
         "ae_web_artifact_client",
         AE_WEB_ARTIFACT_CLIENT,
@@ -240,24 +254,24 @@ REQUIRED_SOURCE_TOKENS = (
     ),
     TokenRequirement(
         "web_request_surface",
-        AE_WEB_INDEX,
+        AE_WEB_ARTIFACT_PAGE,
         "format_select_anchor",
-        'id="format-select"',
-        "AE Web has a user-facing output format selector.",
+        "DOCX 만들기",
+        "AE Web exposes a user-facing DOCX export action.",
     ),
     TokenRequirement(
         "web_request_surface",
-        AE_WEB_INDEX,
+        AE_WEB_ARTIFACT_PAGE,
         "pdf_option_visible",
-        '<option value="PDF">PDF</option>',
-        "AE Web currently exposes PDF as a selectable future format.",
+        "PDF 만들기",
+        "AE Web exposes a user-facing PDF export action.",
     ),
     TokenRequirement(
         "web_request_surface",
-        AE_WEB_MAIN,
+        AE_WEB_ARTIFACT_EXPERIENCE,
         "mock_artifact_ref_format",
-        "function buildMockArtifactRef(format",
-        "Current web flow turns selected format into mock artifact refs.",
+        "targetFormats: formats",
+        "Current web flow sends selected formats through the artifact client port.",
     ),
     TokenRequirement(
         "web_request_surface",
@@ -390,7 +404,7 @@ PLANNED_GAPS = (
     ),
     PlannedGap(
         "web_export_submit_adapter",
-        AE_WEB_MAIN,
+        AE_WEB_ARTIFACT_EXPERIENCE,
         "submitArtifactExportRequest",
         "Slice 0426",
         "Wire AE Web format selection to real export job requests.",

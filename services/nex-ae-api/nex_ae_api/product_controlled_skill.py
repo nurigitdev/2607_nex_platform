@@ -29,6 +29,7 @@ from nex_runtime.semantic_hashes import semantic_sha256_hash_ref
 from sqlalchemy import text
 from sqlalchemy.orm import Session, sessionmaker
 
+from nex_ae_api.business_result_summary import build_voucher_draft_summary
 from nex_ae_api.delegated_work import SqlAlchemyWaitRegistrationRepository
 from nex_ae_api.golden_a_planning import GOLDEN_A_WRITE_SCHEMA_VERSION
 from nex_ae_api.multi_step_engine import StepExecutionContext
@@ -128,6 +129,7 @@ class ProductExecutionAuthority:
     project_id: str
     agent_id: str
     org_scope_refs: tuple[str, ...]
+    business_result_seed: Mapping[str, Any]
 
 
 class ProductControlledSkillRuntime:
@@ -355,6 +357,7 @@ class ProductControlledSkillRuntime:
             return _controlled_write_outcome(
                 controlled,
                 business_operation_id=invocation.business_operation_id,
+                business_result_seed=getattr(authority, "business_result_seed", None),
             )
         except P5StepExecutorError:
             raise
@@ -530,6 +533,14 @@ class ProductControlledSkillRuntime:
             project_id=product["project"]["project_id"],
             agent_id=persisted["agent_id"],
             org_scope_refs=org_scope_refs,
+            business_result_seed={
+                "amount": product["nsl_input"]["amount"]["amount"],
+                "currency": product["nsl_input"]["amount"]["currency"],
+                "account_codes": [
+                    account["account_code"] for account in product["accounts"]
+                ],
+                "project_code": product["project"]["project_code"],
+            },
         )
 
     def _require_registration_matches_bundle(self) -> None:
@@ -1135,7 +1146,10 @@ def _validated_eos_authority(
 
 
 def _controlled_write_outcome(
-    result: Any, *, business_operation_id: str
+    result: Any,
+    *,
+    business_operation_id: str,
+    business_result_seed: Mapping[str, Any] | None = None,
 ) -> P5ExecutorOutcome:
     outcome = result.outcome
     state = str(outcome.commit_state.value)
@@ -1151,14 +1165,27 @@ def _controlled_write_outcome(
     else:
         terminal = "BLOCKED"
         error_ref = "eos.write_outcome_requires_reconciliation"
+    result_payload: dict[str, Any] = {
+        "commit_state": state,
+        "verification_status": verification,
+        "business_operation_id": business_operation_id,
+    }
+    if business_result_seed is not None:
+        result_payload["business_summary"] = build_voucher_draft_summary(
+            commit_state=state,
+            verification_status=verification,
+            approval_state="APPROVED",
+            business_operation_id=business_operation_id,
+            voucher_number=_voucher_number(result),
+            amount=business_result_seed.get("amount"),
+            currency=str(business_result_seed.get("currency", "")),
+            account_codes=business_result_seed.get("account_codes", ()),
+            project_code=str(business_result_seed.get("project_code", "")),
+        )
     return P5ExecutorOutcome(
         state=terminal,
         result_contract_ref=PRODUCT_RESULT_CONTRACT,
-        result_payload={
-            "commit_state": state,
-            "verification_status": verification,
-            "business_operation_id": business_operation_id,
-        },
+        result_payload=result_payload,
         external_refs=(f"EOS:BUSINESS_OPERATION:{business_operation_id}",),
         evidence_refs=(
             f"AE:WRITE_REQUESTED:{result.write_request.idempotency_key}",
@@ -1166,6 +1193,17 @@ def _controlled_write_outcome(
         error_ref=error_ref,
         business_operation_id=business_operation_id,
     )
+
+
+def _voucher_number(result: Any) -> str | None:
+    committed = getattr(getattr(result, "outcome", None), "result", None)
+    reference = getattr(committed, "business_reference", None)
+    if not isinstance(reference, str) or not reference.startswith(
+        "eos.voucher_draft:"
+    ):
+        return None
+    value = reference.removeprefix("eos.voucher_draft:").strip()
+    return value or None
 
 
 def _claim_from_context(context: StepExecutionContext) -> Any:

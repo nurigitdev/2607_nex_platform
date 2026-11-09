@@ -2,6 +2,23 @@
 
 Korean-default NeX Agent Experience workspace shell.
 
+The canonical production UI is the React application built into `dist/`:
+
+```bash
+npm --prefix apps/nex-ae-web ci
+npm --prefix apps/nex-ae-web run build:v2
+npm --prefix apps/nex-ae-web start
+```
+
+The production server serves the SPA at `/`, redirects the transitional
+`/modern.html` route to `/`, and proxies same-origin `/ae-api` requests only
+when `NEX_AE_API_TARGET` is configured. Missing API configuration fails closed.
+
+> UXM-S21 note: the Slice-by-Slice sections below preserve historical
+> implementation evidence. References there to `src/main.js`, `src/styles.css`,
+> and legacy HTML renderers are not active runtime instructions; those files
+> were retired after React parity and production cutover were proven.
+
 Run locally:
 
 ```bash

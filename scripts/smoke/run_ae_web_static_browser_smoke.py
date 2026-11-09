@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import argparse
 import os
+import signal
+import socket
 import subprocess
 import sys
 import time
@@ -32,22 +34,11 @@ class BrowserSmokeResult:
 def required_anchors(slice_label: str = DEFAULT_SLICE_LABEL) -> tuple[str, ...]:
     return (
         slice_label,
+        "modern-root",
         "ae-web-runtime-config",
-        "credential-login-panel",
-        "credential-login-form",
-        "credential-employee-id",
-        "credential-password",
-        "credential-login-feedback",
-        "session-route-guard-summary",
-        "runtime-diagnostics-panel",
-        "runtime-diagnostics-preview",
-        "upload-feedback",
-        "upload-retry-button",
-        "document-detail-feedback",
-        "document-detail-retry-button",
-        "retrieval-feedback",
-        "retrieval-retry-button",
-        "retrieval-client-summary",
+        '"client_mode":"fetch"',
+        '"ae_base_url":"/ae-api"',
+        "/assets/",
     )
 
 
@@ -57,6 +48,12 @@ def validate_html(
 ) -> tuple[str, ...]:
     expected = anchors or required_anchors()
     return tuple(anchor for anchor in expected if anchor not in html)
+
+
+def find_available_port() -> int:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as listener:
+        listener.bind(("127.0.0.1", 0))
+        return int(listener.getsockname()[1])
 
 
 def run_static_browser_smoke(
@@ -119,6 +116,7 @@ def start_dev_server(
         ["npm", "--prefix", str(APP_DIR), "run", "dev"],
         cwd=ROOT_DIR,
         env=env,
+        start_new_session=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
     )
@@ -146,12 +144,26 @@ def wait_for_html(
 def stop_process(process: subprocess.Popen[bytes]) -> None:
     if process.poll() is not None:
         return
-    process.terminate()
+    _signal_process_group(process, signal.SIGTERM)
     try:
         process.wait(timeout=3)
     except subprocess.TimeoutExpired:
-        process.kill()
+        _signal_process_group(process, signal.SIGKILL)
         process.wait(timeout=3)
+
+
+def _signal_process_group(process: subprocess.Popen[bytes], sig: signal.Signals) -> None:
+    pid = getattr(process, "pid", None)
+    if pid is None:
+        if sig == signal.SIGTERM:
+            process.terminate()
+        else:
+            process.kill()
+        return
+    try:
+        os.killpg(os.getpgid(pid), sig)
+    except ProcessLookupError:
+        return
 
 
 def format_summary(result: BrowserSmokeResult) -> str:
@@ -169,15 +181,16 @@ def format_summary(result: BrowserSmokeResult) -> str:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--port", type=int, default=DEFAULT_PORT)
+    parser.add_argument("--port", type=int)
     parser.add_argument("--slice-label", default=DEFAULT_SLICE_LABEL)
     parser.add_argument("--timeout", type=float, default=10.0)
     parser.add_argument("--no-start-server", action="store_true")
     parser.add_argument("--summary", action="store_true")
     args = parser.parse_args(argv)
 
+    port = args.port if args.port is not None else find_available_port()
     result = run_static_browser_smoke(
-        port=args.port,
+        port=port,
         slice_label=args.slice_label,
         timeout_seconds=args.timeout,
         start_server=not args.no_start_server,

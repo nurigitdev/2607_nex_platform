@@ -1,10 +1,11 @@
 import { createReadStream, existsSync, statSync } from "node:fs";
 import { createServer, request as httpRequest } from "node:http";
 import { request as httpsRequest } from "node:https";
-import { extname, join, normalize, resolve } from "node:path";
+import { extname, join, normalize, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 
-const root = resolve(new URL("..", import.meta.url).pathname);
+const sourceRoot = resolve(new URL("..", import.meta.url).pathname);
+const staticRoot = resolve(process.env.NEX_AE_WEB_STATIC_ROOT || join(sourceRoot, "dist"));
 const webBaseUrl = optionalHttpUrl(process.env.NEX_AE_WEB_BASE_URL);
 const port = Number(process.env.PORT || webBaseUrl?.port || defaultPort(webBaseUrl) || 5173);
 const host = process.env.HOST || webBaseUrl?.hostname || "127.0.0.1";
@@ -27,47 +28,82 @@ function defaultPort(url) {
 
 const mimeTypes = {
   ".css": "text/css; charset=utf-8",
+  ".gif": "image/gif",
   ".html": "text/html; charset=utf-8",
+  ".ico": "image/x-icon",
+  ".jpeg": "image/jpeg",
   ".js": "text/javascript; charset=utf-8",
-  ".json": "application/json; charset=utf-8"
+  ".jpg": "image/jpeg",
+  ".json": "application/json; charset=utf-8",
+  ".png": "image/png",
+  ".svg": "image/svg+xml",
+  ".webp": "image/webp",
+  ".woff": "font/woff",
+  ".woff2": "font/woff2"
 };
 
 export function createAeWebServer({
-  rootDir = root,
+  rootDir = staticRoot,
   apiProxyTarget = aeApiProxyTarget,
   apiProxyPrefix = AE_API_PROXY_PREFIX
 } = {}) {
   return createServer((request, response) => {
     const url = new URL(request.url || "/", `http://${request.headers.host}`);
-    if (apiProxyTarget && isProxyPath(url.pathname, apiProxyPrefix)) {
-      proxyApiRequest({
-        request,
-        response,
-        url,
-        apiProxyTarget,
-        apiProxyPrefix
-      });
+    if (isProxyPath(url.pathname, apiProxyPrefix)) {
+      if (apiProxyTarget) {
+        proxyApiRequest({ request, response, url, apiProxyTarget, apiProxyPrefix });
+      } else {
+        response.writeHead(503, { "content-type": "application/json; charset=utf-8" });
+        response.end(JSON.stringify({ error_code: "ae_web_proxy_target_unavailable" }));
+      }
+      return;
+    }
+
+    if (url.pathname === "/modern.html") {
+      response.writeHead(308, { location: "/", "cache-control": "no-store" });
+      response.end();
       return;
     }
 
     const requestedPath = normalize(decodeURIComponent(url.pathname));
-    const filePath = resolve(join(rootDir, requestedPath === "/" ? "index.html" : requestedPath));
+    const requestedFile = requestedPath === "/" ? "index.html" : requestedPath;
+    let filePath = resolve(join(rootDir, requestedFile));
+    const withinRoot = filePath === rootDir || filePath.startsWith(`${rootDir}${sep}`);
+    const missing = !withinRoot || !existsSync(filePath) || statSync(filePath).isDirectory();
 
-    if (!filePath.startsWith(rootDir) || !existsSync(filePath) || statSync(filePath).isDirectory()) {
+    if (missing && isSpaNavigation(request, requestedPath)) {
+      filePath = resolve(rootDir, "index.html");
+    }
+
+    if (!withinRoot || !existsSync(filePath) || statSync(filePath).isDirectory()) {
       response.writeHead(404, { "content-type": "text/plain; charset=utf-8" });
       response.end("Not found");
       return;
     }
 
     response.writeHead(200, {
-      "content-type": mimeTypes[extname(filePath)] || "application/octet-stream"
+      "content-type": mimeTypes[extname(filePath)] || "application/octet-stream",
+      "cache-control": cacheControlFor(filePath),
+      "x-content-type-options": "nosniff",
+      "referrer-policy": "same-origin"
     });
-    createReadStream(filePath).pipe(response);
+    if (request.method === "HEAD") response.end();
+    else createReadStream(filePath).pipe(response);
   });
 }
 
 export function isProxyPath(pathname, apiProxyPrefix = AE_API_PROXY_PREFIX) {
   return pathname === apiProxyPrefix || pathname.startsWith(`${apiProxyPrefix}/`);
+}
+
+export function isSpaNavigation(request, pathname) {
+  return ["GET", "HEAD"].includes(request.method || "GET") && extname(pathname) === "";
+}
+
+export function cacheControlFor(filePath) {
+  if (extname(filePath) === ".html") return "no-cache, no-store, must-revalidate";
+  if (filePath.includes(`${sep}assets${sep}`)) return "public, max-age=31536000, immutable";
+  return "public, max-age=300";
 }
 
 function proxyApiRequest({

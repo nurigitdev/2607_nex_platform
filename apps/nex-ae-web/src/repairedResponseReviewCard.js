@@ -82,45 +82,6 @@ export function buildRepairedResponseReviewCardSummary(surface, options = {}) {
   };
 }
 
-export function renderRepairedResponseReviewCard(surface, options = {}) {
-  const viewModel = buildRepairedResponseReviewCardViewModel(surface, options);
-  return `
-    <section
-      class="repaired-response-review-card"
-      data-repaired-response-review-card="${escapeAttribute(viewModel.repairedResponseHandoffId)}"
-      data-interaction-id="${escapeAttribute(viewModel.interactionId)}"
-      data-projection-status="${escapeAttribute(viewModel.projectionStatus)}"
-      aria-label="수정 응답 검토"
-    >
-      <header class="repaired-response-review-card-header">
-        <strong>${escapeHtml(viewModel.title)}</strong>
-        <span>${escapeHtml(viewModel.projectionStatus)}</span>
-      </header>
-      <p class="repaired-response-review-preview">${escapeHtml(viewModel.repairedOutputPreview)}</p>
-      <div class="repaired-response-review-actions">
-        ${viewModel.primaryActions.map(renderPrimaryAction).join("")}
-      </div>
-      <div class="repaired-response-review-links">
-        ${viewModel.secondaryLinks.map(renderSecondaryLink).join("")}
-      </div>
-      <dl class="inline-meta slim repaired-response-review-meta">
-        <div>
-          <dt>repair</dt>
-          <dd>${escapeHtml(viewModel.repairedStatus)} · ${escapeHtml(viewModel.repairedGenerationId)}</dd>
-        </div>
-        <div>
-          <dt>lineage</dt>
-          <dd>${escapeHtml(viewModel.lineageStatus)} · ${escapeHtml(viewModel.remediationActionId)}</dd>
-        </div>
-        <div>
-          <dt>decision</dt>
-          <dd>${escapeHtml(decisionStateDisplay(viewModel))}</dd>
-        </div>
-      </dl>
-    </section>
-  `;
-}
-
 export function assertReviewCardViewModelSafe(viewModel) {
   const payload = JSON.stringify(viewModel);
   if (
@@ -176,39 +137,6 @@ function secondaryHref(surface, action) {
   return null;
 }
 
-function renderPrimaryAction(action) {
-  return `
-    <button
-      type="button"
-      data-repaired-response-decision-action="${escapeAttribute(action.action)}"
-      data-interaction-id="${escapeAttribute(action.interactionId)}"
-      data-handoff-id="${escapeAttribute(action.repairedResponseHandoffId)}"
-      data-decision-route="${escapeAttribute(action.decisionRoute)}"
-      aria-pressed="${action.selected ? "true" : "false"}"
-      ${action.disabled ? "disabled" : ""}
-    >${escapeHtml(action.label)}</button>
-  `;
-}
-
-function renderSecondaryLink(link) {
-  return `
-    <a
-      href="${escapeAttribute(link.href)}"
-      data-repaired-response-review-link="${escapeAttribute(link.action)}"
-    >${escapeHtml(link.label)}</a>
-  `;
-}
-
-function decisionStateDisplay(viewModel) {
-  if (viewModel.decisionState.errorStatus) {
-    return `${viewModel.decisionState.status} · ${viewModel.decisionState.errorStatus}`;
-  }
-  if (viewModel.decisionState.decisionId) {
-    return `${viewModel.decisionState.status} · ${viewModel.decisionState.decisionId}`;
-  }
-  return `${viewModel.decisionState.status} · ${viewModel.decisionRoute}`;
-}
-
 function normalizeDecisionState(decisionState) {
   if (!decisionState || typeof decisionState !== "object") {
     return {
@@ -230,17 +158,4 @@ function nonEmptyText(value, fallback) {
   if (value == null) return fallback;
   const normalized = String(value).trim();
   return normalized.length > 0 ? normalized : fallback;
-}
-
-function escapeAttribute(value) {
-  return escapeHtml(value).replaceAll("`", "&#096;");
-}
-
-function escapeHtml(value) {
-  return String(value)
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#039;");
 }

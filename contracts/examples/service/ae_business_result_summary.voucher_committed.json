@@ -1,0 +1,16 @@
+{
+  "result_type": "FINANCE.VOUCHER_DRAFT",
+  "summary_schema_version": "ae_business_result_summary.v1",
+  "summary": {
+    "outcome": "COMMITTED",
+    "verification_status": "VERIFIED",
+    "approval_state": "APPROVED",
+    "business_operation_id": "86000000-0000-4000-8000-000000000001",
+    "voucher_number": "84000000-0000-4000-8000-000000000001",
+    "amount": "12500.00",
+    "currency": "KRW",
+    "account_codes": ["TRAVEL", "CASH"],
+    "project_code": "NVT",
+    "business_object_link": null
+  }
+}

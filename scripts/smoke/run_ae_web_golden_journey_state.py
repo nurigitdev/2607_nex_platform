@@ -11,7 +11,7 @@ from typing import Any, Mapping
 ROOT = Path(__file__).resolve().parents[2]
 SCHEMA_VERSION = "ae_web_golden_journey_state_audit.v1"
 STATE_PATH = "apps/nex-ae-web/src/goldenJourneyState.js"
-MAIN_PATH = "apps/nex-ae-web/src/main.js"
+RUNTIME_PATH = "apps/nex-ae-web/src/features/workspace/workspaceExecution.ts"
 
 EXPECTED_STAGES = (
     "SESSION_AUTHENTICATED",
@@ -38,7 +38,7 @@ FORBIDDEN_EVIDENCE_FIELDS = (
 
 def run_ae_web_golden_journey_state(root: Path = ROOT) -> dict[str, Any]:
     source = _read_text(root / STATE_PATH)
-    main = _read_text(root / MAIN_PATH)
+    runtime = _read_text(root / RUNTIME_PATH)
     declared_stages = _declared_stages(source)
     checks = {
         "state_module_present": bool(source),
@@ -52,11 +52,11 @@ def run_ae_web_golden_journey_state(root: Path = ROOT) -> dict[str, Any]:
             field in source for field in FORBIDDEN_EVIDENCE_FIELDS
         ),
         "main_composition_initializes_journey": all(
-            token in main
+            token in runtime
             for token in (
-                'from "./goldenJourneyState.js"',
-                "goldenJourney: createGoldenJourneyState({",
-                'journeyId: "journey-local-001"',
+                "runGroundedGenerationWorkflow",
+                "buildGroundedGenerationPresentation",
+                "executeWorkspaceDraft",
             )
         ),
         "node_contract_test_present": (

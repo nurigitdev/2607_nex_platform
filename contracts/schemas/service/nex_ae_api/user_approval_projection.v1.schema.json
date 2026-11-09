@@ -1,0 +1,239 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_ae_api/user_approval_projection.v1.schema.json",
+  "title": "NeX AE User Approval Projection",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "tenant_id",
+    "gate_id",
+    "approval_domain",
+    "state",
+    "title",
+    "summary",
+    "expires_at",
+    "approval_provider_type",
+    "approval_target_ref",
+    "business_operation_id",
+    "requester",
+    "requested_at",
+    "project",
+    "amount",
+    "business_date",
+    "accounts",
+    "risk",
+    "line_items",
+    "metadata"
+  ],
+  "properties": {
+    "schema_version": {"const": "ae_user_approval_projection.v1"},
+    "tenant_id": {"$ref": "#/$defs/text"},
+    "gate_id": {"type": "string", "format": "uuid"},
+    "approval_domain": {
+      "enum": ["NSL_WRITE", "AGENT_FORMAL", "BUSINESS_FORMAL"]
+    },
+    "state": {
+      "enum": ["PENDING", "APPROVED", "REJECTED", "EXPIRED", "CANCELLED"]
+    },
+    "title": {"$ref": "#/$defs/text"},
+    "summary": {"$ref": "#/$defs/text"},
+    "expires_at": {"$ref": "#/$defs/nullableDateTime"},
+    "approval_provider_type": {"$ref": "#/$defs/nullableText"},
+    "approval_target_ref": {"$ref": "#/$defs/nullableText"},
+    "business_operation_id": {"$ref": "#/$defs/nullableText"},
+    "requester": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "display_name"],
+      "properties": {
+        "status": {"$ref": "#/$defs/sourceStatus"},
+        "display_name": {"$ref": "#/$defs/nullableText"}
+      },
+      "allOf": [{"$ref": "#/$defs/nullableValueStatus"}]
+    },
+    "requested_at": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "value"],
+      "properties": {
+        "status": {"const": "AVAILABLE"},
+        "value": {"type": "string", "format": "date-time"}
+      }
+    },
+    "project": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id_status", "project_id", "display_status", "display_name"],
+      "properties": {
+        "id_status": {"$ref": "#/$defs/sourceStatus"},
+        "project_id": {"$ref": "#/$defs/nullableText"},
+        "display_status": {"$ref": "#/$defs/sourceStatus"},
+        "display_name": {"$ref": "#/$defs/nullableText"}
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"id_status": {"const": "AVAILABLE"}}},
+          "then": {"properties": {"project_id": {"$ref": "#/$defs/text"}}},
+          "else": {"properties": {"project_id": {"type": "null"}}}
+        },
+        {
+          "if": {"properties": {"display_status": {"const": "AVAILABLE"}}},
+          "then": {"properties": {"display_name": {"$ref": "#/$defs/text"}}},
+          "else": {"properties": {"display_name": {"type": "null"}}}
+        }
+      ]
+    },
+    "amount": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "value", "currency"],
+      "properties": {
+        "status": {"$ref": "#/$defs/sourceStatus"},
+        "value": {"$ref": "#/$defs/nullableAmount"},
+        "currency": {"$ref": "#/$defs/nullableCurrency"}
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"status": {"const": "AVAILABLE"}}},
+          "then": {
+            "properties": {
+              "value": {"$ref": "#/$defs/amount"},
+              "currency": {"$ref": "#/$defs/currency"}
+            }
+          },
+          "else": {
+            "properties": {"value": {"type": "null"}, "currency": {"type": "null"}}
+          }
+        }
+      ]
+    },
+    "business_date": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "value"],
+      "properties": {
+        "status": {"$ref": "#/$defs/sourceStatus"},
+        "value": {
+          "oneOf": [{"type": "null"}, {"type": "string", "format": "date"}]
+        }
+      },
+      "allOf": [{"$ref": "#/$defs/nullableValueStatus"}]
+    },
+    "accounts": {"$ref": "#/$defs/accountCollection"},
+    "risk": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "level", "explanation"],
+      "properties": {
+        "status": {"$ref": "#/$defs/sourceStatus"},
+        "level": {"$ref": "#/$defs/nullableText"},
+        "explanation": {"$ref": "#/$defs/nullableText"}
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"status": {"const": "AVAILABLE"}}},
+          "then": {"properties": {"level": {"$ref": "#/$defs/text"}}},
+          "else": {
+            "properties": {"level": {"type": "null"}, "explanation": {"type": "null"}}
+          }
+        }
+      ]
+    },
+    "line_items": {"$ref": "#/$defs/lineItemCollection"},
+    "metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source_contract",
+        "browser_join_required",
+        "protected_fields_included"
+      ],
+      "properties": {
+        "source_contract": {"const": "wc_approval_gate_detail.v1"},
+        "browser_join_required": {"const": false},
+        "protected_fields_included": {"const": false}
+      }
+    }
+  },
+  "$defs": {
+    "sourceStatus": {"enum": ["AVAILABLE", "OPEN"]},
+    "text": {"type": "string", "minLength": 1},
+    "amount": {"type": "string", "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]{1,4})?$"},
+    "currency": {"type": "string", "pattern": "^[A-Z]{3}$"},
+    "nullableAmount": {
+      "oneOf": [{"type": "null"}, {"$ref": "#/$defs/amount"}]
+    },
+    "nullableCurrency": {
+      "oneOf": [{"type": "null"}, {"$ref": "#/$defs/currency"}]
+    },
+    "nullableText": {
+      "oneOf": [{"type": "null"}, {"$ref": "#/$defs/text"}]
+    },
+    "nullableDateTime": {
+      "oneOf": [{"type": "null"}, {"type": "string", "format": "date-time"}]
+    },
+    "accountCollection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "items"],
+      "properties": {
+        "status": {"$ref": "#/$defs/sourceStatus"},
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["code", "display_name"],
+            "properties": {
+              "code": {"$ref": "#/$defs/text"},
+              "display_name": {"$ref": "#/$defs/nullableText"}
+            }
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"status": {"const": "OPEN"}}},
+          "then": {"properties": {"items": {"maxItems": 0}}},
+          "else": {"properties": {"items": {"minItems": 1}}}
+        }
+      ]
+    },
+    "lineItemCollection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "items"],
+      "properties": {
+        "status": {"$ref": "#/$defs/sourceStatus"},
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["line_no", "description", "account_code", "amount", "currency"],
+            "properties": {
+              "line_no": {"type": "integer", "minimum": 1},
+              "description": {"$ref": "#/$defs/nullableText"},
+              "account_code": {"$ref": "#/$defs/nullableText"},
+              "amount": {"$ref": "#/$defs/amount"},
+              "currency": {"$ref": "#/$defs/currency"}
+            }
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"status": {"const": "OPEN"}}},
+          "then": {"properties": {"items": {"maxItems": 0}}},
+          "else": {"properties": {"items": {"minItems": 1}}}
+        }
+      ]
+    },
+    "nullableValueStatus": {
+      "if": {"properties": {"status": {"const": "AVAILABLE"}}},
+      "then": {"properties": {"display_name": {"$ref": "#/$defs/text"}, "value": {"type": "string"}}},
+      "else": {"properties": {"display_name": {"type": "null"}, "value": {"type": "null"}}}
+    }
+  }
+}

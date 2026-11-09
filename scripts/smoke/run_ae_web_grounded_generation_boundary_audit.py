@@ -20,11 +20,11 @@ class EvidenceToken:
 
 REQUIRED_PATHS = (
     "docs/slices/1081_s108_ae_async_artifact_rendering_closure.md",
-    "apps/nex-ae-web/src/main.js",
+    "apps/nex-ae-web/src/features/workspace/workspaceExecution.ts",
     "apps/nex-ae-web/src/clientRegistry.js",
     "apps/nex-ae-web/src/retrievalClient.js",
     "apps/nex-ae-web/src/groundedResponseQuality.js",
-    "apps/nex-ae-web/src/repairedResponseReviewCard.js",
+    "apps/nex-ae-web/src/features/workspace/WorkspacePage.tsx",
     "contracts/openapi/nex-ae-api.openapi.yaml",
     "docs/development_process.md",
     "docs/slices/1082_ae_web_grounded_generation_boundary_audit.md",
@@ -54,8 +54,8 @@ EVIDENCE_TOKENS = (
     ),
     EvidenceToken(
         "repair_surface",
-        "apps/nex-ae-web/src/repairedResponseReviewCard.js",
-        "renderRepairedResponseReviewCard",
+        "apps/nex-ae-web/src/features/workspace/workspaceExecution.ts",
+        "repairedResponseReviewClient",
     ),
     EvidenceToken(
         "chat_admission_api",
@@ -155,7 +155,9 @@ def run_ae_web_grounded_generation_boundary_audit(
         }
         for item in EVIDENCE_TOKENS
     ]
-    main_source = _read_text(root / "apps/nex-ae-web/src/main.js")
+    main_source = _read_text(
+        root / "apps/nex-ae-web/src/features/workspace/workspaceExecution.ts"
+    )
     submit_source = _append_prompt_source(main_source)
     drift_states = {
         "locally_composed_assistant_response": (

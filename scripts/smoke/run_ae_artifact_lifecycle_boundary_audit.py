@@ -55,9 +55,17 @@ AE_API_ARTIFACTS = ROOT / "services" / "nex-ae-api" / "nex_ae_api" / "artifacts.
 AE_API_README = ROOT / "services" / "nex-ae-api" / "README.md"
 AE_WEB_ARTIFACT_CLIENT = ROOT / "apps" / "nex-ae-web" / "src" / "artifactClient.js"
 AE_WEB_ARTIFACT_LIBRARY_PANEL = (
-    ROOT / "apps" / "nex-ae-web" / "src" / "artifactLibraryPanel.js"
+    ROOT / "apps" / "nex-ae-web" / "src" / "features" / "artifacts" / "ArtifactPage.tsx"
 )
-AE_WEB_MAIN = ROOT / "apps" / "nex-ae-web" / "src" / "main.js"
+AE_WEB_MAIN = (
+    ROOT
+    / "apps"
+    / "nex-ae-web"
+    / "src"
+    / "features"
+    / "artifacts"
+    / "ArtifactRuntimeRoute.tsx"
+)
 AE_WEB_README = ROOT / "apps" / "nex-ae-web" / "README.md"
 AG_ARTIFACT_OPERATIONS = ROOT / "services" / "nex-ag" / "nex_ag" / "artifact_operations.py"
 AG_README = ROOT / "services" / "nex-ag" / "README.md"
@@ -131,14 +139,14 @@ REQUIRED_SOURCE_TOKENS = (
         "web_action_surface",
         AE_WEB_ARTIFACT_LIBRARY_PANEL,
         "library_panel",
-        "artifact library",
+        "LifecycleActions",
         "Browser lifecycle controls belong in the artifact library surface.",
     ),
     TokenRequirement(
         "web_action_surface",
         AE_WEB_MAIN,
         "artifact_library_wiring",
-        "artifactLibrary",
+        "ArtifactPage",
         "The artifact library is already mounted in the AE Web shell.",
     ),
     TokenRequirement(

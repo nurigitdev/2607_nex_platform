@@ -126,11 +126,11 @@ CAPABILITY_SPECS = (
         WEB_LAYERS,
         (
             EvidenceRef("implementation", "apps/nex-ae-web/index.html", 'lang="ko"'),
-            EvidenceRef("implementation", "apps/nex-ae-web/src/styles.css"),
+            EvidenceRef("implementation", "apps/nex-ae-web/src/app/shell/ApplicationShell.module.css"),
             EvidenceRef("contract", "contracts/schemas/service/nex_ae_web/fetch_mode_smoke_evidence.v1.schema.json"),
             EvidenceRef("test", "apps/nex-ae-web/test/runtimeConfig.test.mjs"),
             EvidenceRef("test", "tests/test_ae_web_static_browser_smoke.py"),
-            EvidenceRef("route", "apps/nex-ae-web/src/main.js"),
+            EvidenceRef("route", "apps/nex-ae-web/src/app/main.tsx", "createInstalledBrowserRuntime"),
         ),
     ),
     CapabilitySpec(
@@ -143,7 +143,7 @@ CAPABILITY_SPECS = (
             EvidenceRef("contract", "contracts/schemas/service/nex_ae_api/workspace_state.v1.schema.json"),
             EvidenceRef("test", "apps/nex-ae-web/test/documentScope.test.mjs"),
             EvidenceRef("test", "apps/nex-ae-web/test/runtimeConfig.test.mjs"),
-            EvidenceRef("route", "apps/nex-ae-web/src/main.js", "buildRuntimeConfigSummary"),
+            EvidenceRef("route", "apps/nex-ae-web/src/features/workspace/WorkspaceRuntimeRoute.tsx", "executeWorkspaceDraft"),
         ),
     ),
     CapabilitySpec(
@@ -156,7 +156,7 @@ CAPABILITY_SPECS = (
             EvidenceRef("contract", "contracts/schemas/common/common_job.v1.schema.json"),
             EvidenceRef("test", "apps/nex-ae-web/test/operationState.test.mjs"),
             EvidenceRef("test", "apps/nex-ae-web/test/authenticatedUploadWorkflow.test.mjs"),
-            EvidenceRef("route", "apps/nex-ae-web/src/main.js", "buildOperationStateSummary"),
+            EvidenceRef("route", "apps/nex-ae-web/src/features/documents/DocumentRuntimeRoute.tsx", "submitDocumentUpload"),
         ),
     ),
     CapabilitySpec(
@@ -164,13 +164,13 @@ CAPABILITY_SPECS = (
         "evidence citation source answer artifact preview and download surfaces",
         WEB_LAYERS,
         (
-            EvidenceRef("implementation", "apps/nex-ae-web/src/artifactCard.js", "renderArtifactCard"),
+            EvidenceRef("implementation", "apps/nex-ae-web/src/features/artifacts/ArtifactPage.tsx", "ArtifactPage"),
             EvidenceRef("implementation", "apps/nex-ae-web/src/retrievalClient.js"),
             EvidenceRef("contract", "contracts/schemas/service/nex_ae_api/retrieval_interaction.v1.schema.json"),
             EvidenceRef("contract", "contracts/schemas/generation/ae_artifact_record.v1.schema.json"),
-            EvidenceRef("test", "apps/nex-ae-web/test/artifactCard.test.mjs"),
+            EvidenceRef("test", "apps/nex-ae-web/src/features/artifacts/ArtifactPage.test.tsx"),
             EvidenceRef("test", "apps/nex-ae-web/test/retrievalClient.test.mjs"),
-            EvidenceRef("route", "apps/nex-ae-web/src/main.js", "renderArtifactPreviewPanel"),
+            EvidenceRef("route", "apps/nex-ae-web/src/features/artifacts/ArtifactRuntimeRoute.tsx", "loadArtifactPreview"),
         ),
     ),
     CapabilitySpec(
@@ -183,7 +183,7 @@ CAPABILITY_SPECS = (
             EvidenceRef("contract", "contracts/schemas/service/nex_ae_api/chat_interaction.v1.schema.json"),
             EvidenceRef("test", "apps/nex-ae-web/test/retrievalQualityWarnings.test.mjs"),
             EvidenceRef("test", "apps/nex-ae-web/test/groundedResponseQuality.test.mjs"),
-            EvidenceRef("route", "apps/nex-ae-web/src/main.js", "buildGroundedResponseQualitySurface"),
+            EvidenceRef("route", "apps/nex-ae-web/src/features/workspace/workspaceExecution.ts", "buildGroundedGenerationPresentation"),
         ),
     ),
 )

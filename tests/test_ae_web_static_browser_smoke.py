@@ -56,6 +56,12 @@ def test_validate_html_reports_missing_anchors() -> None:
     assert missing == ("missing",)
 
 
+def test_find_available_port_returns_bindable_loopback_port() -> None:
+    port = ae_web_smoke.find_available_port()
+
+    assert 0 < port <= 65535
+
+
 def test_run_static_browser_smoke_passes_with_fake_server() -> None:
     started: list[FakeProcess] = []
 
@@ -84,8 +90,8 @@ def test_run_static_browser_smoke_reports_missing_anchor_without_server() -> Non
     )
 
     assert result.status == "failed"
-    assert "runtime-diagnostics-panel" in result.missing_anchors
-    assert "missing=ae-web-runtime-config" in ae_web_smoke.format_summary(result)
+    assert "modern-root" in result.missing_anchors
+    assert "missing=modern-root,ae-web-runtime-config" in ae_web_smoke.format_summary(result)
 
 
 def test_wait_for_html_retries_until_available() -> None:
@@ -104,7 +110,7 @@ def test_wait_for_html_retries_until_available() -> None:
         sleeper=lambda seconds: None,
     )
 
-    assert "runtime-diagnostics-panel" in html
+    assert "modern-root" in html
     assert calls["count"] == 2
 
 
@@ -150,6 +156,26 @@ def test_main_outputs_summary_for_fetch_only_smoke(
 
     assert ae_web_smoke.main(["--summary", "--no-start-server"]) == 0
     assert "ae_web_static_browser_smoke=pass" in capsys.readouterr().out
+
+
+def test_main_honors_explicit_port(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_run(**kwargs: object) -> ae_web_smoke.BrowserSmokeResult:
+        captured.update(kwargs)
+        return ae_web_smoke.BrowserSmokeResult(
+            status="pass",
+            slice_label=str(kwargs["slice_label"]),
+            url=f"http://127.0.0.1:{kwargs['port']}/",
+            anchor_count=6,
+        )
+
+    monkeypatch.setattr(ae_web_smoke, "run_static_browser_smoke", fake_run)
+
+    assert ae_web_smoke.main(["--port", "15227", "--summary"]) == 0
+    assert captured["port"] == 15227
 
 
 def test_main_returns_failure_without_summary(

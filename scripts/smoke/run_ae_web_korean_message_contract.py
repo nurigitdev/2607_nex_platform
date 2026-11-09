@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
+import re
 from typing import Any, Mapping
 
 
@@ -11,7 +12,17 @@ ROOT = Path(__file__).resolve().parents[2]
 SCHEMA_VERSION = "ae_web_korean_message_contract.v1"
 CATALOG_PATH = "apps/nex-ae-web/src/locales/messages.js"
 INDEX_PATH = "apps/nex-ae-web/index.html"
-MAIN_PATH = "apps/nex-ae-web/src/main.js"
+I18N_PROVIDER_PATH = "apps/nex-ae-web/src/app/providers/I18nProvider.tsx"
+MODERN_SURFACE_PATHS = (
+    "apps/nex-ae-web/src/app/auth/LoginPage.tsx",
+    "apps/nex-ae-web/src/app/router/AppRouter.tsx",
+    "apps/nex-ae-web/src/app/shell/ApplicationShell.tsx",
+    "apps/nex-ae-web/src/features/approvals/ApprovalPage.tsx",
+    "apps/nex-ae-web/src/features/artifacts/ArtifactPage.tsx",
+    "apps/nex-ae-web/src/features/documents/DocumentWorkspacePage.tsx",
+    "apps/nex-ae-web/src/features/operations/OperationsPage.tsx",
+    "apps/nex-ae-web/src/features/workspace/WorkspacePage.tsx",
+)
 
 REQUIRED_KEYS = (
     "app.title",
@@ -33,12 +44,15 @@ REQUIRED_KEYS = (
 def run_ae_web_korean_message_contract(root: Path = ROOT) -> dict[str, Any]:
     catalog = _read_text(root / CATALOG_PATH)
     index = _read_text(root / INDEX_PATH)
-    main = _read_text(root / MAIN_PATH)
+    provider = _read_text(root / I18N_PROVIDER_PATH)
+    surfaces = "\n".join(_read_text(root / path) for path in MODERN_SURFACE_PATHS)
     key_occurrences = {
         key: catalog.count(f'"{key}"') for key in REQUIRED_KEYS
     }
-    static_binding_count = index.count("data-i18n=")
-    accessible_binding_count = index.count("data-i18n-aria-label=")
+    static_binding_count = len(
+        re.findall(r'["`][^"`\n]*[가-힣][^"`\n]*["`]', surfaces)
+    )
+    accessible_binding_count = surfaces.count("aria-label")
     checks = {
         "catalog_present": bool(catalog),
         "korean_default_frozen": (
@@ -54,16 +68,16 @@ def run_ae_web_korean_message_contract(root: Path = ROOT) -> dict[str, Any]:
         "static_message_bindings_present": static_binding_count >= 35,
         "accessible_message_bindings_present": accessible_binding_count >= 5,
         "composition_applies_catalog": all(
-            token in main
+            token in provider
             for token in (
-                'from "./locales/messages.js"',
-                "applyDocumentMessages(document, activeLocale)",
-                "return statusMessage(status, activeLocale)",
-                'uiMessage("timeline.event_count"',
+                'from "../../locales/messages.js"',
+                "DEFAULT_LOCALE",
+                "normalizeLocale",
+                "message(key, { locale, values })",
             )
         ),
         "node_contract_test_present": (
-            root / "apps/nex-ae-web/test/uiMessages.test.mjs"
+            root / "apps/nex-ae-web/src/ux/terminology.test.ts"
         ).is_file(),
     }
     issues = [name for name, passed in checks.items() if not passed]

@@ -1,7 +1,5 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
-import { fileURLToPath } from "node:url";
 
 import {
   AE_WEB_DOCUMENT_BOOTSTRAP_SCHEMA_VERSION,
@@ -10,8 +8,6 @@ import {
   loadDocumentBootstrap,
   normalizeDocumentBootstrap
 } from "../src/documentBootstrap.js";
-
-const MAIN_SOURCE = new URL("../src/main.js", import.meta.url);
 
 function fixture(overrides = {}) {
   return {
@@ -81,12 +77,4 @@ test("rejects empty, duplicate, and invalid document metadata", () => {
     /score/
   );
   assert.throws(() => buildDocumentBootstrapSummary({}), /summary/);
-});
-
-test("main selects the first server-bootstrapped document before scope creation", async () => {
-  const source = await readFile(fileURLToPath(MAIN_SOURCE), "utf8");
-  assert.match(
-    source,
-    /selectedDocumentId:\s*documentBootstrap\?\.documents\[0\]\?\.documentId\s*\|\|\s*"doc-001"/
-  );
 });

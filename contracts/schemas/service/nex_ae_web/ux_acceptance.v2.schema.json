@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_ae_web/ux_acceptance.v2.schema.json",
+  "title": "NeX AE Web UX Acceptance v2 Receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "profile", "viewport", "status", "checks", "failedCheckIds", "observations"],
+  "properties": {
+    "schemaVersion": { "const": "ae_web_ux_acceptance.v2" },
+    "profile": { "enum": ["login", "application", "workspace", "workspace-result"] },
+    "viewport": { "enum": ["desktop", "mobile"] },
+    "status": { "enum": ["PASS", "FAIL"] },
+    "checks": {
+      "type": "object",
+      "additionalProperties": { "type": "boolean" },
+      "minProperties": 12
+    },
+    "failedCheckIds": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "uniqueItems": true
+    },
+    "observations": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["visibleControlCount", "regionCount"],
+      "properties": {
+        "visibleControlCount": { "type": "integer", "minimum": 0 },
+        "regionCount": { "type": "integer", "minimum": 0 }
+      }
+    }
+  }
+}

@@ -30,7 +30,9 @@ def run_platform_deployment_build_inputs(root: Path = ROOT) -> dict[str, Any]:
         and projection["node_runtime"] == "22"
         and set(lock_by_id) == {"python-production", "node-production"}
         and lock_by_id["python-production"]["package_count"] >= 40
-        and lock_by_id["node-production"]["package_count"] == 4
+        and lock_by_id["node-production"]["package_count"] > 0
+        and lock_by_id["node-production"]["package_count"]
+        == lock_by_id["node-production"]["integrity_count"]
     )
     return {
         "evidence_schema_version": SCHEMA_VERSION,
@@ -90,4 +92,3 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":  # pragma: no cover
     raise SystemExit(main())
-

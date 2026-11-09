@@ -87,11 +87,17 @@ def test_dependency_lock_integrity_tracks_inventory_growth() -> None:
     assert closure._dependency_locks_are_integrity_complete(
         {**base, "python_package_count": 54, "python_hash_count": 1290}
     )
+    assert closure._dependency_locks_are_integrity_complete(
+        {**base, "node_package_count": 213, "node_integrity_count": 213}
+    )
     assert not closure._dependency_locks_are_integrity_complete(
         {**base, "python_hash_count": 52}
     )
     assert not closure._dependency_locks_are_integrity_complete(
         {**base, "python_package_count": 39}
+    )
+    assert not closure._dependency_locks_are_integrity_complete(
+        {**base, "node_package_count": 213, "node_integrity_count": 212}
     )
 
 

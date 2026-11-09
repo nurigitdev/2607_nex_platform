@@ -81,6 +81,10 @@ from nex_ae_api.wa_source_projections import (
 from nex_ae_api.work_result_event_api import register_work_result_event_routes
 from nex_ae_api.work_result_events import SqlAlchemyWorkResultEventService
 from nex_ae_api.workspace import register_workspace_routes
+from nex_ae_api.web_operations import (
+    build_ae_web_operations_summary,
+    register_ae_web_operations_routes,
+)
 from nex_ae_api.workspace_result_publication import (
     SqlAlchemyInteractionAgentResultSource,
 )
@@ -241,6 +245,14 @@ AE_SEMANTIC_CANDIDATE_ADMISSION = attach_semantic_candidate_admission(
     SERVICE_PERSISTENCE,
     AE_AGENT_RUNTIME,
     prompt_store=AE_PROMPT_STORE,
+)
+register_ae_web_operations_routes(
+    app,
+    source=lambda: build_ae_web_operations_summary(
+        database_available=SERVICE_PERSISTENCE.api_session_factory is not None,
+        agent_runtime_available=AE_AGENT_RUNTIME.jobs is not None,
+        provider_route_configured=bool(os.getenv("NEX_MO_BASE_URL", "").strip()),
+    ),
 )
 register_agent_runtime_operations_routes(
     app,

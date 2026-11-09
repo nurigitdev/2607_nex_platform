@@ -11,6 +11,7 @@ from typing import Callable
 from urllib.request import urlopen
 
 from run_ae_web_static_browser_smoke import (
+    find_available_port,
     start_dev_server,
     stop_process,
     wait_for_html,
@@ -44,11 +45,11 @@ class RetrievalQualityWarningSmokeResult:
 
 def required_html_anchors() -> tuple[str, ...]:
     return (
-        "retrieval-quality-warnings",
-        "retrieval-feedback",
-        "retrieval-client-summary",
-        "retrieval-scope-preview",
-        "message-list",
+        "NeX-Platform",
+        "modern-root",
+        "ae-web-runtime-config",
+        '"client_mode":"fetch"',
+        "/assets/",
     )
 
 
@@ -66,11 +67,18 @@ def required_source_anchors() -> tuple[SourceAnchor, ...]:
         SourceAnchor("src/retrievalQualityWarnings.js", "rawWarningDetailsIncluded: false"),
         SourceAnchor("src/retrievalClient.js", "qualityWarnings"),
         SourceAnchor("src/retrievalClient.js", "normalizeWarningKinds"),
-        SourceAnchor("src/main.js", "renderRetrievalQualityWarningSurface"),
-        SourceAnchor("src/main.js", "renderMessageRetrievalQualityWarning"),
-        SourceAnchor("src/main.js", "quality_warning"),
-        SourceAnchor("src/styles.css", ".quality-warning-surface"),
-        SourceAnchor("src/styles.css", ".retrieval-quality-warning-chip"),
+        SourceAnchor("src/features/workspace/workspaceExecution.ts", "warningCount"),
+        SourceAnchor(
+            "src/features/workspace/workspaceExecution.ts",
+            "결과에 확인이 필요한 항목이",
+        ),
+        SourceAnchor("src/features/workspace/workspaceExecution.ts", "groundedSources"),
+        SourceAnchor("src/features/workspace/WorkspacePage.tsx", "sources.length"),
+        SourceAnchor("src/features/workspace/WorkspacePage.tsx", "<BusinessResultCard"),
+        SourceAnchor(
+            "src/features/workspace/BusinessResultCard.tsx",
+            'aria-label="결과 주의사항"',
+        ),
     )
 
 
@@ -199,15 +207,16 @@ def format_summary(result: RetrievalQualityWarningSmokeResult) -> str:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--port", type=int, default=DEFAULT_PORT)
+    parser.add_argument("--port", type=int)
     parser.add_argument("--slice-label", default=DEFAULT_SLICE_LABEL)
     parser.add_argument("--timeout", type=float, default=10.0)
     parser.add_argument("--no-start-server", action="store_true")
     parser.add_argument("--summary", action="store_true")
     args = parser.parse_args(argv)
 
+    port = args.port if args.port is not None else find_available_port()
     result = run_ae_web_retrieval_quality_warning_smoke(
-        port=args.port,
+        port=port,
         slice_label=args.slice_label,
         timeout_seconds=args.timeout,
         start_server=not args.no_start_server,

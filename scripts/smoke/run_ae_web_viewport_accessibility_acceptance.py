@@ -21,17 +21,36 @@ def run_ae_web_viewport_accessibility_acceptance(
         root / "apps/nex-ae-web/test/goldenJourneyViewport.test.mjs"
     )
     html = _read_text(root / "apps/nex-ae-web/index.html")
-    css = _read_text(root / "apps/nex-ae-web/src/styles.css")
+    shell = _read_text(
+        root / "apps/nex-ae-web/src/app/shell/ApplicationShell.tsx"
+    )
+    router = _read_text(root / "apps/nex-ae-web/src/app/router/AppRouter.tsx")
+    login = _read_text(root / "apps/nex-ae-web/src/app/auth/LoginPage.tsx")
+    workspace = _read_text(
+        root / "apps/nex-ae-web/src/features/workspace/WorkspacePage.tsx"
+    )
+    business_result = _read_text(
+        root / "apps/nex-ae-web/src/features/workspace/BusinessResultCard.tsx"
+    )
+    component_source = "\n".join((shell, router, login, workspace, business_result))
+    css = "\n".join(
+        _read_text(root / path)
+        for path in (
+            "apps/nex-ae-web/src/app/shell/ApplicationShell.module.css",
+            "apps/nex-ae-web/src/app/auth/LoginPage.module.css",
+            "apps/nex-ae-web/src/features/workspace/WorkspacePage.module.css",
+        )
+    )
     messages = _read_text(root / "apps/nex-ae-web/src/locales/messages.js")
     required_regions = (
-        "golden-sidebar",
-        "main-workspace",
-        "golden-topbar",
-        "workspace-summary",
-        "golden-content",
-        "golden-workspace-column",
-        "golden-chat",
-        "golden-timeline",
+        'data-ux-region="shell"',
+        'data-ux-region="sidebar"',
+        'data-ux-region="topbar"',
+        'data-ux-region="main"',
+        'data-ux-region="workspace"',
+        'data-ux-region="context"',
+        'data-ux-region="primary-result"',
+        'aria-labelledby="login-title"',
     )
     checks = {
         "viewport_contract_present": all(
@@ -56,28 +75,26 @@ def run_ae_web_viewport_accessibility_acceptance(
             )
         ),
         "required_region_markers_present": all(
-            f'id="{region}"' in html for region in required_regions
+            region in component_source for region in required_regions
         ),
         "korean_main_landmark_present": (
             '<html lang="ko">' in html
-            and '<main class="workspace" id="main-workspace"' in html
+            and '<main id="main-content"' in shell
         ),
         "authentication_first_shell_present": all(
-            token in html
+            token in router + login
             for token in (
-                'id="authentication-shell"',
-                'id="authenticated-shell" hidden',
-                'id="credential-login-panel"',
+                'path="/login"',
+                "if (!shell.authenticated)",
+                '<Navigate to="/login" replace',
             )
         ),
         "localized_skip_link_present": all(
-            token in html + messages + _read_text(
-                root / "apps/nex-ae-web/src/main.js"
-            )
+            token in shell + messages
             for token in (
-                'class="skip-link"',
-                'href="#primary-content"',
-                '"#main-workspace" : "#credential-login-panel"',
+                "styles.skipLink",
+                'href="#main-content"',
+                "본문으로 건너뛰기",
                 '"action.skip_main": "본문으로 건너뛰기"',
                 '"action.skip_main": "Skip to main content"',
             )
@@ -85,10 +102,10 @@ def run_ae_web_viewport_accessibility_acceptance(
         "focus_and_responsive_css_present": all(
             token in css
             for token in (
-                ".skip-link:focus-visible",
-                "@media (max-width: 1080px)",
-                "@media (max-width: 900px)",
-                "@media (max-width: 620px)",
+                ".skipLink:focus",
+                "@media (max-width: 980px)",
+                "@media (max-width: 760px)",
+                "@media (max-width: 560px)",
                 "overflow-wrap: anywhere",
             )
         ),

@@ -11,6 +11,7 @@ from typing import Callable
 from urllib.request import urlopen
 
 from run_ae_web_static_browser_smoke import (
+    find_available_port,
     start_dev_server,
     stop_process,
     wait_for_html,
@@ -44,11 +45,11 @@ class GroundedResponseQualitySmokeResult:
 
 def required_html_anchors() -> tuple[str, ...]:
     return (
-        "grounded-response-quality",
-        "message-list",
-        "chat-status",
-        "chat-title",
-        "retrieval-quality-warnings",
+        "NeX-Platform",
+        "modern-root",
+        "ae-web-runtime-config",
+        '"client_mode":"fetch"',
+        "/assets/",
     )
 
 
@@ -68,13 +69,19 @@ def required_source_anchors() -> tuple[SourceAnchor, ...]:
         SourceAnchor("src/groundedResponseQuality.js", "evidenceTextIncluded: false"),
         SourceAnchor("src/groundedResponseQuality.js", "promptTextIncluded: false"),
         SourceAnchor("src/groundedResponseQuality.js", "providerDetailIncluded: false"),
-        SourceAnchor("src/main.js", "renderGroundedResponseQualitySurface"),
-        SourceAnchor("src/main.js", "renderMessageGroundedResponseQuality"),
-        SourceAnchor("src/main.js", "groundedResponseQuality"),
-        SourceAnchor("src/main.js", "grounded_response_quality"),
-        SourceAnchor("src/main.js", "buildMockGroundedResponseQualityContract"),
-        SourceAnchor("src/styles.css", ".grounded-response-quality-surface"),
-        SourceAnchor("src/styles.css", ".grounded-response-quality-chip"),
+        SourceAnchor(
+            "src/features/workspace/workspaceExecution.ts",
+            "buildGroundedGenerationPresentation",
+        ),
+        SourceAnchor("src/features/workspace/workspaceExecution.ts", "groundedSources"),
+        SourceAnchor("src/features/workspace/workspaceExecution.ts", "citation_status"),
+        SourceAnchor("src/features/workspace/workspaceExecution.ts", "인용 검증 완료"),
+        SourceAnchor(
+            "src/features/workspace/workspaceExecution.ts",
+            "presentation.repairedResponseReview",
+        ),
+        SourceAnchor("src/features/workspace/WorkspacePage.tsx", "ResponseQualityActions"),
+        SourceAnchor("src/features/workspace/WorkspacePage.tsx", "sources.length"),
     )
 
 
@@ -205,15 +212,16 @@ def format_summary(result: GroundedResponseQualitySmokeResult) -> str:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--port", type=int, default=DEFAULT_PORT)
+    parser.add_argument("--port", type=int)
     parser.add_argument("--slice-label", default=DEFAULT_SLICE_LABEL)
     parser.add_argument("--timeout", type=float, default=10.0)
     parser.add_argument("--no-start-server", action="store_true")
     parser.add_argument("--summary", action="store_true")
     args = parser.parse_args(argv)
 
+    port = args.port if args.port is not None else find_available_port()
     result = run_ae_web_grounded_response_quality_smoke(
-        port=args.port,
+        port=port,
         slice_label=args.slice_label,
         timeout_seconds=args.timeout,
         start_server=not args.no_start_server,

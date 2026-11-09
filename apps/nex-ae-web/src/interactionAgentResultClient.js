@@ -102,6 +102,9 @@ export function projectInteractionAgentResult(
         externalRefs: stringList(value.result.external_refs),
         artifactRefs: stringList(value.result.artifact_refs),
         warnings: stringList(value.result.warnings),
+        businessSummary: projectBusinessResultSummary(
+          value.result.business_summary
+        ),
         deliveryState: optionalText(value.result.delivery?.state) || "UNKNOWN",
         workspaceActivityRef: optionalText(
           value.result.delivery?.workspace_activity_ref
@@ -124,34 +127,61 @@ export function projectInteractionAgentResult(
   };
 }
 
-export function renderInteractionAgentResult(result) {
-  if (!result) return "";
-  const businessRefs = result.result?.businessRefs || [];
-  const externalRefs = result.result?.externalRefs || [];
-  const references = [...new Set([...businessRefs, ...externalRefs])];
-  const state = result.result?.status || result.executionState;
-  return `
-    <section class="agent-result" data-agent-result-state="${escapeHtml(state)}">
-      <div class="agent-result__header">
-        <strong>업무 처리 결과</strong>
-        <span class="badge ${result.terminal ? "success" : "pending"}">${escapeHtml(state)}</span>
-      </div>
-      <p>${escapeHtml(resultMessage(result))}</p>
-      ${references.length > 0
-        ? `<ul>${references
-            .map(reference => `<li><code>${escapeHtml(reference)}</code></li>`)
-            .join("")}</ul>`
-        : ""}
-    </section>
-  `;
-}
-
-function resultMessage(result) {
-  if (!result.terminal) return "Agent가 요청을 처리하고 있습니다.";
-  if (["SUCCEEDED", "PARTIAL"].includes(result.result?.status)) {
-    return "요청한 업무가 완료되어 Workspace에 결과가 게시되었습니다.";
+export function projectBusinessResultSummary(value) {
+  if (!value || typeof value !== "object") return null;
+  if (value.result_type !== "FINANCE.VOUCHER_DRAFT") return null;
+  if (
+    value.summary_schema_version !== "ae_business_result_summary.v1" ||
+    !value.summary ||
+    typeof value.summary !== "object"
+  ) {
+    throw invalidBusinessSummary();
   }
-  return "Agent 실행이 종료되었습니다. 상태와 경고를 확인해 주세요.";
+  const summary = value.summary;
+  const outcome = enumText(
+    summary.outcome,
+    ["COMMITTED", "NOT_COMMITTED", "UNKNOWN_COMMIT_STATE"]
+  );
+  const approvalState = enumText(
+    summary.approval_state,
+    ["APPROVED", "DENIED", "NOT_REQUIRED", "UNKNOWN"]
+  );
+  const amount = decimalText(summary.amount);
+  const currency = requiredBoundedText(summary.currency, 16);
+  const projectCode = requiredBoundedText(summary.project_code, 128);
+  const operationId = requiredBoundedText(summary.business_operation_id, 128);
+  const accountCodes = boundedStringList(summary.account_codes, 8, 64);
+  if (
+    !outcome ||
+    !approvalState ||
+    !amount ||
+    !currency ||
+    !projectCode ||
+    !operationId ||
+    accountCodes.length === 0
+  ) {
+    throw invalidBusinessSummary();
+  }
+  if (summary.business_object_link !== null) {
+    throw new InteractionAgentResultClientError(
+      "Business result link is not admitted.",
+      { status: "BUSINESS_RESULT_LINK_INVALID" }
+    );
+  }
+  return Object.freeze({
+    resultType: "FINANCE.VOUCHER_DRAFT",
+    schemaVersion: "ae_business_result_summary.v1",
+    outcome,
+    verificationStatus: optionalText(summary.verification_status),
+    approvalState,
+    businessOperationId: operationId,
+    voucherNumber: optionalText(summary.voucher_number),
+    amount,
+    currency: currency.toUpperCase(),
+    accountCodes: Object.freeze(accountCodes),
+    projectCode,
+    businessObjectLink: null
+  });
 }
 
 function mockProjection(interactionId) {
@@ -171,6 +201,7 @@ function mockProjection(interactionId) {
       external_refs: [],
       artifact_refs: [],
       warnings: [],
+      business_summary: null,
       delivery: {
         state: "ACKNOWLEDGED",
         workspace_activity_ref: "AE:WORKSPACE_ACTIVITY:activity-local"
@@ -196,6 +227,41 @@ function stringList(value) {
     : [];
 }
 
+function boundedStringList(value, maximumItems, maximumLength) {
+  if (!Array.isArray(value) || value.length < 1 || value.length > maximumItems) {
+    return [];
+  }
+  const items = value.map(item => requiredBoundedText(item, maximumLength));
+  if (items.some(item => item === null) || new Set(items).size !== items.length) {
+    return [];
+  }
+  return items;
+}
+
+function requiredBoundedText(value, maximum) {
+  const normalized = optionalText(value);
+  return normalized && normalized.length <= maximum ? normalized : null;
+}
+
+function enumText(value, allowed) {
+  const normalized = requiredBoundedText(value, 64)?.toUpperCase();
+  return normalized && allowed.includes(normalized) ? normalized : null;
+}
+
+function decimalText(value) {
+  const normalized = requiredBoundedText(value, 64);
+  return normalized && /^(?:0|[1-9][0-9]*)(?:\.[0-9]{2})$/.test(normalized)
+    ? normalized
+    : null;
+}
+
+function invalidBusinessSummary() {
+  return new InteractionAgentResultClientError(
+    "Business result summary is invalid.",
+    { status: "BUSINESS_RESULT_SUMMARY_INVALID" }
+  );
+}
+
 function optionalText(value) {
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
@@ -208,13 +274,4 @@ function requiredText(value, name) {
     });
   }
   return normalized;
-}
-
-function escapeHtml(value) {
-  return String(value ?? "")
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#039;");
 }

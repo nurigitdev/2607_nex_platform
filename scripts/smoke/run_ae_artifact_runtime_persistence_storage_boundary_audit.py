@@ -51,7 +51,15 @@ class PlannedGap:
 AE_ARTIFACTS = ROOT / "services" / "nex-ae-api" / "nex_ae_api" / "artifacts.py"
 AE_MAIN = ROOT / "services" / "nex-ae-api" / "nex_ae_api" / "main.py"
 AE_README = ROOT / "services" / "nex-ae-api" / "README.md"
-AE_WEB_MAIN = ROOT / "apps" / "nex-ae-web" / "src" / "main.js"
+AE_WEB_MAIN = (
+    ROOT
+    / "apps"
+    / "nex-ae-web"
+    / "src"
+    / "features"
+    / "artifacts"
+    / "ArtifactRuntimeRoute.tsx"
+)
 AE_WEB_README = ROOT / "apps" / "nex-ae-web" / "README.md"
 QUALITY_GATE = ROOT / "scripts" / "quality" / "run_quality_gate.sh"
 AE_MIGRATIONS = ROOT / "database" / "nex-ae-api" / "migrations"
@@ -268,30 +276,30 @@ REQUIRED_SOURCE_TOKENS = (
     TokenRequirement(
         "web_artifact_surface",
         AE_WEB_MAIN,
-        "artifact_ref_renderer",
-        "renderArtifactRef",
-        "AE Web renders artifact references through a bounded helper.",
+        "artifact_page_renderer",
+        "ArtifactPage",
+        "AE Web renders artifact metadata through the React artifact page.",
     ),
     TokenRequirement(
         "web_artifact_surface",
         AE_WEB_MAIN,
         "preview_route_anchor",
-        "previewRoute",
-        "AE Web mock state already carries preview routes.",
+        "loadArtifactPreview",
+        "AE Web resolves previews through the installed artifact client.",
     ),
     TokenRequirement(
         "web_artifact_surface",
         AE_WEB_MAIN,
         "download_route_anchor",
-        "downloadRoutes",
-        "AE Web mock state already carries download routes.",
+        "async download(fileId)",
+        "AE Web resolves downloads through the installed artifact client.",
     ),
     TokenRequirement(
         "web_artifact_surface",
         AE_WEB_MAIN,
         "artifact_panel_anchor",
-        "renderArtifactSummary",
-        "AE Web already has an artifact side-panel surface.",
+        "return <ArtifactPage",
+        "AE Web routes artifact state to the React artifact workspace.",
     ),
     TokenRequirement(
         "prior_slice_decisions",

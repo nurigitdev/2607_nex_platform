@@ -152,6 +152,23 @@ paths:
           description: Revoked safe OA browser session snapshot and cleared session cookie.
         "401":
           description: Browser user session is already missing, expired, or invalid.
+  /api/v1/web/operations/summary:
+    get:
+      operationId: getAeWebOperationsSummary
+      tags:
+        - Operations
+      description: >
+        Read-only, redacted same-origin operations projection. Browser access is
+        restricted to authenticated admin or operator roles.
+      responses:
+        "200":
+          description: Safe AE operations summary without service endpoints or credentials.
+        "401":
+          description: Browser session is missing or invalid.
+        "403":
+          description: Authenticated user is not an admin or operator.
+        "503":
+          description: Safe operations projection is temporarily unavailable.
   /api/v1/workspaces:
     post:
       operationId: createAeWorkspace
@@ -1333,9 +1350,57 @@ paths:
                   terminal:
                     type: boolean
                   result:
-                    type:
-                      - object
-                      - "null"
+                    oneOf:
+                      - type: "null"
+                      - type: object
+                        additionalProperties: false
+                        required:
+                          - result_ref
+                          - result_hash
+                          - status
+                          - structured_result_contract_ref
+                          - business_refs
+                          - external_refs
+                          - artifact_refs
+                          - warnings
+                          - business_summary
+                          - delivery
+                        properties:
+                          result_ref: {type: string}
+                          result_hash:
+                            type: string
+                            pattern: '^sha256:[0-9a-f]{64}$'
+                          status: {type: string}
+                          structured_result_contract_ref:
+                            type: [string, "null"]
+                          business_refs:
+                            type: array
+                            items: {type: string}
+                          external_refs:
+                            type: array
+                            items: {type: string}
+                          artifact_refs:
+                            type: array
+                            items: {type: string}
+                          warnings:
+                            type: array
+                            items: {type: string}
+                          business_summary:
+                            oneOf:
+                              - type: "null"
+                              - $ref: "#/components/schemas/AeBusinessResultSummary"
+                          delivery:
+                            type: object
+                            additionalProperties: false
+                            required:
+                              - delivery_ref
+                              - state
+                              - workspace_activity_ref
+                            properties:
+                              delivery_ref: {type: string}
+                              state: {type: string}
+                              workspace_activity_ref:
+                                type: [string, "null"]
                   updated_at:
                     type: string
                     format: date-time
@@ -2307,6 +2372,27 @@ paths:
         "403": {description: Current approval read authority is denied.}
         "404": {description: Gate is absent or unavailable to the browser user.}
         "503": {description: WC approval service is unavailable.}
+  /api/v1/approval-gates/{approval_work_item_id}/user-projection:
+    get:
+      operationId: getAeUserApprovalProjection
+      tags: [Approvals]
+      description: >-
+        Returns the authenticated user's display-safe approval projection.
+        Fields without an admitted authoritative source are represented as
+        OPEN and are never joined by the browser.
+      parameters:
+        - {$ref: "#/components/parameters/ApprovalWorkItemId"}
+      responses:
+        "200":
+          description: Source-backed user-facing approval projection.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/AeUserApprovalProjection"}
+        "401": {description: Authenticated browser session is missing or invalid.}
+        "403": {description: Current approval read authority is denied.}
+        "404": {description: Gate is absent or unavailable to the browser user.}
+        "502": {description: Authoritative approval detail could not be projected safely.}
+        "503": {description: WC approval service is unavailable.}
   /api/v1/approval-gates/{approval_work_item_id}/decisions:
     post:
       operationId: decideAeApprovalGate
@@ -2618,6 +2704,9 @@ components:
         type: string
         format: uuid
   schemas:
+    AeBusinessResultSummary:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_ae_api/business_result_summary.v1.schema.json
     WaSourceReconciliationPage:
       type: object
       x-nex-canonical-json-schema: schemas/service/nex_ae_api/wa_source_reconciliation_page.v1.schema.json
@@ -2639,6 +2728,9 @@ components:
     WcApprovalInbox:
       type: object
       x-nex-canonical-json-schema: schemas/service/nex_wc/approval_inbox.v1.schema.json
+    AeUserApprovalProjection:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_ae_api/user_approval_projection.v1.schema.json
     AeUploadIngestionProgress:
       type: object
       x-nex-canonical-json-schema: schemas/service/nex_ae_api/upload_ingestion_progress.v1.schema.json

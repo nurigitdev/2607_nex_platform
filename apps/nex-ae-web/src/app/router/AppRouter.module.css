@@ -1,0 +1,2 @@
+.page { display: grid; gap: var(--nex-space-6); }
+.page h1 { font: var(--nex-text-title); margin: 0; }

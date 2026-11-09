@@ -90,6 +90,8 @@ def build_default_oci_definitions(
                 "apps/nex-ae-web/package.json",
                 "apps/nex-ae-web/package-lock.json",
                 "apps/nex-ae-web/index.html",
+                "apps/nex-ae-web/vite.config.ts",
+                "apps/nex-ae-web/tsconfig.json",
                 "apps/nex-ae-web/src",
                 "apps/nex-ae-web/scripts/serve.mjs",
             )
@@ -197,8 +199,12 @@ def validate_oci_containerfiles(
             "Python Containerfile does not isolate runtime wheel installation"
         )
     node_text = by_path.get(NODE_CONTAINERFILE, "")
-    if "npm ci --omit=dev --ignore-scripts" not in node_text:
+    if "npm ci --ignore-scripts" not in node_text:
         errors.append("Node Containerfile does not enforce npm ci")
+    if "FROM ${NODE_BASE_IMAGE} AS ae-web-build" not in node_text:
+        errors.append("Node Containerfile does not define the build stage")
+    if "COPY --from=ae-web-build" not in node_text:
+        errors.append("Node Containerfile does not isolate the runtime artifact")
     if "ENTRYPOINT []" not in node_text:
         errors.append("Node Containerfile does not clear the base entrypoint")
     if errors:

@@ -31,6 +31,10 @@ const ko = Object.freeze({
   "action.retry": "재시도",
   "action.refresh": "새로고침",
   "action.apply": "적용",
+  "action.review_request": "요청 확인",
+  "action.view_progress": "진행 확인",
+  "action.review_approval": "승인 검토",
+  "action.view_result": "결과 확인",
   "action.skip_main": "본문으로 건너뛰기",
   "generation.controls": "생성 작업 제어",
   "generation.none": "생성 작업 없음",
@@ -99,7 +103,35 @@ const ko = Object.freeze({
   "status.cancelled": "취소됨",
   "status.cancelling": "취소 중",
   "status.recoverable": "복구 가능",
-  "status.repair_required": "보완 필요"
+  "status.repair_required": "보완 필요",
+  "ux.work_state.idle": "입력 대기",
+  "ux.work_state.accepting": "요청 접수",
+  "ux.work_state.planning": "업무 계획",
+  "ux.work_state.running": "처리 중",
+  "ux.work_state.waiting_approval": "승인 대기",
+  "ux.work_state.resuming": "처리 재개",
+  "ux.work_state.verifying": "결과 확인",
+  "ux.work_state.succeeded": "완료",
+  "ux.work_state.partial": "일부 완료",
+  "ux.work_state.failed": "처리 실패",
+  "ux.work_state.cancelled": "취소됨",
+  "ux.work_state.unknown": "상태 확인 필요",
+  "ux.approval_state.pending": "승인 대기",
+  "ux.approval_state.approved": "승인됨",
+  "ux.approval_state.rejected": "반려됨",
+  "ux.approval_state.expired": "만료됨",
+  "ux.approval_state.cancelled": "취소됨",
+  "ux.term.workspace": "작업 공간",
+  "ux.term.human_gate": "승인",
+  "ux.term.artifact": "결과물",
+  "ux.term.ready_for_prompt": "입력 대기",
+  "ux.term.document": "문서",
+  "ux.term.attachment": "첨부",
+  "ux.term.source": "출처",
+  "ux.term.result": "업무 결과",
+  "ux.term.project": "프로젝트",
+  "ux.term.unknown": "업무 정보",
+  "ux.term.technical_state": "기술 상태"
 });
 
 const en = Object.freeze({
@@ -132,6 +164,10 @@ const en = Object.freeze({
   "action.retry": "Retry",
   "action.refresh": "Refresh",
   "action.apply": "Apply",
+  "action.review_request": "Review request",
+  "action.view_progress": "View progress",
+  "action.review_approval": "Review approval",
+  "action.view_result": "View result",
   "action.skip_main": "Skip to main content",
   "generation.controls": "Generation controls",
   "generation.none": "No generation job",
@@ -200,7 +236,35 @@ const en = Object.freeze({
   "status.cancelled": "Cancelled",
   "status.cancelling": "Cancelling",
   "status.recoverable": "Recoverable",
-  "status.repair_required": "Repair required"
+  "status.repair_required": "Repair required",
+  "ux.work_state.idle": "Ready for input",
+  "ux.work_state.accepting": "Request received",
+  "ux.work_state.planning": "Planning work",
+  "ux.work_state.running": "In progress",
+  "ux.work_state.waiting_approval": "Waiting for approval",
+  "ux.work_state.resuming": "Resuming",
+  "ux.work_state.verifying": "Verifying result",
+  "ux.work_state.succeeded": "Completed",
+  "ux.work_state.partial": "Partially completed",
+  "ux.work_state.failed": "Processing failed",
+  "ux.work_state.cancelled": "Cancelled",
+  "ux.work_state.unknown": "Status needs review",
+  "ux.approval_state.pending": "Waiting for approval",
+  "ux.approval_state.approved": "Approved",
+  "ux.approval_state.rejected": "Rejected",
+  "ux.approval_state.expired": "Expired",
+  "ux.approval_state.cancelled": "Cancelled",
+  "ux.term.workspace": "Workspace",
+  "ux.term.human_gate": "Approval",
+  "ux.term.artifact": "Result file",
+  "ux.term.ready_for_prompt": "Ready for input",
+  "ux.term.document": "Document",
+  "ux.term.attachment": "Attachment",
+  "ux.term.source": "Source",
+  "ux.term.result": "Business result",
+  "ux.term.project": "Project",
+  "ux.term.unknown": "Business information",
+  "ux.term.technical_state": "Technical state"
 });
 
 export const MESSAGE_CATALOGS = Object.freeze({ ko, en });
@@ -249,32 +313,4 @@ export function statusMessage(status, locale = DEFAULT_LOCALE) {
   const key = `status.${rawStatus.toLowerCase()}`;
   const translated = message(key, { locale });
   return translated === key ? rawStatus || "UNKNOWN" : translated;
-}
-
-export function applyDocumentMessages(root, locale = DEFAULT_LOCALE) {
-  const resolvedLocale = normalizeLocale(locale);
-  const documentElement = root?.documentElement;
-  if (documentElement) {
-    documentElement.lang = resolvedLocale;
-    documentElement.dataset.locale = resolvedLocale;
-  }
-
-  applyAttribute(root, "[data-i18n]", "i18n", (node, value) => {
-    node.textContent = value;
-  }, resolvedLocale);
-  applyAttribute(root, "[data-i18n-aria-label]", "i18nAriaLabel", (node, value) => {
-    node.setAttribute("aria-label", value);
-  }, resolvedLocale);
-  applyAttribute(root, "[data-i18n-title]", "i18nTitle", (node, value) => {
-    node.setAttribute("title", value);
-  }, resolvedLocale);
-
-  return Object.freeze({ locale: resolvedLocale, catalog: validateCatalogParity() });
-}
-
-function applyAttribute(root, selector, datasetKey, update, locale) {
-  for (const node of root?.querySelectorAll?.(selector) || []) {
-    const key = node.dataset?.[datasetKey];
-    if (key) update(node, message(key, { locale }));
-  }
 }

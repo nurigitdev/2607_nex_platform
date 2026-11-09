@@ -59,8 +59,8 @@ REQUIRED_PATHS = (
     ),
     ReadinessPath(
         "ae_web_shell",
-        ROOT_DIR / "apps" / "nex-ae-web" / "index.html",
-        "Static AE Web browser shell.",
+        ROOT_DIR / "apps" / "nex-ae-web" / "src" / "app" / "auth" / "LoginPage.tsx",
+        "Authentication-first React browser shell.",
     ),
     ReadinessPath(
         "ae_web_package",
@@ -75,13 +75,13 @@ REQUIRED_PATHS = (
 )
 
 REQUIRED_ANCHORS = (
-    "credential-login-form",
-    "credential-tenant-id",
-    "credential-employee-id",
-    "credential-password",
-    "credential-login-submit-button",
-    "credential-logout-button",
-    "session-route-guard-summary",
+    '<form className={styles.form}',
+    'name="employee_id"',
+    'name="password"',
+    'type="submit"',
+    "로그아웃",
+    "if (!shell.authenticated)",
+    'sessionState.status === "expired"',
 )
 
 REQUIRED_QUALITY_COMMANDS = (
@@ -187,12 +187,18 @@ def path_readiness(root_dir: Path) -> list[dict[str, object]]:
 
 
 def anchor_readiness(root_dir: Path) -> list[dict[str, object]]:
-    html_path = root_dir / "apps" / "nex-ae-web" / "index.html"
-    html = html_path.read_text(encoding="utf-8") if html_path.exists() else ""
+    source = "\n".join(
+        read_text(root_dir / path)
+        for path in (
+            "apps/nex-ae-web/src/app/auth/LoginPage.tsx",
+            "apps/nex-ae-web/src/app/router/AppRouter.tsx",
+            "apps/nex-ae-web/src/app/shell/ApplicationShell.tsx",
+        )
+    )
     return [
         {
             "anchor": anchor,
-            "present": anchor in html,
+            "present": anchor in source,
         }
         for anchor in REQUIRED_ANCHORS
     ]
