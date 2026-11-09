@@ -227,6 +227,141 @@ paths:
           description: Patch, payload hash, or domain invariant is invalid.
         "503":
           description: OA authorization or EOS persistence is unavailable.
+  /internal/v2/finance/legal-entities/{company_id}:
+    get:
+      operationId: FINANCE.LEGAL_ENTITY.GET
+      tags: [Finance]
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes: [service:call]
+      x-nex-business-scope: finance:company:read
+      x-nex-side-effect-free: true
+      parameters:
+        - name: company_id
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+        - name: X-NeX-Tenant-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+        - name: X-NeX-Subject-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+        - name: effective_on
+          in: query
+          required: false
+          schema: {type: string, format: date}
+      responses:
+        "200":
+          description: Active tenant-scoped LegalEntity projection.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LegalEntity"
+        "401":
+          description: Service claim is missing or invalid.
+        "403":
+          description: Fresh OA company-read authority is denied.
+        "404":
+          description: LegalEntity is absent from the admitted effective scope.
+        "422":
+          description: Tenant, subject, company, or effective date is invalid.
+        "503":
+          description: OA authorization or EOS persistence is unavailable.
+  /internal/v2/projects/{project_id}/company-bindings:
+    post:
+      operationId: PROJECT.COMPANY_BINDING.CREATE
+      tags: [Project]
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes: [service:call]
+      x-nex-business-scope: project:company-binding:manage
+      x-nex-route-class: WRITE
+      parameters:
+        - name: project_id
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+        - name: X-NeX-Tenant-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+        - name: X-NeX-Subject-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProjectCompanyBindingCommand"
+      responses:
+        "201":
+          description: Approved ProjectCompanyBinding committed or replayed exactly.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectCompanyBinding"
+        "401":
+          description: Service claim is missing or invalid.
+        "403":
+          description: Service trust or fresh OA binding authority is denied.
+        "404":
+          description: A real tenant-scoped Project or LegalEntity is absent.
+        "409":
+          description: Identity semantics conflict or effective periods overlap.
+        "422":
+          description: Binding command or effective period is invalid.
+        "503":
+          description: OA authorization or EOS persistence is unavailable.
+  /internal/v2/projects/{project_id}/company-binding:
+    get:
+      operationId: PROJECT.COMPANY_BINDING.GET
+      tags: [Project]
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes: [service:call]
+      x-nex-business-scope: project:company-binding:read
+      x-nex-side-effect-free: true
+      parameters:
+        - name: project_id
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+        - name: X-NeX-Tenant-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+        - name: X-NeX-Subject-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+        - name: effective_on
+          in: query
+          required: true
+          schema: {type: string, format: date}
+      responses:
+        "200":
+          description: Unique effective accounting-company binding for the Project.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectCompanyBinding"
+        "401":
+          description: Service claim is missing or invalid.
+        "403":
+          description: Fresh OA binding-read authority is denied.
+        "404":
+          description: No binding is effective on the requested date.
+        "409":
+          description: Persisted data contains multiple effective bindings.
+        "422":
+          description: Tenant, subject, Project, or effective date is invalid.
+        "503":
+          description: OA authorization or EOS persistence is unavailable.
   /internal/v1/finance/voucher-drafts:
     get:
       operationId: FINANCE.VOUCHER_DRAFT.LIST
@@ -508,6 +643,79 @@ components:
     CreateVoucherDraftResult:
       type: object
       x-nex-canonical-json-schema: schemas/service/nex_eos/create_voucher_draft_result.v1.schema.json
+    LegalEntity:
+      type: object
+      additionalProperties: false
+      required:
+        - tenant_id
+        - company_id
+        - company_code
+        - name
+        - functional_currency
+        - presentation_currency
+        - business_timezone
+        - status
+        - effective_from
+        - version
+        - created_at
+        - updated_at
+      properties:
+        tenant_id: {type: string, minLength: 1, maxLength: 128}
+        company_id: {type: string, format: uuid}
+        company_code: {type: string, minLength: 1, maxLength: 64}
+        name: {type: string, minLength: 1, maxLength: 256}
+        functional_currency: {type: string, pattern: "^[A-Z]{3}$"}
+        presentation_currency: {type: string, pattern: "^[A-Z]{3}$"}
+        business_timezone: {type: string, minLength: 1, maxLength: 64}
+        status: {type: string, enum: [ACTIVE, INACTIVE]}
+        effective_from: {type: string, format: date}
+        version: {type: integer, minimum: 1}
+        created_at: {type: string, format: date-time}
+        updated_at: {type: string, format: date-time}
+    ProjectCompanyBindingCommand:
+      type: object
+      additionalProperties: false
+      required: [binding_id, company_id, valid_from, approved_proof_hash]
+      properties:
+        binding_id: {type: string, format: uuid}
+        company_id: {type: string, format: uuid}
+        valid_from: {type: string, format: date}
+        valid_until:
+          type: [string, "null"]
+          format: date
+        approved_proof_hash:
+          type: string
+          pattern: "^sha256:[0-9a-f]{64}$"
+    ProjectCompanyBinding:
+      type: object
+      additionalProperties: false
+      required:
+        - tenant_id
+        - binding_id
+        - project_id
+        - company_id
+        - valid_from
+        - approved_proof_hash
+        - state
+        - version
+        - created_at
+        - updated_at
+      properties:
+        tenant_id: {type: string, minLength: 1, maxLength: 128}
+        binding_id: {type: string, format: uuid}
+        project_id: {type: string, format: uuid}
+        company_id: {type: string, format: uuid}
+        valid_from: {type: string, format: date}
+        valid_until:
+          type: [string, "null"]
+          format: date
+        approved_proof_hash:
+          type: string
+          pattern: "^sha256:[0-9a-f]{64}$"
+        state: {type: string, enum: [APPROVED, REVOKED]}
+        version: {type: integer, minimum: 1}
+        created_at: {type: string, format: date-time}
+        updated_at: {type: string, format: date-time}
     NvtProjectCreateCommand:
       type: object
       x-nex-canonical-json-schema: schemas/service/nex_eos/nvt_project_create_command.v1.schema.json

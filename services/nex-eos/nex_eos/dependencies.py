@@ -30,13 +30,17 @@ from .business_transactions import (
 )
 from .config import EosSettings
 from .health import build_configuration_readiness_check
+from .legal_entities import (
+    EosLegalEntityService,
+    SqlAlchemyEosLegalEntityRepository,
+)
 from .organization import SqlAlchemyEosOrganizationRepository
 from .persistence import EosDatabaseRuntime, build_eos_database_runtime
 from .project_memberships import SqlAlchemyEosProjectMembershipRepository
 from .project_operations import EosGovernedProjectService
 from .projects import SqlAlchemyEosProjectRepository
-from .voucher_commands import EosCreateVoucherDraftService
 from .voucher_access import EosVoucherAccessService
+from .voucher_commands import EosCreateVoucherDraftService
 from .voucher_verification import SqlAlchemyEosVoucherVerificationQuery
 from .vouchers import SqlAlchemyEosVoucherRepository
 
@@ -52,6 +56,8 @@ class EosDependencies:
     projects: SqlAlchemyEosProjectRepository | None
     project_memberships: SqlAlchemyEosProjectMembershipRepository | None
     project_operations: EosGovernedProjectService | None
+    legal_entities: SqlAlchemyEosLegalEntityRepository | None
+    legal_entity_service: EosLegalEntityService | None
     accounts: SqlAlchemyEosAccountRepository | None
     approval_policies: SqlAlchemyEosApprovalPolicyRepository | None
     approval_instances: SqlAlchemyEosApprovalInstanceRepository | None
@@ -185,6 +191,16 @@ def build_eos_dependencies(
         and oa_token
         else None
     )
+    legal_entities = (
+        SqlAlchemyEosLegalEntityRepository(database_runtime.session_factory)
+        if database_runtime is not None
+        else None
+    )
+    legal_entity_service = (
+        EosLegalEntityService(legal_entities, authorization_source)
+        if legal_entities is not None and authorization_source is not None
+        else None
+    )
     voucher_access_service = (
         EosVoucherAccessService(
             session_factory=database_runtime.session_factory,
@@ -227,6 +243,8 @@ def build_eos_dependencies(
         projects=projects,
         project_memberships=project_memberships,
         project_operations=project_operations,
+        legal_entities=legal_entities,
+        legal_entity_service=legal_entity_service,
         accounts=accounts,
         approval_policies=approval_policies,
         approval_instances=approval_instances,

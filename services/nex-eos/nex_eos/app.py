@@ -10,6 +10,7 @@ from .account_api import register_account_routes
 from .approval_decision_api import register_approval_decision_routes
 from .config import EosSettings, load_eos_settings
 from .dependencies import build_eos_dependencies
+from .legal_entity_api import register_legal_entity_routes
 from .organization_api import register_organization_routes
 from .project_api import register_project_routes
 from .voucher_api import register_voucher_command_routes
@@ -58,6 +59,8 @@ def create_eos_app(
     app.state.eos_projects = dependencies.projects
     app.state.eos_project_memberships = dependencies.project_memberships
     app.state.eos_project_operations = dependencies.project_operations
+    app.state.eos_legal_entities = dependencies.legal_entities
+    app.state.eos_legal_entity_service = dependencies.legal_entity_service
     app.state.eos_accounts = dependencies.accounts
     app.state.eos_approval_policies = dependencies.approval_policies
     app.state.eos_approval_instances = dependencies.approval_instances
@@ -74,6 +77,7 @@ def create_eos_app(
     register_organization_routes(app)
     register_project_routes(app)
     register_account_routes(app)
+    register_legal_entity_routes(app)
     verifier = (
         EosWaProjectVerifier(
             projects=dependencies.projects,
