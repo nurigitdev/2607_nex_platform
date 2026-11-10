@@ -19,6 +19,29 @@ The Markdown Slice Plan and its Execution Matrix JSON are one planning set.
 The JSON is machine-readable traceability input, not runtime configuration or
 evidence that an implementation gate has passed.
 
+### COA Follow-up Reading Order
+
+Read the post-S1-02 standard Chart of Accounts design set in this order:
+
+1. `NeX_MyBee_COA_PAD_v1.0.md` — the base COA design authority.
+2. `NeX_MyBee_COA_CA01_v1.0.md` — takes precedence over the COA PAD v1.0
+   **only** for the unified GLOBAL/TENANT Codebook structure and its related
+   publication/read contracts. All other PAD and SRS invariants remain in
+   force.
+3. `NeX_MyBee_COA_Codebook_Candidate_v0.1.json` — accounting-review data only;
+   it is not an approved operational seed. Its
+   `status=DESIGN_CANDIDATE_NOT_APPROVED` and `runtime_seed_allowed=false`
+   boundaries must remain fail-closed until exact-row accounting approval.
+4. `NeX_MyBee_COA_CA01_Decision_Delta_v1.0.json` — machine-readable evidence
+   of the CA01 decision delta, Codex implementation changes, and required
+   validation gates. It is not runtime configuration or proof that those gates
+   have passed.
+
+The COA follow-up set preserves the completed S1-02 framework and does not
+activate S1-03. It also does not authorize invented K-IFRS account numbers,
+candidate seed import, or mutation of existing `eos_account`, company policy,
+PostingRule, Golden A, or historical Journal semantics.
+
 ## Authority And Status
 
 ```text
