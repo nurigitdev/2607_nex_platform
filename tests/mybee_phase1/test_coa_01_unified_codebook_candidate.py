@@ -29,7 +29,6 @@ CONFIG = ROOT / "domains/mybee/config/account_catalog"
 SCHEMA_PATH = CONFIG / "unified_codebook_candidate.schema.json"
 IDENTITY_PATH = CONFIG / "unified_codebook_candidate.identity.v1.json"
 NEGATIVE_CASES_PATH = CONFIG / "coa_candidate_negative_cases.v1.json"
-SEED_MANIFEST_PATH = CONFIG / "approved_seed_manifest.json"
 
 
 def _candidate() -> dict[str, Any]:
@@ -67,10 +66,9 @@ def test_coa_01_candidate_matches_schema_and_frozen_identity() -> None:
     report.require_valid()
 
 
-def test_coa_01_raw_source_hash_and_unapproved_boundary_are_unchanged() -> None:
+def test_coa_01_raw_source_hash_and_candidate_boundary_are_unchanged() -> None:
     delta = json.loads(DELTA_PATH.read_text(encoding="utf-8"))
     identity = json.loads(IDENTITY_PATH.read_text(encoding="utf-8"))
-    seed = json.loads(SEED_MANIFEST_PATH.read_text(encoding="utf-8"))
     source_hash = "sha256:" + hashlib.sha256(CANDIDATE_PATH.read_bytes()).hexdigest()
 
     assert source_hash == delta["authority"]["candidate_sha256"]
@@ -78,9 +76,6 @@ def test_coa_01_raw_source_hash_and_unapproved_boundary_are_unchanged() -> None:
     assert identity["accounting_owner_approved"] is False
     assert identity["runtime_seed_allowed"] is False
     assert identity["approved_proof_ref"] is None
-    assert seed["admission_status"] == "SOURCE_PENDING_NOT_ADMITTED"
-    assert seed["runtime_seed_allowed"] is False
-    assert seed["accounts"] == []
 
 
 def test_coa_01_candidate_has_complete_reviewer_identity_and_fx_set() -> None:

@@ -1,20 +1,30 @@
 {
-  "schema_version": "nex.mybee.account-catalog-seed-manifest.v1",
+  "schema_version": "nex.mybee.account-catalog-seed-manifest.v2",
   "catalog_id": "mybee.finance.k-ifrs-adopted-chart",
-  "admission_status": "SOURCE_PENDING_NOT_ADMITTED",
-  "runtime_seed_allowed": false,
-  "source_reference": null,
-  "source_version": null,
-  "source_hash": null,
-  "approved_proof_ref": null,
-  "accounts": [],
-  "blocking_reason": "The actual MyBee-adopted chart of accounts and its approval evidence have not been supplied. K-IFRS does not prescribe a universal numerical chart, so this repository must not invent one.",
-  "required_admission_fields": [
-    "source_reference",
-    "source_version",
-    "source_hash",
-    "approved_proof_ref",
-    "accounts"
+  "admission_status": "PRODUCT_ACCOUNTING_APPROVED_SOURCE_ADMITTED",
+  "runtime_seed_allowed": true,
+  "automatic_publication_allowed": false,
+  "published": false,
+  "company_adoption_allowed": false,
+  "source_reference": "domains/mybee/config/account_catalog/approved_standard_chart.v1.json",
+  "source_version": "MYBEE-KIFRS-NFI-v1.0",
+  "source_hash": "sha256:7782f96ea7445c6b0c9d82bc4d3c431175e4f32c22a968c1430aea55f736e61c",
+  "source_dataset_hash": "sha256:804cbc36814397ba9a74522dc7de7ffa444e001cde8ff6cbf8b8959129893fc0",
+  "identity_set_hash": "sha256:412dee6066d65620e0b817bc652ab319b2ce33eccfccdce1b6e2cd77a0c4a673",
+  "node_contract_hash": "sha256:e988aaf0f5eccb9578591d8e4f678cb8d751019583389346178a427771be7c13",
+  "approved_proof_ref": "domains/mybee/config/account_catalog/product_accounting_approval.v1.json",
+  "approved_proof_hash": "sha256:f16c845b752b8c6a810bc1c75f069c211030e3530996e87bb11f08fb99541d6e",
+  "accounts_source": {
+    "path": "docs/transition/MyBee_Phase1/NeX_MyBee_COA_Codebook_Candidate_v0.1.json",
+    "total_nodes": 166,
+    "leaf_accounts": 88
+  },
+  "blocking_reason": null,
+  "remaining_runtime_gates": [
+    "COA_02_PERSISTENCE",
+    "COA_03_OA_AUTHORIZED_PUBLICATION",
+    "COMPANY_ADOPTION_APPROVAL",
+    "REPORTING_TAXONOMY_MAPPING_WHERE_REQUIRED"
   ],
   "decision_evidence": [
     {

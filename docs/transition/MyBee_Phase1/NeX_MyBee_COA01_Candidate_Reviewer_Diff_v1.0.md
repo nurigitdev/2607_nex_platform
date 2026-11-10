@@ -125,3 +125,19 @@ required after any row change.
 Until that proof exists, `approved_seed_manifest.json` remains empty and
 `COA-02` may build only test scaffolding; it must not publish or adopt this
 candidate as an operational chart.
+
+## 4. COA-01A Approval Outcome
+
+On 2026-11-10 the session user explicitly asserted the
+`PRODUCT_ACCOUNTING_OWNER` role and approved the exact dataset bound by the
+three Section 1 hashes. The durable approval record is
+`domains/mybee/config/account_catalog/product_accounting_approval.v1.json`.
+Its assurance is accurately recorded as
+`SELF_ATTESTED_BY_EXPLICIT_USER_INSTRUCTION` and it does not claim a
+cryptographic signature.
+
+The original Candidate and identity record remain unchanged as historical
+pre-approval snapshots. The additive approved-source artifact is
+`approved_standard_chart.v1.json`. Source admission permits the later COA-02
+controlled Seed path, but it does not publish an EOS Release, authorize a
+company adoption, or replace COA-03 OA authorization.

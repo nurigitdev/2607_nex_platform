@@ -38,8 +38,17 @@ Read the post-S1-02 standard Chart of Accounts design set in this order:
    have passed.
 5. `NeX_MyBee_COA01_Candidate_Reviewer_Diff_v1.0.md` — COA-01's hash-bound
    88-leaf human review baseline. Structural validation has passed, but the
-   document deliberately keeps Product Accounting Owner approval and runtime
-   Seed admission pending.
+   original Candidate remains an immutable pre-approval snapshot. Section 4
+   records the later COA-01A approval overlay and its exact limitations.
+
+COA-01A machine-readable admission artifacts are read in this order:
+
+1. `domains/mybee/config/account_catalog/product_accounting_approval.v1.json`
+2. `domains/mybee/config/account_catalog/approved_standard_chart.v1.json`
+3. `domains/mybee/config/account_catalog/approved_seed_manifest.json`
+
+The approval is source admission only. EOS publication, OA publisher
+authorization and Company adoption remain separate later gates.
 
 The COA follow-up set preserves the completed S1-02 framework and does not
 activate S1-03. It also does not authorize invented K-IFRS account numbers,

@@ -232,14 +232,19 @@ def _api_payload() -> dict:
     }
 
 
-def test_s1_02_manifest_fails_closed_without_inventing_kifrs_codes() -> None:
+def test_coa_01a_manifest_admits_only_the_approved_internal_codebook() -> None:
     manifest = json.loads(MANIFEST_PATH.read_text(encoding="utf-8"))
 
-    assert manifest["admission_status"] == "SOURCE_PENDING_NOT_ADMITTED"
-    assert manifest["runtime_seed_allowed"] is False
-    assert manifest["accounts"] == []
-    assert manifest["source_hash"] is None
-    assert "must not invent" in manifest["blocking_reason"]
+    assert manifest["admission_status"] == (
+        "PRODUCT_ACCOUNTING_APPROVED_SOURCE_ADMITTED"
+    )
+    assert manifest["runtime_seed_allowed"] is True
+    assert manifest["automatic_publication_allowed"] is False
+    assert manifest["published"] is False
+    assert manifest["company_adoption_allowed"] is False
+    assert manifest["accounts_source"]["total_nodes"] == 166
+    assert manifest["blocking_reason"] is None
+    assert "COA_03_OA_AUTHORIZED_PUBLICATION" in manifest["remaining_runtime_gates"]
 
 
 def test_s1_02_migration_freezes_catalog_policy_rule_and_shared_period_schema() -> None:

@@ -1,0 +1,79 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/mybee/account-catalog-seed-manifest.v2.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "catalog_id",
+    "admission_status",
+    "runtime_seed_allowed",
+    "automatic_publication_allowed",
+    "published",
+    "company_adoption_allowed",
+    "source_reference",
+    "source_version",
+    "source_hash",
+    "source_dataset_hash",
+    "identity_set_hash",
+    "node_contract_hash",
+    "approved_proof_ref",
+    "approved_proof_hash",
+    "accounts_source",
+    "blocking_reason",
+    "remaining_runtime_gates",
+    "decision_evidence"
+  ],
+  "properties": {
+    "schema_version": {"const": "nex.mybee.account-catalog-seed-manifest.v2"},
+    "catalog_id": {"const": "mybee.finance.k-ifrs-adopted-chart"},
+    "admission_status": {"const": "PRODUCT_ACCOUNTING_APPROVED_SOURCE_ADMITTED"},
+    "runtime_seed_allowed": {"const": true},
+    "automatic_publication_allowed": {"const": false},
+    "published": {"const": false},
+    "company_adoption_allowed": {"const": false},
+    "source_reference": {"type": "string", "minLength": 1},
+    "source_version": {"const": "MYBEE-KIFRS-NFI-v1.0"},
+    "source_hash": {"$ref": "#/$defs/hash_ref"},
+    "source_dataset_hash": {"$ref": "#/$defs/hash_ref"},
+    "identity_set_hash": {"$ref": "#/$defs/hash_ref"},
+    "node_contract_hash": {"$ref": "#/$defs/hash_ref"},
+    "approved_proof_ref": {"type": "string", "minLength": 1},
+    "approved_proof_hash": {"$ref": "#/$defs/hash_ref"},
+    "accounts_source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "total_nodes", "leaf_accounts"],
+      "properties": {
+        "path": {"type": "string", "minLength": 1},
+        "total_nodes": {"const": 166},
+        "leaf_accounts": {"const": 88}
+      }
+    },
+    "blocking_reason": {"type": "null"},
+    "remaining_runtime_gates": {
+      "const": [
+        "COA_02_PERSISTENCE",
+        "COA_03_OA_AUTHORIZED_PUBLICATION",
+        "COMPANY_ADOPTION_APPROVAL",
+        "REPORTING_TAXONOMY_MAPPING_WHERE_REQUIRED"
+      ]
+    },
+    "decision_evidence": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "sha256"],
+        "properties": {
+          "path": {"type": "string", "minLength": 1},
+          "sha256": {"$ref": "#/$defs/hash_ref"}
+        }
+      }
+    }
+  },
+  "$defs": {
+    "hash_ref": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}
+  }
+}

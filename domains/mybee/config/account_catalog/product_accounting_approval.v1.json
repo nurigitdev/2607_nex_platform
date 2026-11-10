@@ -1,0 +1,42 @@
+{
+  "schema_version": "nex.mybee.coa.product-accounting-approval.v1",
+  "approval_id": "COA-01A-2026-11-10-001",
+  "decision": "APPROVED_EXACT_DATASET_FOR_SOURCE_ADMISSION",
+  "approved_on": "2026-11-10",
+  "approver": {
+    "principal_ref": "CODEX_SESSION_USER",
+    "asserted_role": "PRODUCT_ACCOUNTING_OWNER",
+    "identity_assurance": "SELF_ATTESTED_BY_EXPLICIT_USER_INSTRUCTION",
+    "approval_channel": "CODEX_CONVERSATION",
+    "signature_status": "NOT_CRYPTOGRAPHICALLY_SIGNED"
+  },
+  "approved_scope": {
+    "candidate_path": "docs/transition/MyBee_Phase1/NeX_MyBee_COA_Codebook_Candidate_v0.1.json",
+    "candidate_file_sha256": "sha256:904a122075109a1bb9021207075b1b3229f59d977cb0aee84c237de15ceaac04",
+    "candidate_semantic_hash": "sha256:804cbc36814397ba9a74522dc7de7ffa444e001cde8ff6cbf8b8959129893fc0",
+    "identity_set_hash": "sha256:412dee6066d65620e0b817bc652ab319b2ce33eccfccdce1b6e2cd77a0c4a673",
+    "node_contract_hash": "sha256:e988aaf0f5eccb9578591d8e4f678cb8d751019583389346178a427771be7c13",
+    "total_nodes": 166,
+    "leaf_accounts": 88,
+    "reviewed_attributes": [
+      "account_code",
+      "standard_account_key",
+      "canonical_name_ko",
+      "category",
+      "normal_balance",
+      "is_contra",
+      "parent_account_code",
+      "is_monetary_default",
+      "is_postable_leaf_if_admitted",
+      "reporting_mapping_status"
+    ]
+  },
+  "terminology_classification": "INTERNAL_MYBEE_PRODUCT_CODE_NOT_OFFICIAL_KIFRS_OR_DART_ID",
+  "limitations": [
+    "SOURCE_ADMISSION_ONLY",
+    "DOES_NOT_PUBLISH_EOS_RELEASE",
+    "DOES_NOT_AUTHORIZE_COMPANY_ADOPTION",
+    "DOES_NOT_RESOLVE_REPORTING_TAXONOMY",
+    "OA_AUTHORIZED_PUBLICATION_REMAINS_REQUIRED"
+  ]
+}

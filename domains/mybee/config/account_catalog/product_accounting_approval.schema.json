@@ -1,0 +1,85 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/mybee/coa-product-accounting-approval.v1.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "approval_id",
+    "decision",
+    "approved_on",
+    "approver",
+    "approved_scope",
+    "terminology_classification",
+    "limitations"
+  ],
+  "properties": {
+    "schema_version": {"const": "nex.mybee.coa.product-accounting-approval.v1"},
+    "approval_id": {"type": "string", "minLength": 1},
+    "decision": {"const": "APPROVED_EXACT_DATASET_FOR_SOURCE_ADMISSION"},
+    "approved_on": {"type": "string", "format": "date"},
+    "approver": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "principal_ref",
+        "asserted_role",
+        "identity_assurance",
+        "approval_channel",
+        "signature_status"
+      ],
+      "properties": {
+        "principal_ref": {"type": "string", "minLength": 1},
+        "asserted_role": {"const": "PRODUCT_ACCOUNTING_OWNER"},
+        "identity_assurance": {"const": "SELF_ATTESTED_BY_EXPLICIT_USER_INSTRUCTION"},
+        "approval_channel": {"const": "CODEX_CONVERSATION"},
+        "signature_status": {"const": "NOT_CRYPTOGRAPHICALLY_SIGNED"}
+      }
+    },
+    "approved_scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "candidate_path",
+        "candidate_file_sha256",
+        "candidate_semantic_hash",
+        "identity_set_hash",
+        "node_contract_hash",
+        "total_nodes",
+        "leaf_accounts",
+        "reviewed_attributes"
+      ],
+      "properties": {
+        "candidate_path": {"type": "string", "minLength": 1},
+        "candidate_file_sha256": {"$ref": "#/$defs/hash_ref"},
+        "candidate_semantic_hash": {"$ref": "#/$defs/hash_ref"},
+        "identity_set_hash": {"$ref": "#/$defs/hash_ref"},
+        "node_contract_hash": {"$ref": "#/$defs/hash_ref"},
+        "total_nodes": {"const": 166},
+        "leaf_accounts": {"const": 88},
+        "reviewed_attributes": {
+          "type": "array",
+          "minItems": 10,
+          "maxItems": 10,
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "terminology_classification": {
+      "const": "INTERNAL_MYBEE_PRODUCT_CODE_NOT_OFFICIAL_KIFRS_OR_DART_ID"
+    },
+    "limitations": {
+      "const": [
+        "SOURCE_ADMISSION_ONLY",
+        "DOES_NOT_PUBLISH_EOS_RELEASE",
+        "DOES_NOT_AUTHORIZE_COMPANY_ADOPTION",
+        "DOES_NOT_RESOLVE_REPORTING_TAXONOMY",
+        "OA_AUTHORIZED_PUBLICATION_REMAINS_REQUIRED"
+      ]
+    }
+  },
+  "$defs": {
+    "hash_ref": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}
+  }
+}

@@ -1,5 +1,11 @@
 """MyBee domain contracts that consume canonical NeX Platform boundaries."""
 
+from .coa_approval import (
+    CoaApprovalAdmission,
+    CoaApprovalAdmissionError,
+    text_file_sha256_hash_ref,
+    validate_product_accounting_admission,
+)
 from .coa_candidate import (
     REQUIRED_FX_SEMANTIC_KEYS,
     CoaCandidateError,
@@ -19,6 +25,8 @@ from .work_codes import (
 )
 
 __all__ = [
+    "CoaApprovalAdmission",
+    "CoaApprovalAdmissionError",
     "REQUIRED_FX_SEMANTIC_KEYS",
     "CoaCandidateError",
     "CoaCandidateValidationReport",
@@ -30,6 +38,8 @@ __all__ = [
     "calculate_catalog_digest",
     "load_json_object",
     "load_work_code_catalog",
+    "text_file_sha256_hash_ref",
     "validate_coa_candidate",
+    "validate_product_accounting_admission",
     "verify_coa_candidate_identity",
 ]
