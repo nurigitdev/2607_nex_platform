@@ -560,6 +560,47 @@ paths:
         "409": {description: "Parent, namespace, legacy code, or release conflicts."}
         "422": {description: Extension publication command is invalid.}
         "503": {description: OA authorization or EOS persistence is unavailable.}
+  /internal/v2/finance/accounts/resolve-semantic:
+    get:
+      operationId: FINANCE.COA.RESOLVE_SEMANTIC
+      tags: [Finance]
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes: [service:call]
+      x-nex-business-scope: finance:account:read
+      parameters:
+        - name: company_id
+          in: query
+          required: true
+          schema: {type: string, format: uuid}
+        - name: semantic_key
+          in: query
+          required: true
+          schema: {type: string, pattern: "^MB-COA-[A-Z0-9]+(-[A-Z0-9]+)*$"}
+        - name: effective_on
+          in: query
+          required: true
+          schema: {type: string, format: date}
+        - name: currency
+          in: query
+          required: true
+          schema: {type: string, pattern: "^[A-Z]{3}$"}
+        - name: X-NeX-Tenant-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+        - name: X-NeX-Subject-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+      responses:
+        "200": {description: Deterministic company-effective Account resolution.}
+        "401": {description: Service claim is missing or invalid.}
+        "403": {description: Fresh account-read authority is denied.}
+        "404": {description: No eligible Account matches the semantic key.}
+        "409": {description: More than one effective Account is eligible.}
+        "422": {description: "Semantic key, company, date, or currency is invalid."}
+        "503": {description: OA authorization or EOS persistence is unavailable.}
   /internal/v1/finance/voucher-drafts:
     get:
       operationId: FINANCE.VOUCHER_DRAFT.LIST

@@ -55,6 +55,9 @@ POSTGRES_SMOKE = os.getenv("NEX_EOS_MYBEE_COA_03_POSTGRES_SMOKE") == "1"
 POSTGRES_EXTENSION_SMOKE = (
     os.getenv("NEX_EOS_MYBEE_COA_04_POSTGRES_SMOKE") == "1"
 )
+POSTGRES_RESOLUTION_SMOKE = (
+    os.getenv("NEX_EOS_MYBEE_COA_05_POSTGRES_SMOKE") == "1"
+)
 
 ACTOR_TENANT = "product-tenant"
 TENANT_ID = "tenant-a"
@@ -82,7 +85,11 @@ START = date(2026, 1, 1)
 
 class AuthorizationSource:
     def __init__(self) -> None:
-        self.scopes = {"finance:catalog:publish", "finance:account:manage"}
+        self.scopes = {
+            "finance:catalog:publish",
+            "finance:account:manage",
+            "finance:account:read",
+        }
         self.denied = False
         self.unavailable = False
 
@@ -111,7 +118,7 @@ def runtime():
     factory = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
     auth = AuthorizationSource()
     service = EosCoaOperationsService(
-        repository=SqlAlchemyEosCoaOperationsRepository(),
+        repository=SqlAlchemyEosCoaOperationsRepository(factory),
         coordinator=SqlAlchemyEosBusinessTransactionCoordinator(factory),
         authorization_source=auth,
         publication_admission=_publication_admission(),
@@ -1235,6 +1242,197 @@ def test_coa_04_extension_route_is_service_protected(runtime) -> None:
     assert created.json()["result"]["entry_count"] == 1
 
 
+def _prepare_resolvable_account(factory, service: EosCoaOperationsService) -> None:
+    _seed_draft(factory)
+    _publish(service)
+    _seed_company_account_policy(factory)
+    service.adopt_approved(
+        tenant_id=TENANT_ID,
+        requester_subject_id=SUBJECT_ID,
+        payload=_adopt_payload(),
+    )
+
+
+def test_coa_05_resolves_only_effective_approved_company_account(runtime) -> None:
+    _engine, factory, _auth, service = runtime
+    _prepare_resolvable_account(factory, service)
+
+    resolved = service.resolve_semantic_account(
+        tenant_id=TENANT_ID,
+        requester_subject_id=SUBJECT_ID,
+        company_id=COMPANY_ID,
+        semantic_key="mb-coa-cash",
+        effective_on=date(2026, 11, 11),
+        currency="krw",
+    )
+
+    assert resolved["schema_version"] == "eos_coa_semantic_account_resolution.v1"
+    assert resolved["account_ref"] == {"type": "eos.account", "id": ACCOUNT_ID}
+    assert resolved["account_code"] == "CASH"
+    assert resolved["definition_account_code"] == "10101001"
+    assert resolved["semantic_key"] == "MB-COA-CASH"
+    assert resolved["evidence"] == {
+        "adoption_id": ADOPTION_ID,
+        "binding_id": BINDING_ID,
+        "entry_id": LEAF_ID,
+        "definition_release_id": RELEASE_ID,
+        "account_id": ACCOUNT_ID,
+        "policy_id": POLICY_ID,
+        "posting_rule_id": RULE_ID,
+        "catalog_release_id": CATALOG_ID,
+        "adoption_proof_ref": HASH_B,
+        "binding_proof_ref": HASH_B,
+        "policy_proof_ref": HASH_B,
+    }
+    assert resolved["evidence_hash"].startswith("sha256:")
+
+
+@pytest.mark.parametrize(
+    ("changes", "status_code"),
+    [
+        ({"currency": "USD"}, 404),
+        ({"semantic_key": "MB-COA-UNKNOWN"}, 404),
+        ({"company_id": str(uuid.uuid4())}, 404),
+    ],
+)
+def test_coa_05_missing_policy_candidate_fails_closed(
+    runtime, changes, status_code
+) -> None:
+    _engine, factory, _auth, service = runtime
+    _prepare_resolvable_account(factory, service)
+    values = {
+        "tenant_id": TENANT_ID,
+        "requester_subject_id": SUBJECT_ID,
+        "company_id": COMPANY_ID,
+        "semantic_key": "MB-COA-CASH",
+        "effective_on": date(2026, 11, 11),
+        "currency": "KRW",
+    }
+    values.update(changes)
+    with pytest.raises(EosCoaOperationError) as raised:
+        service.resolve_semantic_account(**values)
+    assert raised.value.status_code == status_code
+
+
+def test_coa_05_resolution_requires_fresh_read_authority_and_repository(runtime) -> None:
+    _engine, factory, auth, service = runtime
+    _prepare_resolvable_account(factory, service)
+    auth.scopes.remove("finance:account:read")
+    with pytest.raises(EosCoaOperationError) as denied:
+        service.resolve_semantic_account(
+            tenant_id=TENANT_ID,
+            requester_subject_id=SUBJECT_ID,
+            company_id=COMPANY_ID,
+            semantic_key="MB-COA-CASH",
+            effective_on=START,
+            currency="KRW",
+        )
+    assert denied.value.status_code == 403
+
+    with pytest.raises(EosCoaOperationError) as unavailable:
+        SqlAlchemyEosCoaOperationsRepository().resolve_semantic_account(
+            tenant_id=TENANT_ID,
+            company_id=COMPANY_ID,
+            semantic_key="MB-COA-CASH",
+            effective_on=START,
+            currency="KRW",
+        )
+    assert unavailable.value.error_code == "EOS_COA_QUERY_UNAVAILABLE"
+
+
+def test_coa_05_semantic_resolution_route_is_service_protected(runtime) -> None:
+    _engine, factory, _auth, service = runtime
+    _prepare_resolvable_account(factory, service)
+    app = create_eos_app(
+        environ={
+            "NEX_PROFILE": "test",
+            "NEX_VERSION": "test",
+            "NEX_BUILD_SHA": "test",
+            "NEX_SERVICE_TOKEN_ROLLOUT_PROFILE": "TEST_MOCK",
+        }
+    )
+    app.state.eos_coa_operations_service = service
+    client = TestClient(app)
+    params = {
+        "company_id": COMPANY_ID,
+        "semantic_key": "MB-COA-CASH",
+        "effective_on": "2026-11-11",
+        "currency": "KRW",
+    }
+    headers = {
+        "X-NeX-Tenant-Id": TENANT_ID,
+        "X-NeX-Subject-Id": SUBJECT_ID,
+    }
+    path = "/internal/v2/finance/accounts/resolve-semantic"
+    assert client.get(path, params=params, headers=headers).status_code == 401
+
+    token = issue_mock_service_token(service_id="nex-ae-api", audience="nex-eos")
+    response = client.get(
+        path,
+        params=params,
+        headers={**headers, "Authorization": f"Bearer {token.access_token}"},
+    )
+    assert response.status_code == 200
+    assert response.json()["account_ref"]["id"] == ACCOUNT_ID
+
+
+@pytest.mark.skipif(
+    not DATABASE_URL or not POSTGRES_RESOLUTION_SMOKE,
+    reason="Protected COA-05 EOS PostgreSQL smoke is disabled",
+)
+def test_coa_05_actual_postgres_semantic_resolution_and_zero_residue() -> None:
+    schema_name = f"mybee_coa05_{uuid.uuid4().hex}"
+    psycopg_url = psycopg_database_url(DATABASE_URL)
+    with (
+        psycopg.connect(psycopg_url, autocommit=True) as connection,
+        connection.cursor() as cursor,
+    ):
+        cursor.execute("SELECT current_database(), current_user")
+        assert cursor.fetchone() == ("nex_eos_test", "nex_eos_user")
+        cursor.execute(sql.SQL("CREATE SCHEMA {}").format(sql.Identifier(schema_name)))
+    scoped_url = make_url(DATABASE_URL).update_query_dict(
+        {"options": f"-csearch_path={schema_name}"}
+    ).render_as_string(hide_password=False)
+    try:
+        result = run_service_migrations(
+            "nex-eos", database_url=scoped_url, profile="test"
+        )
+        assert "2518_eos_unified_coa" in result.applied
+        db = build_eos_database_runtime(
+            environ={"NEX_EOS_TEST_DATABASE_URL": scoped_url},
+            database_env="NEX_EOS_TEST_DATABASE_URL",
+        )
+        service = EosCoaOperationsService(
+            repository=SqlAlchemyEosCoaOperationsRepository(db.session_factory),
+            coordinator=SqlAlchemyEosBusinessTransactionCoordinator(
+                db.session_factory
+            ),
+            authorization_source=AuthorizationSource(),
+            publication_admission=_publication_admission(),
+        )
+        _prepare_resolvable_account(db.session_factory, service)
+        resolved = service.resolve_semantic_account(
+            tenant_id=TENANT_ID,
+            requester_subject_id=SUBJECT_ID,
+            company_id=COMPANY_ID,
+            semantic_key="MB-COA-CASH",
+            effective_on=date(2026, 11, 11),
+            currency="KRW",
+        )
+        assert resolved["account_ref"]["id"] == ACCOUNT_ID
+        db.dispose()
+    finally:
+        with (
+            psycopg.connect(psycopg_url, autocommit=True) as connection,
+            connection.cursor() as cursor,
+        ):
+            cursor.execute(
+                sql.SQL("DROP SCHEMA IF EXISTS {} CASCADE").format(
+                    sql.Identifier(schema_name)
+                )
+            )
+
+
 @pytest.mark.skipif(
     not DATABASE_URL or not POSTGRES_EXTENSION_SMOKE,
     reason="Protected COA-04 EOS PostgreSQL smoke is disabled",
@@ -1262,7 +1460,7 @@ def test_coa_04_actual_postgres_extension_publish_and_zero_residue() -> None:
             database_env="NEX_EOS_TEST_DATABASE_URL",
         )
         service = EosCoaOperationsService(
-            repository=SqlAlchemyEosCoaOperationsRepository(),
+            repository=SqlAlchemyEosCoaOperationsRepository(db.session_factory),
             coordinator=SqlAlchemyEosBusinessTransactionCoordinator(
                 db.session_factory
             ),
@@ -1320,7 +1518,7 @@ def test_coa_03_actual_postgres_publish_adopt_and_zero_residue() -> None:
         )
         auth = AuthorizationSource()
         service = EosCoaOperationsService(
-            repository=SqlAlchemyEosCoaOperationsRepository(),
+            repository=SqlAlchemyEosCoaOperationsRepository(db.session_factory),
             coordinator=SqlAlchemyEosBusinessTransactionCoordinator(
                 db.session_factory
             ),

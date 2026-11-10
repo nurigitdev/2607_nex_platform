@@ -228,7 +228,9 @@ def build_eos_dependencies(
     )
     coa_operations_service = (
         EosCoaOperationsService(
-            repository=SqlAlchemyEosCoaOperationsRepository(),
+            repository=SqlAlchemyEosCoaOperationsRepository(
+                database_runtime.session_factory
+            ),
             coordinator=business_transactions,
             authorization_source=authorization_source,
             publication_admission=PinnedCoaPublicationAdmission.from_json(

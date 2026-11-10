@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import date
 from typing import Any
 
 from fastapi import FastAPI, Header, Request
@@ -93,15 +94,50 @@ def register_coa_routes(app: FastAPI) -> None:
             return result
         return JSONResponse(result, 201 if result.get("created") else 200)
 
-
-def _invoke(request: Request, authorization: str | None, operation):
-    admitted = admit_service_token_from_request(
-        request,
-        authorization,
-        expected_audience="nex-eos",
-        required_scopes=(DEFAULT_SERVICE_SCOPE,),
-        route_class="WRITE",
+    @app.get(
+        "/internal/v2/finance/accounts/resolve-semantic",
+        response_model=None,
+        operation_id="FINANCE.COA.RESOLVE_SEMANTIC",
     )
+    def resolve_semantic_account(
+        request: Request,
+        company_id: str,
+        semantic_key: str,
+        effective_on: date,
+        currency: str,
+        tenant_id: str = Header(alias="X-NeX-Tenant-Id"),
+        requester_subject_id: str = Header(alias="X-NeX-Subject-Id"),
+        authorization: str | None = Header(default=None),
+    ):
+        return _invoke(
+            request,
+            authorization,
+            lambda service: service.resolve_semantic_account(
+                tenant_id=tenant_id,
+                requester_subject_id=requester_subject_id,
+                company_id=company_id,
+                semantic_key=semantic_key,
+                effective_on=effective_on,
+                currency=currency,
+            ),
+            route_class=None,
+        )
+
+
+def _invoke(
+    request: Request,
+    authorization: str | None,
+    operation,
+    *,
+    route_class: str | None = "WRITE",
+):
+    options: dict[str, Any] = {
+        "expected_audience": "nex-eos",
+        "required_scopes": (DEFAULT_SERVICE_SCOPE,),
+    }
+    if route_class is not None:
+        options["route_class"] = route_class
+    admitted = admit_service_token_from_request(request, authorization, **options)
     if isinstance(admitted, JSONResponse):
         return admitted
     service: EosCoaOperationsService | None = getattr(

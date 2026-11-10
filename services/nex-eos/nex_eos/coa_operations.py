@@ -10,7 +10,7 @@ from typing import Any, Protocol
 
 from nex_runtime.semantic_hashes import semantic_sha256_hash_ref, validate_hash_ref
 from sqlalchemy import and_, or_, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, sessionmaker
 
 from .account_catalog import (
     EOS_COMPANY_ACCOUNT_POLICY_TABLE,
@@ -34,11 +34,14 @@ from .unified_coa import (
 
 FINANCE_COA_PUBLISH_SCOPE = "finance:catalog:publish"
 FINANCE_COA_ADOPT_SCOPE = "finance:account:manage"
+FINANCE_COA_READ_SCOPE = "finance:account:read"
 FINANCE_COA_PUBLISH_OPERATION = "FINANCE.COA.PUBLISH_APPROVED"
 FINANCE_COA_EXTENSION_PUBLISH_OPERATION = "FINANCE.COA.EXTENSION_PUBLISH_APPROVED"
 FINANCE_COA_ADOPT_OPERATION = "FINANCE.COA.ADOPT_APPROVED"
 
 _SCOPED_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$")
+_SEMANTIC_KEY = re.compile(r"^MB-COA-[A-Z0-9]+(?:-[A-Z0-9]+)*$")
+_CURRENCY = re.compile(r"^[A-Z]{3}$")
 _REVISION_HASH = re.compile(r"^[0-9a-f]{64}$")
 _IDENTITY_NAMESPACE = uuid.UUID("40b7598c-aa75-4afd-b35a-1da72da32dda")
 
@@ -123,6 +126,37 @@ class PinnedCoaPublicationAdmission:
 
 
 class SqlAlchemyEosCoaOperationsRepository:
+    def __init__(
+        self, session_factory: sessionmaker[Session] | None = None
+    ) -> None:
+        self._session_factory = session_factory
+
+    def resolve_semantic_account(
+        self,
+        *,
+        tenant_id: str,
+        company_id: str,
+        semantic_key: str,
+        effective_on: date,
+        currency: str,
+    ) -> dict[str, Any]:
+        if self._session_factory is None:
+            raise EosCoaOperationError(
+                "EOS_COA_QUERY_UNAVAILABLE",
+                "COA semantic resolver persistence is unavailable",
+                status_code=503,
+                retryable=True,
+            )
+        with self._session_factory() as session:
+            return self.resolve_semantic(
+                session,
+                tenant_id=tenant_id,
+                company_id=company_id,
+                semantic_key=semantic_key,
+                effective_on=effective_on,
+                currency=currency,
+            )
+
     @staticmethod
     def publish_release(
         session: Session | None,
@@ -328,6 +362,160 @@ class SqlAlchemyEosCoaOperationsRepository:
         published = {**dict(release), "status": "PUBLISHED", "published_at": published_at}
         return _publication_result(published, len(entries), replayed=False)
 
+    @staticmethod
+    def resolve_semantic(
+        session: Session | None,
+        *,
+        tenant_id: str,
+        company_id: str,
+        semantic_key: str,
+        effective_on: date,
+        currency: str,
+    ) -> dict[str, Any]:
+        session = _required_session(session)
+        adoption = EOS_COA_COMPANY_ADOPTION_TABLE
+        binding = EOS_COA_ACCOUNT_BINDING_TABLE
+        entry = EOS_COA_ENTRY_TABLE
+        account = EOS_ACCOUNT_TABLE
+        policy = EOS_COMPANY_ACCOUNT_POLICY_TABLE
+        rule = EOS_POSTING_RULE_RELEASE_TABLE
+        rows = (
+            session.execute(
+                select(
+                    adoption.c.adoption_id,
+                    adoption.c.global_release_id,
+                    adoption.c.extension_release_id,
+                    adoption.c.approved_proof_ref.label("adoption_proof_ref"),
+                    binding.c.binding_id,
+                    binding.c.approved_proof_ref.label("binding_proof_ref"),
+                    entry.c.entry_id,
+                    entry.c.definition_release_id,
+                    entry.c.semantic_key,
+                    entry.c.account_code.label("definition_account_code"),
+                    account.c.account_id,
+                    account.c.account_code,
+                    account.c.name,
+                    account.c.category,
+                    account.c.account_type,
+                    policy.c.policy_id,
+                    policy.c.posting_rule_id,
+                    policy.c.catalog_release_id,
+                    policy.c.allowed_currencies,
+                    policy.c.statement_line_ref,
+                    policy.c.approved_proof_ref.label("policy_proof_ref"),
+                )
+                .select_from(
+                    adoption.join(
+                        binding,
+                        and_(
+                            adoption.c.tenant_id == binding.c.tenant_id,
+                            adoption.c.adoption_id == binding.c.adoption_id,
+                        ),
+                    )
+                    .join(entry, binding.c.entry_id == entry.c.entry_id)
+                    .join(
+                        account,
+                        and_(
+                            binding.c.tenant_id == account.c.tenant_id,
+                            binding.c.account_id == account.c.account_id,
+                        ),
+                    )
+                    .join(
+                        policy,
+                        and_(
+                            account.c.tenant_id == policy.c.tenant_id,
+                            account.c.account_id == policy.c.account_id,
+                            adoption.c.company_id == policy.c.company_id,
+                        ),
+                    )
+                    .join(
+                        rule,
+                        and_(
+                            policy.c.tenant_id == rule.c.tenant_id,
+                            policy.c.posting_rule_id == rule.c.posting_rule_id,
+                        ),
+                    )
+                )
+                .where(
+                    adoption.c.tenant_id == tenant_id,
+                    adoption.c.company_id == company_id,
+                    adoption.c.state == "APPROVED",
+                    adoption.c.effective_from <= effective_on,
+                    or_(
+                        adoption.c.effective_until.is_(None),
+                        adoption.c.effective_until > effective_on,
+                    ),
+                    or_(
+                        entry.c.definition_release_id == adoption.c.global_release_id,
+                        entry.c.definition_release_id == adoption.c.extension_release_id,
+                    ),
+                    entry.c.semantic_key == semantic_key,
+                    entry.c.is_postable.is_(True),
+                    account.c.status == "ACTIVE",
+                    account.c.effective_from <= effective_on,
+                    or_(
+                        account.c.effective_until.is_(None),
+                        account.c.effective_until > effective_on,
+                    ),
+                    policy.c.state == "APPROVED",
+                    policy.c.is_postable_leaf.is_(True),
+                    policy.c.valid_from <= effective_on,
+                    or_(
+                        policy.c.valid_until.is_(None),
+                        policy.c.valid_until > effective_on,
+                    ),
+                    rule.c.status == "PUBLISHED",
+                    rule.c.company_id == company_id,
+                    rule.c.catalog_release_id == policy.c.catalog_release_id,
+                    rule.c.effective_date <= effective_on,
+                )
+                .order_by(account.c.account_id)
+            )
+            .mappings()
+            .all()
+        )
+        candidates = [
+            row for row in rows if currency in tuple(row["allowed_currencies"] or ())
+        ]
+        if not candidates:
+            raise _not_found("No effective company Account matches the semantic key")
+        if len(candidates) != 1:
+            raise _conflict("Semantic Account resolution is ambiguous")
+        row = dict(candidates[0])
+        evidence = {
+            key: row[key]
+            for key in (
+                "adoption_id",
+                "binding_id",
+                "entry_id",
+                "definition_release_id",
+                "account_id",
+                "policy_id",
+                "posting_rule_id",
+                "catalog_release_id",
+                "adoption_proof_ref",
+                "binding_proof_ref",
+                "policy_proof_ref",
+            )
+        }
+        return {
+            "schema_version": "eos_coa_semantic_account_resolution.v1",
+            "tenant_id": tenant_id,
+            "company_id": company_id,
+            "effective_on": effective_on.isoformat(),
+            "currency": currency,
+            "semantic_key": row["semantic_key"],
+            "account_ref": {"type": "eos.account", "id": row["account_id"]},
+            "account_code": row["account_code"],
+            "account_name": row["name"],
+            "category": row["category"],
+            "account_type": row["account_type"],
+            "statement_line_ref": row["statement_line_ref"],
+            "definition_account_code": row["definition_account_code"],
+            "evidence": evidence,
+            "evidence_hash": semantic_sha256_hash_ref(evidence),
+        }
+
 
 class EosCoaOperationsService:
     def __init__(
@@ -435,6 +623,33 @@ class EosCoaOperationsService:
             ),
         )
         return result.to_public_projection()
+
+    def resolve_semantic_account(
+        self,
+        *,
+        tenant_id: str,
+        requester_subject_id: str,
+        company_id: str,
+        semantic_key: str,
+        effective_on: date,
+        currency: str,
+    ) -> dict[str, Any]:
+        tenant_id = _scoped_id("tenant_id", tenant_id)
+        requester_subject_id = _scoped_id(
+            "requester_subject_id", requester_subject_id
+        )
+        self._authorize(
+            tenant_id=tenant_id,
+            subject_id=requester_subject_id,
+            required_scope=FINANCE_COA_READ_SCOPE,
+        )
+        return self._repository.resolve_semantic_account(
+            tenant_id=tenant_id,
+            company_id=_uuid("company_id", company_id),
+            semantic_key=_semantic_key(semantic_key),
+            effective_on=_date_value("effective_on", effective_on),
+            currency=_currency(currency),
+        )
 
     def _authorize(
         self, *, tenant_id: str, subject_id: str, required_scope: str
@@ -977,6 +1192,26 @@ def _text(field: str, value: object, maximum: int) -> str:
     if not normalized or len(normalized) > maximum:
         raise _invalid(field, f"must contain 1..{maximum} characters")
     return normalized
+
+
+def _semantic_key(value: object) -> str:
+    normalized = str(value).strip().upper() if value is not None else ""
+    if _SEMANTIC_KEY.fullmatch(normalized) is None:
+        raise _invalid("semantic_key", "has invalid MyBee semantic-key syntax")
+    return normalized
+
+
+def _currency(value: object) -> str:
+    normalized = str(value).strip().upper() if value is not None else ""
+    if _CURRENCY.fullmatch(normalized) is None:
+        raise _invalid("currency", "must be an ISO 4217 code")
+    return normalized
+
+
+def _date_value(field: str, value: object) -> date:
+    if isinstance(value, datetime) or not isinstance(value, date):
+        raise _invalid(field, "must be a date")
+    return value
 
 
 def _hash_ref(field: str, value: object) -> str:
