@@ -10,6 +10,7 @@ from .account_api import register_account_routes
 from .account_policy_api import register_account_policy_routes
 from .approval_decision_api import register_approval_decision_routes
 from .coa_api import register_coa_routes
+from .coa_release_admin_api import register_coa_release_admin_routes
 from .config import EosSettings, load_eos_settings
 from .dependencies import build_eos_dependencies
 from .legal_entity_api import register_legal_entity_routes
@@ -69,6 +70,7 @@ def create_eos_app(
     app.state.eos_account_catalog_service = dependencies.account_catalog_service
     app.state.eos_coa_operations_service = dependencies.coa_operations_service
     app.state.eos_reporting_map_service = dependencies.reporting_map_service
+    app.state.eos_coa_release_admin_service = dependencies.coa_release_admin_service
     app.state.eos_approval_policies = dependencies.approval_policies
     app.state.eos_approval_instances = dependencies.approval_instances
     app.state.eos_approval_transition_service = dependencies.approval_transition_service
@@ -86,6 +88,7 @@ def create_eos_app(
     register_account_routes(app)
     register_account_policy_routes(app)
     register_coa_routes(app)
+    register_coa_release_admin_routes(app)
     register_reporting_map_routes(app)
     register_legal_entity_routes(app)
     verifier = (

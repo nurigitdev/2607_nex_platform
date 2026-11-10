@@ -601,6 +601,64 @@ paths:
         "409": {description: More than one effective Account is eligible.}
         "422": {description: "Semantic key, company, date, or currency is invalid."}
         "503": {description: OA authorization or EOS persistence is unavailable.}
+  /internal/v2/finance/coa/releases/diff:
+    get:
+      operationId: FINANCE.COA.RELEASE_DIFF_PREVIEW
+      tags: [Finance]
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes: [service:call]
+      x-nex-business-scope: finance:catalog:publish
+      x-nex-side-effect-free: true
+      parameters:
+        - name: base_release_id
+          in: query
+          required: true
+          schema: {type: string, format: uuid}
+        - name: target_release_id
+          in: query
+          required: true
+          schema: {type: string, format: uuid}
+        - name: X-NeX-Tenant-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+        - name: X-NeX-Subject-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+      responses:
+        "200": {description: Deterministic source-backed release diff preview.}
+        "401": {description: Service claim is missing or invalid.}
+        "403": {description: Fresh catalog-publication authority is denied.}
+        "404": {description: Base or target release was not found.}
+        "409": {description: "Release scope, profile, or effective order conflicts."}
+        "422": {description: Release identity is invalid.}
+        "503": {description: "OA authorization or EOS persistence is unavailable."}
+  /internal/v2/finance/coa/operations:
+    get:
+      operationId: FINANCE.COA.OPERATIONS_SNAPSHOT
+      tags: [Finance]
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes: [service:call]
+      x-nex-business-scope: finance:catalog:publish
+      x-nex-side-effect-free: true
+      parameters:
+        - name: X-NeX-Tenant-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+        - name: X-NeX-Subject-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+      responses:
+        "200": {description: Metadata-only COA release and adoption snapshot.}
+        "401": {description: Service claim is missing or invalid.}
+        "403": {description: Fresh catalog-publication authority is denied.}
+        "422": {description: Administrative identity is invalid.}
+        "503": {description: OA authorization or EOS persistence is unavailable.}
   /internal/v2/finance/reporting-map:
     get:
       operationId: FINANCE.COA.REPORTING_MAP_GET

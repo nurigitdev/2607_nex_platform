@@ -278,7 +278,13 @@ def test_coa_01_schema_rejects_premature_seed_admission() -> None:
 
 
 def test_coa_01_does_not_add_an_eos_migration() -> None:
-    migrations = sorted(
-        path.name for path in (ROOT / "database/nex-eos/migrations").glob("*.sql")
+    closure = (
+        ROOT / "docs/slices/mybee_phase1_coa_01_unified_codebook_candidate_closure.md"
+    ).read_text(encoding="utf-8")
+    coa_01_named_migrations = sorted(
+        path.name
+        for path in (ROOT / "database/nex-eos/migrations").glob("*.sql")
+        if "coa_01" in path.name.lower()
     )
-    assert migrations[-1] == "2517_eos_account_catalog_accounting_period.sql"
+    assert "database migrations: NONE" in closure
+    assert coa_01_named_migrations == []

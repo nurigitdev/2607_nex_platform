@@ -129,6 +129,12 @@ from .coa_operations import (
     PinnedCoaPublicationAdmission,
     SqlAlchemyEosCoaOperationsRepository,
 )
+from .coa_release_admin import (
+    FINANCE_COA_ADMIN_SCOPE,
+    EosCoaReleaseAdminError,
+    EosCoaReleaseAdminService,
+    SqlAlchemyEosCoaReleaseAdminRepository,
+)
 from .config import EosConfigurationError, EosSettings, load_eos_settings
 from .database_reset import (
     EOS_TEST_RESET_CONFIRMATION,
@@ -364,6 +370,7 @@ __all__ = (
     "EOS_VOUCHER_READ_SCOPE",
     "FINANCE_ACCOUNT_CATALOG_READ_SCOPE",
     "FINANCE_ACCOUNT_MANAGE_SCOPE",
+    "FINANCE_COA_ADMIN_SCOPE",
     "FINANCE_COA_ADOPT_OPERATION",
     "FINANCE_COA_ADOPT_SCOPE",
     "FINANCE_COA_EXTENSION_PUBLISH_OPERATION",
@@ -427,6 +434,8 @@ __all__ = (
     "EosBusinessTransactionResult",
     "EosCoaOperationError",
     "EosCoaOperationsService",
+    "EosCoaReleaseAdminError",
+    "EosCoaReleaseAdminService",
     "EosConfigurationError",
     "EosCreateVoucherDraftService",
     "EosDatabaseRuntime",
@@ -485,6 +494,7 @@ __all__ = (
     "SqlAlchemyEosBusinessOperationQuery",
     "SqlAlchemyEosBusinessTransactionCoordinator",
     "SqlAlchemyEosCoaOperationsRepository",
+    "SqlAlchemyEosCoaReleaseAdminRepository",
     "SqlAlchemyEosLegalEntityRepository",
     "SqlAlchemyEosOrganizationRepository",
     "SqlAlchemyEosOutboxPublisher",

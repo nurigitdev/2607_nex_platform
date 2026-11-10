@@ -37,6 +37,10 @@ from .coa_operations import (
     PinnedCoaPublicationAdmission,
     SqlAlchemyEosCoaOperationsRepository,
 )
+from .coa_release_admin import (
+    EosCoaReleaseAdminService,
+    SqlAlchemyEosCoaReleaseAdminRepository,
+)
 from .config import EosSettings
 from .health import build_configuration_readiness_check
 from .legal_entities import (
@@ -76,6 +80,7 @@ class EosDependencies:
     account_catalog_service: EosAccountCatalogService | None
     coa_operations_service: EosCoaOperationsService | None
     reporting_map_service: EosReportingMapService | None
+    coa_release_admin_service: EosCoaReleaseAdminService | None
     approval_policies: SqlAlchemyEosApprovalPolicyRepository | None
     approval_instances: SqlAlchemyEosApprovalInstanceRepository | None
     approval_transition_service: EosBusinessApprovalTransitionService | None
@@ -255,6 +260,16 @@ def build_eos_dependencies(
         if database_runtime is not None and authorization_source is not None
         else None
     )
+    coa_release_admin_service = (
+        EosCoaReleaseAdminService(
+            SqlAlchemyEosCoaReleaseAdminRepository(
+                database_runtime.session_factory
+            ),
+            authorization_source,
+        )
+        if database_runtime is not None and authorization_source is not None
+        else None
+    )
     voucher_access_service = (
         EosVoucherAccessService(
             session_factory=database_runtime.session_factory,
@@ -304,6 +319,7 @@ def build_eos_dependencies(
         account_catalog_service=account_catalog_service,
         coa_operations_service=coa_operations_service,
         reporting_map_service=reporting_map_service,
+        coa_release_admin_service=coa_release_admin_service,
         approval_policies=approval_policies,
         approval_instances=approval_instances,
         approval_transition_service=approval_transition_service,
