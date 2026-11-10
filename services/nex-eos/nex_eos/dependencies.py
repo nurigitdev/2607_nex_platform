@@ -32,6 +32,11 @@ from .business_transactions import (
     EosBusinessTransactionCoordinator,
     SqlAlchemyEosBusinessTransactionCoordinator,
 )
+from .coa_operations import (
+    EosCoaOperationsService,
+    PinnedCoaPublicationAdmission,
+    SqlAlchemyEosCoaOperationsRepository,
+)
 from .config import EosSettings
 from .health import build_configuration_readiness_check
 from .legal_entities import (
@@ -65,6 +70,7 @@ class EosDependencies:
     accounts: SqlAlchemyEosAccountRepository | None
     account_catalog: SqlAlchemyEosAccountCatalogRepository | None
     account_catalog_service: EosAccountCatalogService | None
+    coa_operations_service: EosCoaOperationsService | None
     approval_policies: SqlAlchemyEosApprovalPolicyRepository | None
     approval_instances: SqlAlchemyEosApprovalInstanceRepository | None
     approval_transition_service: EosBusinessApprovalTransitionService | None
@@ -217,6 +223,23 @@ def build_eos_dependencies(
         if account_catalog is not None and authorization_source is not None
         else None
     )
+    publication_admissions = environ.get(
+        "NEX_EOS_COA_PUBLICATION_ADMISSIONS_JSON", ""
+    )
+    coa_operations_service = (
+        EosCoaOperationsService(
+            repository=SqlAlchemyEosCoaOperationsRepository(),
+            coordinator=business_transactions,
+            authorization_source=authorization_source,
+            publication_admission=PinnedCoaPublicationAdmission.from_json(
+                publication_admissions
+            ),
+        )
+        if business_transactions is not None
+        and authorization_source is not None
+        and publication_admissions
+        else None
+    )
     voucher_access_service = (
         EosVoucherAccessService(
             session_factory=database_runtime.session_factory,
@@ -264,6 +287,7 @@ def build_eos_dependencies(
         accounts=accounts,
         account_catalog=account_catalog,
         account_catalog_service=account_catalog_service,
+        coa_operations_service=coa_operations_service,
         approval_policies=approval_policies,
         approval_instances=approval_instances,
         approval_transition_service=approval_transition_service,

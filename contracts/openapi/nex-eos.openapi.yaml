@@ -451,6 +451,77 @@ paths:
           description: Account, policy, proof, currency, or effective date is invalid.
         "503":
           description: OA authorization or EOS persistence is unavailable.
+  /internal/v2/finance/coa/releases/{definition_release_id}/publish:
+    post:
+      operationId: FINANCE.COA.PUBLISH_APPROVED
+      tags: [Finance]
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes: [service:call]
+      x-nex-business-scope: finance:catalog:publish
+      x-nex-route-class: WRITE
+      parameters:
+        - name: definition_release_id
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+        - name: X-NeX-Tenant-Id
+          in: header
+          required: true
+          description: Real OA tenant of the Product publisher; never a COA owner.
+          schema: {type: string, minLength: 1, maxLength: 128}
+        - name: X-NeX-Subject-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CoaPublishApprovedCommand"
+      responses:
+        "200": {description: Exact idempotent publication replay.}
+        "201": {description: Approved GLOBAL release published atomically.}
+        "401": {description: Service claim is missing or invalid.}
+        "403": {description: Fresh Product publication authority is denied.}
+        "404": {description: COA definition release is absent.}
+        "409": {description: "Approval, hash, identity, or release state conflicts."}
+        "422": {description: Publication command is invalid.}
+        "503": {description: "OA, source admission, or EOS persistence is unavailable."}
+  /internal/v2/finance/coa/adoptions:
+    post:
+      operationId: FINANCE.COA.ADOPT_APPROVED
+      tags: [Finance]
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes: [service:call]
+      x-nex-business-scope: finance:account:manage
+      x-nex-route-class: WRITE
+      parameters:
+        - name: X-NeX-Tenant-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+        - name: X-NeX-Subject-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CoaAdoptApprovedCommand"
+      responses:
+        "200": {description: Exact idempotent company-adoption replay.}
+        "201": {description: Company adoption and Account bindings committed atomically.}
+        "401": {description: Service claim is missing or invalid.}
+        "403": {description: Fresh tenant account-management authority is denied.}
+        "404": {description: "Company, release, Account, or entry is absent."}
+        "409": {description: "Release, policy, PostingRule, period, or binding conflicts."}
+        "422": {description: Adoption command or approval proof is invalid.}
+        "503": {description: OA authorization or EOS persistence is unavailable.}
   /internal/v1/finance/voucher-drafts:
     get:
       operationId: FINANCE.VOUCHER_DRAFT.LIST
@@ -979,6 +1050,59 @@ components:
           type: object
         policy:
           type: object
+    CoaPublishApprovedCommand:
+      type: object
+      additionalProperties: false
+      required:
+        - business_operation_id
+        - idempotency_key
+        - source_reference
+        - source_hash
+        - approved_proof_ref
+        - content_hash
+      properties:
+        business_operation_id: {type: string, format: uuid}
+        idempotency_key: {type: string, minLength: 1, maxLength: 256}
+        source_reference: {type: string, minLength: 1, maxLength: 512}
+        source_hash: {type: string, pattern: "^sha256:[0-9a-f]{64}$"}
+        approved_proof_ref: {type: string, pattern: "^sha256:[0-9a-f]{64}$"}
+        content_hash: {type: string, pattern: "^sha256:[0-9a-f]{64}$"}
+    CoaAdoptApprovedCommand:
+      type: object
+      additionalProperties: false
+      required:
+        - business_operation_id
+        - idempotency_key
+        - adoption_id
+        - company_id
+        - global_release_id
+        - effective_from
+        - approved_proof_ref
+        - bindings
+      properties:
+        business_operation_id: {type: string, format: uuid}
+        idempotency_key: {type: string, minLength: 1, maxLength: 256}
+        adoption_id: {type: string, format: uuid}
+        company_id: {type: string, format: uuid}
+        global_release_id: {type: string, format: uuid}
+        extension_release_id: {type: [string, "null"], format: uuid}
+        effective_from: {type: string, format: date}
+        effective_until: {type: [string, "null"], format: date}
+        approved_proof_ref: {type: string, pattern: "^sha256:[0-9a-f]{64}$"}
+        bindings:
+          type: array
+          minItems: 1
+          items:
+            $ref: "#/components/schemas/CoaAccountBindingCommand"
+    CoaAccountBindingCommand:
+      type: object
+      additionalProperties: false
+      required: [binding_id, entry_id, account_id, approved_proof_ref]
+      properties:
+        binding_id: {type: string, format: uuid}
+        entry_id: {type: string, format: uuid}
+        account_id: {type: string, format: uuid}
+        approved_proof_ref: {type: string, pattern: "^sha256:[0-9a-f]{64}$"}
     NvtProjectCreateCommand:
       type: object
       x-nex-canonical-json-schema: schemas/service/nex_eos/nvt_project_create_command.v1.schema.json
