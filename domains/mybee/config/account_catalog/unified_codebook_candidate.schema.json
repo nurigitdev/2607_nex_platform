@@ -1,0 +1,123 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/mybee/unified-codebook-candidate.v0.1.json",
+  "title": "NeX MyBee unapproved unified COA codebook candidate",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "status",
+    "runtime_seed_allowed",
+    "approved_proof_ref",
+    "catalog_profile",
+    "suggested_catalog_version",
+    "is_official_k_ifrs_account_code",
+    "note",
+    "source_reference",
+    "rules",
+    "statistics",
+    "accounts"
+  ],
+  "properties": {
+    "schema_version": {"const": "nex.mybee.coa.design_candidate.v0.1"},
+    "status": {"const": "DESIGN_CANDIDATE_NOT_APPROVED"},
+    "runtime_seed_allowed": {"const": false},
+    "approved_proof_ref": {"type": "null"},
+    "catalog_profile": {"const": "MYBEE-KIFRS-NFI"},
+    "suggested_catalog_version": {"const": "MYBEE-KIFRS-NFI-v1.0"},
+    "is_official_k_ifrs_account_code": {"const": false},
+    "note": {"type": "string", "minLength": 1},
+    "source_reference": {"const": "INTERNAL_DESIGN_CANDIDATE_ONLY"},
+    "rules": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "new_account_pattern",
+        "segment_widths",
+        "standard_leaf_suffix",
+        "product_reserve_suffix",
+        "tenant_extension_suffix",
+        "nonpostable_parent_suffix"
+      ],
+      "properties": {
+        "new_account_pattern": {"const": "^[1-9][0-9]{7}$"},
+        "segment_widths": {"const": [1, 2, 2, 3]},
+        "standard_leaf_suffix": {"const": "001-699"},
+        "product_reserve_suffix": {"const": "700-799"},
+        "tenant_extension_suffix": {"const": "800-999"},
+        "nonpostable_parent_suffix": {"const": "000"}
+      }
+    },
+    "statistics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["major_roots", "groups", "families", "leaf_accounts", "total_nodes"],
+      "properties": {
+        "major_roots": {"const": 9},
+        "groups": {"const": 25},
+        "families": {"const": 44},
+        "leaf_accounts": {"const": 88},
+        "total_nodes": {"const": 166}
+      }
+    },
+    "accounts": {
+      "type": "array",
+      "minItems": 166,
+      "maxItems": 166,
+      "items": {"$ref": "#/$defs/account"}
+    }
+  },
+  "$defs": {
+    "account": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "account_code",
+        "standard_account_key",
+        "canonical_name_ko",
+        "hierarchy_level",
+        "parent_account_code",
+        "category",
+        "account_type",
+        "normal_balance",
+        "is_contra",
+        "is_postable_leaf_if_admitted",
+        "is_monetary_default",
+        "reporting_mapping_status",
+        "source_lineage"
+      ],
+      "properties": {
+        "account_code": {"type": "string", "pattern": "^[1-9][0-9]{7}$"},
+        "standard_account_key": {
+          "type": "string",
+          "pattern": "^MB-COA-[A-Z0-9]+(?:-[A-Z0-9]+)*$"
+        },
+        "canonical_name_ko": {"type": "string", "minLength": 1},
+        "hierarchy_level": {"type": "integer", "minimum": 1, "maximum": 4},
+        "parent_account_code": {
+          "oneOf": [
+            {"type": "null"},
+            {"type": "string", "pattern": "^[1-9][0-9]{7}$"}
+          ]
+        },
+        "category": {"enum": ["ASSET", "LIABILITY", "EQUITY", "REVENUE", "EXPENSE"]},
+        "account_type": {
+          "enum": [
+            "ACCOUNT_GROUP",
+            "ASSET_GENERAL",
+            "LIABILITY_GENERAL",
+            "EQUITY_GENERAL",
+            "REVENUE_GENERAL",
+            "EXPENSE_GENERAL"
+          ]
+        },
+        "normal_balance": {"enum": ["DR", "CR"]},
+        "is_contra": {"type": "boolean"},
+        "is_postable_leaf_if_admitted": {"type": "boolean"},
+        "is_monetary_default": {"type": "boolean"},
+        "reporting_mapping_status": {"const": "MAPPING_PENDING"},
+        "source_lineage": {"const": "INTERNAL_DESIGN_CANDIDATE_NOT_KIFRS_CODE"}
+      }
+    }
+  }
+}

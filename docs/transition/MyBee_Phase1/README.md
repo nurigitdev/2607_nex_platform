@@ -36,6 +36,10 @@ Read the post-S1-02 standard Chart of Accounts design set in this order:
    of the CA01 decision delta, Codex implementation changes, and required
    validation gates. It is not runtime configuration or proof that those gates
    have passed.
+5. `NeX_MyBee_COA01_Candidate_Reviewer_Diff_v1.0.md` — COA-01's hash-bound
+   88-leaf human review baseline. Structural validation has passed, but the
+   document deliberately keeps Product Accounting Owner approval and runtime
+   Seed admission pending.
 
 The COA follow-up set preserves the completed S1-02 framework and does not
 activate S1-03. It also does not authorize invented K-IFRS account numbers,
