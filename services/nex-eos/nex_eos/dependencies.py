@@ -48,6 +48,10 @@ from .persistence import EosDatabaseRuntime, build_eos_database_runtime
 from .project_memberships import SqlAlchemyEosProjectMembershipRepository
 from .project_operations import EosGovernedProjectService
 from .projects import SqlAlchemyEosProjectRepository
+from .reporting_maps import (
+    EosReportingMapService,
+    SqlAlchemyEosReportingMapRepository,
+)
 from .voucher_access import EosVoucherAccessService
 from .voucher_commands import EosCreateVoucherDraftService
 from .voucher_verification import SqlAlchemyEosVoucherVerificationQuery
@@ -71,6 +75,7 @@ class EosDependencies:
     account_catalog: SqlAlchemyEosAccountCatalogRepository | None
     account_catalog_service: EosAccountCatalogService | None
     coa_operations_service: EosCoaOperationsService | None
+    reporting_map_service: EosReportingMapService | None
     approval_policies: SqlAlchemyEosApprovalPolicyRepository | None
     approval_instances: SqlAlchemyEosApprovalInstanceRepository | None
     approval_transition_service: EosBusinessApprovalTransitionService | None
@@ -242,6 +247,14 @@ def build_eos_dependencies(
         and publication_admissions
         else None
     )
+    reporting_map_service = (
+        EosReportingMapService(
+            SqlAlchemyEosReportingMapRepository(database_runtime.session_factory),
+            authorization_source,
+        )
+        if database_runtime is not None and authorization_source is not None
+        else None
+    )
     voucher_access_service = (
         EosVoucherAccessService(
             session_factory=database_runtime.session_factory,
@@ -290,6 +303,7 @@ def build_eos_dependencies(
         account_catalog=account_catalog,
         account_catalog_service=account_catalog_service,
         coa_operations_service=coa_operations_service,
+        reporting_map_service=reporting_map_service,
         approval_policies=approval_policies,
         approval_instances=approval_instances,
         approval_transition_service=approval_transition_service,

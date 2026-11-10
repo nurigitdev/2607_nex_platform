@@ -15,6 +15,7 @@ from .dependencies import build_eos_dependencies
 from .legal_entity_api import register_legal_entity_routes
 from .organization_api import register_organization_routes
 from .project_api import register_project_routes
+from .reporting_map_api import register_reporting_map_routes
 from .voucher_api import register_voucher_command_routes
 from .wa_project_verification import (
     EosWaProjectVerifier,
@@ -67,6 +68,7 @@ def create_eos_app(
     app.state.eos_account_catalog = dependencies.account_catalog
     app.state.eos_account_catalog_service = dependencies.account_catalog_service
     app.state.eos_coa_operations_service = dependencies.coa_operations_service
+    app.state.eos_reporting_map_service = dependencies.reporting_map_service
     app.state.eos_approval_policies = dependencies.approval_policies
     app.state.eos_approval_instances = dependencies.approval_instances
     app.state.eos_approval_transition_service = dependencies.approval_transition_service
@@ -84,6 +86,7 @@ def create_eos_app(
     register_account_routes(app)
     register_account_policy_routes(app)
     register_coa_routes(app)
+    register_reporting_map_routes(app)
     register_legal_entity_routes(app)
     verifier = (
         EosWaProjectVerifier(

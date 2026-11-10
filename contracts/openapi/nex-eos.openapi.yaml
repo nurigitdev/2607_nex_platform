@@ -601,6 +601,47 @@ paths:
         "409": {description: More than one effective Account is eligible.}
         "422": {description: "Semantic key, company, date, or currency is invalid."}
         "503": {description: OA authorization or EOS persistence is unavailable.}
+  /internal/v2/finance/reporting-map:
+    get:
+      operationId: FINANCE.COA.REPORTING_MAP_GET
+      tags: [Finance]
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes: [service:call]
+      x-nex-business-scope: finance:report:read
+      parameters:
+        - name: mapping_release_id
+          in: query
+          required: true
+          schema: {type: string, format: uuid}
+        - name: entry_id
+          in: query
+          required: true
+          schema: {type: string, format: uuid}
+        - name: effective_on
+          in: query
+          required: true
+          schema: {type: string, format: date}
+        - name: regulated_export
+          in: query
+          required: false
+          schema: {type: boolean, default: false}
+        - name: X-NeX-Tenant-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+        - name: X-NeX-Subject-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+      responses:
+        "200": {description: Version-pinned reporting map and export eligibility.}
+        "401": {description: Service claim is missing or invalid.}
+        "403": {description: Fresh reporting-read authority is denied.}
+        "404": {description: Effective release or mapped entry was not found.}
+        "409": {description: Required regulated reporting mapping is pending.}
+        "422": {description: Reporting map query is invalid.}
+        "503": {description: OA authorization or persistence is unavailable.}
   /internal/v1/finance/voucher-drafts:
     get:
       operationId: FINANCE.VOUCHER_DRAFT.LIST

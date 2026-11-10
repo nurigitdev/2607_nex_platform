@@ -1,0 +1,11 @@
+{
+  "schema_version": "mybee.reporting_taxonomy_registry.v1",
+  "registry_id": "MYBEE-KIFRS-DART",
+  "admission_state": "SOURCE_PENDING_NOT_ADMITTED",
+  "approved_releases": [],
+  "constraints": {
+    "invented_concept_ids": "FORBIDDEN",
+    "regulated_export_when_pending": "FAIL_CLOSED",
+    "gl_account_code_is_taxonomy_id": false
+  }
+}
