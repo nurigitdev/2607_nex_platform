@@ -66,6 +66,33 @@ def register_coa_routes(app: FastAPI) -> None:
             return result
         return JSONResponse(result, 201 if result.get("created") else 200)
 
+    @app.post(
+        "/internal/v2/finance/coa/extensions/{definition_release_id}/publish",
+        response_model=None,
+        operation_id="FINANCE.COA.EXTENSION_PUBLISH_APPROVED",
+    )
+    def publish_approved_extension(
+        definition_release_id: str,
+        payload: dict[str, Any],
+        request: Request,
+        tenant_id: str = Header(alias="X-NeX-Tenant-Id"),
+        requester_subject_id: str = Header(alias="X-NeX-Subject-Id"),
+        authorization: str | None = Header(default=None),
+    ):
+        command = {**payload, "definition_release_id": definition_release_id}
+        result = _invoke(
+            request,
+            authorization,
+            lambda service: service.publish_extension_approved(
+                tenant_id=tenant_id,
+                requester_subject_id=requester_subject_id,
+                payload=command,
+            ),
+        )
+        if isinstance(result, JSONResponse):
+            return result
+        return JSONResponse(result, 201 if result.get("created") else 200)
+
 
 def _invoke(request: Request, authorization: str | None, operation):
     admitted = admit_service_token_from_request(

@@ -28,6 +28,7 @@ from nex_eos import (
     LegalEntityInput,
     PostingRuleReleaseInput,
     SqlAlchemyEosAccountCatalogRepository,
+    SqlAlchemyEosAccountRepository,
     SqlAlchemyEosLegalEntityRepository,
     SqlAlchemyEosUnifiedCoaRepository,
     build_eos_database_runtime,
@@ -51,6 +52,9 @@ from sqlalchemy.pool import StaticPool
 
 DATABASE_URL = os.getenv("NEX_EOS_TEST_DATABASE_URL", "")
 POSTGRES_SMOKE = os.getenv("NEX_EOS_MYBEE_COA_03_POSTGRES_SMOKE") == "1"
+POSTGRES_EXTENSION_SMOKE = (
+    os.getenv("NEX_EOS_MYBEE_COA_04_POSTGRES_SMOKE") == "1"
+)
 
 ACTOR_TENANT = "product-tenant"
 TENANT_ID = "tenant-a"
@@ -212,6 +216,18 @@ def _publish_payload() -> dict[str, object]:
     }
 
 
+def _extension_publish_payload() -> dict[str, object]:
+    return {
+        "business_operation_id": "da000000-0000-4000-8000-000000000003",
+        "idempotency_key": "coa-extension-tenant-a-2026-01",
+        "definition_release_id": EXTENSION_RELEASE_ID,
+        "source_reference": "tenant-extension.v1.json",
+        "source_hash": HASH_A,
+        "approved_proof_ref": HASH_B,
+        "content_hash": HASH_C,
+    }
+
+
 def _adopt_payload() -> dict[str, object]:
     return {
         "business_operation_id": "da000000-0000-4000-8000-000000000002",
@@ -313,7 +329,9 @@ def _seed_company_account_policy(factory) -> None:
     )
 
 
-def _seed_tenant_extension(factory, *, base_release_id: str = RELEASE_ID) -> None:
+def _seed_tenant_extension(
+    factory, *, base_release_id: str = RELEASE_ID, publish: bool = True
+) -> None:
     SqlAlchemyEosUnifiedCoaRepository(factory).create_draft_release(
         release=CoaDefinitionReleaseInput(
             definition_release_id=EXTENSION_RELEASE_ID,
@@ -348,15 +366,16 @@ def _seed_tenant_extension(factory, *, base_release_id: str = RELEASE_ID) -> Non
             )
         ],
     )
-    with factory.begin() as session:
-        session.execute(
-            EOS_COA_DEFINITION_RELEASE_TABLE.update()
-            .where(
-                EOS_COA_DEFINITION_RELEASE_TABLE.c.definition_release_id
-                == EXTENSION_RELEASE_ID
+    if publish:
+        with factory.begin() as session:
+            session.execute(
+                EOS_COA_DEFINITION_RELEASE_TABLE.update()
+                .where(
+                    EOS_COA_DEFINITION_RELEASE_TABLE.c.definition_release_id
+                    == EXTENSION_RELEASE_ID
+                )
+                .values(status="PUBLISHED")
             )
-            .values(status="PUBLISHED")
-        )
 
 
 def test_coa_03_publish_is_atomic_idempotent_and_records_stable_identity(runtime) -> None:
@@ -994,6 +1013,282 @@ def test_coa_03_routes_fail_closed_when_unconfigured_or_denied(runtime) -> None:
     )
     assert adoption_error.status_code == 404
     assert adoption_error.json()["error_code"] == "EOS_COA_NOT_FOUND"
+
+
+def test_coa_04_tenant_extension_publish_and_legacy_bridge_preserve_v1(runtime) -> None:
+    engine, factory, _auth, service = runtime
+    _seed_draft(factory)
+    _publish(service)
+    _seed_tenant_extension(factory, publish=False)
+
+    created = service.publish_extension_approved(
+        tenant_id=TENANT_ID,
+        requester_subject_id=SUBJECT_ID,
+        payload=_extension_publish_payload(),
+    )
+    replayed = service.publish_extension_approved(
+        tenant_id=TENANT_ID,
+        requester_subject_id=SUBJECT_ID,
+        payload=_extension_publish_payload(),
+    )
+    assert created["created"] is True
+    assert created["result"]["status"] == "PUBLISHED"
+    assert replayed["created"] is False
+
+    _seed_company_account_policy(factory)
+    adopted = service.adopt_approved(
+        tenant_id=TENANT_ID,
+        requester_subject_id=SUBJECT_ID,
+        payload={**_adopt_payload(), "extension_release_id": EXTENSION_RELEASE_ID},
+    )
+    assert adopted["result"]["binding_count"] == 1
+    with engine.connect() as connection:
+        account = connection.execute(
+            select(EOS_ACCOUNT_TABLE).where(
+                EOS_ACCOUNT_TABLE.c.tenant_id == TENANT_ID,
+                EOS_ACCOUNT_TABLE.c.account_id == ACCOUNT_ID,
+            )
+        ).mappings().one()
+        assert account["account_code"] == "CASH"
+        assert connection.execute(
+            select(func.count()).select_from(EOS_COA_CODE_IDENTITY_TABLE)
+        ).scalar_one() == 5
+
+
+def test_coa_04_extension_rejects_cross_tenant_and_missing_scope(runtime) -> None:
+    _engine, factory, auth, service = runtime
+    _seed_draft(factory)
+    _publish(service)
+    _seed_tenant_extension(factory, publish=False)
+    with pytest.raises(EosCoaOperationError) as cross_tenant:
+        service.publish_extension_approved(
+            tenant_id="tenant-b",
+            requester_subject_id=SUBJECT_ID,
+            payload=_extension_publish_payload(),
+        )
+    assert cross_tenant.value.status_code == 403
+
+    auth.scopes.remove("finance:account:manage")
+    with pytest.raises(EosCoaOperationError) as denied:
+        service.publish_extension_approved(
+            tenant_id=TENANT_ID,
+            requester_subject_id=SUBJECT_ID,
+            payload=_extension_publish_payload(),
+        )
+    assert denied.value.status_code == 403
+
+
+@pytest.mark.parametrize("failure", ["legacy_code_collision", "wrong_parent"])
+def test_coa_04_extension_namespace_and_parent_are_fail_closed(runtime, failure) -> None:
+    engine, factory, _auth, service = runtime
+    _seed_draft(factory)
+    _publish(service)
+    _seed_tenant_extension(factory, publish=False)
+    if failure == "legacy_code_collision":
+        SqlAlchemyEosAccountRepository(factory).create_account(
+            AccountInput(
+                TENANT_ID,
+                str(uuid.uuid4()),
+                "10101800",
+                "Legacy collision",
+                "ASSET",
+                "CASH",
+                START,
+            )
+        )
+        detail = "collides"
+    else:
+        with engine.begin() as connection:
+            connection.execute(
+                EOS_COA_ENTRY_TABLE.update()
+                .where(EOS_COA_ENTRY_TABLE.c.entry_id == EXTENSION_ENTRY_ID)
+                .values(parent_entry_id=ROOT_ID)
+            )
+        detail = "GLOBAL family parent"
+    with pytest.raises(EosCoaOperationError, match=detail):
+        service.publish_extension_approved(
+            tenant_id=TENANT_ID,
+            requester_subject_id=SUBJECT_ID,
+            payload=_extension_publish_payload(),
+        )
+
+
+@pytest.mark.parametrize(
+    ("failure", "detail"),
+    [
+        ("missing", "not found"),
+        ("profile", "chart profile"),
+        ("empty", "has no entries"),
+        ("published", "PUBLISHED"),
+        ("superseded", "from its state"),
+        ("namespace", "governed namespace"),
+    ],
+)
+def test_coa_04_extension_repository_state_matrix(runtime, failure, detail) -> None:
+    engine, factory, _auth, service = runtime
+    command = coa_operations._publication_command(
+        _extension_publish_payload(), published_by=SUBJECT_ID
+    )
+    if failure == "missing":
+        with factory.begin() as session, pytest.raises(
+            EosCoaOperationError, match=detail
+        ):
+            SqlAlchemyEosCoaOperationsRepository.publish_extension(
+                session, tenant_id=TENANT_ID, command=command
+            )
+        return
+    _seed_draft(factory)
+    _publish(service)
+    _seed_tenant_extension(factory, publish=False)
+    if failure == "profile":
+        with engine.begin() as connection:
+            connection.execute(
+                EOS_COA_DEFINITION_RELEASE_TABLE.update()
+                .where(
+                    EOS_COA_DEFINITION_RELEASE_TABLE.c.definition_release_id
+                    == EXTENSION_RELEASE_ID
+                )
+                .values(chart_profile="OTHER-PROFILE")
+            )
+    elif failure == "empty":
+        with engine.begin() as connection:
+            connection.execute(
+                EOS_COA_ENTRY_TABLE.delete().where(
+                    EOS_COA_ENTRY_TABLE.c.definition_release_id
+                    == EXTENSION_RELEASE_ID
+                )
+            )
+    elif failure == "published":
+        service.publish_extension_approved(
+            tenant_id=TENANT_ID,
+            requester_subject_id=SUBJECT_ID,
+            payload=_extension_publish_payload(),
+        )
+    elif failure == "superseded":
+        with engine.begin() as connection:
+            connection.execute(
+                EOS_COA_DEFINITION_RELEASE_TABLE.update()
+                .where(
+                    EOS_COA_DEFINITION_RELEASE_TABLE.c.definition_release_id
+                    == EXTENSION_RELEASE_ID
+                )
+                .values(status="SUPERSEDED")
+            )
+    else:
+        with engine.begin() as connection:
+            connection.execute(
+                EOS_COA_ENTRY_TABLE.update()
+                .where(EOS_COA_ENTRY_TABLE.c.entry_id == EXTENSION_ENTRY_ID)
+                .values(owner_tenant_id="tenant-b")
+            )
+    with factory.begin() as session:
+        if failure == "published":
+            result = SqlAlchemyEosCoaOperationsRepository.publish_extension(
+                session, tenant_id=TENANT_ID, command=command
+            )
+            assert result["status"] == detail
+        else:
+            with pytest.raises(EosCoaOperationError, match=detail):
+                SqlAlchemyEosCoaOperationsRepository.publish_extension(
+                    session, tenant_id=TENANT_ID, command=command
+                )
+
+
+def test_coa_04_extension_route_is_service_protected(runtime) -> None:
+    _engine, factory, _auth, service = runtime
+    _seed_draft(factory)
+    _publish(service)
+    _seed_tenant_extension(factory, publish=False)
+    app = create_eos_app(
+        environ={
+            "NEX_PROFILE": "test",
+            "NEX_VERSION": "test",
+            "NEX_BUILD_SHA": "test",
+            "NEX_SERVICE_TOKEN_ROLLOUT_PROFILE": "TEST_MOCK",
+        }
+    )
+    app.state.eos_coa_operations_service = service
+    client = TestClient(app)
+    token = issue_mock_service_token(service_id="nex-ae-api", audience="nex-eos")
+    payload = _extension_publish_payload()
+    payload.pop("definition_release_id")
+    path = f"/internal/v2/finance/coa/extensions/{EXTENSION_RELEASE_ID}/publish"
+    missing = client.post(
+        path,
+        json=payload,
+        headers={
+            "X-NeX-Tenant-Id": TENANT_ID,
+            "X-NeX-Subject-Id": SUBJECT_ID,
+        },
+    )
+    created = client.post(
+        path,
+        json=payload,
+        headers={
+            "Authorization": f"Bearer {token.access_token}",
+            "X-NeX-Tenant-Id": TENANT_ID,
+            "X-NeX-Subject-Id": SUBJECT_ID,
+        },
+    )
+    assert missing.status_code == 401
+    assert created.status_code == 201
+    assert created.json()["result"]["entry_count"] == 1
+
+
+@pytest.mark.skipif(
+    not DATABASE_URL or not POSTGRES_EXTENSION_SMOKE,
+    reason="Protected COA-04 EOS PostgreSQL smoke is disabled",
+)
+def test_coa_04_actual_postgres_extension_publish_and_zero_residue() -> None:
+    schema_name = f"mybee_coa04_{uuid.uuid4().hex}"
+    psycopg_url = psycopg_database_url(DATABASE_URL)
+    with (
+        psycopg.connect(psycopg_url, autocommit=True) as connection,
+        connection.cursor() as cursor,
+    ):
+        cursor.execute("SELECT current_database(), current_user")
+        assert cursor.fetchone() == ("nex_eos_test", "nex_eos_user")
+        cursor.execute(sql.SQL("CREATE SCHEMA {}").format(sql.Identifier(schema_name)))
+    scoped_url = make_url(DATABASE_URL).update_query_dict(
+        {"options": f"-csearch_path={schema_name}"}
+    ).render_as_string(hide_password=False)
+    try:
+        result = run_service_migrations(
+            "nex-eos", database_url=scoped_url, profile="test"
+        )
+        assert "2518_eos_unified_coa" in result.applied
+        db = build_eos_database_runtime(
+            environ={"NEX_EOS_TEST_DATABASE_URL": scoped_url},
+            database_env="NEX_EOS_TEST_DATABASE_URL",
+        )
+        service = EosCoaOperationsService(
+            repository=SqlAlchemyEosCoaOperationsRepository(),
+            coordinator=SqlAlchemyEosBusinessTransactionCoordinator(
+                db.session_factory
+            ),
+            authorization_source=AuthorizationSource(),
+            publication_admission=_publication_admission(),
+        )
+        _seed_draft(db.session_factory)
+        _publish(service)
+        _seed_tenant_extension(db.session_factory, publish=False)
+        published = service.publish_extension_approved(
+            tenant_id=TENANT_ID,
+            requester_subject_id=SUBJECT_ID,
+            payload=_extension_publish_payload(),
+        )
+        assert published["result"]["scope_type"] == "TENANT"
+        db.dispose()
+    finally:
+        with (
+            psycopg.connect(psycopg_url, autocommit=True) as connection,
+            connection.cursor() as cursor,
+        ):
+            cursor.execute(
+                sql.SQL("DROP SCHEMA IF EXISTS {} CASCADE").format(
+                    sql.Identifier(schema_name)
+                )
+            )
 
 
 @pytest.mark.skipif(

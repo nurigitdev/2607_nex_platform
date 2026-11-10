@@ -522,6 +522,44 @@ paths:
         "409": {description: "Release, policy, PostingRule, period, or binding conflicts."}
         "422": {description: Adoption command or approval proof is invalid.}
         "503": {description: OA authorization or EOS persistence is unavailable.}
+  /internal/v2/finance/coa/extensions/{definition_release_id}/publish:
+    post:
+      operationId: FINANCE.COA.EXTENSION_PUBLISH_APPROVED
+      tags: [Finance]
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes: [service:call]
+      x-nex-business-scope: finance:account:manage
+      x-nex-work-code: FL0004011
+      x-nex-route-class: WRITE
+      parameters:
+        - name: definition_release_id
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+        - name: X-NeX-Tenant-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+        - name: X-NeX-Subject-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CoaPublishApprovedCommand"
+      responses:
+        "200": {description: Exact idempotent tenant extension replay.}
+        "201": {description: Approved tenant extension published atomically.}
+        "401": {description: Service claim is missing or invalid.}
+        "403": {description: Tenant authority or ownership is denied.}
+        "404": {description: Extension or GLOBAL base release is absent.}
+        "409": {description: "Parent, namespace, legacy code, or release conflicts."}
+        "422": {description: Extension publication command is invalid.}
+        "503": {description: OA authorization or EOS persistence is unavailable.}
   /internal/v1/finance/voucher-drafts:
     get:
       operationId: FINANCE.VOUCHER_DRAFT.LIST

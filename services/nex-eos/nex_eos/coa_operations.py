@@ -35,6 +35,7 @@ from .unified_coa import (
 FINANCE_COA_PUBLISH_SCOPE = "finance:catalog:publish"
 FINANCE_COA_ADOPT_SCOPE = "finance:account:manage"
 FINANCE_COA_PUBLISH_OPERATION = "FINANCE.COA.PUBLISH_APPROVED"
+FINANCE_COA_EXTENSION_PUBLISH_OPERATION = "FINANCE.COA.EXTENSION_PUBLISH_APPROVED"
 FINANCE_COA_ADOPT_OPERATION = "FINANCE.COA.ADOPT_APPROVED"
 
 _SCOPED_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$")
@@ -254,6 +255,79 @@ class SqlAlchemyEosCoaOperationsRepository:
             session.execute(EOS_COA_ACCOUNT_BINDING_TABLE.insert().values(**binding))
         return _adoption_result(adoption_record, binding_records, replayed=False)
 
+    @staticmethod
+    def publish_extension(
+        session: Session | None,
+        *,
+        tenant_id: str,
+        command: CoaPublicationCommand,
+    ) -> dict[str, Any]:
+        session = _required_session(session)
+        release = (
+            session.execute(
+                select(EOS_COA_DEFINITION_RELEASE_TABLE)
+                .where(
+                    EOS_COA_DEFINITION_RELEASE_TABLE.c.definition_release_id
+                    == command.definition_release_id
+                )
+                .with_for_update()
+            )
+            .mappings()
+            .one_or_none()
+        )
+        if release is None:
+            raise _not_found("COA tenant extension release was not found")
+        _require_release_semantics(release, command)
+        if release["scope_type"] != "TENANT" or release["owner_tenant_id"] != tenant_id:
+            raise _denied(FINANCE_COA_ADOPT_SCOPE)
+        base = _published_release(
+            session,
+            release["base_global_release_id"],
+            effective_on=release["effective_from"],
+            scope_type="GLOBAL",
+            owner_tenant_id=None,
+        )
+        if base["chart_profile"] != release["chart_profile"]:
+            raise _conflict("Tenant extension chart profile differs from its GLOBAL base")
+        entries = (
+            session.execute(
+                select(EOS_COA_ENTRY_TABLE)
+                .where(
+                    EOS_COA_ENTRY_TABLE.c.definition_release_id
+                    == command.definition_release_id
+                )
+                .order_by(EOS_COA_ENTRY_TABLE.c.account_code)
+            )
+            .mappings()
+            .all()
+        )
+        if not entries:
+            raise _conflict("COA tenant extension release has no entries")
+        if release["status"] == "PUBLISHED":
+            return _publication_result(release, len(entries), replayed=True)
+        if release["status"] != "DRAFT":
+            raise _conflict("COA tenant extension cannot be published from its state")
+        for entry in entries:
+            _require_tenant_extension_entry(
+                session,
+                tenant_id=tenant_id,
+                release=release,
+                base=base,
+                entry=entry,
+            )
+            _admit_code_identity(session, release=release, entry=entry)
+        published_at = datetime.now(UTC)
+        session.execute(
+            EOS_COA_DEFINITION_RELEASE_TABLE.update()
+            .where(
+                EOS_COA_DEFINITION_RELEASE_TABLE.c.definition_release_id
+                == command.definition_release_id
+            )
+            .values(status="PUBLISHED", published_at=published_at)
+        )
+        published = {**dict(release), "status": "PUBLISHED", "published_at": published_at}
+        return _publication_result(published, len(entries), replayed=False)
+
 
 class EosCoaOperationsService:
     def __init__(
@@ -327,6 +401,38 @@ class EosCoaOperationsService:
         result = self._coordinator.execute(
             request,
             lambda session: self._repository.adopt_release(session, command),
+        )
+        return result.to_public_projection()
+
+    def publish_extension_approved(
+        self,
+        *,
+        tenant_id: str,
+        requester_subject_id: str,
+        payload: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        tenant_id = _scoped_id("tenant_id", tenant_id)
+        requester_subject_id = _scoped_id(
+            "requester_subject_id", requester_subject_id
+        )
+        self._authorize(
+            tenant_id=tenant_id,
+            subject_id=requester_subject_id,
+            required_scope=FINANCE_COA_ADOPT_SCOPE,
+        )
+        command = _publication_command(payload, published_by=requester_subject_id)
+        request = _business_request(
+            tenant_id=tenant_id,
+            payload=payload,
+            operation=FINANCE_COA_EXTENSION_PUBLISH_OPERATION,
+        )
+        result = self._coordinator.execute(
+            request,
+            lambda session: self._repository.publish_extension(
+                session,
+                tenant_id=tenant_id,
+                command=command,
+            ),
         )
         return result.to_public_projection()
 
@@ -586,6 +692,52 @@ def _published_release(
     ):
         raise _conflict("COA release is not published and effective in scope")
     return release
+
+
+def _require_tenant_extension_entry(
+    session: Session,
+    *,
+    tenant_id: str,
+    release: Mapping[str, Any],
+    base: Mapping[str, Any],
+    entry: Mapping[str, Any],
+) -> None:
+    suffix = int(entry["account_code"][-3:])
+    if (
+        entry["scope_type"] != "TENANT"
+        or entry["owner_tenant_id"] != tenant_id
+        or entry["hierarchy_level"] != 4
+        or not 800 <= suffix <= 999
+    ):
+        raise _conflict("COA tenant extension entry is outside its governed namespace")
+    parent = (
+        session.execute(
+            select(EOS_COA_ENTRY_TABLE).where(
+                EOS_COA_ENTRY_TABLE.c.entry_id == entry["parent_entry_id"]
+            )
+        )
+        .mappings()
+        .one_or_none()
+    )
+    if (
+        parent is None
+        or parent["definition_release_id"] != base["definition_release_id"]
+        or parent["hierarchy_level"] != 3
+        or parent["category"] != entry["category"]
+        or parent["account_code"] != entry["account_code"][:5] + "000"
+        or parent["is_postable"]
+    ):
+        raise _conflict("COA tenant extension requires a valid GLOBAL family parent")
+    collision = session.execute(
+        select(EOS_ACCOUNT_TABLE.c.account_id)
+        .where(
+            EOS_ACCOUNT_TABLE.c.tenant_id == tenant_id,
+            EOS_ACCOUNT_TABLE.c.account_code == entry["account_code"],
+        )
+        .limit(1)
+    ).scalar_one_or_none()
+    if collision is not None:
+        raise _conflict("COA tenant extension collides with an existing Account code")
 
 
 def _require_effective_binding(
