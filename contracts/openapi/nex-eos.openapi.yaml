@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: NeX Enterprise Operations System API
-  version: 2.1.0-p8-s105-mybee-mb1-03b
+  version: 2.1.0-p8-s105-mybee-s1-05
   description: >-
     NeX-EOS service shell and canonical Voucher Draft command contract. The
     P8-S18 path is contract-first and becomes executable in P8-S19.
@@ -362,6 +362,109 @@ paths:
           description: Tenant, subject, Project, or effective date is invalid.
         "503":
           description: OA authorization or EOS persistence is unavailable.
+  /internal/v2/projects/{project_id}/work-code-sets:approve:
+    post:
+      operationId: PROJECT.WORK_CODE_SET.APPROVE
+      tags: [Project]
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes: [service:call]
+      x-nex-business-scope: project:work-code:approve
+      x-nex-route-class: WRITE
+      parameters:
+        - name: project_id
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProjectWorkCodeSetApprovalCommand"
+      responses:
+        "200": {description: Exact BusinessOperation replay returned the approved immutable revision.}
+        "201": {description: A new immutable Project WorkCodeSet revision was approved.}
+        "401": {description: Service claim is missing or invalid.}
+        "403": {description: Fresh OA authority or Project owner/manager membership is denied.}
+        "404": {description: Project is absent from the admitted tenant scope.}
+        "409": {description: "Catalog, mandatory-code, identity, or revision semantics conflict."}
+        "422": {description: Command shape or canonical payload hash is invalid.}
+        "503": {description: OA authorization or EOS persistence is unavailable.}
+  /internal/v2/projects/{project_id}/work-code-set:
+    get:
+      operationId: PROJECT.WORK_CODE_SET.GET
+      tags: [Project]
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes: [service:call]
+      x-nex-business-scope: project:work-code:read
+      x-nex-side-effect-free: true
+      parameters:
+        - name: project_id
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+        - name: X-NeX-Tenant-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+        - name: X-NeX-Subject-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+        - name: effective_on
+          in: query
+          required: false
+          schema: {type: string, format: date}
+      responses:
+        "200":
+          description: Latest effective immutable Project WorkCodeSet revision.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ProjectWorkCodeSet"}
+        "401": {description: Service claim is missing or invalid.}
+        "403": {description: Fresh OA authority or active Project membership is denied.}
+        "404": {description: No approved WorkCodeSet is effective.}
+        "422": {description: "Tenant, subject, Project, or date is invalid."}
+        "503": {description: OA authorization or EOS persistence is unavailable.}
+  /internal/v2/projects/{project_id}/business-readiness:
+    get:
+      operationId: PROJECT.BUSINESS_READINESS.GET
+      tags: [Project]
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes: [service:call]
+      x-nex-business-scope: project:work-code:read
+      x-nex-side-effect-free: true
+      parameters:
+        - name: project_id
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+        - name: X-NeX-Tenant-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+        - name: X-NeX-Subject-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+        - name: effective_on
+          in: query
+          required: false
+          schema: {type: string, format: date}
+      responses:
+        "200":
+          description: BusinessReady projection independent of technical Project ACTIVE status.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ProjectBusinessReadiness"}
+        "401": {description: Service claim is missing or invalid.}
+        "403": {description: Fresh OA authority or active Project membership is denied.}
+        "404": {description: Project is absent from the admitted tenant scope.}
+        "422": {description: "Tenant, subject, Project, or date is invalid."}
+        "503": {description: OA authorization or EOS persistence is unavailable.}
   /internal/v2/finance/account-catalog:
     get:
       operationId: FINANCE.ACCOUNT.CATALOG_GET
@@ -1305,6 +1408,160 @@ components:
         version: {type: integer, minimum: 1}
         created_at: {type: string, format: date-time}
         updated_at: {type: string, format: date-time}
+    ProjectWorkCodeSetApprovalCommand:
+      type: object
+      additionalProperties: false
+      required:
+        - tenant_id
+        - business_operation_id
+        - idempotency_key
+        - payload_hash
+        - requester_subject_id
+        - work_set
+      properties:
+        tenant_id: {type: string, minLength: 1, maxLength: 128}
+        business_operation_id: {type: string, format: uuid}
+        idempotency_key: {type: string, minLength: 1, maxLength: 256}
+        payload_hash: {type: string, pattern: "^sha256:[0-9a-f]{64}$"}
+        requested_operation:
+          type: string
+          const: PROJECT.WORK_CODE_SET.APPROVE
+        requester_subject_id: {type: string, minLength: 1, maxLength: 128}
+        work_set:
+          $ref: "#/components/schemas/ProjectWorkCodeSetApproval"
+    ProjectWorkCodeSetApproval:
+      type: object
+      additionalProperties: false
+      required:
+        - work_set_id
+        - revision
+        - catalog_id
+        - catalog_version
+        - catalog_digest
+        - template_ref
+        - template_version
+        - code_ids
+        - approved_proof_hash
+        - pm_subject_id
+        - pa_agent_id
+        - pa_identity_evidence_hash
+        - effective_from
+      properties:
+        work_set_id: {type: string, format: uuid}
+        revision: {type: integer, minimum: 1}
+        catalog_id: {type: string, const: mybee.fl.d12.project-governance}
+        catalog_version: {type: string, const: 1.0.0}
+        catalog_digest: {type: string, pattern: "^sha256:[0-9a-f]{64}$"}
+        template_ref: {type: string, minLength: 1, maxLength: 256}
+        template_version: {type: string, pattern: "^[1-9][0-9]*\\.[0-9]+\\.[0-9]+$"}
+        code_ids:
+          type: array
+          minItems: 5
+          maxItems: 100
+          uniqueItems: true
+          items: {type: string, pattern: "^FL[0-9]{7}$"}
+        approved_proof_hash: {type: string, pattern: "^sha256:[0-9a-f]{64}$"}
+        pm_subject_id: {type: string, minLength: 1, maxLength: 128}
+        pa_agent_id: {type: string, minLength: 1, maxLength: 128}
+        pa_identity_evidence_hash: {type: string, pattern: "^sha256:[0-9a-f]{64}$"}
+        effective_from: {type: string, format: date}
+    ProjectWorkCodeSet:
+      type: object
+      additionalProperties: false
+      required:
+        - tenant_id
+        - project_id
+        - work_set_id
+        - revision
+        - catalog_id
+        - catalog_version
+        - catalog_digest
+        - template_ref
+        - template_version
+        - mandatory_codes_hash
+        - approved_proof_hash
+        - approved_by_subject_id
+        - pm_subject_id
+        - pa_agent_id
+        - pa_identity_evidence_hash
+        - state
+        - effective_from
+        - work_set_hash
+        - created_at
+        - code_ids
+      properties:
+        tenant_id: {type: string}
+        project_id: {type: string, format: uuid}
+        work_set_id: {type: string, format: uuid}
+        revision: {type: integer, minimum: 1}
+        catalog_id: {type: string}
+        catalog_version: {type: string}
+        catalog_digest: {type: string}
+        template_ref: {type: string}
+        template_version: {type: string}
+        mandatory_codes_hash: {type: string}
+        approved_proof_hash: {type: string}
+        approved_by_subject_id: {type: string}
+        pm_subject_id: {type: string}
+        pa_agent_id: {type: string}
+        pa_identity_evidence_hash: {type: string}
+        state: {type: string, const: APPROVED}
+        effective_from: {type: string, format: date}
+        work_set_hash: {type: string}
+        created_at: {type: string, format: date-time}
+        code_ids:
+          type: array
+          minItems: 5
+          uniqueItems: true
+          items: {type: string, pattern: "^FL[0-9]{7}$"}
+    ProjectBusinessReadiness:
+      type: object
+      additionalProperties: false
+      required:
+        - tenant_id
+        - project_id
+        - technical_status
+        - work_set_hash
+        - company_binding_ids
+        - required_codes_ok
+        - project_company_bound
+        - pm_assigned
+        - members_eligible
+        - pa_identity_bound
+        - effective_on
+        - state
+        - business_ready
+        - budget_bound_if_required
+        - reason_codes
+        - source_hash
+        - work_set
+      properties:
+        tenant_id: {type: string}
+        project_id: {type: string, format: uuid}
+        technical_status: {type: string, enum: [ACTIVE, INACTIVE]}
+        work_set_hash: {type: [string, "null"]}
+        company_binding_ids:
+          type: array
+          items: {type: string, format: uuid}
+        required_codes_ok: {type: boolean}
+        project_company_bound: {type: boolean}
+        pm_assigned: {type: boolean}
+        members_eligible: {type: boolean}
+        pa_identity_bound: {type: boolean}
+        effective_on: {type: string, format: date}
+        state:
+          type: string
+          enum: [DRAFT_CONFIGURATION, WORK_SET_APPROVED, MEMBER_READY, BUSINESS_READY, BLOCKED]
+        business_ready: {type: boolean}
+        budget_bound_if_required: {type: boolean}
+        reason_codes:
+          type: array
+          items: {type: string}
+        source_hash: {type: string, pattern: "^sha256:[0-9a-f]{64}$"}
+        work_set:
+          oneOf:
+            - {$ref: "#/components/schemas/ProjectWorkCodeSet"}
+            - {type: "null"}
     AccountCatalogProjection:
       type: object
       additionalProperties: false

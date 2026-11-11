@@ -53,7 +53,15 @@ MB1-03B normalizes that history into a tenant-neutral
 while each LegalEntity keeps an independent approved accounting lineage. The
 external request contract remains compatible with MB1-03A.
 
+S1-05 binds the immutable D12 catalog and its five mandatory FL work codes to
+an EOS Project WorkCodeSet revision stream. Technical Project `ACTIVE` remains
+separate from the `BUSINESS_READY` projection, which additionally requires an
+effective company binding, an active human PM and Project membership, and a
+distinct PA identity reference. WorkAssignment, Grade, and planned Man-Day are
+deferred to S1-06.
+
 The revisioned D12 source catalog lives at
 `catalog/work_codes/catalog.v1.json`. It is source-authority attested and
-content-digest pinned, but deliberately has no active API or NSL Tool binding;
-EOS admission and runtime activation remain later provider-owned boundaries.
+content-digest pinned. EOS S1-05 now owns its approval, current revision, and
+BusinessReady read APIs; NSL Tool authoring remains a later provider-owned
+boundary.
