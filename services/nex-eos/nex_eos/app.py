@@ -14,6 +14,7 @@ from .coa_api import register_coa_routes
 from .coa_release_admin_api import register_coa_release_admin_routes
 from .config import EosSettings, load_eos_settings
 from .dependencies import build_eos_dependencies
+from .fx_api import register_fx_rate_routes
 from .legal_entity_api import register_legal_entity_routes
 from .organization_api import register_organization_routes
 from .project_api import register_project_routes
@@ -73,6 +74,7 @@ def create_eos_app(
     app.state.eos_reporting_map_service = dependencies.reporting_map_service
     app.state.eos_coa_release_admin_service = dependencies.coa_release_admin_service
     app.state.eos_accounting_period_service = dependencies.accounting_period_service
+    app.state.eos_fx_rate_service = dependencies.fx_rate_service
     app.state.eos_approval_policies = dependencies.approval_policies
     app.state.eos_approval_instances = dependencies.approval_instances
     app.state.eos_approval_transition_service = dependencies.approval_transition_service
@@ -94,6 +96,7 @@ def create_eos_app(
     register_reporting_map_routes(app)
     register_legal_entity_routes(app)
     register_accounting_period_routes(app)
+    register_fx_rate_routes(app)
     verifier = (
         EosWaProjectVerifier(
             projects=dependencies.projects,
