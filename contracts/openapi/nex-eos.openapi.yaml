@@ -687,6 +687,43 @@ paths:
         "404": {description: Envelope is absent from the admitted tenant scope.}
         "422": {description: "Tenant, subject, or envelope identity is invalid."}
         "503": {description: OA authorization or EOS persistence is unavailable.}
+  /internal/v2/finance/accounting-approval-cases:
+    post:
+      operationId: FINANCE.ACCOUNTING_APPROVAL.REQUEST
+      description: >-
+        Creates only a company, Project, or Project-set scoped Human approval
+        request. The subsequent WC decision remains a separate operation.
+      tags: [Finance]
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes: [service:call]
+      x-nex-business-scope: finance:journal:request-approval
+      x-nex-route-class: WRITE
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ScopedApprovalRequestCommand"
+      responses:
+        "201":
+          description: Scoped approval case committed and WC work item published.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScopedApprovalRequestReceipt"
+        "200":
+          description: Exact idempotent replay returned the existing case and work item.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScopedApprovalRequestReceipt"
+        "401": {description: Service claim is missing or invalid.}
+        "403": {description: Service trust or fresh OA request authority is denied.}
+        "404": {description: Company or approval policy is absent.}
+        "409": {description: "Company, Project set, policy, or replay semantics conflict."}
+        "422": {description: "Request shape, scope, or canonical hash is invalid."}
+        "503": {description: "OA, WC, or EOS persistence is unavailable."}
   /internal/v2/finance/fx-rate-batches:
     post:
       operationId: FINANCE.FX_RATE.IMPORT
@@ -2227,3 +2264,166 @@ components:
     ProjectMembershipVerification:
       type: object
       x-nex-canonical-json-schema: schemas/service/nex_eos/project_membership_verification.v1.schema.json
+    ScopedApprovalRequestCommand:
+      type: object
+      additionalProperties: false
+      required:
+        - tenant_id
+        - business_operation_id
+        - idempotency_key
+        - requested_operation
+        - payload_hash
+        - case
+      properties:
+        tenant_id: {type: string, minLength: 1, maxLength: 128}
+        business_operation_id: {type: string, format: uuid}
+        idempotency_key: {type: string, minLength: 1, maxLength: 256}
+        requested_operation:
+          type: string
+          const: FINANCE.ACCOUNTING_APPROVAL.REQUEST
+        payload_hash: {type: string, pattern: "^sha256:[0-9a-f]{64}$"}
+        case:
+          $ref: "#/components/schemas/ScopedApprovalCaseRequest"
+    ScopedApprovalCaseRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - tenant_id
+        - case_id
+        - company_id
+        - purpose
+        - scope_type
+        - project_ids
+        - subject_ref
+        - subject_revision
+        - subject_hash
+        - requester_subject_id
+        - approval_policy_id
+        - correlation_id
+        - causation_id
+        - expires_at
+      properties:
+        tenant_id: {type: string, minLength: 1, maxLength: 128}
+        case_id: {type: string, format: uuid}
+        company_id: {type: string, format: uuid}
+        purpose: {type: string, enum: [DOCUMENT_SIGNOFF, ACCOUNTING_POSTING]}
+        scope_type: {type: string, enum: [COMPANY, PROJECT, PROJECT_SET]}
+        project_ids:
+          type: array
+          uniqueItems: true
+          items: {type: string, format: uuid}
+        subject_ref: {type: string, minLength: 1, maxLength: 256}
+        subject_revision: {type: integer, minimum: 1}
+        subject_hash: {type: string, pattern: "^sha256:[0-9a-f]{64}$"}
+        requester_subject_id: {type: string, minLength: 1, maxLength: 128}
+        approval_policy_id: {type: string, format: uuid}
+        correlation_id: {type: string, minLength: 1, maxLength: 128}
+        causation_id: {type: string, minLength: 1, maxLength: 128}
+        expires_at: {type: [string, "null"], format: date-time}
+    ScopedApprovalRequestReceipt:
+      type: object
+      additionalProperties: false
+      required:
+        - schema_version
+        - created
+        - tenant_id
+        - business_operation_id
+        - commit_state
+        - scoped_approval_case
+        - wc_publication
+      properties:
+        schema_version:
+          type: string
+          const: eos_scoped_approval_request_receipt.v2
+        created: {type: boolean}
+        tenant_id: {type: string}
+        business_operation_id: {type: string, format: uuid}
+        commit_state: {type: string, const: COMMITTED}
+        scoped_approval_case:
+          $ref: "#/components/schemas/ScopedApprovalCase"
+        wc_publication:
+          type: object
+          additionalProperties: false
+          required: [work_item, created]
+          properties:
+            work_item: {type: object}
+            created: {type: boolean}
+    ScopedApprovalCase:
+      type: object
+      additionalProperties: false
+      required:
+        - schema_version
+        - tenant_id
+        - case_id
+        - company_id
+        - purpose
+        - scope_type
+        - project_set_hash
+        - project_ids
+        - subject_ref
+        - subject_revision
+        - subject_hash
+        - requester_ref
+        - approval_policy_ref
+        - oa_decision_ref
+        - authorization_revision_hash
+        - authorization_checked_at
+        - state
+        - active_stage_order
+        - stage_count
+        - target_role_ref
+        - version
+        - case_hash
+        - created_business_operation_id
+        - correlation_id
+        - causation_id
+        - expires_at
+        - created_at
+        - updated_at
+        - decided_at
+        - project_bindings
+      properties:
+        schema_version: {type: string, const: eos_scoped_approval_case.v2}
+        tenant_id: {type: string}
+        case_id: {type: string, format: uuid}
+        company_id: {type: string, format: uuid}
+        purpose: {type: string, enum: [DOCUMENT_SIGNOFF, ACCOUNTING_POSTING]}
+        scope_type: {type: string, enum: [COMPANY, PROJECT, PROJECT_SET]}
+        project_set_hash: {type: string, pattern: "^sha256:[0-9a-f]{64}$"}
+        project_ids:
+          type: array
+          uniqueItems: true
+          items: {type: string, format: uuid}
+        subject_ref: {type: string}
+        subject_revision: {type: integer, minimum: 1}
+        subject_hash: {type: string, pattern: "^sha256:[0-9a-f]{64}$"}
+        requester_ref: {type: object}
+        approval_policy_ref: {type: object}
+        oa_decision_ref: {type: string}
+        authorization_revision_hash: {type: string, pattern: "^sha256:[0-9a-f]{64}$"}
+        authorization_checked_at: {type: string, format: date-time}
+        state: {type: string, enum: [PENDING, APPROVED, REJECTED, CANCELLED, EXPIRED]}
+        active_stage_order: {type: [integer, "null"], minimum: 1, maximum: 5}
+        stage_count: {type: integer, minimum: 1, maximum: 5}
+        target_role_ref: {type: [string, "null"]}
+        version: {type: integer, minimum: 1}
+        case_hash: {type: string, pattern: "^sha256:[0-9a-f]{64}$"}
+        created_business_operation_id: {type: string, format: uuid}
+        correlation_id: {type: string}
+        causation_id: {type: string}
+        expires_at: {type: [string, "null"], format: date-time}
+        created_at: {type: string, format: date-time}
+        updated_at: {type: string, format: date-time}
+        decided_at: {type: [string, "null"], format: date-time}
+        project_bindings:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [project_id, company_id, authorization_scope_hash]
+            properties:
+              project_id: {type: string, format: uuid}
+              company_id: {type: string, format: uuid}
+              authorization_scope_hash:
+                type: string
+                pattern: "^sha256:[0-9a-f]{64}$"

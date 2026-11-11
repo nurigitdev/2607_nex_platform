@@ -29,7 +29,7 @@ def test_default_registry_resolves_canonical_and_legacy_names() -> None:
     assert canonical.to_projection() == {
         "requested_operation": "PROJECT.PROJECT.GET",
         "canonical_operation": "PROJECT.PROJECT.GET",
-        "registry_version": "mybee-s1-06.v1",
+        "registry_version": "mybee-s2-02.v1",
         "alias_applied": False,
     }
     assert alias.canonical_operation == "PROJECT.PROJECT.GET"

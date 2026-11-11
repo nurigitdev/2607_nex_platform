@@ -309,6 +309,19 @@ from .reporting_maps import (
     ReportingMapRuleInput,
     SqlAlchemyEosReportingMapRepository,
 )
+from .scoped_approvals import (
+    ACCOUNTING_APPROVAL_REQUEST_OPERATION,
+    ACCOUNTING_APPROVAL_REQUEST_SCOPE,
+    EOS_SCOPED_APPROVAL_BINDING_TABLE,
+    EOS_SCOPED_APPROVAL_CASE_TABLE,
+    EosScopedApprovalError,
+    EosScopedApprovalService,
+    ScopedApprovalCaseInput,
+    SqlAlchemyEosScopedApprovalRepository,
+    deterministic_scoped_approval_work_item_id,
+    scoped_approval_payload_hash,
+    scoped_approval_work_item,
+)
 from .unified_coa import (
     EOS_COA_ACCOUNT_BINDING_TABLE,
     EOS_COA_CATEGORIES,
@@ -360,6 +373,8 @@ from .vouchers import (
 )
 
 __all__ = (
+    "ACCOUNTING_APPROVAL_REQUEST_OPERATION",
+    "ACCOUNTING_APPROVAL_REQUEST_SCOPE",
     "AE_ATTACHMENT_RESOLVE_PATH",
     "APPROVED_DOCUMENT_PROTECTED_OPERATION",
     "APPROVED_DOCUMENT_SCOPE_TYPES",
@@ -445,6 +460,8 @@ __all__ = (
     "EOS_PROJECT_WORK_ASSIGNMENT_TABLE",
     "EOS_PROJECT_WORK_CODE_ENTRY_TABLE",
     "EOS_PROJECT_WORK_CODE_SET_TABLE",
+    "EOS_SCOPED_APPROVAL_BINDING_TABLE",
+    "EOS_SCOPED_APPROVAL_CASE_TABLE",
     "EOS_TEST_RESET_CONFIRMATION",
     "EOS_VOUCHER_ATTACHMENT_PURPOSE",
     "EOS_VOUCHER_ATTACHMENT_TABLE",
@@ -577,6 +594,8 @@ __all__ = (
     "EosProjectWorkCodeError",
     "EosReportingMapError",
     "EosReportingMapService",
+    "EosScopedApprovalError",
+    "EosScopedApprovalService",
     "EosServiceCaller",
     "EosSettings",
     "EosTestDatabaseResetError",
@@ -612,6 +631,7 @@ __all__ = (
     "ReportingMapReleaseInput",
     "ReportingMapRuleInput",
     "ResolvedObjectRef",
+    "ScopedApprovalCaseInput",
     "SqlAlchemyEosAccountCatalogRepository",
     "SqlAlchemyEosAccountRepository",
     "SqlAlchemyEosAccountingPeriodRepository",
@@ -633,6 +653,7 @@ __all__ = (
     "SqlAlchemyEosProjectWorkAssignmentRepository",
     "SqlAlchemyEosProjectWorkCodeRepository",
     "SqlAlchemyEosReportingMapRepository",
+    "SqlAlchemyEosScopedApprovalRepository",
     "SqlAlchemyEosUnifiedCoaRepository",
     "SqlAlchemyEosVoucherRepository",
     "SqlAlchemyEosVoucherVerificationQuery",
@@ -645,6 +666,7 @@ __all__ = (
     "create_eos_app",
     "deterministic_business_formal_work_item_id",
     "deterministic_project_membership_id",
+    "deterministic_scoped_approval_work_item_id",
     "fx_policy_hash",
     "load_eos_settings",
     "parse_create_voucher_draft_command",
@@ -653,5 +675,7 @@ __all__ = (
     "project_work_assignment_payload_hash",
     "project_work_code_set_payload_hash",
     "reset_eos_test_database",
+    "scoped_approval_payload_hash",
+    "scoped_approval_work_item",
     "voucher_payload_hash",
 )

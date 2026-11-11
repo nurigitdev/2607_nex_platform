@@ -22,6 +22,7 @@ from .project_api import register_project_routes
 from .project_business_api import register_project_business_routes
 from .project_work_assignment_api import register_project_work_assignment_routes
 from .reporting_map_api import register_reporting_map_routes
+from .scoped_approval_api import register_scoped_approval_routes
 from .voucher_api import register_voucher_command_routes
 from .wa_project_verification import (
     EosWaProjectVerifier,
@@ -86,6 +87,7 @@ def create_eos_app(
     app.state.eos_approval_instances = dependencies.approval_instances
     app.state.eos_approval_transition_service = dependencies.approval_transition_service
     app.state.eos_approved_document_service = dependencies.approved_document_service
+    app.state.eos_scoped_approval_service = dependencies.scoped_approval_service
     app.state.eos_business_formal_wc_adapter = dependencies.business_formal_wc_adapter
     app.state.eos_vouchers = dependencies.vouchers
     app.state.eos_attachments = dependencies.attachments
@@ -96,6 +98,7 @@ def create_eos_app(
     register_voucher_command_routes(app)
     register_approval_decision_routes(app)
     register_approved_document_routes(app)
+    register_scoped_approval_routes(app)
     register_organization_routes(app)
     register_project_routes(app)
     register_project_business_routes(app)

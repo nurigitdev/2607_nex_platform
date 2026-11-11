@@ -9,7 +9,7 @@ CANONICAL_OPERATION_PATTERN: Final = re.compile(
     r"^[A-Z][A-Z0-9_]*\.[A-Z][A-Z0-9_]*\.[A-Z][A-Z0-9_]*$"
 )
 LEGACY_OPERATION_PATTERN: Final = re.compile(r"^[A-Z][A-Z0-9_.]*$")
-OPERATION_ALIAS_REGISTRY_VERSION: Final = "mybee-s1-06.v1"
+OPERATION_ALIAS_REGISTRY_VERSION: Final = "mybee-s2-02.v1"
 
 P8_CANONICAL_OPERATIONS: Final = frozenset(
     {
@@ -34,6 +34,7 @@ P8_CANONICAL_OPERATIONS: Final = frozenset(
         "FINANCE.VOUCHER_DRAFT.GET",
         "FINANCE.VOUCHER_DRAFT.LIST",
         "FINANCE.VOUCHER_DRAFT.RESOLVE_COMMAND",
+        "FINANCE.ACCOUNTING_APPROVAL.REQUEST",
     }
 )
 

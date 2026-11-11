@@ -67,6 +67,10 @@ from .reporting_maps import (
     EosReportingMapService,
     SqlAlchemyEosReportingMapRepository,
 )
+from .scoped_approvals import (
+    EosScopedApprovalService,
+    SqlAlchemyEosScopedApprovalRepository,
+)
 from .voucher_access import EosVoucherAccessService
 from .voucher_commands import EosCreateVoucherDraftService
 from .voucher_verification import SqlAlchemyEosVoucherVerificationQuery
@@ -100,6 +104,7 @@ class EosDependencies:
     approval_instances: SqlAlchemyEosApprovalInstanceRepository | None
     approval_transition_service: EosBusinessApprovalTransitionService | None
     approved_document_service: EosApprovedDocumentService | None
+    scoped_approval_service: EosScopedApprovalService | None
     business_formal_wc_adapter: EosBusinessFormalWcAdapter | None
     vouchers: SqlAlchemyEosVoucherRepository | None
     attachments: SqlAlchemyEosAttachmentRepository | None
@@ -229,6 +234,24 @@ def build_eos_dependencies(
             authorization_source,
         )
         if database_runtime is not None and authorization_source is not None
+        else None
+    )
+    scoped_approval_service = (
+        EosScopedApprovalService(
+            repository=SqlAlchemyEosScopedApprovalRepository(
+                database_runtime.session_factory
+            ),
+            coordinator=business_transactions,
+            authorization_source=authorization_source,
+            wc_client=HttpWcApprovalWorkItemClient(
+                base_url=environ.get("NEX_WC_BASE_URL", DEFAULT_WC_BASE_URL),
+                service_token=wc_token,
+            ),
+        )
+        if database_runtime is not None
+        and business_transactions is not None
+        and authorization_source is not None
+        and wc_token
         else None
     )
     project_operations = (
@@ -386,6 +409,7 @@ def build_eos_dependencies(
         approval_instances=approval_instances,
         approval_transition_service=approval_transition_service,
         approved_document_service=approved_document_service,
+        scoped_approval_service=scoped_approval_service,
         business_formal_wc_adapter=business_formal_wc_adapter,
         vouchers=vouchers,
         attachments=attachments,
