@@ -1,0 +1,70 @@
+{
+  "schema_version": "nex.mybee.fx.approved-rate-source-policy.v1",
+  "policy_profile_id": "mybee.finance.fx.smbs-market-base-manual",
+  "policy_profile_version": 1,
+  "status": "PRODUCT_FINANCE_APPROVED_SOURCE_POLICY",
+  "approved_on": "2026-11-11",
+  "approval": {
+    "principal_ref": "CODEX_SESSION_USER",
+    "asserted_role": "PRODUCT_FINANCE_OWNER",
+    "identity_assurance": "SELF_ATTESTED_BY_EXPLICIT_USER_INSTRUCTION",
+    "approval_channel": "CODEX_CONVERSATION",
+    "signature_status": "NOT_CRYPTOGRAPHICALLY_SIGNED"
+  },
+  "source": {
+    "provider_id": "SMBS_TODAY_EXRATE",
+    "source_uri": "https://www.smbs.biz/ExRate/TodayExRate.jsp",
+    "acquisition_mode": "MANUAL_APPROVED_IMPORT",
+    "source_timezone": "Asia/Seoul",
+    "calendar_ref": "KR_BUSINESS_DAY_V1",
+    "automatic_fetch_enabled": false,
+    "rate_values_included": false,
+    "legal_rate_claim": "NONE"
+  },
+  "phase1_supported_pairs": [
+    {
+      "base_currency": "USD",
+      "quote_currency": "KRW"
+    }
+  ],
+  "eos_policy_defaults": {
+    "purpose": "TRANSACTION_SPOT",
+    "rate_kind": "MARKET_BASE",
+    "publication_selector": "FINAL",
+    "allow_previous_business_day": true,
+    "max_staleness_business_days": 1,
+    "rounding_mode": "HALF_EVEN",
+    "rate_decimal_scale": 6
+  },
+  "required_runtime_bindings": [
+    "company_id",
+    "policy_id",
+    "effective_from",
+    "approved_by",
+    "approval_proof_hash"
+  ],
+  "source_snapshot_requirements": [
+    "source_record_id",
+    "source_uri",
+    "source_sha256",
+    "rate_date",
+    "rate_as_of",
+    "published_at",
+    "publication_issue",
+    "quote_unit",
+    "published_rate"
+  ],
+  "runtime_boundaries": {
+    "policy_endpoint": "/internal/v2/finance/fx-rate-policies/approved",
+    "rate_import_endpoint": "/internal/v2/finance/fx-rate-batches",
+    "fresh_oa_scope": "finance:fx:publish",
+    "service_audience": "nex-eos",
+    "service_scope": "service:call"
+  },
+  "deferred_automation": {
+    "status": "BACKLOG",
+    "item": "SMBS_AUTOMATIC_RATE_SOURCE_ADAPTER",
+    "admission_rule": "SOURCE_FORMAT_AND_LEGAL_USE_MUST_BE_REVIEWED_BEFORE_ENABLEMENT"
+  },
+  "policy_contract_hash": "sha256:c07d11257c025c192b9de7e8d0df9989688aa4a3491b7426288534135384bb85"
+}

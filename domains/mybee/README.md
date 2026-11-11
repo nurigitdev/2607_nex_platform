@@ -32,6 +32,13 @@ All integration uses canonical versioned contracts. Direct service-private
 Python imports, cross-service database access, and a second MyBee runtime are
 forbidden.
 
+Approved finance bootstrap inputs are consumed through
+`mybee_ax.integrations.finance_inputs`. The MB1-03 bundle binds the admitted
+COA source manifest and the manual FX source-policy profile, then emits only
+service-token-protected EOS API requests. It never opens an EOS database,
+publishes COA automatically, fetches the external FX page automatically, or
+stores a fabricated exchange-rate value.
+
 The revisioned D12 source catalog lives at
 `catalog/work_codes/catalog.v1.json`. It is source-authority attested and
 content-digest pinned, but deliberately has no active API or NSL Tool binding;

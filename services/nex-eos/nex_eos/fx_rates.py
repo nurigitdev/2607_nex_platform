@@ -10,6 +10,7 @@ from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from nex_runtime.semantic_hashes import (
+    eos_fx_policy_hash_ref,
     semantic_sha256_hash_ref,
     validate_hash_ref,
 )
@@ -640,7 +641,7 @@ class EosFxRateService:
 
 
 def fx_policy_hash(value: Mapping[str, Any]) -> str:
-    return semantic_sha256_hash_ref({"domain": "EOS-FX-POLICY-V1", **dict(value)})
+    return eos_fx_policy_hash_ref(value)
 
 
 def _policy_input(tenant_id: str, value: object) -> FxRatePolicyInput:

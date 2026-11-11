@@ -1,0 +1,167 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/mybee/approved-rate-source-policy.v1.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "policy_profile_id",
+    "policy_profile_version",
+    "status",
+    "approved_on",
+    "approval",
+    "source",
+    "phase1_supported_pairs",
+    "eos_policy_defaults",
+    "required_runtime_bindings",
+    "source_snapshot_requirements",
+    "runtime_boundaries",
+    "deferred_automation",
+    "policy_contract_hash"
+  ],
+  "properties": {
+    "schema_version": {"const": "nex.mybee.fx.approved-rate-source-policy.v1"},
+    "policy_profile_id": {"const": "mybee.finance.fx.smbs-market-base-manual"},
+    "policy_profile_version": {"const": 1},
+    "status": {"const": "PRODUCT_FINANCE_APPROVED_SOURCE_POLICY"},
+    "approved_on": {"type": "string", "format": "date"},
+    "approval": {"$ref": "#/$defs/approval"},
+    "source": {"$ref": "#/$defs/source"},
+    "phase1_supported_pairs": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {"$ref": "#/$defs/currency_pair"}
+    },
+    "eos_policy_defaults": {"$ref": "#/$defs/policy_defaults"},
+    "required_runtime_bindings": {
+      "const": [
+        "company_id",
+        "policy_id",
+        "effective_from",
+        "approved_by",
+        "approval_proof_hash"
+      ]
+    },
+    "source_snapshot_requirements": {
+      "const": [
+        "source_record_id",
+        "source_uri",
+        "source_sha256",
+        "rate_date",
+        "rate_as_of",
+        "published_at",
+        "publication_issue",
+        "quote_unit",
+        "published_rate"
+      ]
+    },
+    "runtime_boundaries": {"$ref": "#/$defs/runtime_boundaries"},
+    "deferred_automation": {"$ref": "#/$defs/deferred_automation"},
+    "policy_contract_hash": {"$ref": "#/$defs/hash_ref"}
+  },
+  "$defs": {
+    "hash_ref": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "approval": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "principal_ref",
+        "asserted_role",
+        "identity_assurance",
+        "approval_channel",
+        "signature_status"
+      ],
+      "properties": {
+        "principal_ref": {"const": "CODEX_SESSION_USER"},
+        "asserted_role": {"const": "PRODUCT_FINANCE_OWNER"},
+        "identity_assurance": {"const": "SELF_ATTESTED_BY_EXPLICIT_USER_INSTRUCTION"},
+        "approval_channel": {"const": "CODEX_CONVERSATION"},
+        "signature_status": {"const": "NOT_CRYPTOGRAPHICALLY_SIGNED"}
+      }
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "provider_id",
+        "source_uri",
+        "acquisition_mode",
+        "source_timezone",
+        "calendar_ref",
+        "automatic_fetch_enabled",
+        "rate_values_included",
+        "legal_rate_claim"
+      ],
+      "properties": {
+        "provider_id": {"const": "SMBS_TODAY_EXRATE"},
+        "source_uri": {"const": "https://www.smbs.biz/ExRate/TodayExRate.jsp"},
+        "acquisition_mode": {"const": "MANUAL_APPROVED_IMPORT"},
+        "source_timezone": {"const": "Asia/Seoul"},
+        "calendar_ref": {"const": "KR_BUSINESS_DAY_V1"},
+        "automatic_fetch_enabled": {"const": false},
+        "rate_values_included": {"const": false},
+        "legal_rate_claim": {"const": "NONE"}
+      }
+    },
+    "currency_pair": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["base_currency", "quote_currency"],
+      "properties": {
+        "base_currency": {"type": "string", "pattern": "^[A-Z]{3}$"},
+        "quote_currency": {"type": "string", "pattern": "^[A-Z]{3}$"}
+      }
+    },
+    "policy_defaults": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "purpose",
+        "rate_kind",
+        "publication_selector",
+        "allow_previous_business_day",
+        "max_staleness_business_days",
+        "rounding_mode",
+        "rate_decimal_scale"
+      ],
+      "properties": {
+        "purpose": {"const": "TRANSACTION_SPOT"},
+        "rate_kind": {"const": "MARKET_BASE"},
+        "publication_selector": {"const": "FINAL"},
+        "allow_previous_business_day": {"const": true},
+        "max_staleness_business_days": {"type": "integer", "minimum": 0, "maximum": 10},
+        "rounding_mode": {"const": "HALF_EVEN"},
+        "rate_decimal_scale": {"type": "integer", "minimum": 0, "maximum": 12}
+      }
+    },
+    "runtime_boundaries": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "policy_endpoint",
+        "rate_import_endpoint",
+        "fresh_oa_scope",
+        "service_audience",
+        "service_scope"
+      ],
+      "properties": {
+        "policy_endpoint": {"const": "/internal/v2/finance/fx-rate-policies/approved"},
+        "rate_import_endpoint": {"const": "/internal/v2/finance/fx-rate-batches"},
+        "fresh_oa_scope": {"const": "finance:fx:publish"},
+        "service_audience": {"const": "nex-eos"},
+        "service_scope": {"const": "service:call"}
+      }
+    },
+    "deferred_automation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "item", "admission_rule"],
+      "properties": {
+        "status": {"const": "BACKLOG"},
+        "item": {"const": "SMBS_AUTOMATIC_RATE_SOURCE_ADAPTER"},
+        "admission_rule": {"const": "SOURCE_FORMAT_AND_LEGAL_USE_MUST_BE_REVIEWED_BEFORE_ENABLEMENT"}
+      }
+    }
+  }
+}
