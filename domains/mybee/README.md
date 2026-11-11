@@ -39,6 +39,14 @@ service-token-protected EOS API requests. It never opens an EOS database,
 publishes COA automatically, fetches the external FX page automatically, or
 stores a fabricated exchange-rate value.
 
+MB1-03A adds the separately invoked one-shot
+`scripts/operations/import_smbs_fx_once.py` operator adapter. Its default path
+parses an operator-retained SMBS source file and produces a dry-run EOS import
+request. Direct HTTP capture requires `--allow-insecure-http`, preserves the
+raw response, and records `HTTP_UNVERIFIED`; it does not enable scheduled or
+background acquisition. Admitted snapshots remain immutable EOS history and
+are readable through `FINANCE.FX_RATE.HISTORY`.
+
 The revisioned D12 source catalog lives at
 `catalog/work_codes/catalog.v1.json`. It is source-authority attested and
 content-digest pinned, but deliberately has no active API or NSL Tool binding;

@@ -70,7 +70,7 @@ def test_mb1_03_bundle_preserves_approved_coa_and_excludes_rate_values() -> None
     assert bundle.coa_manifest["company_adoption_allowed"] is False
     assert bundle.fx_policy["source"] == {
         "provider_id": "SMBS_TODAY_EXRATE",
-        "source_uri": "https://www.smbs.biz/ExRate/TodayExRate.jsp",
+        "source_uri": "http://www.smbs.co.kr/ExRate/TodayExRate.jsp",
         "acquisition_mode": "MANUAL_APPROVED_IMPORT",
         "source_timezone": "Asia/Seoul",
         "calendar_ref": "KR_BUSINESS_DAY_V1",
@@ -193,9 +193,10 @@ def test_mb1_03_static_openapi_exposes_provider_consumer_contracts() -> None:
         ),
         "/internal/v2/finance/fx-rate-batches": "FINANCE.FX_RATE.IMPORT",
         "/internal/v2/finance/fx-rates:resolve": "FINANCE.FX_RATE.RESOLVE",
+        "/internal/v2/finance/fx-rate-snapshots": "FINANCE.FX_RATE.HISTORY",
     }
     for path, operation in expected.items():
-        method = "get" if path.endswith(":resolve") else "post"
+        method = "get" if operation.endswith(("RESOLVE", "HISTORY")) else "post"
         assert spec["paths"][path][method]["operationId"] == operation
     assert (
         spec["paths"]["/internal/v2/finance/fx-rate-policies/approved"]["post"][

@@ -13,7 +13,7 @@
   },
   "source": {
     "provider_id": "SMBS_TODAY_EXRATE",
-    "source_uri": "https://www.smbs.biz/ExRate/TodayExRate.jsp",
+    "source_uri": "http://www.smbs.co.kr/ExRate/TodayExRate.jsp",
     "acquisition_mode": "MANUAL_APPROVED_IMPORT",
     "source_timezone": "Asia/Seoul",
     "calendar_ref": "KR_BUSINESS_DAY_V1",
@@ -66,5 +66,5 @@
     "item": "SMBS_AUTOMATIC_RATE_SOURCE_ADAPTER",
     "admission_rule": "SOURCE_FORMAT_AND_LEGAL_USE_MUST_BE_REVIEWED_BEFORE_ENABLEMENT"
   },
-  "policy_contract_hash": "sha256:c07d11257c025c192b9de7e8d0df9989688aa4a3491b7426288534135384bb85"
+  "policy_contract_hash": "sha256:4887accb8c9e26cfc6b546b763b743ce3ae4c10ff673995a1bb00745b813adff"
 }

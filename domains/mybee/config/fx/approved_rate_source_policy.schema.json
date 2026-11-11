@@ -95,7 +95,7 @@
       ],
       "properties": {
         "provider_id": {"const": "SMBS_TODAY_EXRATE"},
-        "source_uri": {"const": "https://www.smbs.biz/ExRate/TodayExRate.jsp"},
+        "source_uri": {"const": "http://www.smbs.co.kr/ExRate/TodayExRate.jsp"},
         "acquisition_mode": {"const": "MANUAL_APPROVED_IMPORT"},
         "source_timezone": {"const": "Asia/Seoul"},
         "calendar_ref": {"const": "KR_BUSINESS_DAY_V1"},

@@ -88,7 +88,7 @@ distance helper without changing the snapshot or policy identity.
 
 The intended source currently identified by the product owner is:
 
-`https://www.smbs.biz/ExRate/TodayExRate.jsp`
+`http://www.smbs.co.kr/ExRate/TodayExRate.jsp`
 
 S1-04 deliberately does not scrape or call that page from accounting runtime.
 The current production-shaped path is a manually reviewed batch passed through
@@ -113,6 +113,11 @@ import contract and close these items before automatic refresh is admitted:
    LLM-generated or ad hoc online rate.
 
 Until that backlog is closed, automatic source refresh is not claimed.
+
+MB1-03A later added an explicitly invoked one-time operator adapter and history
+read API. Scheduled refresh remains deferred; because the source is HTTP-only,
+direct capture is recorded as `HTTP_UNVERIFIED` and the raw response must be
+retained.
 
 ## Acceptance Evidence
 

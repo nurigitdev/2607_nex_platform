@@ -428,6 +428,87 @@ class SqlAlchemyEosFxRateRepository:
             "staleness_business_days": staleness,
         }
 
+    def list_rate_history(
+        self,
+        *,
+        tenant_id: str,
+        company_id: str,
+        purpose: str,
+        base_currency: str,
+        quote_currency: str,
+        date_from: date,
+        date_to: date,
+        limit: int = 200,
+    ) -> list[dict[str, Any]]:
+        tenant_id = _scoped_id("tenant_id", tenant_id)
+        company_id = _uuid("company_id", company_id)
+        purpose = _choice("purpose", purpose, FX_POLICY_PURPOSES)
+        base_currency = _currency("base_currency", base_currency)
+        quote_currency = _currency("quote_currency", quote_currency)
+        if base_currency == quote_currency:
+            raise _invalid("base_currency and quote_currency must differ")
+        date_from = _date("date_from", date_from)
+        date_to = _date("date_to", date_to)
+        if date_to < date_from:
+            raise _invalid("date_to must not precede date_from")
+        limit = _bounded_int("limit", limit, 1, 500)
+        join_condition = (
+            (
+                EOS_FX_RATE_POLICY_TABLE.c.tenant_id
+                == EOS_FX_RATE_SNAPSHOT_TABLE.c.tenant_id
+            )
+            & (
+                EOS_FX_RATE_POLICY_TABLE.c.company_id
+                == EOS_FX_RATE_SNAPSHOT_TABLE.c.company_id
+            )
+            & (
+                EOS_FX_RATE_POLICY_TABLE.c.policy_id
+                == EOS_FX_RATE_SNAPSHOT_TABLE.c.rate_policy_id
+            )
+            & (
+                EOS_FX_RATE_POLICY_TABLE.c.version
+                == EOS_FX_RATE_SNAPSHOT_TABLE.c.rate_policy_version
+            )
+        )
+        try:
+            with self._session_factory() as session:
+                rows = (
+                    session.execute(
+                        select(
+                            EOS_FX_RATE_SNAPSHOT_TABLE,
+                            EOS_FX_RATE_POLICY_TABLE.c.purpose.label("purpose"),
+                            EOS_FX_RATE_POLICY_TABLE.c.policy_hash.label("policy_hash"),
+                        )
+                        .select_from(
+                            EOS_FX_RATE_SNAPSHOT_TABLE.join(
+                                EOS_FX_RATE_POLICY_TABLE, join_condition
+                            )
+                        )
+                        .where(
+                            EOS_FX_RATE_SNAPSHOT_TABLE.c.tenant_id == tenant_id,
+                            EOS_FX_RATE_SNAPSHOT_TABLE.c.company_id == company_id,
+                            EOS_FX_RATE_POLICY_TABLE.c.purpose == purpose,
+                            EOS_FX_RATE_SNAPSHOT_TABLE.c.base_currency == base_currency,
+                            EOS_FX_RATE_SNAPSHOT_TABLE.c.quote_currency
+                            == quote_currency,
+                            EOS_FX_RATE_SNAPSHOT_TABLE.c.approved_state == "APPROVED",
+                            EOS_FX_RATE_SNAPSHOT_TABLE.c.rate_date >= date_from,
+                            EOS_FX_RATE_SNAPSHOT_TABLE.c.rate_date <= date_to,
+                        )
+                        .order_by(
+                            EOS_FX_RATE_SNAPSHOT_TABLE.c.rate_date.desc(),
+                            EOS_FX_RATE_SNAPSHOT_TABLE.c.published_at.desc(),
+                            EOS_FX_RATE_SNAPSHOT_TABLE.c.rate_snapshot_id,
+                        )
+                        .limit(limit)
+                    )
+                    .mappings()
+                    .all()
+                )
+        except SQLAlchemyError as exc:
+            raise _unavailable() from exc
+        return [_wire(row) for row in rows]
+
     @staticmethod
     def _lock_policy_scope(session: Session, record: Mapping[str, Any]) -> None:
         if session.bind is not None and session.bind.dialect.name == "postgresql":
@@ -608,6 +689,34 @@ class EosFxRateService:
             desired_rate_date=desired_rate_date,
             as_of=as_of,
         )
+
+    def list_rate_history(
+        self,
+        *,
+        tenant_id: str,
+        requester_subject_id: str,
+        company_id: str,
+        purpose: str,
+        base_currency: str,
+        quote_currency: str,
+        date_from: date,
+        date_to: date,
+        limit: int = 200,
+    ) -> dict[str, Any]:
+        self._authorize(tenant_id, requester_subject_id, FINANCE_FX_READ_SCOPE)
+        return {
+            "operation": "FINANCE.FX_RATE.HISTORY",
+            "snapshots": self._repository.list_rate_history(
+                tenant_id=tenant_id,
+                company_id=company_id,
+                purpose=purpose,
+                base_currency=base_currency,
+                quote_currency=quote_currency,
+                date_from=date_from,
+                date_to=date_to,
+                limit=limit,
+            ),
+        }
 
     def _authorize(self, tenant_id: str, subject_id: str, scope: str) -> None:
         tenant_id = _scoped_id("tenant_id", tenant_id)

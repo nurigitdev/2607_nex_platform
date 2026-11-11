@@ -45,7 +45,7 @@ POLICY_ID = "f2000000-0000-4000-8000-000000000001"
 SNAPSHOT_ID = "f3000000-0000-4000-8000-000000000001"
 PROOF = "sha256:" + "a" * 64
 SOURCE_HASH = "sha256:" + "b" * 64
-SOURCE_URI = "https://www.smbs.biz/ExRate/TodayExRate.jsp"
+SOURCE_URI = "http://www.smbs.co.kr/ExRate/TodayExRate.jsp"
 
 
 class AuthorizationSource:
@@ -403,6 +403,19 @@ def test_service_batch_authorization_validation_and_resolution(runtime) -> None:
         desired_rate_date=date(2026, 11, 9),
     )
     assert resolved["normalized_rate"] == "9.605"
+    history = service.list_rate_history(
+        tenant_id=TENANT_ID,
+        requester_subject_id=SUBJECT_ID,
+        company_id=COMPANY_ID,
+        purpose="TRANSACTION_SPOT",
+        base_currency="JPY",
+        quote_currency="KRW",
+        date_from=date(2026, 11, 1),
+        date_to=date(2026, 11, 30),
+    )
+    assert history["operation"] == "FINANCE.FX_RATE.HISTORY"
+    assert history["snapshots"][0]["rate_date"] == "2026-11-09"
+    assert history["snapshots"][0]["purpose"] == "TRANSACTION_SPOT"
     with pytest.raises(EosFxRateError, match="non-empty array"):
         service.import_rates(
             tenant_id=TENANT_ID,
@@ -483,6 +496,21 @@ def test_signed_fx_routes_require_trust_and_map_domain_errors(runtime) -> None:
     )
     assert resolved.status_code == 200
     assert resolved.json()["normalized_rate"] == "9.605"
+    history = client.get(
+        "/internal/v2/finance/fx-rate-snapshots",
+        headers=trusted,
+        params={
+            "company_id": COMPANY_ID,
+            "purpose": "TRANSACTION_SPOT",
+            "base_currency": "JPY",
+            "quote_currency": "KRW",
+            "date_from": "2026-11-01",
+            "date_to": "2026-11-30",
+        },
+    )
+    assert history.status_code == 200
+    assert history.json()["operation"] == "FINANCE.FX_RATE.HISTORY"
+    assert len(history.json()["snapshots"]) == 1
     authorization.value = {
         "active": True,
         "tenant_id": TENANT_ID,
@@ -496,6 +524,58 @@ def test_signed_fx_routes_require_trust_and_map_domain_errors(runtime) -> None:
         json={"snapshots": [_snapshot_payload(_snapshot())]},
     )
     assert denied.status_code == 403
+
+
+def test_rate_history_is_tenant_scoped_ordered_and_bounded(runtime) -> None:
+    _engine, _factory, repository, _authorization, _service = runtime
+    repository.create_approved_policy(_policy())
+    repository.import_approved_snapshot(_snapshot())
+    repository.import_approved_snapshot(
+        _snapshot(
+            snapshot_id=str(uuid.uuid4()),
+            desired=date(2026, 11, 10),
+            rate_date=date(2026, 11, 10),
+            source_record_id="smbs:2026-11-10:jpy:final",
+            published_rate=Decimal("961.50"),
+        )
+    )
+
+    history = repository.list_rate_history(
+        tenant_id=TENANT_ID,
+        company_id=COMPANY_ID,
+        purpose="TRANSACTION_SPOT",
+        base_currency="JPY",
+        quote_currency="KRW",
+        date_from=date(2026, 11, 1),
+        date_to=date(2026, 11, 30),
+        limit=1,
+    )
+
+    assert len(history) == 1
+    assert history[0]["rate_date"] == "2026-11-10"
+    assert history[0]["policy_hash"] == _policy().policy_hash
+    assert (
+        repository.list_rate_history(
+            tenant_id=TENANT_ID,
+            company_id=COMPANY_ID,
+            purpose="MONETARY_CLOSE",
+            base_currency="JPY",
+            quote_currency="KRW",
+            date_from=date(2026, 11, 1),
+            date_to=date(2026, 11, 30),
+        )
+        == []
+    )
+    with pytest.raises(EosFxRateError, match="date_to"):
+        repository.list_rate_history(
+            tenant_id=TENANT_ID,
+            company_id=COMPANY_ID,
+            purpose="TRANSACTION_SPOT",
+            base_currency="JPY",
+            quote_currency="KRW",
+            date_from=date(2026, 11, 30),
+            date_to=date(2026, 11, 1),
+        )
 
 
 def test_first_publication_and_bounded_policy_intervals(runtime) -> None:
@@ -730,6 +810,17 @@ def test_actual_postgres_fx_policy_snapshot_concurrency_and_zero_residue() -> No
             desired_rate_date=date(2026, 11, 9),
         )
         assert resolved["source_sha256"] == SOURCE_HASH
+        history = repository.list_rate_history(
+            tenant_id=TENANT_ID,
+            company_id=COMPANY_ID,
+            purpose="TRANSACTION_SPOT",
+            base_currency="JPY",
+            quote_currency="KRW",
+            date_from=date(2026, 11, 1),
+            date_to=date(2026, 11, 30),
+        )
+        assert len(history) == 1
+        assert history[0]["rate_snapshot_id"] == SNAPSHOT_ID
         with (
             psycopg.connect(psycopg_database_url(scoped_url)) as connection,
             connection.cursor() as cursor,

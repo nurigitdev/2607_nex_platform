@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: NeX Enterprise Operations System API
-  version: 2.1.0-p8-s105-mybee-mb1-03
+  version: 2.1.0-p8-s105-mybee-mb1-03a
   description: >-
     NeX-EOS service shell and canonical Voucher Draft command contract. The
     P8-S18 path is contract-first and becomes executable in P8-S19.
@@ -565,6 +565,59 @@ paths:
         "404": {description: No eligible approved rate is available.}
         "409": {description: More than one policy is effective.}
         "422": {description: "Currency, purpose, date, or as-of value is invalid."}
+        "503": {description: OA authorization or EOS persistence is unavailable.}
+  /internal/v2/finance/fx-rate-snapshots:
+    get:
+      operationId: FINANCE.FX_RATE.HISTORY
+      tags: [Finance]
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes: [service:call]
+      x-nex-business-scope: finance:fx:read
+      parameters:
+        - name: company_id
+          in: query
+          required: true
+          schema: {type: string, format: uuid}
+        - name: purpose
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [TRANSACTION_SPOT, MONETARY_CLOSE, SETTLEMENT_REFERENCE, TAX_VALUATION]
+        - name: base_currency
+          in: query
+          required: true
+          schema: {type: string, pattern: "^[A-Z]{3}$"}
+        - name: quote_currency
+          in: query
+          required: true
+          schema: {type: string, pattern: "^[A-Z]{3}$"}
+        - name: date_from
+          in: query
+          required: true
+          schema: {type: string, format: date}
+        - name: date_to
+          in: query
+          required: true
+          schema: {type: string, format: date}
+        - name: limit
+          in: query
+          required: false
+          schema: {type: integer, minimum: 1, maximum: 500, default: 200}
+        - name: X-NeX-Tenant-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+        - name: X-NeX-Subject-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+      responses:
+        "200": {description: Ordered immutable FX RateSnapshot history.}
+        "401": {description: Service claim is missing or invalid.}
+        "403": {description: Fresh FX read authority is denied.}
+        "422": {description: "Currency, purpose, date range, or limit is invalid."}
         "503": {description: OA authorization or EOS persistence is unavailable.}
   /internal/v2/finance/coa/releases/{definition_release_id}/publish:
     post:

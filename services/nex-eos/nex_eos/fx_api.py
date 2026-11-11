@@ -95,6 +95,40 @@ def register_fx_rate_routes(app: FastAPI) -> None:
             ),
         )
 
+    @app.get(
+        "/internal/v2/finance/fx-rate-snapshots",
+        response_model=None,
+        operation_id="FINANCE.FX_RATE.HISTORY",
+    )
+    def list_fx_rate_history(
+        request: Request,
+        company_id: str,
+        purpose: str,
+        base_currency: str,
+        quote_currency: str,
+        date_from: date,
+        date_to: date,
+        limit: int = 200,
+        tenant_id: str = Header(alias="X-NeX-Tenant-Id"),
+        requester_subject_id: str = Header(alias="X-NeX-Subject-Id"),
+        authorization: str | None = Header(default=None),
+    ):
+        return _invoke(
+            request,
+            authorization,
+            lambda service: service.list_rate_history(
+                tenant_id=tenant_id,
+                requester_subject_id=requester_subject_id,
+                company_id=company_id,
+                purpose=purpose,
+                base_currency=base_currency,
+                quote_currency=quote_currency,
+                date_from=date_from,
+                date_to=date_to,
+                limit=limit,
+            ),
+        )
+
 
 def _invoke(
     request: Request,
