@@ -1,0 +1,81 @@
+{
+  "schema_version": "nex.mybee.w30-ca01.entry-decision.v1",
+  "decision_id": "MYBEE-W30-CA01-W20-TO-W30-ENTRY-v1.0",
+  "decision_date": "2026-11-11",
+  "status": "DESIGN_CLOSED_RUNTIME_ENTRY_CONDITIONAL",
+  "source_snapshot": {
+    "repository": "nurigitdev/2607_nex_platform",
+    "branch": "codex/mybee-phase1-implementation",
+    "commit": "55597935",
+    "highest_eos_migration": "2529_eos_approved_document_consumption",
+    "refresh_before_implementation": true
+  },
+  "w20_status": {
+    "packet_implementations": "CLOSED",
+    "vertical_document_signoff_journey": "CONDITIONAL",
+    "blocking_gap": "SCOPED_DOCUMENT_SIGNOFF_FINALIZATION_MISSING"
+  },
+  "source_facts": {
+    "scoped_document_signoff_request_exists": true,
+    "scoped_accounting_decision_exists": true,
+    "document_signoff_decision_is_rejected_by_accounting_service": true,
+    "approved_document_get_exists": true,
+    "approved_document_public_create_exists": false,
+    "voucher_candidate_v2_exists": false,
+    "voucher_v1_must_remain_unchanged": true
+  },
+  "mandatory_entry_slice": {
+    "slice_id": "W30-S00",
+    "title": "Scoped Document Signoff Finalization",
+    "dependencies": [
+      "S2-01",
+      "S2-02",
+      "MB2-01"
+    ],
+    "prohibited_shortcuts": [
+      "ROUTE_DOCUMENT_SIGNOFF_THROUGH_ACCOUNTING_APPROVAL",
+      "REUSE_ACCOUNTING_EVIDENCE_AS_BUSINESS_PROOF",
+      "SYNTHETIC_OR_UNRELATED_PROJECT",
+      "MYBEE_DIRECT_EOS_OR_WC_DATABASE_WRITE",
+      "FIXTURE_ONLY_PRODUCTION_ACCEPTANCE"
+    ],
+    "required_runtime_outcome": "WC_APPROVED_TO_IMMUTABLE_SCOPED_EVIDENCE_AND_APPROVED_DOCUMENT_ENVELOPE"
+  },
+  "migration_reservations": [
+    {
+      "version": "2530_eos_document_signoff_finalization",
+      "owner": "W30-S00",
+      "status": "RESERVED_NOT_CREATED_NOT_APPLIED"
+    },
+    {
+      "version": "2531_eos_voucher_candidate_v2",
+      "owner": "S3-01",
+      "status": "RESERVED_NOT_CREATED_NOT_APPLIED"
+    }
+  ],
+  "w30_order": [
+    "W30-S00",
+    "S3-01",
+    "S3-02",
+    "S3-03",
+    "MB3-01"
+  ],
+  "wave_normalization": {
+    "packet_id": "MB3-01",
+    "old_wave": "W31",
+    "canonical_wave": "W30"
+  },
+  "runtime_boundaries": {
+    "w30_creates_posted_journal": false,
+    "w30_changes_voucher_v1": false,
+    "mybee_direct_sql_allowed": false,
+    "remote_model_provider_required": false
+  },
+  "gate_sequence": [
+    "W30-S00_POSTGRES_AND_CHECKPOINT",
+    "S3-01_POSTGRES_AND_G_V1",
+    "S3-02_CHECKPOINT",
+    "S3-03_POSTGRES_REPLAY_SOD",
+    "MB3-01_FULL_GATE_ZERO_RESIDUE"
+  ]
+}
