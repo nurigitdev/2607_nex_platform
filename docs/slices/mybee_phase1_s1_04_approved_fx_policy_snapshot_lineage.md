@@ -39,21 +39,25 @@ cannot silently choose a winner.
 
 ### `eos_fx_rate_snapshot`
 
-The snapshot stores the published rate and quote unit separately from the
-normalized per-one-unit rate. It also retains the desired date and selected
-business date, source record and publication issue, FIRST/FINAL indicator,
-source timestamps, calendar, timezone, URI, raw response hash, structured
-provenance, and canonical snapshot hash.
+MB1-03B adds tenant-neutral `eos_fx_market_rate`, which stores the published
+rate and quote unit, source record and publication issue, FIRST/FINAL
+indicator, source timestamps, timezone, URI, raw response hash, and structured
+provenance once per provider observation. `eos_fx_rate_snapshot` is now the
+tenant/company/policy adoption: it references one market observation and keeps
+the normalized rate, desired and effective business dates, calendar, approval
+state, and canonical snapshot hash.
 
-Both policy and snapshot tables reject direct PostgreSQL `UPDATE` and `DELETE`.
+Policy, market-observation, and snapshot tables reject direct PostgreSQL
+`UPDATE` and `DELETE`.
 Correction or retraction therefore requires a later controlled supersession
 contract; it cannot rewrite evidence already referenced by an accounting
 candidate.
 
-Source import is idempotent on the source provider/record/publication/pair/date
-identity. Exact replay returns the admitted snapshot, including when the caller
-proposes a new local snapshot UUID. Different content at the same source
-identity is a conflict and never overwrites the approved row.
+Source import is globally idempotent on the source
+provider/record/publication/pair/date identity. Exact source replay reuses the
+same `market_rate_id`; different content at that identity is a conflict. Each
+tenant and LegalEntity can independently adopt that observation under its own
+approved policy without duplicating source evidence.
 
 ## API and Authorization
 

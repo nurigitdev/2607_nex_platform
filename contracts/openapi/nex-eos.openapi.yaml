@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: NeX Enterprise Operations System API
-  version: 2.1.0-p8-s105-mybee-mb1-03a
+  version: 2.1.0-p8-s105-mybee-mb1-03b
   description: >-
     NeX-EOS service shell and canonical Voucher Draft command contract. The
     P8-S18 path is contract-first and becomes executable in P8-S19.
@@ -486,6 +486,11 @@ paths:
   /internal/v2/finance/fx-rate-batches:
     post:
       operationId: FINANCE.FX_RATE.IMPORT
+      description: >-
+        Admits one tenant-neutral market observation per provider source identity,
+        then records an immutable tenant/company/policy adoption. Exact source
+        observations are shared across tenants while accounting authority and
+        resolution remain tenant scoped.
       tags: [Finance]
       security:
         - serviceBearer: []
@@ -508,7 +513,7 @@ paths:
             schema:
               $ref: "#/components/schemas/FxRateBatchImportCommand"
       responses:
-        "201": {description: Approved source snapshots imported.}
+        "201": {description: Global market observations admitted and tenant snapshots adopted.}
         "401": {description: Service claim is missing or invalid.}
         "403": {description: Fresh FX publication authority is denied.}
         "404": {description: Approved FX policy is absent.}

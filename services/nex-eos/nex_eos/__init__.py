@@ -153,6 +153,7 @@ from .database_reset import (
     reset_eos_test_database,
 )
 from .fx_rates import (
+    EOS_FX_MARKET_RATE_TABLE,
     EOS_FX_RATE_POLICY_TABLE,
     EOS_FX_RATE_SNAPSHOT_TABLE,
     FINANCE_FX_PUBLISH_SCOPE,
@@ -360,6 +361,7 @@ __all__ = (
     "EOS_DEFAULT_APPROVER_POLICY",
     "EOS_DEFAULT_RISK_POSITION_TYPES",
     "EOS_EVENT_TYPES",
+    "EOS_FX_MARKET_RATE_TABLE",
     "EOS_FX_RATE_POLICY_TABLE",
     "EOS_FX_RATE_SNAPSHOT_TABLE",
     "EOS_IDEMPOTENCY_TABLE",

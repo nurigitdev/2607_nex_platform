@@ -116,3 +116,11 @@ The protected PostgreSQL smoke verified database/user identity, applied the
 complete EOS migration chain through `2522` in an isolated schema, exercised
 policy and snapshot admission, history query, concurrency and immutable
 mutation guards, then dropped the schema and confirmed zero residue.
+
+## MB1-03B Amendment
+
+MB1-03B later split the physical persistence model. Provider publication data
+now lives once in tenant-neutral `eos_fx_market_rate`; the existing
+`eos_fx_rate_snapshot` became an immutable tenant/company/policy adoption that
+references the shared observation. The MB1-03A request and operator CLI remain
+compatible and the EOS repository performs both steps atomically.

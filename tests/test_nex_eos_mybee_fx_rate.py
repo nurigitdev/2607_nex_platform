@@ -13,7 +13,9 @@ import psycopg
 import pytest
 from fastapi.testclient import TestClient
 from nex_eos import (
+    EOS_FX_MARKET_RATE_TABLE,
     EOS_FX_RATE_POLICY_TABLE,
+    EOS_FX_RATE_SNAPSHOT_TABLE,
     EOS_LEGAL_ENTITY_TABLE,
     EOS_METADATA,
     EosFxRateError,
@@ -30,7 +32,7 @@ from nex_eos import (
 from nex_eos.authorization import AuthorizationSubjectDenied
 from nex_runtime import issue_mock_service_token, psycopg_database_url
 from psycopg import sql
-from run_migrations import run_service_migrations
+from run_migrations import load_migrations, run_service_migrations
 from sqlalchemy import create_engine, make_url, select
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
@@ -41,6 +43,9 @@ POSTGRES_SMOKE = os.getenv("NEX_EOS_MYBEE_S1_04_POSTGRES_SMOKE") == "1"
 TENANT_ID = "tenant-a"
 SUBJECT_ID = "fx-owner"
 COMPANY_ID = "f1000000-0000-4000-8000-000000000001"
+COMPANY_B_ID = "f1000000-0000-4000-8000-000000000002"
+TENANT_B_ID = "tenant-b"
+COMPANY_C_ID = "f1000000-0000-4000-8000-000000000003"
 POLICY_ID = "f2000000-0000-4000-8000-000000000001"
 SNAPSHOT_ID = "f3000000-0000-4000-8000-000000000001"
 PROOF = "sha256:" + "a" * 64
@@ -85,12 +90,18 @@ def runtime():
     engine.dispose()
 
 
-def _seed_company(factory) -> None:
+def _seed_company(
+    factory,
+    *,
+    tenant_id: str = TENANT_ID,
+    company_id: str = COMPANY_ID,
+    company_code: str = "NEXKR",
+) -> None:
     SqlAlchemyEosLegalEntityRepository(factory).create_legal_entity(
         LegalEntityInput(
-            tenant_id=TENANT_ID,
-            company_id=COMPANY_ID,
-            company_code="NEXKR",
+            tenant_id=tenant_id,
+            company_id=company_id,
+            company_code=company_code,
             name="NeX Korea",
             functional_currency="KRW",
             presentation_currency="KRW",
@@ -111,9 +122,10 @@ def _policy(
     purpose: str = "TRANSACTION_SPOT",
     approved_by: str = SUBJECT_ID,
     company_id: str = COMPANY_ID,
+    tenant_id: str = TENANT_ID,
 ) -> FxRatePolicyInput:
     semantics = {
-        "tenant_id": TENANT_ID,
+        "tenant_id": tenant_id,
         "company_id": company_id,
         "policy_id": policy_id,
         "version": 1,
@@ -133,7 +145,7 @@ def _policy(
         "approval_proof_hash": PROOF,
     }
     return FxRatePolicyInput(
-        tenant_id=TENANT_ID,
+        tenant_id=tenant_id,
         company_id=company_id,
         policy_id=policy_id,
         version=1,
@@ -163,12 +175,16 @@ def _snapshot(
     is_final: bool = True,
     source_record_id: str = "smbs:2026-11-09:jpy:final",
     published_rate: Decimal = Decimal("960.50"),
+    tenant_id: str = TENANT_ID,
+    company_id: str = COMPANY_ID,
+    policy_id: str = POLICY_ID,
+    provenance: dict[str, object] | None = None,
 ) -> FxRateSnapshotInput:
     return FxRateSnapshotInput(
-        tenant_id=TENANT_ID,
-        company_id=COMPANY_ID,
+        tenant_id=tenant_id,
+        company_id=company_id,
         rate_snapshot_id=snapshot_id,
-        rate_policy_id=POLICY_ID,
+        rate_policy_id=policy_id,
         rate_policy_version=1,
         source_provider_id="SMBS_TODAY_EXRATE",
         base_currency="JPY",
@@ -186,7 +202,8 @@ def _snapshot(
         source_sha256=SOURCE_HASH,
         calendar_ref="KR_BUSINESS_DAY_V1",
         source_timezone="Asia/Seoul",
-        provenance={"acquisition_mode": "MANUAL_APPROVED_IMPORT", "row": 12},
+        provenance=provenance
+        or {"acquisition_mode": "MANUAL_APPROVED_IMPORT", "row": 12},
     )
 
 
@@ -252,6 +269,95 @@ def test_policy_and_snapshot_exact_replay_normalize_quote_unit(runtime) -> None:
     assert snapshot["source_uri"] == SOURCE_URI
     assert snapshot["source_sha256"] == SOURCE_HASH
     assert snapshot["provenance_json"]["acquisition_mode"] == "MANUAL_APPROVED_IMPORT"
+    assert snapshot["market_rate_id"]
+
+
+def test_global_market_observation_is_shared_by_tenants_and_companies(runtime) -> None:
+    _engine, factory, repository, _authorization, _service = runtime
+    _seed_company(factory, company_id=COMPANY_B_ID, company_code="NEXB")
+    _seed_company(
+        factory,
+        tenant_id=TENANT_B_ID,
+        company_id=COMPANY_C_ID,
+        company_code="NEXC",
+    )
+    policy_b = str(uuid.uuid4())
+    policy_c = str(uuid.uuid4())
+    repository.create_approved_policy(_policy())
+    repository.create_approved_policy(
+        _policy(policy_id=policy_b, company_id=COMPANY_B_ID)
+    )
+    repository.create_approved_policy(
+        _policy(
+            policy_id=policy_c,
+            company_id=COMPANY_C_ID,
+            tenant_id=TENANT_B_ID,
+        )
+    )
+
+    first = repository.import_approved_snapshot(_snapshot())
+    same_tenant = repository.import_approved_snapshot(
+        _snapshot(
+            snapshot_id=str(uuid.uuid4()),
+            company_id=COMPANY_B_ID,
+            policy_id=policy_b,
+            provenance={"acquisition_mode": "TENANT_B_REPLAY"},
+        )
+    )
+    other_tenant = repository.import_approved_snapshot(
+        _snapshot(
+            snapshot_id=str(uuid.uuid4()),
+            tenant_id=TENANT_B_ID,
+            company_id=COMPANY_C_ID,
+            policy_id=policy_c,
+            provenance={"acquisition_mode": "OTHER_TENANT_REPLAY"},
+        )
+    )
+
+    assert same_tenant["market_rate_id"] == first["market_rate_id"]
+    assert other_tenant["market_rate_id"] == first["market_rate_id"]
+    assert same_tenant["provenance_json"] == first["provenance_json"]
+    with factory() as session:
+        assert len(session.execute(select(EOS_FX_MARKET_RATE_TABLE)).all()) == 1
+        assert len(session.execute(select(EOS_FX_RATE_SNAPSHOT_TABLE)).all()) == 3
+
+
+def test_snapshot_identity_and_adoption_reject_changed_tenant_semantics(
+    runtime,
+) -> None:
+    _engine, _factory, repository, _authorization, _service = runtime
+    repository.create_approved_policy(_policy())
+    repository.import_approved_snapshot(_snapshot())
+    with pytest.raises(EosFxRateError, match="identity has different semantics"):
+        repository.import_approved_snapshot(_snapshot(desired=date(2026, 11, 10)))
+    with pytest.raises(EosFxRateError, match="adopted with different semantics"):
+        repository.import_approved_snapshot(
+            _snapshot(
+                snapshot_id=str(uuid.uuid4()),
+                desired=date(2026, 11, 10),
+            )
+        )
+
+
+def test_legacy_market_identity_is_reused_and_conflicting_content_fails(
+    runtime,
+) -> None:
+    _engine, factory, repository, _authorization, _service = runtime
+    repository.create_approved_policy(_policy())
+    legacy = fx._market_rate_record(fx._snapshot_values(_snapshot()))
+    legacy["market_rate_id"] = str(uuid.uuid4())
+    with factory.begin() as session:
+        session.execute(EOS_FX_MARKET_RATE_TABLE.insert().values(**legacy))
+
+    admitted = repository.import_approved_snapshot(_snapshot())
+    assert admitted["market_rate_id"] == legacy["market_rate_id"]
+    with pytest.raises(EosFxRateError, match="different content"):
+        repository.import_approved_snapshot(
+            _snapshot(
+                snapshot_id=str(uuid.uuid4()),
+                published_rate=Decimal("961.50"),
+            )
+        )
 
 
 def test_policy_validation_overlap_and_company_guards(runtime) -> None:
@@ -294,7 +400,7 @@ def test_snapshot_policy_binding_publication_and_source_conflicts(runtime) -> No
     assert source_replay["rate_snapshot_id"] == SNAPSHOT_ID
     with pytest.raises(EosFxRateError, match="different semantics"):
         repository.import_approved_snapshot(_snapshot(published_rate=Decimal("961.50")))
-    with pytest.raises(EosFxRateError, match="already admitted"):
+    with pytest.raises(EosFxRateError, match="different semantics"):
         repository.import_approved_snapshot(
             _snapshot(
                 snapshot_id=str(uuid.uuid4()),
@@ -351,6 +457,15 @@ def test_exact_and_previous_business_day_resolution_are_fail_closed(runtime) -> 
             desired_rate_date=date(2026, 11, 9),
         )
     assert missing.value.error_code == "FX_RATE_UNAVAILABLE"
+    with pytest.raises(EosFxRateError, match="must differ"):
+        repository.resolve_rate(
+            tenant_id=TENANT_ID,
+            company_id=COMPANY_ID,
+            purpose="TRANSACTION_SPOT",
+            base_currency="KRW",
+            quote_currency="KRW",
+            desired_rate_date=date(2026, 11, 9),
+        )
 
 
 def test_previous_day_requires_explicit_policy_and_available_as_of(runtime) -> None:
@@ -421,6 +536,18 @@ def test_service_batch_authorization_validation_and_resolution(runtime) -> None:
             tenant_id=TENANT_ID,
             requester_subject_id=SUBJECT_ID,
             payload={"snapshots": []},
+        )
+    with pytest.raises(EosFxRateError, match="payload must be an object"):
+        service.import_rates(
+            tenant_id=TENANT_ID,
+            requester_subject_id=SUBJECT_ID,
+            payload=[],
+        )
+    with pytest.raises(EosFxRateError, match="cannot exceed 500"):
+        service.import_rates(
+            tenant_id=TENANT_ID,
+            requester_subject_id=SUBJECT_ID,
+            payload={"snapshots": [_snapshot_payload(_snapshot())] * 501},
         )
     authorization.denied = True
     with pytest.raises(EosFxRateError) as denied:
@@ -576,6 +703,16 @@ def test_rate_history_is_tenant_scoped_ordered_and_bounded(runtime) -> None:
             date_from=date(2026, 11, 30),
             date_to=date(2026, 11, 1),
         )
+    with pytest.raises(EosFxRateError, match="must differ"):
+        repository.list_rate_history(
+            tenant_id=TENANT_ID,
+            company_id=COMPANY_ID,
+            purpose="TRANSACTION_SPOT",
+            base_currency="KRW",
+            quote_currency="KRW",
+            date_from=date(2026, 11, 1),
+            date_to=date(2026, 11, 30),
+        )
 
 
 def test_first_publication_and_bounded_policy_intervals(runtime) -> None:
@@ -714,6 +851,11 @@ def test_domain_validation_rejects_ambiguous_inputs(builder, message) -> None:
         builder()
 
 
+def test_projection_helpers_cover_collection_and_weekend_paths() -> None:
+    assert fx._json_value([Decimal("1.20")]) == ["1.2"]
+    assert fx._business_day_distance(date(2026, 11, 6), date(2026, 11, 8)) == 1
+
+
 @pytest.mark.parametrize(
     "operation",
     [
@@ -750,6 +892,175 @@ def test_boundary_parsers_reject_malformed_values(operation) -> None:
 
 @pytest.mark.skipif(
     not DATABASE_URL or not POSTGRES_SMOKE,
+    reason="Protected MB1-03B EOS PostgreSQL upgrade smoke is disabled",
+)
+def test_actual_postgres_legacy_tenant_sources_promote_to_one_market_rate() -> None:
+    schema_name = f"mybee_mb103b_upgrade_{uuid.uuid4().hex}"
+    psycopg_url = psycopg_database_url(DATABASE_URL)
+    with (
+        psycopg.connect(psycopg_url, autocommit=True) as connection,
+        connection.cursor() as cursor,
+    ):
+        cursor.execute("SELECT current_database(), current_user")
+        assert cursor.fetchone() == ("nex_eos_test", "nex_eos_user")
+        cursor.execute(sql.SQL("CREATE SCHEMA {}").format(sql.Identifier(schema_name)))
+    scoped_url = (
+        make_url(DATABASE_URL)
+        .update_query_dict({"options": f"-csearch_path={schema_name}"})
+        .render_as_string(hide_password=False)
+    )
+    try:
+        migrations = load_migrations("nex-eos")
+        with psycopg.connect(
+            psycopg_database_url(scoped_url), autocommit=True
+        ) as connection:
+            for migration in migrations:
+                if migration.version == "2523_eos_fx_market_rate_adoption":
+                    break
+                connection.execute(migration.sql)
+
+        db = build_eos_database_runtime(
+            environ={"NEX_EOS_TEST_DATABASE_URL": scoped_url},
+            database_env="NEX_EOS_TEST_DATABASE_URL",
+        )
+        _seed_company(db.session_factory)
+        _seed_company(
+            db.session_factory,
+            tenant_id=TENANT_B_ID,
+            company_id=COMPANY_C_ID,
+            company_code="NEXC",
+        )
+        db.dispose()
+
+        legacy_policy = """
+            INSERT INTO eos_fx_rate_policy (
+                tenant_id, company_id, policy_id, version, purpose,
+                base_currency, quote_currency, rate_kind, source_provider_id,
+                publication_selector, effective_from, effective_to,
+                allow_previous_business_day, max_staleness_business_days,
+                rounding_mode, rate_decimal_scale, approved_by,
+                approval_proof_hash, policy_hash, status, created_at
+            ) VALUES (
+                %s, %s, %s, 1, 'TRANSACTION_SPOT', 'JPY', 'KRW',
+                'MARKET_BASE', 'SMBS_TODAY_EXRATE', 'FINAL',
+                DATE '2026-01-01', NULL, TRUE, 1, 'HALF_EVEN', 6,
+                'fx-owner', %s, %s, 'APPROVED', now()
+            )
+        """
+        legacy_snapshot = """
+            INSERT INTO eos_fx_rate_snapshot (
+                tenant_id, company_id, rate_snapshot_id, source_provider_id,
+                rate_policy_id, rate_policy_version, base_currency,
+                quote_currency, quote_unit, published_rate, normalized_rate,
+                desired_rate_date, rate_date, rate_as_of, published_at,
+                publication_issue, is_final, effective_business_date,
+                source_record_id, source_uri, source_sha256, calendar_ref,
+                source_timezone, provenance_json, snapshot_hash, imported_at,
+                approved_state
+            ) VALUES (
+                %s, %s, %s, 'SMBS_TODAY_EXRATE', %s, 1, 'JPY', 'KRW',
+                100, 960.50, 9.605000, DATE '2026-11-09', DATE '2026-11-09',
+                TIMESTAMPTZ '2026-11-09 10:00:00+00',
+                TIMESTAMPTZ '2026-11-09 09:00:00+00', 'FINAL', TRUE,
+                DATE '2026-11-09', 'smbs:2026-11-09:jpy:final', %s, %s,
+                'KR_BUSINESS_DAY_V1', 'Asia/Seoul',
+                '{"acquisition_mode":"LEGACY"}'::jsonb, %s, now(), 'APPROVED'
+            )
+        """
+        policy_a = str(uuid.uuid4())
+        policy_b = str(uuid.uuid4())
+        with psycopg.connect(
+            psycopg_database_url(scoped_url), autocommit=True
+        ) as connection:
+            connection.execute(
+                legacy_policy,
+                (TENANT_ID, COMPANY_ID, policy_a, PROOF, "sha256:" + "1" * 64),
+            )
+            connection.execute(
+                legacy_policy,
+                (
+                    TENANT_B_ID,
+                    COMPANY_C_ID,
+                    policy_b,
+                    PROOF,
+                    "sha256:" + "2" * 64,
+                ),
+            )
+            connection.execute(
+                legacy_snapshot,
+                (
+                    TENANT_ID,
+                    COMPANY_ID,
+                    SNAPSHOT_ID,
+                    policy_a,
+                    SOURCE_URI,
+                    SOURCE_HASH,
+                    "sha256:" + "3" * 64,
+                ),
+            )
+            connection.execute(
+                legacy_snapshot,
+                (
+                    TENANT_B_ID,
+                    COMPANY_C_ID,
+                    str(uuid.uuid4()),
+                    policy_b,
+                    SOURCE_URI,
+                    SOURCE_HASH,
+                    "sha256:" + "4" * 64,
+                ),
+            )
+            migration = next(
+                item
+                for item in migrations
+                if item.version == "2523_eos_fx_market_rate_adoption"
+            )
+            connection.execute(migration.sql)
+            assert (
+                connection.execute(
+                    "SELECT count(*) FROM eos_fx_market_rate"
+                ).fetchone()[0]
+                == 1
+            )
+            assert (
+                connection.execute(
+                    "SELECT count(DISTINCT market_rate_id) FROM eos_fx_rate_snapshot"
+                ).fetchone()[0]
+                == 1
+            )
+            assert (
+                connection.execute(
+                    "SELECT count(*) FROM eos_fx_rate_snapshot"
+                ).fetchone()[0]
+                == 2
+            )
+            columns = {
+                row[0]
+                for row in connection.execute(
+                    "SELECT column_name FROM information_schema.columns "
+                    "WHERE table_schema=current_schema() "
+                    "AND table_name='eos_fx_rate_snapshot'"
+                ).fetchall()
+            }
+            assert "market_rate_id" in columns
+            assert "source_sha256" not in columns
+    finally:
+        with (
+            psycopg.connect(psycopg_url, autocommit=True) as connection,
+            connection.cursor() as cursor,
+        ):
+            cursor.execute(
+                sql.SQL("DROP SCHEMA {} CASCADE").format(sql.Identifier(schema_name))
+            )
+            cursor.execute(
+                "SELECT count(*) FROM information_schema.schemata WHERE schema_name=%s",
+                (schema_name,),
+            )
+            assert cursor.fetchone()[0] == 0
+
+
+@pytest.mark.skipif(
+    not DATABASE_URL or not POSTGRES_SMOKE,
     reason="Protected S1-04 EOS PostgreSQL smoke is disabled",
 )
 def test_actual_postgres_fx_policy_snapshot_concurrency_and_zero_residue() -> None:
@@ -772,6 +1083,7 @@ def test_actual_postgres_fx_policy_snapshot_concurrency_and_zero_residue() -> No
             "nex-eos", database_url=scoped_url, profile="test"
         )
         assert "2522_eos_fx_rate_policy_snapshot" in result.applied
+        assert "2523_eos_fx_market_rate_adoption" in result.applied
         db = build_eos_database_runtime(
             environ={"NEX_EOS_TEST_DATABASE_URL": scoped_url},
             database_env="NEX_EOS_TEST_DATABASE_URL",
@@ -797,10 +1109,55 @@ def test_actual_postgres_fx_policy_snapshot_concurrency_and_zero_residue() -> No
             policy_id = session.execute(
                 select(EOS_FX_RATE_POLICY_TABLE.c.policy_id)
             ).scalar_one()
-        accepted = repository.import_approved_snapshot(
-            replace(_snapshot(), rate_policy_id=policy_id)
+        _seed_company(db.session_factory, company_id=COMPANY_B_ID, company_code="NEXB")
+        _seed_company(
+            db.session_factory,
+            tenant_id=TENANT_B_ID,
+            company_id=COMPANY_C_ID,
+            company_code="NEXC",
         )
+        policy_b = str(uuid.uuid4())
+        policy_c = str(uuid.uuid4())
+        repository.create_approved_policy(
+            _policy(policy_id=policy_b, company_id=COMPANY_B_ID)
+        )
+        repository.create_approved_policy(
+            _policy(
+                policy_id=policy_c,
+                company_id=COMPANY_C_ID,
+                tenant_id=TENANT_B_ID,
+            )
+        )
+        adoption_barrier = Barrier(3)
+        adoption_inputs = (
+            replace(_snapshot(), rate_policy_id=policy_id),
+            _snapshot(
+                snapshot_id=str(uuid.uuid4()),
+                company_id=COMPANY_B_ID,
+                policy_id=policy_b,
+                provenance={"acquisition_mode": "SAME_TENANT_CONCURRENT"},
+            ),
+            _snapshot(
+                snapshot_id=str(uuid.uuid4()),
+                tenant_id=TENANT_B_ID,
+                company_id=COMPANY_C_ID,
+                policy_id=policy_c,
+                provenance={"acquisition_mode": "OTHER_TENANT_CONCURRENT"},
+            ),
+        )
+
+        def adopt_snapshot(value: FxRateSnapshotInput) -> dict[str, object]:
+            adoption_barrier.wait(timeout=5)
+            return repository.import_approved_snapshot(value)
+
+        with ThreadPoolExecutor(max_workers=3) as executor:
+            adoptions = list(executor.map(adopt_snapshot, adoption_inputs))
+        assert len({item["market_rate_id"] for item in adoptions}) == 1
+        accepted = adoptions[0]
         assert accepted["normalized_rate"] == "9.605"
+        with db.session_factory() as session:
+            assert len(session.execute(select(EOS_FX_MARKET_RATE_TABLE)).all()) == 1
+            assert len(session.execute(select(EOS_FX_RATE_SNAPSHOT_TABLE)).all()) == 3
         resolved = repository.resolve_rate(
             tenant_id=TENANT_ID,
             company_id=COMPANY_ID,
@@ -828,43 +1185,62 @@ def test_actual_postgres_fx_policy_snapshot_concurrency_and_zero_residue() -> No
             with pytest.raises(psycopg.errors.CheckViolation):
                 cursor.execute(
                     """
-                    INSERT INTO eos_fx_rate_snapshot (
-                        tenant_id, company_id, rate_snapshot_id,
-                        source_provider_id, rate_policy_id, rate_policy_version,
-                        base_currency, quote_currency, quote_unit,
-                        published_rate, normalized_rate, desired_rate_date,
-                        rate_date, rate_as_of, published_at, publication_issue,
-                        is_final, effective_business_date, source_record_id,
-                        source_uri, source_sha256, calendar_ref,
-                        source_timezone, provenance_json, snapshot_hash,
-                        imported_at, approved_state
+                    INSERT INTO eos_fx_market_rate (
+                        market_rate_id, source_provider_id, source_record_id,
+                        publication_issue, base_currency, quote_currency,
+                        quote_unit, published_rate, rate_date, rate_as_of,
+                        published_at, is_final, source_uri, source_sha256,
+                        source_timezone, provenance_json, market_rate_hash,
+                        market_admitted_at
                     )
                     SELECT
-                        tenant_id, company_id, %s, source_provider_id,
-                        rate_policy_id, rate_policy_version, base_currency,
-                        quote_currency, quote_unit, published_rate, 1,
-                        desired_rate_date, rate_date, rate_as_of, published_at,
-                        publication_issue, is_final, effective_business_date,
-                        %s, source_uri, source_sha256, calendar_ref,
-                        source_timezone, provenance_json, %s, imported_at,
-                        approved_state
-                    FROM eos_fx_rate_snapshot
-                    WHERE tenant_id = %s
+                        %s, source_provider_id, %s, publication_issue,
+                        base_currency, quote_currency, quote_unit,
+                        published_rate, rate_date, rate_as_of, published_at,
+                        is_final, source_uri, source_sha256, source_timezone,
+                        provenance_json, %s, market_admitted_at
+                    FROM eos_fx_market_rate
+                    LIMIT 1
                     """,
                     (
                         str(uuid.uuid4()),
                         "smbs:bad-normalization",
+                        "sha256:" + "d" * 64,
+                    ),
+                )
+                market_rate_id = cursor.execute(
+                    "SELECT market_rate_id FROM eos_fx_market_rate "
+                    "WHERE source_record_id=%s",
+                    ("smbs:bad-normalization",),
+                ).fetchone()[0]
+                cursor.execute(
+                    """
+                    INSERT INTO eos_fx_rate_snapshot (
+                        tenant_id, company_id, rate_snapshot_id,
+                        market_rate_id, rate_policy_id, rate_policy_version,
+                        normalized_rate, desired_rate_date,
+                        effective_business_date, calendar_ref, snapshot_hash,
+                        imported_at, approved_state
+                    )
+                    SELECT
+                        tenant_id, company_id, %s, %s,
+                        rate_policy_id, rate_policy_version, 1,
+                        desired_rate_date, effective_business_date,
+                        calendar_ref, %s, imported_at, approved_state
+                    FROM eos_fx_rate_snapshot
+                    WHERE tenant_id = %s
+                    LIMIT 1
+                    """,
+                    (
+                        str(uuid.uuid4()),
+                        market_rate_id,
                         "sha256:" + "d" * 64,
                         TENANT_ID,
                     ),
                 )
             connection.rollback()
             with pytest.raises(psycopg.errors.CheckViolation):
-                cursor.execute(
-                    "UPDATE eos_fx_rate_snapshot SET published_rate=1 "
-                    "WHERE tenant_id=%s",
-                    (TENANT_ID,),
-                )
+                cursor.execute("UPDATE eos_fx_market_rate SET published_rate=1")
             connection.rollback()
             with pytest.raises(psycopg.errors.CheckViolation):
                 cursor.execute(

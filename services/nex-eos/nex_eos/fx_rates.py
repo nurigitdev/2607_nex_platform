@@ -102,33 +102,60 @@ Index(
     EOS_FX_RATE_POLICY_TABLE.c.effective_to,
 )
 
+EOS_FX_MARKET_RATE_TABLE = Table(
+    "eos_fx_market_rate",
+    EOS_METADATA,
+    Column("market_rate_id", Uuid(as_uuid=False), primary_key=True),
+    Column("source_provider_id", String(128), nullable=False),
+    Column("source_record_id", String(256), nullable=False),
+    Column("publication_issue", String(64), nullable=False),
+    Column("base_currency", String(3), nullable=False),
+    Column("quote_currency", String(3), nullable=False),
+    Column("quote_unit", Numeric(18, 6), nullable=False),
+    Column("published_rate", Numeric(28, 12), nullable=False),
+    Column("rate_date", Date, nullable=False),
+    Column("rate_as_of", DateTime(timezone=True), nullable=False),
+    Column("published_at", DateTime(timezone=True), nullable=False),
+    Column("is_final", Boolean, nullable=False),
+    Column("source_uri", String(2048), nullable=False),
+    Column("source_sha256", String(71), nullable=False),
+    Column("source_timezone", String(64), nullable=False),
+    Column("provenance_json", JSON, nullable=False),
+    Column("market_rate_hash", String(71), nullable=False),
+    Column("market_admitted_at", DateTime(timezone=True), nullable=False),
+    UniqueConstraint(
+        "source_provider_id",
+        "source_record_id",
+        "publication_issue",
+        "base_currency",
+        "quote_currency",
+        "rate_date",
+        name="ux_eos_fx_market_rate_source",
+    ),
+    UniqueConstraint("market_rate_hash", name="ux_eos_fx_market_rate_hash"),
+)
+Index(
+    "ix_eos_fx_market_rate_lookup",
+    EOS_FX_MARKET_RATE_TABLE.c.source_provider_id,
+    EOS_FX_MARKET_RATE_TABLE.c.base_currency,
+    EOS_FX_MARKET_RATE_TABLE.c.quote_currency,
+    EOS_FX_MARKET_RATE_TABLE.c.rate_date,
+    EOS_FX_MARKET_RATE_TABLE.c.published_at,
+)
+
 EOS_FX_RATE_SNAPSHOT_TABLE = Table(
     "eos_fx_rate_snapshot",
     EOS_METADATA,
     Column("tenant_id", String(128), primary_key=True),
     Column("company_id", Uuid(as_uuid=False), nullable=False),
     Column("rate_snapshot_id", Uuid(as_uuid=False), primary_key=True),
-    Column("source_provider_id", String(128), nullable=False),
+    Column("market_rate_id", Uuid(as_uuid=False), nullable=False),
     Column("rate_policy_id", Uuid(as_uuid=False), nullable=False),
     Column("rate_policy_version", Integer, nullable=False),
-    Column("base_currency", String(3), nullable=False),
-    Column("quote_currency", String(3), nullable=False),
-    Column("quote_unit", Numeric(18, 6), nullable=False),
-    Column("published_rate", Numeric(28, 12), nullable=False),
     Column("normalized_rate", Numeric(28, 12), nullable=False),
     Column("desired_rate_date", Date, nullable=False),
-    Column("rate_date", Date, nullable=False),
-    Column("rate_as_of", DateTime(timezone=True), nullable=False),
-    Column("published_at", DateTime(timezone=True), nullable=False),
-    Column("publication_issue", String(64), nullable=False),
-    Column("is_final", Boolean, nullable=False),
     Column("effective_business_date", Date, nullable=False),
-    Column("source_record_id", String(256), nullable=False),
-    Column("source_uri", String(2048), nullable=False),
-    Column("source_sha256", String(71), nullable=False),
     Column("calendar_ref", String(128), nullable=False),
-    Column("source_timezone", String(64), nullable=False),
-    Column("provenance_json", JSON, nullable=False),
     Column("snapshot_hash", String(71), nullable=False),
     Column("imported_at", DateTime(timezone=True), nullable=False),
     Column("approved_state", String(16), nullable=False),
@@ -142,15 +169,18 @@ EOS_FX_RATE_SNAPSHOT_TABLE = Table(
         ),
         name="fk_eos_fx_rate_snapshot_policy",
     ),
+    ForeignKeyConstraint(
+        ("market_rate_id",),
+        ("eos_fx_market_rate.market_rate_id",),
+        name="fk_eos_fx_rate_snapshot_market",
+    ),
     UniqueConstraint(
         "tenant_id",
-        "source_provider_id",
-        "source_record_id",
-        "publication_issue",
-        "base_currency",
-        "quote_currency",
-        "rate_date",
-        name="ux_eos_fx_rate_snapshot_source",
+        "company_id",
+        "rate_policy_id",
+        "rate_policy_version",
+        "market_rate_id",
+        name="ux_eos_fx_rate_snapshot_adoption",
     ),
     UniqueConstraint("tenant_id", "snapshot_hash", name="ux_eos_fx_rate_snapshot_hash"),
 )
@@ -158,11 +188,10 @@ Index(
     "ix_eos_fx_rate_snapshot_resolve",
     EOS_FX_RATE_SNAPSHOT_TABLE.c.tenant_id,
     EOS_FX_RATE_SNAPSHOT_TABLE.c.company_id,
-    EOS_FX_RATE_SNAPSHOT_TABLE.c.base_currency,
-    EOS_FX_RATE_SNAPSHOT_TABLE.c.quote_currency,
+    EOS_FX_RATE_SNAPSHOT_TABLE.c.rate_policy_id,
+    EOS_FX_RATE_SNAPSHOT_TABLE.c.market_rate_id,
     EOS_FX_RATE_SNAPSHOT_TABLE.c.approved_state,
     EOS_FX_RATE_SNAPSHOT_TABLE.c.effective_business_date,
-    EOS_FX_RATE_SNAPSHOT_TABLE.c.published_at,
 )
 
 
@@ -286,41 +315,22 @@ class SqlAlchemyEosFxRateRepository:
         try:
             with self._session_factory.begin() as session:
                 policy = self._policy_for_snapshot(session, normalized)
-                record = _snapshot_record(normalized, policy)
+                self._lock_market_source(session, normalized)
+                market = self._admit_market_rate(session, normalized)
+                record = _snapshot_record(normalized, policy, market)
                 existing = self._snapshot_by_id(session, record)
                 if existing is not None:
                     if _snapshot_semantics(existing) == _snapshot_semantics(record):
-                        return _wire(existing)
+                        return _snapshot_wire(existing, market)
                     raise _conflict("FX RateSnapshot identity has different semantics")
-                source_existing = (
-                    session.execute(
-                        select(EOS_FX_RATE_SNAPSHOT_TABLE).where(
-                            EOS_FX_RATE_SNAPSHOT_TABLE.c.tenant_id
-                            == record["tenant_id"],
-                            EOS_FX_RATE_SNAPSHOT_TABLE.c.source_provider_id
-                            == record["source_provider_id"],
-                            EOS_FX_RATE_SNAPSHOT_TABLE.c.source_record_id
-                            == record["source_record_id"],
-                            EOS_FX_RATE_SNAPSHOT_TABLE.c.publication_issue
-                            == record["publication_issue"],
-                            EOS_FX_RATE_SNAPSHOT_TABLE.c.base_currency
-                            == record["base_currency"],
-                            EOS_FX_RATE_SNAPSHOT_TABLE.c.quote_currency
-                            == record["quote_currency"],
-                            EOS_FX_RATE_SNAPSHOT_TABLE.c.rate_date
-                            == record["rate_date"],
-                        )
-                    )
-                    .mappings()
-                    .one_or_none()
-                )
-                if source_existing is not None:
-                    if _snapshot_source_semantics(
-                        source_existing
-                    ) == _snapshot_source_semantics(record):
-                        return _wire(source_existing)
+                adoption = self._snapshot_by_adoption(session, record)
+                if adoption is not None:
+                    if _snapshot_adoption_semantics(
+                        adoption
+                    ) == _snapshot_adoption_semantics(record):
+                        return _snapshot_wire(adoption, market)
                     raise _conflict(
-                        "source record/date/issue was already admitted with different content"
+                        "FX market observation was already adopted with different semantics"
                     )
                 session.execute(EOS_FX_RATE_SNAPSHOT_TABLE.insert().values(**record))
         except EosFxRateError:
@@ -329,7 +339,7 @@ class SqlAlchemyEosFxRateRepository:
             raise _conflict("FX RateSnapshot violates an identity guard") from exc
         except SQLAlchemyError as exc:
             raise _unavailable() from exc
-        return _wire(record)
+        return _snapshot_wire(record, market)
 
     def resolve_rate(
         self,
@@ -381,7 +391,14 @@ class SqlAlchemyEosFxRateRepository:
                 policy = policies[0]
                 snapshot = (
                     session.execute(
-                        select(EOS_FX_RATE_SNAPSHOT_TABLE)
+                        select(*_snapshot_projection())
+                        .select_from(
+                            EOS_FX_RATE_SNAPSHOT_TABLE.join(
+                                EOS_FX_MARKET_RATE_TABLE,
+                                EOS_FX_RATE_SNAPSHOT_TABLE.c.market_rate_id
+                                == EOS_FX_MARKET_RATE_TABLE.c.market_rate_id,
+                            )
+                        )
                         .where(
                             EOS_FX_RATE_SNAPSHOT_TABLE.c.tenant_id == tenant_id,
                             EOS_FX_RATE_SNAPSHOT_TABLE.c.company_id == company_id,
@@ -392,11 +409,11 @@ class SqlAlchemyEosFxRateRepository:
                             EOS_FX_RATE_SNAPSHOT_TABLE.c.approved_state == "APPROVED",
                             EOS_FX_RATE_SNAPSHOT_TABLE.c.effective_business_date
                             <= desired_rate_date,
-                            EOS_FX_RATE_SNAPSHOT_TABLE.c.published_at <= as_of,
+                            EOS_FX_MARKET_RATE_TABLE.c.published_at <= as_of,
                         )
                         .order_by(
                             EOS_FX_RATE_SNAPSHOT_TABLE.c.effective_business_date.desc(),
-                            EOS_FX_RATE_SNAPSHOT_TABLE.c.published_at.desc(),
+                            EOS_FX_MARKET_RATE_TABLE.c.published_at.desc(),
                             EOS_FX_RATE_SNAPSHOT_TABLE.c.rate_snapshot_id,
                         )
                         .limit(1)
@@ -452,7 +469,7 @@ class SqlAlchemyEosFxRateRepository:
         if date_to < date_from:
             raise _invalid("date_to must not precede date_from")
         limit = _bounded_int("limit", limit, 1, 500)
-        join_condition = (
+        policy_join_condition = (
             (
                 EOS_FX_RATE_POLICY_TABLE.c.tenant_id
                 == EOS_FX_RATE_SNAPSHOT_TABLE.c.tenant_id
@@ -475,29 +492,32 @@ class SqlAlchemyEosFxRateRepository:
                 rows = (
                     session.execute(
                         select(
-                            EOS_FX_RATE_SNAPSHOT_TABLE,
+                            *_snapshot_projection(),
                             EOS_FX_RATE_POLICY_TABLE.c.purpose.label("purpose"),
                             EOS_FX_RATE_POLICY_TABLE.c.policy_hash.label("policy_hash"),
                         )
                         .select_from(
                             EOS_FX_RATE_SNAPSHOT_TABLE.join(
-                                EOS_FX_RATE_POLICY_TABLE, join_condition
+                                EOS_FX_RATE_POLICY_TABLE, policy_join_condition
+                            ).join(
+                                EOS_FX_MARKET_RATE_TABLE,
+                                EOS_FX_RATE_SNAPSHOT_TABLE.c.market_rate_id
+                                == EOS_FX_MARKET_RATE_TABLE.c.market_rate_id,
                             )
                         )
                         .where(
                             EOS_FX_RATE_SNAPSHOT_TABLE.c.tenant_id == tenant_id,
                             EOS_FX_RATE_SNAPSHOT_TABLE.c.company_id == company_id,
                             EOS_FX_RATE_POLICY_TABLE.c.purpose == purpose,
-                            EOS_FX_RATE_SNAPSHOT_TABLE.c.base_currency == base_currency,
-                            EOS_FX_RATE_SNAPSHOT_TABLE.c.quote_currency
-                            == quote_currency,
+                            EOS_FX_MARKET_RATE_TABLE.c.base_currency == base_currency,
+                            EOS_FX_MARKET_RATE_TABLE.c.quote_currency == quote_currency,
                             EOS_FX_RATE_SNAPSHOT_TABLE.c.approved_state == "APPROVED",
-                            EOS_FX_RATE_SNAPSHOT_TABLE.c.rate_date >= date_from,
-                            EOS_FX_RATE_SNAPSHOT_TABLE.c.rate_date <= date_to,
+                            EOS_FX_MARKET_RATE_TABLE.c.rate_date >= date_from,
+                            EOS_FX_MARKET_RATE_TABLE.c.rate_date <= date_to,
                         )
                         .order_by(
-                            EOS_FX_RATE_SNAPSHOT_TABLE.c.rate_date.desc(),
-                            EOS_FX_RATE_SNAPSHOT_TABLE.c.published_at.desc(),
+                            EOS_FX_MARKET_RATE_TABLE.c.rate_date.desc(),
+                            EOS_FX_MARKET_RATE_TABLE.c.published_at.desc(),
                             EOS_FX_RATE_SNAPSHOT_TABLE.c.rate_snapshot_id,
                         )
                         .limit(limit)
@@ -508,6 +528,81 @@ class SqlAlchemyEosFxRateRepository:
         except SQLAlchemyError as exc:
             raise _unavailable() from exc
         return [_wire(row) for row in rows]
+
+    @staticmethod
+    def _lock_market_source(session: Session, record: Mapping[str, Any]) -> None:
+        if session.bind is not None and session.bind.dialect.name == "postgresql":
+            scope = ":".join(
+                str(record[field])
+                for field in (
+                    "source_provider_id",
+                    "source_record_id",
+                    "publication_issue",
+                    "base_currency",
+                    "quote_currency",
+                    "rate_date",
+                )
+            )
+            session.execute(
+                text("SELECT pg_advisory_xact_lock(hashtextextended(:scope, 0))"),
+                {"scope": f"fx-market:{scope}"},
+            )
+
+    @classmethod
+    def _admit_market_rate(
+        cls, session: Session, values: Mapping[str, Any]
+    ) -> Mapping[str, Any]:
+        record = _market_rate_record(values)
+        by_id = cls._market_rate_by_id(session, record)
+        if by_id is not None:
+            if _market_source_semantics(by_id) == _market_source_semantics(record):
+                return by_id
+            raise _conflict("FX MarketRate identity has different semantics")
+        by_source = cls._market_rate_by_source(session, record)
+        if by_source is not None:
+            if _market_source_semantics(by_source) == _market_source_semantics(record):
+                return by_source
+            raise _conflict("global FX source record/date/issue has different content")
+        session.execute(EOS_FX_MARKET_RATE_TABLE.insert().values(**record))
+        return record
+
+    @staticmethod
+    def _market_rate_by_id(
+        session: Session, record: Mapping[str, Any]
+    ) -> Mapping[str, Any] | None:
+        return (
+            session.execute(
+                select(EOS_FX_MARKET_RATE_TABLE).where(
+                    EOS_FX_MARKET_RATE_TABLE.c.market_rate_id
+                    == record["market_rate_id"]
+                )
+            )
+            .mappings()
+            .one_or_none()
+        )
+
+    @staticmethod
+    def _market_rate_by_source(
+        session: Session, record: Mapping[str, Any]
+    ) -> Mapping[str, Any] | None:
+        return (
+            session.execute(
+                select(EOS_FX_MARKET_RATE_TABLE).where(
+                    EOS_FX_MARKET_RATE_TABLE.c.source_provider_id
+                    == record["source_provider_id"],
+                    EOS_FX_MARKET_RATE_TABLE.c.source_record_id
+                    == record["source_record_id"],
+                    EOS_FX_MARKET_RATE_TABLE.c.publication_issue
+                    == record["publication_issue"],
+                    EOS_FX_MARKET_RATE_TABLE.c.base_currency == record["base_currency"],
+                    EOS_FX_MARKET_RATE_TABLE.c.quote_currency
+                    == record["quote_currency"],
+                    EOS_FX_MARKET_RATE_TABLE.c.rate_date == record["rate_date"],
+                )
+            )
+            .mappings()
+            .one_or_none()
+        )
 
     @staticmethod
     def _lock_policy_scope(session: Session, record: Mapping[str, Any]) -> None:
@@ -554,6 +649,27 @@ class SqlAlchemyEosFxRateRepository:
                     EOS_FX_RATE_SNAPSHOT_TABLE.c.tenant_id == record["tenant_id"],
                     EOS_FX_RATE_SNAPSHOT_TABLE.c.rate_snapshot_id
                     == record["rate_snapshot_id"],
+                )
+            )
+            .mappings()
+            .one_or_none()
+        )
+
+    @staticmethod
+    def _snapshot_by_adoption(
+        session: Session, record: Mapping[str, Any]
+    ) -> Mapping[str, Any] | None:
+        return (
+            session.execute(
+                select(EOS_FX_RATE_SNAPSHOT_TABLE).where(
+                    EOS_FX_RATE_SNAPSHOT_TABLE.c.tenant_id == record["tenant_id"],
+                    EOS_FX_RATE_SNAPSHOT_TABLE.c.company_id == record["company_id"],
+                    EOS_FX_RATE_SNAPSHOT_TABLE.c.rate_policy_id
+                    == record["rate_policy_id"],
+                    EOS_FX_RATE_SNAPSHOT_TABLE.c.rate_policy_version
+                    == record["rate_policy_version"],
+                    EOS_FX_RATE_SNAPSHOT_TABLE.c.market_rate_id
+                    == record["market_rate_id"],
                 )
             )
             .mappings()
@@ -971,18 +1087,70 @@ def _snapshot_values(value: FxRateSnapshotInput) -> dict[str, Any]:
     }
 
 
+def _market_rate_record(values: Mapping[str, Any]) -> dict[str, Any]:
+    identity = {
+        field: values[field]
+        for field in (
+            "source_provider_id",
+            "source_record_id",
+            "publication_issue",
+            "base_currency",
+            "quote_currency",
+            "rate_date",
+        )
+    }
+    semantics = {
+        **identity,
+        "quote_unit": values["quote_unit"],
+        "published_rate": values["published_rate"],
+        "rate_as_of": values["rate_as_of"],
+        "published_at": values["published_at"],
+        "is_final": values["is_final"],
+        "source_uri": values["source_uri"],
+        "source_sha256": values["source_sha256"],
+        "source_timezone": values["source_timezone"],
+        "provenance_json": values["provenance_json"],
+    }
+    wire_identity = {field: _json_value(item) for field, item in identity.items()}
+    hash_values = {field: _json_value(item) for field, item in semantics.items()}
+    return {
+        "market_rate_id": str(
+            uuid.uuid5(
+                uuid.NAMESPACE_URL,
+                semantic_sha256_hash_ref(
+                    {"domain": "EOS-FX-MARKET-RATE-IDENTITY-V1", **wire_identity}
+                ),
+            )
+        ),
+        **semantics,
+        "market_rate_hash": semantic_sha256_hash_ref(
+            {"domain": "EOS-FX-MARKET-RATE-V1", **hash_values}
+        ),
+        "market_admitted_at": datetime.now(UTC),
+    }
+
+
 def _snapshot_record(
-    values: Mapping[str, Any], policy: Mapping[str, Any]
+    values: Mapping[str, Any],
+    policy: Mapping[str, Any],
+    market: Mapping[str, Any],
 ) -> dict[str, Any]:
     scale = policy["rate_decimal_scale"]
     quantum = Decimal(1).scaleb(-scale)
-    normalized = (values["published_rate"] / values["quote_unit"]).quantize(
+    normalized = (market["published_rate"] / market["quote_unit"]).quantize(
         quantum, rounding=ROUND_HALF_EVEN
     )
     semantics = {
-        **dict(values),
+        "tenant_id": values["tenant_id"],
+        "company_id": values["company_id"],
+        "rate_snapshot_id": values["rate_snapshot_id"],
+        "market_rate_id": market["market_rate_id"],
+        "rate_policy_id": values["rate_policy_id"],
+        "rate_policy_version": values["rate_policy_version"],
         "normalized_rate": normalized,
-        "effective_business_date": values["rate_date"],
+        "desired_rate_date": values["desired_rate_date"],
+        "effective_business_date": market["rate_date"],
+        "calendar_ref": values["calendar_ref"],
         "approved_state": "APPROVED",
     }
     hash_values = {
@@ -993,7 +1161,7 @@ def _snapshot_record(
     return {
         **semantics,
         "snapshot_hash": semantic_sha256_hash_ref(
-            {"domain": "EOS-FX-RATE-SNAPSHOT-V1", **hash_values}
+            {"domain": "EOS-FX-RATE-SNAPSHOT-V2", **hash_values}
         ),
         "imported_at": datetime.now(UTC),
     }
@@ -1034,63 +1202,73 @@ def _snapshot_semantics(value: Mapping[str, Any]) -> tuple[Any, ...]:
             "tenant_id",
             "company_id",
             "rate_snapshot_id",
-            "source_provider_id",
+            "market_rate_id",
             "rate_policy_id",
             "rate_policy_version",
-            "base_currency",
-            "quote_currency",
-            "quote_unit",
-            "published_rate",
             "normalized_rate",
             "desired_rate_date",
-            "rate_date",
-            "rate_as_of",
-            "published_at",
-            "publication_issue",
-            "is_final",
             "effective_business_date",
-            "source_record_id",
-            "source_uri",
-            "source_sha256",
             "calendar_ref",
-            "source_timezone",
-            "provenance_json",
-            "snapshot_hash",
             "approved_state",
         )
     )
 
 
-def _snapshot_source_semantics(value: Mapping[str, Any]) -> tuple[Any, ...]:
+def _snapshot_adoption_semantics(value: Mapping[str, Any]) -> tuple[Any, ...]:
     return tuple(
         _json_value(value[field])
         for field in (
             "tenant_id",
             "company_id",
-            "source_provider_id",
+            "market_rate_id",
             "rate_policy_id",
             "rate_policy_version",
+            "normalized_rate",
+            "desired_rate_date",
+            "effective_business_date",
+            "calendar_ref",
+            "approved_state",
+        )
+    )
+
+
+def _market_source_semantics(value: Mapping[str, Any]) -> tuple[Any, ...]:
+    return tuple(
+        _json_value(value[field])
+        for field in (
+            "source_provider_id",
+            "source_record_id",
+            "publication_issue",
             "base_currency",
             "quote_currency",
             "quote_unit",
             "published_rate",
-            "normalized_rate",
-            "desired_rate_date",
             "rate_date",
             "rate_as_of",
             "published_at",
-            "publication_issue",
             "is_final",
-            "effective_business_date",
-            "source_record_id",
             "source_uri",
             "source_sha256",
-            "calendar_ref",
             "source_timezone",
-            "provenance_json",
-            "approved_state",
         )
     )
+
+
+def _snapshot_projection() -> tuple[Any, ...]:
+    return (
+        *tuple(EOS_FX_RATE_SNAPSHOT_TABLE.c),
+        *tuple(
+            column
+            for column in EOS_FX_MARKET_RATE_TABLE.c
+            if column.name != "market_rate_id"
+        ),
+    )
+
+
+def _snapshot_wire(
+    snapshot: Mapping[str, Any], market: Mapping[str, Any]
+) -> dict[str, Any]:
+    return _wire({**dict(market), **dict(snapshot)})
 
 
 def _wire(value: Mapping[str, Any]) -> dict[str, Any]:

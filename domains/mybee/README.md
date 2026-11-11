@@ -47,6 +47,12 @@ raw response, and records `HTTP_UNVERIFIED`; it does not enable scheduled or
 background acquisition. Admitted snapshots remain immutable EOS history and
 are readable through `FINANCE.FX_RATE.HISTORY`.
 
+MB1-03B normalizes that history into a tenant-neutral
+`eos_fx_market_rate` observation and tenant/company/policy-specific
+`eos_fx_rate_snapshot` adoption. One provider publication is retained once,
+while each LegalEntity keeps an independent approved accounting lineage. The
+external request contract remains compatible with MB1-03A.
+
 The revisioned D12 source catalog lives at
 `catalog/work_codes/catalog.v1.json`. It is source-authority attested and
 content-digest pinned, but deliberately has no active API or NSL Tool binding;
