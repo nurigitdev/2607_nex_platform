@@ -472,12 +472,14 @@ class EosScopedApprovalService:
         coordinator: EosBusinessTransactionCoordinator,
         authorization_source: AuthorizationSource,
         wc_client: WcApprovalWorkItemClient,
+        accounting_review_repository=None,
         clock=None,
     ) -> None:
         self._repository = repository
         self._coordinator = coordinator
         self._authorization_source = authorization_source
         self._wc_client = wc_client
+        self._accounting_review_repository = accounting_review_repository
         self._clock = clock or (lambda: datetime.now(UTC))
 
     def request_case(
@@ -486,6 +488,7 @@ class EosScopedApprovalService:
         _require_service_caller(caller)
         envelope = _write_envelope(payload)
         case = _case_payload(payload.get("case"))
+        accounting_review = case.pop("accounting_review", None)
         if case["tenant_id"] != envelope["tenant_id"]:
             raise _invalid("Case tenant does not match the write envelope")
         authorization = self._authorize(
@@ -507,11 +510,36 @@ class EosScopedApprovalService:
         def mutation(session: Session | None) -> Mapping[str, Any]:
             if session is None:
                 raise RuntimeError("ScopedApprovalCase requires a database transaction")
+            from .accounting_approval import EosAccountingApprovalError
+
             try:
                 scoped_case, _created = self._repository.create_in_session(
                     session, value
                 )
+                review_projection = None
+                if accounting_review is not None:
+                    if self._accounting_review_repository is None:
+                        raise EosScopedApprovalError(
+                            "EOS_ACCOUNTING_REVIEW_UNAVAILABLE",
+                            "Accounting review persistence is not configured",
+                            status_code=503,
+                            retryable=True,
+                        )
+                    review_projection = (
+                        self._accounting_review_repository.create_in_session(
+                            session,
+                            scoped_case=scoped_case,
+                            review=accounting_review,
+                        )
+                    )
             except EosScopedApprovalError as exc:
+                raise EosBusinessOperationError(
+                    exc.error_code,
+                    exc.detail,
+                    status_code=exc.status_code,
+                    retryable=exc.retryable,
+                ) from exc
+            except EosAccountingApprovalError as exc:
                 raise EosBusinessOperationError(
                     exc.error_code,
                     exc.detail,
@@ -521,6 +549,7 @@ class EosScopedApprovalService:
             return {
                 "business_result_ref": f"eos.scoped-approval-case:{case['case_id']}",
                 "scoped_approval_case": scoped_case,
+                "accounting_review": review_projection,
                 "requested_operation": requested_operation,
                 "canonical_operation": ACCOUNTING_APPROVAL_REQUEST_OPERATION,
             }
@@ -537,7 +566,10 @@ class EosScopedApprovalService:
                 retryable=exc.retryable,
             ) from exc
         scoped_case = operation.result["scoped_approval_case"]
-        work_item = scoped_approval_work_item(scoped_case)
+        work_item = scoped_approval_work_item(
+            scoped_case,
+            accounting_review=operation.result.get("accounting_review"),
+        )
         try:
             publication = _wc_publication(self._wc_client.create_or_get(work_item))
         except EosScopedApprovalError:
@@ -635,7 +667,11 @@ def scoped_approval_payload_hash(payload: Mapping[str, Any]) -> str:
     )
 
 
-def scoped_approval_work_item(scoped_case: Mapping[str, Any]) -> dict[str, Any]:
+def scoped_approval_work_item(
+    scoped_case: Mapping[str, Any],
+    *,
+    accounting_review: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
     stage_order = scoped_case["active_stage_order"]
     if stage_order is None or scoped_case["state"] != "PENDING":
         raise _conflict("Scoped approval case has no publishable active stage")
@@ -663,6 +699,35 @@ def scoped_approval_work_item(scoped_case: Mapping[str, Any]) -> dict[str, Any]:
         "target_role_ref": scoped_case["target_role_ref"],
         "authorization_revision_hash": scoped_case["authorization_revision_hash"],
     }
+    if accounting_review is not None:
+        semantic["accounting_review_hash"] = accounting_review["review_hash"]
+    display_summary = {
+        "purpose": scoped_case["purpose"],
+        "company_id": scoped_case["company_id"],
+        "scope_type": scoped_case["scope_type"],
+        "project_count": len(project_ids),
+        "subject_ref": scoped_case["subject_ref"],
+        "subject_revision": scoped_case["subject_revision"],
+        "stage_order": stage_order,
+        "stage_count": scoped_case["stage_count"],
+    }
+    if accounting_review is not None:
+        display_summary["accounting_review"] = {
+            key: accounting_review[key]
+            for key in (
+                "candidate_id",
+                "candidate_revision",
+                "original_currency",
+                "original_amount",
+                "market_base_rate",
+                "rate_reference_date",
+                "rate_publication",
+                "functional_currency",
+                "functional_amount",
+                "fx_exception",
+                "review_hash",
+            )
+        }
     created_at = scoped_case["created_at"]
     expires_at = scoped_case["expires_at"]
     return {
@@ -677,18 +742,7 @@ def scoped_approval_work_item(scoped_case: Mapping[str, Any]) -> dict[str, Any]:
         "source_ref": source_ref,
         "semantic_hash": semantic_sha256_hash_ref(semantic),
         "title": f"Approve {scoped_case['purpose']}: {scoped_case['subject_ref']}",
-        "display_safe_summary": canonical_json(
-            {
-                "purpose": scoped_case["purpose"],
-                "company_id": scoped_case["company_id"],
-                "scope_type": scoped_case["scope_type"],
-                "project_count": len(project_ids),
-                "subject_ref": scoped_case["subject_ref"],
-                "subject_revision": scoped_case["subject_revision"],
-                "stage_order": stage_order,
-                "stage_count": scoped_case["stage_count"],
-            }
-        ),
+        "display_safe_summary": canonical_json(display_summary),
         "approval_provider_type": "EOS",
         "approval_target_ref": f"eos.scoped-approval-case:{scoped_case['case_id']}",
         "target_approver_ref": None,
@@ -773,14 +827,15 @@ def _case_payload(value: object) -> dict[str, Any]:
         "causation_id",
         "expires_at",
     }
-    if set(value) != fields:
+    optional_fields = {"accounting_review"}
+    if not fields.issubset(value) or set(value) - fields - optional_fields:
         raise _invalid("case fields do not match the admitted v2 contract")
     scope_type = _choice(
         "scope_type", value.get("scope_type"), SCOPED_APPROVAL_SCOPE_TYPES
     )
     project_ids = _project_ids(value.get("project_ids"))
     _require_scope_shape(scope_type, project_ids)
-    return {
+    result = {
         "tenant_id": _scoped_id("tenant_id", value.get("tenant_id"), 128),
         "case_id": _uuid("case_id", value.get("case_id")),
         "company_id": _uuid("company_id", value.get("company_id")),
@@ -804,6 +859,12 @@ def _case_payload(value: object) -> dict[str, Any]:
         "causation_id": _scoped_id("causation_id", value.get("causation_id"), 128),
         "expires_at": _optional_datetime("expires_at", value.get("expires_at")),
     }
+    if "accounting_review" in value:
+        review = value.get("accounting_review")
+        if not isinstance(review, Mapping):
+            raise _invalid("accounting_review must be an object")
+        result["accounting_review"] = dict(review)
+    return result
 
 
 def _case_request(value: ScopedApprovalCaseInput) -> dict[str, Any]:
@@ -993,6 +1054,14 @@ def _projection(
             for item in sorted(bindings, key=lambda item: str(item["project_id"]))
         ],
     }
+
+
+def scoped_approval_case_projection(
+    value: Mapping[str, Any], bindings: Sequence[Mapping[str, Any]]
+) -> dict[str, Any]:
+    """Project one scoped case without exposing repository internals."""
+
+    return _projection(value, bindings)
 
 
 def _project_ids(value: object) -> list[str]:

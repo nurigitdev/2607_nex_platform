@@ -115,6 +115,31 @@ def test_s36_role_org_project_target_requires_every_configured_scope():
         assert denied.value.error_code == "wc.approval_authorization_denied"
 
 
+def test_s36_role_target_is_case_insensitive_but_resource_scopes_are_exact():
+    item = _work_item(
+        target_approver_ref=None,
+        target_role_ref="TEAM_LEAD",
+        target_org_scope_ref="org-finance",
+        target_project_scope_ref="project-p8",
+    )
+    source = _AuthorizationSource(
+        {
+            **_AuthorizationSource().value,
+            "roles": ["team_lead"],
+            "org_scope_refs": ["org-finance"],
+            "project_scope_refs": ["project-p8"],
+        }
+    )
+    assert _authorizer(source).authorize(
+        work_item=item, decided_by="approver-s36"
+    )["authorized_by_oa"] is True
+
+    source.value["project_scope_refs"] = ["PROJECT-P8"]
+    with pytest.raises(ApprovalDecisionAuthorizationError) as denied:
+        _authorizer(source).authorize(work_item=item, decided_by="approver-s36")
+    assert denied.value.error_code == "wc.approval_authorization_denied"
+
+
 @pytest.mark.parametrize(
     "authorization",
     (

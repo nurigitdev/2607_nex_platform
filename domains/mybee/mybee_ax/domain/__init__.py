@@ -1,5 +1,9 @@
 """MyBee domain contracts that consume canonical NeX Platform boundaries."""
 
+from .accounting_signoff_view import (
+    AccountingSignoffViewError,
+    accounting_signoff_view,
+)
 from .coa_approval import (
     CoaApprovalAdmission,
     CoaApprovalAdmissionError,
@@ -81,6 +85,7 @@ __all__ = [
     "TEMPLATE_ID",
     "TEMPLATE_STATUS",
     "TEMPLATE_VERSION",
+    "AccountingSignoffViewError",
     "CoaApprovalAdmission",
     "CoaApprovalAdmissionError",
     "CoaCandidateError",
@@ -98,6 +103,7 @@ __all__ = [
     "WorkCodeCatalog",
     "WorkCodeCatalogError",
     "WorkforcePlanningError",
+    "accounting_signoff_view",
     "admit_work_assignment_collection",
     "admit_work_assignment_projection",
     "build_work_assignment_list_request",

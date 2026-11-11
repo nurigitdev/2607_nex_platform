@@ -109,6 +109,7 @@ def build_scoped_approval_request(
     approval_policy_id: str,
     correlation_id: str,
     causation_id: str,
+    accounting_review: Mapping[str, Any] | None = None,
     expires_at: datetime | None = None,
 ) -> EosScopedApprovalRequest:
     normalized_scope = _choice("scope_type", scope_type, SCOPED_APPROVAL_SCOPE_TYPES)
@@ -132,6 +133,13 @@ def build_scoped_approval_request(
         "causation_id": _scoped_id("causation_id", causation_id, 128),
         "expires_at": _timestamp(expires_at),
     }
+    if accounting_review is not None:
+        if not isinstance(accounting_review, Mapping):
+            raise _error(
+                "MYBEE_APPROVAL_REVIEW_INVALID",
+                "accounting_review must be an object",
+            )
+        case["accounting_review"] = dict(accounting_review)
     payload: dict[str, Any] = {
         "tenant_id": case["tenant_id"],
         "business_operation_id": _uuid("business_operation_id", business_operation_id),

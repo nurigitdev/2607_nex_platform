@@ -82,6 +82,7 @@ def create_eos_app(
     app.state.eos_reporting_map_service = dependencies.reporting_map_service
     app.state.eos_coa_release_admin_service = dependencies.coa_release_admin_service
     app.state.eos_accounting_period_service = dependencies.accounting_period_service
+    app.state.eos_accounting_approval_service = dependencies.accounting_approval_service
     app.state.eos_fx_rate_service = dependencies.fx_rate_service
     app.state.eos_approval_policies = dependencies.approval_policies
     app.state.eos_approval_instances = dependencies.approval_instances

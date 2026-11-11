@@ -2320,6 +2320,55 @@ components:
         correlation_id: {type: string, minLength: 1, maxLength: 128}
         causation_id: {type: string, minLength: 1, maxLength: 128}
         expires_at: {type: [string, "null"], format: date-time}
+        accounting_review:
+          $ref: "#/components/schemas/AccountingReviewContext"
+    AccountingReviewContext:
+      type: object
+      additionalProperties: false
+      required:
+        - schema_version
+        - candidate_id
+        - candidate_revision
+        - candidate_hash
+        - document_envelope_hash
+        - fx_rate_set_hash
+        - rule_release_hash
+        - accounting_period_id
+        - candidate_preparer_subject_id
+        - business_approver_subject_ids
+        - original_currency
+        - original_amount
+        - market_base_rate
+        - rate_reference_date
+        - rate_publication
+        - functional_currency
+        - functional_amount
+        - fx_exception
+      properties:
+        schema_version:
+          type: string
+          const: eos_accounting_review_context.v2
+        candidate_id: {type: string, format: uuid}
+        candidate_revision: {type: integer, minimum: 1}
+        candidate_hash: {type: string, pattern: "^sha256:[0-9a-f]{64}$"}
+        document_envelope_hash: {type: string, pattern: "^sha256:[0-9a-f]{64}$"}
+        fx_rate_set_hash: {type: string, pattern: "^sha256:[0-9a-f]{64}$"}
+        rule_release_hash: {type: string, pattern: "^sha256:[0-9a-f]{64}$"}
+        accounting_period_id: {type: string, format: uuid}
+        candidate_preparer_subject_id: {type: string, minLength: 1, maxLength: 128}
+        business_approver_subject_ids:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items: {type: string, minLength: 1, maxLength: 128}
+        original_currency: {type: string, pattern: "^[A-Z]{3}$"}
+        original_amount: {type: string, pattern: "^[0-9]+(?:\\.[0-9]+)?$"}
+        market_base_rate: {type: string, pattern: "^[0-9]+(?:\\.[0-9]+)?$"}
+        rate_reference_date: {type: string, format: date}
+        rate_publication: {type: string, minLength: 1, maxLength: 256}
+        functional_currency: {type: string, pattern: "^[A-Z]{3}$"}
+        functional_amount: {type: string, pattern: "^[0-9]+(?:\\.[0-9]+)?$"}
+        fx_exception: {type: [string, "null"], maxLength: 512}
     ScopedApprovalRequestReceipt:
       type: object
       additionalProperties: false

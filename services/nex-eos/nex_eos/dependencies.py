@@ -11,6 +11,10 @@ from .account_catalog import (
     EosAccountCatalogService,
     SqlAlchemyEosAccountCatalogRepository,
 )
+from .accounting_approval import (
+    EosAccountingApprovalService,
+    SqlAlchemyAccountingReviewContextRepository,
+)
 from .accounting_periods import (
     EosAccountingPeriodService,
     SqlAlchemyEosAccountingPeriodRepository,
@@ -99,6 +103,7 @@ class EosDependencies:
     reporting_map_service: EosReportingMapService | None
     coa_release_admin_service: EosCoaReleaseAdminService | None
     accounting_period_service: EosAccountingPeriodService | None
+    accounting_approval_service: EosAccountingApprovalService | None
     fx_rate_service: EosFxRateService | None
     approval_policies: SqlAlchemyEosApprovalPolicyRepository | None
     approval_instances: SqlAlchemyEosApprovalInstanceRepository | None
@@ -247,9 +252,28 @@ def build_eos_dependencies(
                 base_url=environ.get("NEX_WC_BASE_URL", DEFAULT_WC_BASE_URL),
                 service_token=wc_token,
             ),
+            accounting_review_repository=(
+                SqlAlchemyAccountingReviewContextRepository(
+                    database_runtime.session_factory
+                )
+            ),
         )
         if database_runtime is not None
         and business_transactions is not None
+        and authorization_source is not None
+        and wc_token
+        else None
+    )
+    accounting_approval_service = (
+        EosAccountingApprovalService(
+            session_factory=database_runtime.session_factory,
+            authorization_source=authorization_source,
+            wc_client=HttpWcApprovalWorkItemClient(
+                base_url=environ.get("NEX_WC_BASE_URL", DEFAULT_WC_BASE_URL),
+                service_token=wc_token,
+            ),
+        )
+        if database_runtime is not None
         and authorization_source is not None
         and wc_token
         else None
@@ -404,6 +428,7 @@ def build_eos_dependencies(
         reporting_map_service=reporting_map_service,
         coa_release_admin_service=coa_release_admin_service,
         accounting_period_service=accounting_period_service,
+        accounting_approval_service=accounting_approval_service,
         fx_rate_service=fx_rate_service,
         approval_policies=approval_policies,
         approval_instances=approval_instances,

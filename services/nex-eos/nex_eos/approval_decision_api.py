@@ -12,6 +12,10 @@ from nex_runtime import (
     problem_response,
 )
 
+from .accounting_approval_api import (
+    ingest_scoped_accounting_delivery,
+    is_scoped_approval_delivery,
+)
 from .approval_transitions import (
     EosApprovalTransitionError,
     EosBusinessApprovalTransitionService,
@@ -42,6 +46,11 @@ def register_approval_decision_routes(app: FastAPI) -> None:
                 title="EOS approval decision caller denied",
                 detail="Only nex-ae-api may deliver a business approval decision.",
                 retryable=False,
+            )
+        if is_scoped_approval_delivery(payload):
+            return ingest_scoped_accounting_delivery(
+                payload=payload,
+                request=request,
             )
         service: EosBusinessApprovalTransitionService | None = getattr(
             request.app.state, "eos_approval_transition_service", None
