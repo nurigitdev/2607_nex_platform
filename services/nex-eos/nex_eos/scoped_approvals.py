@@ -473,6 +473,7 @@ class EosScopedApprovalService:
         authorization_source: AuthorizationSource,
         wc_client: WcApprovalWorkItemClient,
         accounting_review_repository=None,
+        document_signoff_repository=None,
         clock=None,
     ) -> None:
         self._repository = repository
@@ -480,6 +481,7 @@ class EosScopedApprovalService:
         self._authorization_source = authorization_source
         self._wc_client = wc_client
         self._accounting_review_repository = accounting_review_repository
+        self._document_signoff_repository = document_signoff_repository
         self._clock = clock or (lambda: datetime.now(UTC))
 
     def request_case(
@@ -489,6 +491,7 @@ class EosScopedApprovalService:
         envelope = _write_envelope(payload)
         case = _case_payload(payload.get("case"))
         accounting_review = case.pop("accounting_review", None)
+        document_signoff_context = case.pop("document_signoff_context", None)
         if case["tenant_id"] != envelope["tenant_id"]:
             raise _invalid("Case tenant does not match the write envelope")
         authorization = self._authorize(
@@ -511,12 +514,14 @@ class EosScopedApprovalService:
             if session is None:
                 raise RuntimeError("ScopedApprovalCase requires a database transaction")
             from .accounting_approval import EosAccountingApprovalError
+            from .document_signoff import EosDocumentSignoffError
 
             try:
                 scoped_case, _created = self._repository.create_in_session(
                     session, value
                 )
                 review_projection = None
+                document_context_projection = None
                 if accounting_review is not None:
                     if self._accounting_review_repository is None:
                         raise EosScopedApprovalError(
@@ -530,6 +535,21 @@ class EosScopedApprovalService:
                             session,
                             scoped_case=scoped_case,
                             review=accounting_review,
+                        )
+                    )
+                if document_signoff_context is not None:
+                    if self._document_signoff_repository is None:
+                        raise EosScopedApprovalError(
+                            "EOS_DOCUMENT_SIGNOFF_CONTEXT_UNAVAILABLE",
+                            "Document signoff context persistence is not configured",
+                            status_code=503,
+                            retryable=True,
+                        )
+                    document_context_projection = (
+                        self._document_signoff_repository.create_in_session(
+                            session,
+                            scoped_case=scoped_case,
+                            context=document_signoff_context,
                         )
                     )
             except EosScopedApprovalError as exc:
@@ -546,10 +566,18 @@ class EosScopedApprovalService:
                     status_code=exc.status_code,
                     retryable=exc.retryable,
                 ) from exc
+            except EosDocumentSignoffError as exc:
+                raise EosBusinessOperationError(
+                    exc.error_code,
+                    exc.detail,
+                    status_code=exc.status_code,
+                    retryable=exc.retryable,
+                ) from exc
             return {
                 "business_result_ref": f"eos.scoped-approval-case:{case['case_id']}",
                 "scoped_approval_case": scoped_case,
                 "accounting_review": review_projection,
+                "document_signoff_context": document_context_projection,
                 "requested_operation": requested_operation,
                 "canonical_operation": ACCOUNTING_APPROVAL_REQUEST_OPERATION,
             }
@@ -569,6 +597,7 @@ class EosScopedApprovalService:
         work_item = scoped_approval_work_item(
             scoped_case,
             accounting_review=operation.result.get("accounting_review"),
+            document_signoff_context=operation.result.get("document_signoff_context"),
         )
         try:
             publication = _wc_publication(self._wc_client.create_or_get(work_item))
@@ -671,6 +700,7 @@ def scoped_approval_work_item(
     scoped_case: Mapping[str, Any],
     *,
     accounting_review: Mapping[str, Any] | None = None,
+    document_signoff_context: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     stage_order = scoped_case["active_stage_order"]
     if stage_order is None or scoped_case["state"] != "PENDING":
@@ -701,6 +731,10 @@ def scoped_approval_work_item(
     }
     if accounting_review is not None:
         semantic["accounting_review_hash"] = accounting_review["review_hash"]
+    if document_signoff_context is not None:
+        semantic["document_signoff_context_hash"] = document_signoff_context[
+            "context_hash"
+        ]
     display_summary = {
         "purpose": scoped_case["purpose"],
         "company_id": scoped_case["company_id"],
@@ -728,6 +762,21 @@ def scoped_approval_work_item(
                 "review_hash",
             )
         }
+    if document_signoff_context is not None:
+        display_summary["document_signoff"] = {
+            key: document_signoff_context[key]
+            for key in (
+                "approved_document_id",
+                "document_revision",
+                "document_type",
+                "work_code",
+                "approved_amount",
+                "approved_currency",
+                "valid_from",
+                "valid_until",
+                "context_hash",
+            )
+        }
     created_at = scoped_case["created_at"]
     expires_at = scoped_case["expires_at"]
     return {
@@ -748,8 +797,13 @@ def scoped_approval_work_item(
         "target_approver_ref": None,
         "target_role_ref": scoped_case["target_role_ref"],
         "target_org_scope_ref": None,
+        # EOS owns the immutable Project scope. OA currently owns role/scope
+        # authority, so DOCUMENT_SIGNOFF cannot require an OA project grant.
         "target_project_scope_ref": (
-            project_ids[0] if scoped_case["scope_type"] == "PROJECT" else None
+            project_ids[0]
+            if scoped_case["scope_type"] == "PROJECT"
+            and scoped_case["purpose"] != "DOCUMENT_SIGNOFF"
+            else None
         ),
         "agent_execution_id": None,
         "executable_step_id": None,
@@ -827,7 +881,7 @@ def _case_payload(value: object) -> dict[str, Any]:
         "causation_id",
         "expires_at",
     }
-    optional_fields = {"accounting_review"}
+    optional_fields = {"accounting_review", "document_signoff_context"}
     if not fields.issubset(value) or set(value) - fields - optional_fields:
         raise _invalid("case fields do not match the admitted v2 contract")
     scope_type = _choice(
@@ -864,6 +918,16 @@ def _case_payload(value: object) -> dict[str, Any]:
         if not isinstance(review, Mapping):
             raise _invalid("accounting_review must be an object")
         result["accounting_review"] = dict(review)
+    if "document_signoff_context" in value:
+        context = value.get("document_signoff_context")
+        if not isinstance(context, Mapping):
+            raise _invalid("document_signoff_context must be an object")
+        result["document_signoff_context"] = dict(context)
+    if result["purpose"] == "DOCUMENT_SIGNOFF":
+        if "document_signoff_context" not in result or "accounting_review" in result:
+            raise _invalid("DOCUMENT_SIGNOFF requires only document_signoff_context")
+    elif "document_signoff_context" in result:
+        raise _invalid("ACCOUNTING_POSTING cannot carry document_signoff_context")
     return result
 
 

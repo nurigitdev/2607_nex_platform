@@ -64,7 +64,8 @@ EOS_APPROVED_DOCUMENT_TABLE = Table(
     Column("work_code", String(16), nullable=False),
     Column("document_content_hash", String(71), nullable=False),
     Column("attachment_manifest_hash", String(71), nullable=False),
-    Column("business_approval_proof_id", Uuid(as_uuid=False), nullable=False),
+    Column("business_approval_proof_id", Uuid(as_uuid=False), nullable=True),
+    Column("scoped_document_evidence_id", Uuid(as_uuid=False), nullable=True),
     Column("business_proof_hash", String(71), nullable=False),
     Column("approval_policy_id", Uuid(as_uuid=False), nullable=False),
     Column("approval_policy_version", Integer, nullable=False),
@@ -96,6 +97,11 @@ EOS_APPROVED_DOCUMENT_TABLE = Table(
         "business_approval_proof_id",
         name="ux_eos_approved_doc_proof",
     ),
+    UniqueConstraint(
+        "tenant_id",
+        "scoped_document_evidence_id",
+        name="ux_eos_approved_doc_scoped_evidence",
+    ),
     ForeignKeyConstraint(
         ("tenant_id", "company_id"),
         ("eos_legal_entity.tenant_id", "eos_legal_entity.company_id"),
@@ -105,6 +111,14 @@ EOS_APPROVED_DOCUMENT_TABLE = Table(
         ("tenant_id", "business_approval_proof_id"),
         ("eos_approval_proof.tenant_id", "eos_approval_proof.approval_proof_id"),
         name="fk_eos_approved_doc_proof",
+    ),
+    ForeignKeyConstraint(
+        ("tenant_id", "scoped_document_evidence_id"),
+        (
+            "eos_document_signoff_evidence.tenant_id",
+            "eos_document_signoff_evidence.evidence_id",
+        ),
+        name="fk_eos_approved_doc_scoped_evidence",
     ),
     ForeignKeyConstraint(
         ("tenant_id", "approval_policy_id"),
@@ -120,6 +134,13 @@ EOS_APPROVED_DOCUMENT_TABLE = Table(
         name="fk_eos_approved_doc_operation",
     ),
     CheckConstraint("document_revision > 0", name="ck_eos_approved_doc_revision"),
+    CheckConstraint(
+        "((business_approval_proof_id IS NOT NULL AND "
+        "scoped_document_evidence_id IS NULL) OR "
+        "(business_approval_proof_id IS NULL AND "
+        "scoped_document_evidence_id IS NOT NULL))",
+        name="ck_eos_approved_doc_proof_source",
+    ),
     CheckConstraint(
         "approval_policy_version > 0", name="ck_eos_approved_doc_policy_version"
     ),
@@ -264,6 +285,7 @@ class SqlAlchemyEosApprovedDocumentRepository:
                 record = {
                     **semantics,
                     "business_approval_proof_id": str(proof["approval_proof_id"]),
+                    "scoped_document_evidence_id": None,
                     "business_proof_hash": proof["proof_hash"],
                     "approval_policy_id": str(instance["approval_policy_id"]),
                     "approval_policy_version": instance["policy_version"],
@@ -294,6 +316,85 @@ class SqlAlchemyEosApprovedDocumentRepository:
             ) from exc
         except SQLAlchemyError as exc:
             raise _unavailable() from exc
+
+    def create_from_scoped_evidence_in_session(
+        self,
+        session: Session,
+        *,
+        value: ApprovedDocumentInput,
+        evidence: Mapping[str, Any],
+        approval_policy: Mapping[str, Any],
+        source_business_operation_id: str,
+    ) -> tuple[dict[str, Any], bool]:
+        """Materialize one envelope from admitted scoped document evidence."""
+
+        semantics = _document_semantics(value)
+        payload_hash = _payload_hash(semantics)
+        evidence_id = _uuid("evidence_id", evidence.get("evidence_id"))
+        if (
+            evidence.get("tenant_id") != semantics["tenant_id"]
+            or evidence.get("company_id") != semantics["company_id"]
+            or evidence.get("document_payload_hash") != payload_hash
+        ):
+            raise EosApprovedDocumentError(
+                "EOS_APPROVED_DOCUMENT_PROOF_MISMATCH",
+                "Scoped document evidence does not bind the exact envelope semantics",
+                status_code=409,
+            )
+        existing = self._load_revision(
+            session,
+            tenant_id=semantics["tenant_id"],
+            approved_document_id=semantics["approved_document_id"],
+            document_revision=semantics["document_revision"],
+        )
+        if existing is not None:
+            if (
+                existing["payload_hash"] != payload_hash
+                or str(existing["scoped_document_evidence_id"] or "") != evidence_id
+                or existing["business_approval_proof_id"] is not None
+            ):
+                raise _conflict(
+                    "Approved document revision has different immutable semantics "
+                    "or scoped evidence identity"
+                )
+            return _projection(existing, now=self._now()), False
+
+        company = self._load_company(session, semantics)
+        self._require_project_scope(session, semantics=semantics, company=company)
+        approved_at = _aware_datetime("approved_at", evidence["decided_at"])
+        if semantics["valid_from"] < approved_at:
+            raise _invalid("valid_from", "cannot precede final document approval")
+        now = self._now()
+        record = {
+            **semantics,
+            "business_approval_proof_id": None,
+            "scoped_document_evidence_id": evidence_id,
+            "business_proof_hash": _hash_ref("proof_hash", evidence["proof_hash"]),
+            "approval_policy_id": _uuid("approval_policy_id", approval_policy["id"]),
+            "approval_policy_version": _positive_int(
+                "approval_policy_version", approval_policy["version"]
+            ),
+            "approval_policy_hash": _hash_ref(
+                "approval_policy_hash", approval_policy["hash"]
+            ),
+            "state": "ACTIVE",
+            "approved_at": approved_at,
+            "approved_by_ref_type": "oa.user",
+            "approved_by_id": _scoped_id(
+                "approver_subject_id", evidence["approver_subject_id"], 128
+            ),
+            "source_work_item_ref": (
+                "wc.approval-work-item:"
+                f"{_uuid('wc_work_item_id', evidence['wc_work_item_id'])}"
+            ),
+            "payload_hash": payload_hash,
+            "created_business_operation_id": _uuid(
+                "created_business_operation_id", source_business_operation_id
+            ),
+            "created_at": now,
+        }
+        session.execute(EOS_APPROVED_DOCUMENT_TABLE.insert().values(**record))
+        return _projection(record, now=now), True
 
     def get(self, *, tenant_id: str, envelope_id: str) -> dict[str, Any] | None:
         tenant_id = _scoped_id("tenant_id", tenant_id, 128)
@@ -327,6 +428,31 @@ class SqlAlchemyEosApprovedDocumentRepository:
             else None
         )
 
+    def get_in_session(
+        self, session: Session, *, tenant_id: str, envelope_id: str
+    ) -> dict[str, Any] | None:
+        tenant_id = _scoped_id("tenant_id", tenant_id, 128)
+        envelope_id = _uuid("envelope_id", envelope_id)
+        row = (
+            session.execute(
+                select(EOS_APPROVED_DOCUMENT_TABLE).where(
+                    EOS_APPROVED_DOCUMENT_TABLE.c.tenant_id == tenant_id,
+                    EOS_APPROVED_DOCUMENT_TABLE.c.envelope_id == envelope_id,
+                )
+            )
+            .mappings()
+            .one_or_none()
+        )
+        if row is None:
+            return None
+        return _projection(
+            row,
+            now=self._now(),
+            consumed_amount=self._consumed_amount(
+                session, tenant_id=tenant_id, envelope_id=envelope_id
+            ),
+        )
+
     def _now(self) -> datetime:
         return _aware_datetime("clock", self._clock())
 
@@ -343,9 +469,7 @@ class SqlAlchemyEosApprovedDocumentRepository:
 
         value = session.execute(
             select(
-                func.sum(
-                    EOS_APPROVED_DOCUMENT_CONSUMPTION_TABLE.c.consumed_amount
-                )
+                func.sum(EOS_APPROVED_DOCUMENT_CONSUMPTION_TABLE.c.consumed_amount)
             ).where(
                 EOS_APPROVED_DOCUMENT_CONSUMPTION_TABLE.c.tenant_id == tenant_id,
                 EOS_APPROVED_DOCUMENT_CONSUMPTION_TABLE.c.envelope_id == envelope_id,
@@ -697,7 +821,9 @@ def _projection(
         "work_code": value["work_code"],
         "document_content_hash": value["document_content_hash"],
         "attachment_manifest_hash": value["attachment_manifest_hash"],
-        "business_approval_proof_id": str(value["business_approval_proof_id"]),
+        "business_approval_proof_id": str(
+            value["business_approval_proof_id"] or value["scoped_document_evidence_id"]
+        ),
         "business_proof_hash": value["business_proof_hash"],
         "approval_policy_id": str(value["approval_policy_id"]),
         "approval_policy_version": value["approval_policy_version"],

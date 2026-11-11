@@ -10,6 +10,7 @@ from typing import Any, Protocol
 from urllib.error import HTTPError, URLError
 from urllib.parse import urljoin, urlparse
 from urllib.request import Request, urlopen
+from uuid import NAMESPACE_URL, uuid5
 
 from nex_runtime.semantic_hashes import canonical_json
 
@@ -217,6 +218,32 @@ def build_business_proposal_approval_request(
         approval_policy_id=approval_policy_id,
         correlation_id=correlation_id,
         causation_id=causation_id,
+        document_signoff_context={
+            "schema_version": "eos_document_signoff_context.v1",
+            "envelope_id": str(
+                uuid5(
+                    NAMESPACE_URL,
+                    "https://nex-platform.local/eos/document-signoff-envelope/"
+                    f"{proposal.tenant_id}/{case_id}",
+                )
+            ),
+            "approved_document_id": proposal.proposal_id,
+            "document_revision": proposal.revision,
+            "document_type": proposal.document_type,
+            "work_code": proposal.work_code,
+            "document_content_hash": proposal.document_content_hash,
+            "attachment_manifest_hash": proposal.attachment_manifest_hash,
+            "approved_amount": _money_text(proposal.requested_amount),
+            "approved_currency": proposal.currency,
+            "tolerance_policy_hash": None,
+            "valid_from": _timestamp(proposal.valid_from),
+            "valid_until": (
+                _timestamp(proposal.valid_until)
+                if proposal.valid_until is not None
+                else None
+            ),
+            "subject_hash": proposal.approval_subject_hash,
+        },
         expires_at=expires_at,
     )
     return BusinessApprovalProviderRequest(

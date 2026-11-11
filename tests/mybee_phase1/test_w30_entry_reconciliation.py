@@ -59,32 +59,41 @@ def test_w30_ca01_migration_reservations_follow_actual_inventory() -> None:
     decision = _decision()
     reservations = decision["migration_reservations"]
 
-    assert versions[-1] == 2529
-    assert [item["version"] for item in reservations] == [
+    reserved_versions = [item["version"] for item in reservations]
+    assert reserved_versions == [
         "2530_eos_document_signoff_finalization",
         "2531_eos_voucher_candidate_v2",
     ]
-    assert not (MIGRATIONS / "2530_eos_document_signoff_finalization.sql").exists()
-    assert not (MIGRATIONS / "2531_eos_voucher_candidate_v2.sql").exists()
+    implemented = [
+        version
+        for version in reserved_versions
+        if (MIGRATIONS / f"{version}.sql").exists()
+    ]
+    assert implemented == reserved_versions[: len(implemented)]
+    expected_highest = max(
+        2529,
+        *(int(version.split("_", 1)[0]) for version in implemented),
+    )
+    assert versions[-1] == expected_highest
 
 
 def test_w30_ca01_source_facts_match_current_provider_boundary() -> None:
     decision = _decision()
     facts = decision["source_facts"]
-    scoped = (
-        ROOT / "services/nex-eos/nex_eos/scoped_approvals.py"
-    ).read_text(encoding="utf-8")
-    accounting = (
-        ROOT / "services/nex-eos/nex_eos/accounting_approval.py"
-    ).read_text(encoding="utf-8")
+    scoped = (ROOT / "services/nex-eos/nex_eos/scoped_approvals.py").read_text(
+        encoding="utf-8"
+    )
+    accounting = (ROOT / "services/nex-eos/nex_eos/accounting_approval.py").read_text(
+        encoding="utf-8"
+    )
     approved_api = (
         ROOT / "services/nex-eos/nex_eos/approved_document_api.py"
     ).read_text(encoding="utf-8")
 
     assert "DOCUMENT_SIGNOFF" in scoped
     assert "DOCUMENT_SIGNOFF cannot satisfy accounting approval" in accounting
-    assert '@app.get(' in approved_api
-    assert '@app.post(' not in approved_api
+    assert "@app.get(" in approved_api
+    assert "@app.post(" not in approved_api
     assert facts["document_signoff_decision_is_rejected_by_accounting_service"] is True
     assert facts["approved_document_public_create_exists"] is False
     assert not (ROOT / "services/nex-eos/nex_eos/voucher_candidates.py").exists()

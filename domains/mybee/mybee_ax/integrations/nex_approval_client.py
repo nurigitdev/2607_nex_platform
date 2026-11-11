@@ -110,6 +110,7 @@ def build_scoped_approval_request(
     correlation_id: str,
     causation_id: str,
     accounting_review: Mapping[str, Any] | None = None,
+    document_signoff_context: Mapping[str, Any] | None = None,
     expires_at: datetime | None = None,
 ) -> EosScopedApprovalRequest:
     normalized_scope = _choice("scope_type", scope_type, SCOPED_APPROVAL_SCOPE_TYPES)
@@ -140,6 +141,24 @@ def build_scoped_approval_request(
                 "accounting_review must be an object",
             )
         case["accounting_review"] = dict(accounting_review)
+    if document_signoff_context is not None:
+        if not isinstance(document_signoff_context, Mapping):
+            raise _error(
+                "MYBEE_DOCUMENT_SIGNOFF_CONTEXT_INVALID",
+                "document_signoff_context must be an object",
+            )
+        case["document_signoff_context"] = dict(document_signoff_context)
+    if case["purpose"] == "DOCUMENT_SIGNOFF":
+        if document_signoff_context is None or accounting_review is not None:
+            raise _error(
+                "MYBEE_DOCUMENT_SIGNOFF_CONTEXT_INVALID",
+                "DOCUMENT_SIGNOFF requires only document_signoff_context",
+            )
+    elif document_signoff_context is not None:
+        raise _error(
+            "MYBEE_DOCUMENT_SIGNOFF_CONTEXT_INVALID",
+            "ACCOUNTING_POSTING cannot carry document_signoff_context",
+        )
     payload: dict[str, Any] = {
         "tenant_id": case["tenant_id"],
         "business_operation_id": _uuid("business_operation_id", business_operation_id),

@@ -54,6 +54,11 @@ from .coa_release_admin import (
     SqlAlchemyEosCoaReleaseAdminRepository,
 )
 from .config import EosSettings
+from .document_signoff import (
+    EosDocumentSignoffService,
+    EosScopedApprovalDecisionRouter,
+    SqlAlchemyDocumentSignoffContextRepository,
+)
 from .fx_rates import EosFxRateService, SqlAlchemyEosFxRateRepository
 from .health import build_configuration_readiness_check
 from .legal_entities import (
@@ -104,6 +109,8 @@ class EosDependencies:
     coa_release_admin_service: EosCoaReleaseAdminService | None
     accounting_period_service: EosAccountingPeriodService | None
     accounting_approval_service: EosAccountingApprovalService | None
+    document_signoff_service: EosDocumentSignoffService | None
+    scoped_approval_decision_router: EosScopedApprovalDecisionRouter | None
     fx_rate_service: EosFxRateService | None
     approval_policies: SqlAlchemyEosApprovalPolicyRepository | None
     approval_instances: SqlAlchemyEosApprovalInstanceRepository | None
@@ -257,6 +264,11 @@ def build_eos_dependencies(
                     database_runtime.session_factory
                 )
             ),
+            document_signoff_repository=(
+                SqlAlchemyDocumentSignoffContextRepository(
+                    database_runtime.session_factory
+                )
+            ),
         )
         if database_runtime is not None
         and business_transactions is not None
@@ -276,6 +288,34 @@ def build_eos_dependencies(
         if database_runtime is not None
         and authorization_source is not None
         and wc_token
+        else None
+    )
+    document_signoff_service = (
+        EosDocumentSignoffService(
+            session_factory=database_runtime.session_factory,
+            authorization_source=authorization_source,
+            wc_client=HttpWcApprovalWorkItemClient(
+                base_url=environ.get("NEX_WC_BASE_URL", DEFAULT_WC_BASE_URL),
+                service_token=wc_token,
+            ),
+            document_repository=SqlAlchemyEosApprovedDocumentRepository(
+                database_runtime.session_factory
+            ),
+        )
+        if database_runtime is not None
+        and authorization_source is not None
+        and wc_token
+        else None
+    )
+    scoped_approval_decision_router = (
+        EosScopedApprovalDecisionRouter(
+            session_factory=database_runtime.session_factory,
+            accounting_service=accounting_approval_service,
+            document_signoff_service=document_signoff_service,
+        )
+        if database_runtime is not None
+        and accounting_approval_service is not None
+        and document_signoff_service is not None
         else None
     )
     project_operations = (
@@ -429,6 +469,8 @@ def build_eos_dependencies(
         coa_release_admin_service=coa_release_admin_service,
         accounting_period_service=accounting_period_service,
         accounting_approval_service=accounting_approval_service,
+        document_signoff_service=document_signoff_service,
+        scoped_approval_decision_router=scoped_approval_decision_router,
         fx_rate_service=fx_rate_service,
         approval_policies=approval_policies,
         approval_instances=approval_instances,

@@ -692,7 +692,9 @@ paths:
       operationId: FINANCE.ACCOUNTING_APPROVAL.REQUEST
       description: >-
         Creates only a company, Project, or Project-set scoped Human approval
-        request. The subsequent WC decision remains a separate operation.
+        request. DOCUMENT_SIGNOFF persists its immutable materialization context
+        before publication; ACCOUNTING_POSTING persists its accounting review.
+        The subsequent WC decision remains a separate operation.
       tags: [Finance]
       security:
         - serviceBearer: []
@@ -2322,6 +2324,59 @@ components:
         expires_at: {type: [string, "null"], format: date-time}
         accounting_review:
           $ref: "#/components/schemas/AccountingReviewContext"
+        document_signoff_context:
+          $ref: "#/components/schemas/DocumentSignoffContext"
+      allOf:
+        - if:
+            properties:
+              purpose: {const: DOCUMENT_SIGNOFF}
+          then:
+            required: [document_signoff_context]
+            not:
+              required: [accounting_review]
+        - if:
+            properties:
+              purpose: {const: ACCOUNTING_POSTING}
+          then:
+            not:
+              required: [document_signoff_context]
+    DocumentSignoffContext:
+      type: object
+      additionalProperties: false
+      required:
+        - schema_version
+        - envelope_id
+        - approved_document_id
+        - document_revision
+        - document_type
+        - work_code
+        - document_content_hash
+        - attachment_manifest_hash
+        - approved_amount
+        - approved_currency
+        - tolerance_policy_hash
+        - valid_from
+        - valid_until
+        - subject_hash
+      properties:
+        schema_version:
+          type: string
+          const: eos_document_signoff_context.v1
+        envelope_id: {type: string, format: uuid}
+        approved_document_id: {type: string, minLength: 1, maxLength: 128}
+        document_revision: {type: integer, minimum: 1}
+        document_type: {type: string, minLength: 1, maxLength: 64}
+        work_code: {type: string, pattern: "^FL[0-9]{7}$"}
+        document_content_hash: {type: string, pattern: "^sha256:[0-9a-f]{64}$"}
+        attachment_manifest_hash: {type: string, pattern: "^sha256:[0-9a-f]{64}$"}
+        approved_amount: {type: string, pattern: "^[0-9]+(?:\\.[0-9]{1,4})?$"}
+        approved_currency: {type: string, pattern: "^[A-Z]{3}$"}
+        tolerance_policy_hash:
+          type: [string, "null"]
+          pattern: "^sha256:[0-9a-f]{64}$"
+        valid_from: {type: string, format: date-time}
+        valid_until: {type: [string, "null"], format: date-time}
+        subject_hash: {type: string, pattern: "^sha256:[0-9a-f]{64}$"}
     AccountingReviewContext:
       type: object
       additionalProperties: false
