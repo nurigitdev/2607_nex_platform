@@ -22,6 +22,10 @@ from .approval_transitions import (
     EosBusinessApprovalTransitionService,
     SqlAlchemyEosApprovalTransitionRepository,
 )
+from .approved_documents import (
+    EosApprovedDocumentService,
+    SqlAlchemyEosApprovedDocumentRepository,
+)
 from .approver_resolution import EosApproverResolutionService
 from .attachment_resolution import HttpAeVoucherAttachmentResolver
 from .attachments import SqlAlchemyEosAttachmentRepository
@@ -95,6 +99,7 @@ class EosDependencies:
     approval_policies: SqlAlchemyEosApprovalPolicyRepository | None
     approval_instances: SqlAlchemyEosApprovalInstanceRepository | None
     approval_transition_service: EosBusinessApprovalTransitionService | None
+    approved_document_service: EosApprovedDocumentService | None
     business_formal_wc_adapter: EosBusinessFormalWcAdapter | None
     vouchers: SqlAlchemyEosVoucherRepository | None
     attachments: SqlAlchemyEosAttachmentRepository | None
@@ -216,6 +221,14 @@ def build_eos_dependencies(
             service_token=oa_token,
         )
         if oa_token
+        else None
+    )
+    approved_document_service = (
+        EosApprovedDocumentService(
+            SqlAlchemyEosApprovedDocumentRepository(database_runtime.session_factory),
+            authorization_source,
+        )
+        if database_runtime is not None and authorization_source is not None
         else None
     )
     project_operations = (
@@ -372,6 +385,7 @@ def build_eos_dependencies(
         approval_policies=approval_policies,
         approval_instances=approval_instances,
         approval_transition_service=approval_transition_service,
+        approved_document_service=approved_document_service,
         business_formal_wc_adapter=business_formal_wc_adapter,
         vouchers=vouchers,
         attachments=attachments,

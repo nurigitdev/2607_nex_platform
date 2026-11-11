@@ -654,6 +654,39 @@ paths:
         "409": {description: "Policy identity or effective period conflicts."}
         "422": {description: "Policy semantics, proof, or policy hash is invalid."}
         "503": {description: OA authorization or EOS persistence is unavailable.}
+  /internal/v2/finance/approved-documents/{envelope_id}:
+    get:
+      operationId: BUSINESS.DOCUMENT_APPROVED.GET
+      tags: [Finance]
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes: [service:call]
+      x-nex-business-scope: finance:document:read
+      x-nex-side-effect-free: true
+      parameters:
+        - name: envelope_id
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+        - name: X-NeX-Tenant-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+        - name: X-NeX-Subject-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+      responses:
+        "200":
+          description: Immutable approved document revision and exact final proof binding.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ApprovedDocumentEnvelope"}
+        "401": {description: Service claim is missing or invalid.}
+        "403": {description: Fresh OA finance document read authority is denied.}
+        "404": {description: Envelope is absent from the admitted tenant scope.}
+        "422": {description: "Tenant, subject, or envelope identity is invalid."}
+        "503": {description: OA authorization or EOS persistence is unavailable.}
   /internal/v2/finance/fx-rate-batches:
     post:
       operationId: FINANCE.FX_RATE.IMPORT
@@ -1391,6 +1424,88 @@ components:
       type: http
       scheme: bearer
   schemas:
+    ApprovedDocumentEnvelope:
+      type: object
+      additionalProperties: false
+      required:
+        - schema_version
+        - tenant_id
+        - envelope_id
+        - company_id
+        - approved_document_id
+        - document_revision
+        - document_type
+        - work_code
+        - document_content_hash
+        - attachment_manifest_hash
+        - business_approval_proof_id
+        - business_proof_hash
+        - approval_policy_id
+        - approval_policy_version
+        - approval_policy_hash
+        - scope_type
+        - project_set_hash
+        - allowed_project_ids
+        - approved_amount
+        - approved_currency
+        - remaining_amount
+        - tolerance_policy_hash
+        - valid_from
+        - valid_until
+        - state
+        - usable
+        - approved_at
+        - approved_by_principal_ref
+        - source_work_item_ref
+        - payload_hash
+        - created_business_operation_id
+        - created_at
+      properties:
+        schema_version: {type: string, const: eos_approved_document_envelope.v1}
+        tenant_id: {type: string, minLength: 1, maxLength: 128}
+        envelope_id: {type: string, format: uuid}
+        company_id: {type: string, format: uuid}
+        approved_document_id: {type: string, minLength: 1, maxLength: 128}
+        document_revision: {type: integer, minimum: 1}
+        document_type: {type: string, minLength: 1, maxLength: 64}
+        work_code: {type: string, pattern: "^FL[0-9]{7}$"}
+        document_content_hash: {type: string, pattern: "^sha256:[0-9a-f]{64}$"}
+        attachment_manifest_hash: {type: string, pattern: "^sha256:[0-9a-f]{64}$"}
+        business_approval_proof_id: {type: string, format: uuid}
+        business_proof_hash: {type: string, pattern: "^sha256:[0-9a-f]{64}$"}
+        approval_policy_id: {type: string, format: uuid}
+        approval_policy_version: {type: integer, minimum: 1}
+        approval_policy_hash: {type: string, pattern: "^sha256:[0-9a-f]{64}$"}
+        scope_type: {type: string, enum: [COMPANY, PROJECT, PROJECT_SET]}
+        project_set_hash: {type: string, pattern: "^sha256:[0-9a-f]{64}$"}
+        allowed_project_ids:
+          type: array
+          uniqueItems: true
+          items: {type: string, format: uuid}
+        approved_amount: {type: string, pattern: "^[0-9]+(\\.[0-9]{1,4})?$"}
+        approved_currency: {type: string, pattern: "^[A-Z]{3}$"}
+        remaining_amount: {type: string, pattern: "^[0-9]+(\\.[0-9]{1,4})?$"}
+        tolerance_policy_hash:
+          type: [string, "null"]
+          pattern: "^sha256:[0-9a-f]{64}$"
+        valid_from: {type: string, format: date-time}
+        valid_until:
+          type: [string, "null"]
+          format: date-time
+        state: {type: string, enum: [ACTIVE, REVOKED, EXPIRED, SUPERSEDED]}
+        usable: {type: boolean}
+        approved_at: {type: string, format: date-time}
+        approved_by_principal_ref:
+          type: object
+          additionalProperties: false
+          required: [type, id]
+          properties:
+            type: {type: string, minLength: 1, maxLength: 32}
+            id: {type: string, minLength: 1, maxLength: 128}
+        source_work_item_ref: {type: string, minLength: 1, maxLength: 256}
+        payload_hash: {type: string, pattern: "^sha256:[0-9a-f]{64}$"}
+        created_business_operation_id: {type: string, format: uuid}
+        created_at: {type: string, format: date-time}
     ApproverResolutionRequest:
       type: object
       x-nex-canonical-json-schema: schemas/service/nex_eos/approver_resolution_request.v1.schema.json

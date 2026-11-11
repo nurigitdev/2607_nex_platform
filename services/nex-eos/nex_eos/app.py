@@ -10,6 +10,7 @@ from .account_api import register_account_routes
 from .account_policy_api import register_account_policy_routes
 from .accounting_period_api import register_accounting_period_routes
 from .approval_decision_api import register_approval_decision_routes
+from .approved_document_api import register_approved_document_routes
 from .coa_api import register_coa_routes
 from .coa_release_admin_api import register_coa_release_admin_routes
 from .config import EosSettings, load_eos_settings
@@ -84,6 +85,7 @@ def create_eos_app(
     app.state.eos_approval_policies = dependencies.approval_policies
     app.state.eos_approval_instances = dependencies.approval_instances
     app.state.eos_approval_transition_service = dependencies.approval_transition_service
+    app.state.eos_approved_document_service = dependencies.approved_document_service
     app.state.eos_business_formal_wc_adapter = dependencies.business_formal_wc_adapter
     app.state.eos_vouchers = dependencies.vouchers
     app.state.eos_attachments = dependencies.attachments
@@ -93,6 +95,7 @@ def create_eos_app(
     app.state.eos_voucher_verification_query = dependencies.voucher_verification_query
     register_voucher_command_routes(app)
     register_approval_decision_routes(app)
+    register_approved_document_routes(app)
     register_organization_routes(app)
     register_project_routes(app)
     register_project_business_routes(app)
