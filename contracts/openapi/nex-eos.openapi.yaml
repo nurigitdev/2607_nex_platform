@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: NeX Enterprise Operations System API
-  version: 2.1.0-p8-s105
+  version: 2.1.0-p8-s105-mybee-s1-03
   description: >-
     NeX-EOS service shell and canonical Voucher Draft command contract. The
     P8-S18 path is contract-first and becomes executable in P8-S19.
@@ -635,6 +635,84 @@ paths:
         "409": {description: "Release scope, profile, or effective order conflicts."}
         "422": {description: Release identity is invalid.}
         "503": {description: "OA authorization or EOS persistence is unavailable."}
+  /internal/v2/finance/periods/{period_id}:
+    get:
+      operationId: FINANCE.PERIOD.GET
+      tags: [Finance]
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes: [service:call]
+      x-nex-business-scope: finance:period:read
+      x-nex-side-effect-free: true
+      parameters:
+        - name: period_id
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+        - name: company_id
+          in: query
+          required: true
+          schema: {type: string, format: uuid}
+        - name: X-NeX-Tenant-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+        - name: X-NeX-Subject-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+      responses:
+        "200": {description: Tenant/company-scoped AccountingPeriod state and version.}
+        "401": {description: Service claim is missing or invalid.}
+        "403": {description: Fresh period-read authority is denied.}
+        "404": {description: AccountingPeriod was not found.}
+        "422": {description: "Period, company, or caller identity is invalid."}
+        "503": {description: OA authorization or EOS persistence is unavailable.}
+  /internal/v2/finance/periods/{period_id}:close:
+    post:
+      operationId: FINANCE.PERIOD.CLOSE
+      tags: [Finance]
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes: [service:call]
+      x-nex-business-scope: finance:period:close
+      x-nex-route-class: WRITE
+      parameters:
+        - name: period_id
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+        - name: X-NeX-Tenant-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+        - name: X-NeX-Subject-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [company_id, expected_version]
+              properties:
+                company_id: {type: string, format: uuid}
+                expected_version: {type: integer, minimum: 1}
+                close_proof_ref:
+                  {type: string, pattern: "^sha256:[0-9a-f]{64}$"}
+                ledger_cutoff_watermark:
+                  {type: string, minLength: 1, maxLength: 128}
+              additionalProperties: false
+      responses:
+        "200": {description: AccountingPeriod advanced or replayed at CLOSING/CLOSED.}
+        "401": {description: Service claim is missing or invalid.}
+        "403": {description: Fresh period-close authority is denied.}
+        "404": {description: AccountingPeriod was not found.}
+        "409": {description: Version or OPEN/CLOSING/CLOSED transition conflicts.}
+        "422": {description: Close evidence or identity is invalid.}
+        "503": {description: OA authorization or EOS persistence is unavailable.}
   /internal/v2/finance/coa/operations:
     get:
       operationId: FINANCE.COA.OPERATIONS_SNAPSHOT

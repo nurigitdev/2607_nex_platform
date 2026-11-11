@@ -11,6 +11,10 @@ from .account_catalog import (
     EosAccountCatalogService,
     SqlAlchemyEosAccountCatalogRepository,
 )
+from .accounting_periods import (
+    EosAccountingPeriodService,
+    SqlAlchemyEosAccountingPeriodRepository,
+)
 from .accounts import SqlAlchemyEosAccountRepository
 from .approval_instances import SqlAlchemyEosApprovalInstanceRepository
 from .approval_policies import SqlAlchemyEosApprovalPolicyRepository
@@ -81,6 +85,7 @@ class EosDependencies:
     coa_operations_service: EosCoaOperationsService | None
     reporting_map_service: EosReportingMapService | None
     coa_release_admin_service: EosCoaReleaseAdminService | None
+    accounting_period_service: EosAccountingPeriodService | None
     approval_policies: SqlAlchemyEosApprovalPolicyRepository | None
     approval_instances: SqlAlchemyEosApprovalInstanceRepository | None
     approval_transition_service: EosBusinessApprovalTransitionService | None
@@ -233,9 +238,7 @@ def build_eos_dependencies(
         if account_catalog is not None and authorization_source is not None
         else None
     )
-    publication_admissions = environ.get(
-        "NEX_EOS_COA_PUBLICATION_ADMISSIONS_JSON", ""
-    )
+    publication_admissions = environ.get("NEX_EOS_COA_PUBLICATION_ADMISSIONS_JSON", "")
     coa_operations_service = (
         EosCoaOperationsService(
             repository=SqlAlchemyEosCoaOperationsRepository(
@@ -262,9 +265,15 @@ def build_eos_dependencies(
     )
     coa_release_admin_service = (
         EosCoaReleaseAdminService(
-            SqlAlchemyEosCoaReleaseAdminRepository(
-                database_runtime.session_factory
-            ),
+            SqlAlchemyEosCoaReleaseAdminRepository(database_runtime.session_factory),
+            authorization_source,
+        )
+        if database_runtime is not None and authorization_source is not None
+        else None
+    )
+    accounting_period_service = (
+        EosAccountingPeriodService(
+            SqlAlchemyEosAccountingPeriodRepository(database_runtime.session_factory),
             authorization_source,
         )
         if database_runtime is not None and authorization_source is not None
@@ -320,6 +329,7 @@ def build_eos_dependencies(
         coa_operations_service=coa_operations_service,
         reporting_map_service=reporting_map_service,
         coa_release_admin_service=coa_release_admin_service,
+        accounting_period_service=accounting_period_service,
         approval_policies=approval_policies,
         approval_instances=approval_instances,
         approval_transition_service=approval_transition_service,
