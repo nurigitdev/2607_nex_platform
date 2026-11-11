@@ -1,0 +1,132 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/mybee/d12-project-template.v1.json",
+  "title": "NeX MyBee D12 required-five Project template",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "template_id",
+    "template_version",
+    "revision",
+    "status",
+    "catalog_binding",
+    "eos_consumer_contract",
+    "readiness_contract",
+    "runtime_boundaries",
+    "release_attestation"
+  ],
+  "properties": {
+    "schema_version": {"const": "nex.mybee.d12-project-template.v1"},
+    "template_id": {"const": "mybee.d12.required-five"},
+    "template_version": {"const": "1.0.0"},
+    "revision": {"const": 1},
+    "status": {"const": "EOS_CONSUMER_ADMITTED"},
+    "catalog_binding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "catalog_id",
+        "catalog_version",
+        "catalog_digest",
+        "mandatory_codes_hash",
+        "required_code_ids"
+      ],
+      "properties": {
+        "catalog_id": {"const": "mybee.fl.d12.project-governance"},
+        "catalog_version": {"const": "1.0.0"},
+        "catalog_digest": {"const": "sha256:31e5a24a8a5e62f80fc1571a4a232723a90f9c1b628841ae80df24654848c8ba"},
+        "mandatory_codes_hash": {"const": "sha256:f867477ed5983904e1c4a353bf05a4a11ffb56b5fa0299ffd63bbc8cd70bd9a1"},
+        "required_code_ids": {
+          "const": ["FL0012004", "FL0012005", "FL0012006", "FL0012013", "FL0012026"]
+        }
+      }
+    },
+    "eos_consumer_contract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["provider_lock_ref", "approve", "current_work_set", "business_readiness"],
+      "properties": {
+        "provider_lock_ref": {"const": "domains/mybee/compatibility/platform.lock.json#/openapi/nex-eos"},
+        "approve": {"$ref": "#/$defs/write_endpoint"},
+        "current_work_set": {"$ref": "#/$defs/read_endpoint"},
+        "business_readiness": {"$ref": "#/$defs/readiness_endpoint"}
+      }
+    },
+    "readiness_contract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "technical_project_status",
+        "required_projection_state",
+        "required_true_flags",
+        "active_is_not_business_ready",
+        "pa_domain_write_requires_business_ready"
+      ],
+      "properties": {
+        "technical_project_status": {"const": "ACTIVE"},
+        "required_projection_state": {"const": "BUSINESS_READY"},
+        "required_true_flags": {
+          "const": [
+            "required_codes_ok",
+            "project_company_bound",
+            "pm_assigned",
+            "members_eligible",
+            "pa_identity_bound",
+            "budget_bound_if_required"
+          ]
+        },
+        "active_is_not_business_ready": {"const": true},
+        "pa_domain_write_requires_business_ready": {"const": true}
+      }
+    },
+    "runtime_boundaries": {
+      "const": {
+        "direct_database_access": false,
+        "service_private_imports": false,
+        "nsl_tool_binding_status": "DEFERRED_TO_MB8_01",
+        "work_assignment_status": "DEFERRED_TO_S1_06"
+      }
+    },
+    "release_attestation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["profile", "authority", "evidence_ref", "content_digest"],
+      "properties": {
+        "profile": {"const": "SOURCE_AUTHORITY_CONTENT_DIGEST_V1"},
+        "authority": {"const": "NEX_MYBEE_PHASE1_MB1_02"},
+        "evidence_ref": {"const": "docs/slices/mybee_phase1_mb1_02_d12_project_template.md"},
+        "content_digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}
+      }
+    }
+  },
+  "$defs": {
+    "write_endpoint": {
+      "const": {
+        "method": "POST",
+        "path_template": "/internal/v2/projects/{project_id}/work-code-sets:approve",
+        "operation_id": "PROJECT.WORK_CODE_SET.APPROVE",
+        "business_scope": "project:work-code:approve",
+        "route_class": "WRITE"
+      }
+    },
+    "read_endpoint": {
+      "const": {
+        "method": "GET",
+        "path_template": "/internal/v2/projects/{project_id}/work-code-set",
+        "operation_id": "PROJECT.WORK_CODE_SET.GET",
+        "business_scope": "project:work-code:read",
+        "side_effect_free": true
+      }
+    },
+    "readiness_endpoint": {
+      "const": {
+        "method": "GET",
+        "path_template": "/internal/v2/projects/{project_id}/business-readiness",
+        "operation_id": "PROJECT.BUSINESS_READINESS.GET",
+        "business_scope": "project:work-code:read",
+        "side_effect_free": true
+      }
+    }
+  }
+}

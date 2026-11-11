@@ -60,6 +60,13 @@ effective company binding, an active human PM and Project membership, and a
 distinct PA identity reference. WorkAssignment, Grade, and planned Man-Day are
 deferred to S1-06.
 
+MB1-02 publishes the immutable `mybee.d12.required-five` Project template and
+a transport-neutral consumer for the S1-05 EOS WorkCodeSet and BusinessReady
+operations. It validates the pinned catalog, canonical payload hash, tenant
+and Project scope, readiness source hash, and nested WorkCodeSet before a PA
+domain WRITE may proceed. It does not access EOS persistence directly or
+activate the deferred NSL Tool binding.
+
 The revisioned D12 source catalog lives at
 `catalog/work_codes/catalog.v1.json`. It is source-authority attested and
 content-digest pinned. EOS S1-05 now owns its approval, current revision, and
