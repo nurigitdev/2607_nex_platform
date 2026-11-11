@@ -23,6 +23,7 @@ from sqlalchemy import (
     Table,
     UniqueConstraint,
     Uuid,
+    func,
     select,
 )
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
@@ -223,7 +224,19 @@ class SqlAlchemyEosApprovedDocumentRepository:
                             "Approved document revision has different immutable semantics "
                             "or final proof identity"
                         )
-                    return _projection(existing, now=self._now()), False
+                    consumed_amount = self._consumed_amount(
+                        transaction.db,
+                        tenant_id=semantics["tenant_id"],
+                        envelope_id=str(existing["envelope_id"]),
+                    )
+                    return (
+                        _projection(
+                            existing,
+                            now=self._now(),
+                            consumed_amount=consumed_amount,
+                        ),
+                        False,
+                    )
 
                 company = self._load_company(transaction.db, semantics)
                 proof, instance, decision = self._load_proof_bundle(
@@ -297,12 +310,49 @@ class SqlAlchemyEosApprovedDocumentRepository:
                     .mappings()
                     .one_or_none()
                 )
+                consumed_amount = (
+                    self._consumed_amount(
+                        session,
+                        tenant_id=tenant_id,
+                        envelope_id=envelope_id,
+                    )
+                    if row is not None
+                    else Decimal(0)
+                )
         except SQLAlchemyError as exc:
             raise _unavailable() from exc
-        return _projection(row, now=self._now()) if row is not None else None
+        return (
+            _projection(row, now=self._now(), consumed_amount=consumed_amount)
+            if row is not None
+            else None
+        )
 
     def _now(self) -> datetime:
         return _aware_datetime("clock", self._clock())
+
+    @staticmethod
+    def _consumed_amount(
+        session: Session,
+        *,
+        tenant_id: str,
+        envelope_id: str,
+    ) -> Decimal:
+        from .approved_document_consumption import (
+            EOS_APPROVED_DOCUMENT_CONSUMPTION_TABLE,
+        )
+
+        value = session.execute(
+            select(
+                func.sum(
+                    EOS_APPROVED_DOCUMENT_CONSUMPTION_TABLE.c.consumed_amount
+                )
+            ).where(
+                EOS_APPROVED_DOCUMENT_CONSUMPTION_TABLE.c.tenant_id == tenant_id,
+                EOS_APPROVED_DOCUMENT_CONSUMPTION_TABLE.c.envelope_id == envelope_id,
+                EOS_APPROVED_DOCUMENT_CONSUMPTION_TABLE.c.state == "COMMITTED",
+            )
+        ).scalar_one()
+        return Decimal(str(value or 0)).quantize(Decimal("0.0001"))
 
     @staticmethod
     def _load_revision(
@@ -608,7 +658,12 @@ def _require_exact_proof(
         )
 
 
-def _projection(value: Mapping[str, Any], *, now: datetime) -> dict[str, Any]:
+def _projection(
+    value: Mapping[str, Any],
+    *,
+    now: datetime,
+    consumed_amount: Decimal = Decimal(0),
+) -> dict[str, Any]:
     valid_from = _aware_datetime("valid_from", value["valid_from"])
     valid_until = (
         _aware_datetime("valid_until", value["valid_until"])
@@ -626,7 +681,11 @@ def _projection(value: Mapping[str, Any], *, now: datetime) -> dict[str, Any]:
         if state == "ACTIVE" and valid_until is not None and now >= valid_until
         else state
     )
-    amount = _decimal_text(value["approved_amount"])
+    approved = Decimal(str(value["approved_amount"])).quantize(Decimal("0.0001"))
+    consumed = Decimal(str(consumed_amount)).quantize(Decimal("0.0001"))
+    if consumed < 0 or consumed > approved:
+        raise _unavailable()
+    amount = _decimal_text(approved)
     return {
         "schema_version": "eos_approved_document_envelope.v1",
         "tenant_id": value["tenant_id"],
@@ -648,7 +707,7 @@ def _projection(value: Mapping[str, Any], *, now: datetime) -> dict[str, Any]:
         "allowed_project_ids": [str(item) for item in value["allowed_project_ids"]],
         "approved_amount": amount,
         "approved_currency": value["approved_currency"],
-        "remaining_amount": amount,
+        "remaining_amount": _decimal_text(approved - consumed),
         "tolerance_policy_hash": value["tolerance_policy_hash"],
         "valid_from": _timestamp(valid_from),
         "valid_until": _timestamp(valid_until) if valid_until is not None else None,
