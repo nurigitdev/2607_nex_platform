@@ -465,6 +465,74 @@ paths:
         "404": {description: Project is absent from the admitted tenant scope.}
         "422": {description: "Tenant, subject, Project, or date is invalid."}
         "503": {description: OA authorization or EOS persistence is unavailable.}
+  /internal/v2/projects/{project_id}/work-assignments:assign:
+    post:
+      operationId: PROJECT.WORK_ASSIGNMENT.ASSIGN
+      tags: [Project]
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes: [service:call]
+      x-nex-business-scope: project:work-assignment:manage
+      x-nex-route-class: WRITE
+      parameters:
+        - name: project_id
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/ProjectWorkAssignmentCommand"}
+      responses:
+        "200": {description: Exact BusinessOperation replay returned the immutable assignment.}
+        "201": {description: A new immutable Project WorkAssignment was admitted.}
+        "401": {description: Service claim is missing or invalid.}
+        "403": {description: "Fresh OA scope, Project role, or performer authority is denied."}
+        "404": {description: Project is absent from the tenant scope.}
+        "409": {description: "Work-set, identity, or assignment period semantics conflict."}
+        "422": {description: "Command, payload hash, grade/Man-Day, or privacy contract is invalid."}
+        "503": {description: OA authorization or EOS persistence is unavailable.}
+  /internal/v2/projects/{project_id}/work-assignments:
+    get:
+      operationId: PROJECT.WORK_ASSIGNMENT.LIST
+      tags: [Project]
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes: [service:call]
+      x-nex-business-scope: project:work-assignment:read
+      x-nex-side-effect-free: true
+      parameters:
+        - name: project_id
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+        - name: X-NeX-Tenant-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+        - name: X-NeX-Subject-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+        - name: effective_on
+          in: query
+          required: false
+          schema: {type: string, format: date}
+        - name: work_code_id
+          in: query
+          required: false
+          schema: {type: string, pattern: "^FL[0-9]{7}$"}
+      responses:
+        "200":
+          description: Grade-based planning assignments with private payroll excluded.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ProjectWorkAssignmentCollection"}
+        "401": {description: Service claim is missing or invalid.}
+        "403": {description: Fresh OA read authority or active Project membership is denied.}
+        "422": {description: "Tenant, Project, subject, date, or work code is invalid."}
+        "503": {description: OA authorization or EOS persistence is unavailable.}
   /internal/v2/finance/account-catalog:
     get:
       operationId: FINANCE.ACCOUNT.CATALOG_GET
@@ -1429,6 +1497,139 @@ components:
         requester_subject_id: {type: string, minLength: 1, maxLength: 128}
         work_set:
           $ref: "#/components/schemas/ProjectWorkCodeSetApproval"
+    ProjectWorkAssignmentCommand:
+      type: object
+      additionalProperties: false
+      required:
+        - tenant_id
+        - business_operation_id
+        - idempotency_key
+        - payload_hash
+        - requester_subject_id
+        - assignment
+      properties:
+        tenant_id: {type: string, minLength: 1, maxLength: 128}
+        business_operation_id: {type: string, format: uuid}
+        idempotency_key: {type: string, minLength: 1, maxLength: 256}
+        payload_hash: {type: string, pattern: "^sha256:[0-9a-f]{64}$"}
+        requested_operation:
+          type: string
+          const: PROJECT.WORK_ASSIGNMENT.ASSIGN
+        requester_subject_id: {type: string, minLength: 1, maxLength: 128}
+        assignment: {$ref: "#/components/schemas/ProjectWorkAssignmentInput"}
+    ProjectWorkAssignmentInput:
+      type: object
+      additionalProperties: false
+      required:
+        - assignment_id
+        - work_set_id
+        - work_set_revision
+        - work_code_id
+        - performer_kind
+        - subject_ref
+        - assignment_scope
+        - planned_man_days
+        - planned_grade_id
+        - grade_policy_ref
+        - grade_policy_hash
+        - valid_from
+        - valid_until
+        - approved_proof_hash
+      properties:
+        assignment_id: {type: string, format: uuid}
+        work_set_id: {type: string, format: uuid}
+        work_set_revision: {type: integer, minimum: 1}
+        work_code_id: {type: string, pattern: "^FL[0-9]{7}$"}
+        performer_kind: {type: string, enum: [HUMAN, AGENT]}
+        subject_ref: {type: string, minLength: 1, maxLength: 128}
+        assignment_scope: {type: string, enum: [EXECUTE, REVIEW, REPORT]}
+        planned_man_days:
+          type: string
+          pattern: "^[0-9]+(\\.[0-9]{1,4})?$"
+        planned_grade_id: {type: string, minLength: 1, maxLength: 64}
+        grade_policy_ref: {type: string, minLength: 1, maxLength: 256}
+        grade_policy_hash: {type: string, pattern: "^sha256:[0-9a-f]{64}$"}
+        valid_from: {type: string, format: date}
+        valid_until:
+          type: [string, "null"]
+          format: date
+        approved_proof_hash: {type: string, pattern: "^sha256:[0-9a-f]{64}$"}
+    ProjectWorkAssignment:
+      type: object
+      additionalProperties: false
+      required:
+        - tenant_id
+        - assignment_id
+        - project_id
+        - work_set_id
+        - work_set_revision
+        - work_code_id
+        - performer_kind
+        - subject_ref
+        - performer_authority_hash
+        - assignment_scope
+        - planned_man_days
+        - planned_grade_id
+        - grade_policy_ref
+        - grade_policy_hash
+        - valid_from
+        - valid_until
+        - approved_proof_hash
+        - approved_by_subject_id
+        - assignment_hash
+        - created_at
+      properties:
+        tenant_id: {type: string, minLength: 1, maxLength: 128}
+        assignment_id: {type: string, format: uuid}
+        project_id: {type: string, format: uuid}
+        work_set_id: {type: string, format: uuid}
+        work_set_revision: {type: integer, minimum: 1}
+        work_code_id: {type: string, pattern: "^FL[0-9]{7}$"}
+        performer_kind: {type: string, enum: [HUMAN, AGENT]}
+        subject_ref: {type: string, minLength: 1, maxLength: 128}
+        performer_authority_hash: {type: string, pattern: "^sha256:[0-9a-f]{64}$"}
+        assignment_scope: {type: string, enum: [EXECUTE, REVIEW, REPORT]}
+        planned_man_days:
+          type: string
+          pattern: "^[0-9]+(\\.[0-9]{1,4})?$"
+        planned_grade_id: {type: string, minLength: 1, maxLength: 64}
+        grade_policy_ref: {type: string, minLength: 1, maxLength: 256}
+        grade_policy_hash: {type: string, pattern: "^sha256:[0-9a-f]{64}$"}
+        valid_from: {type: string, format: date}
+        valid_until:
+          type: [string, "null"]
+          format: date
+        approved_proof_hash: {type: string, pattern: "^sha256:[0-9a-f]{64}$"}
+        approved_by_subject_id: {type: string, minLength: 1, maxLength: 128}
+        assignment_hash: {type: string, pattern: "^sha256:[0-9a-f]{64}$"}
+        created_at: {type: string, format: date-time}
+    ProjectWorkAssignmentCollection:
+      type: object
+      additionalProperties: false
+      required:
+        - tenant_id
+        - project_id
+        - effective_on
+        - work_code_id
+        - items
+        - count
+        - data_classification
+        - private_payroll_excluded
+      properties:
+        tenant_id: {type: string, minLength: 1, maxLength: 128}
+        project_id: {type: string, format: uuid}
+        effective_on:
+          type: [string, "null"]
+          format: date
+        work_code_id:
+          type: [string, "null"]
+          pattern: "^FL[0-9]{7}$"
+        items:
+          type: array
+          items: {$ref: "#/components/schemas/ProjectWorkAssignment"}
+        count: {type: integer, minimum: 0}
+        data_classification: {type: string, const: INTERNAL_PLANNING}
+        private_payroll_excluded: {type: boolean, const: true}
     ProjectWorkCodeSetApproval:
       type: object
       additionalProperties: false

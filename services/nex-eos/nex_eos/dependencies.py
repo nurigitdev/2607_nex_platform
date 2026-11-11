@@ -56,6 +56,7 @@ from .organization import SqlAlchemyEosOrganizationRepository
 from .persistence import EosDatabaseRuntime, build_eos_database_runtime
 from .project_memberships import SqlAlchemyEosProjectMembershipRepository
 from .project_operations import EosGovernedProjectService
+from .project_work_assignments import EosProjectWorkAssignmentService
 from .project_work_codes import EosProjectBusinessService
 from .projects import SqlAlchemyEosProjectRepository
 from .reporting_maps import (
@@ -80,6 +81,7 @@ class EosDependencies:
     project_memberships: SqlAlchemyEosProjectMembershipRepository | None
     project_operations: EosGovernedProjectService | None
     project_business_service: EosProjectBusinessService | None
+    project_work_assignment_service: EosProjectWorkAssignmentService | None
     legal_entities: SqlAlchemyEosLegalEntityRepository | None
     legal_entity_service: EosLegalEntityService | None
     accounts: SqlAlchemyEosAccountRepository | None
@@ -238,6 +240,17 @@ def build_eos_dependencies(
         and authorization_source is not None
         else None
     )
+    project_work_assignment_service = (
+        EosProjectWorkAssignmentService(
+            session_factory=database_runtime.session_factory,
+            coordinator=business_transactions,
+            authorization_source=authorization_source,
+        )
+        if database_runtime is not None
+        and business_transactions is not None
+        and authorization_source is not None
+        else None
+    )
     legal_entities = (
         SqlAlchemyEosLegalEntityRepository(database_runtime.session_factory)
         if database_runtime is not None
@@ -345,6 +358,7 @@ def build_eos_dependencies(
         project_memberships=project_memberships,
         project_operations=project_operations,
         project_business_service=project_business_service,
+        project_work_assignment_service=project_work_assignment_service,
         legal_entities=legal_entities,
         legal_entity_service=legal_entity_service,
         accounts=accounts,

@@ -29,21 +29,22 @@ def test_default_registry_resolves_canonical_and_legacy_names() -> None:
     assert canonical.to_projection() == {
         "requested_operation": "PROJECT.PROJECT.GET",
         "canonical_operation": "PROJECT.PROJECT.GET",
-        "registry_version": "mybee-s1-05.v1",
+        "registry_version": "mybee-s1-06.v1",
         "alias_applied": False,
     }
     assert alias.canonical_operation == "PROJECT.PROJECT.GET"
     assert alias.alias_applied is True
     assert all(
-        CANONICAL_OPERATION_PATTERN.fullmatch(item)
-        for item in P8_CANONICAL_OPERATIONS
+        CANONICAL_OPERATION_PATTERN.fullmatch(item) for item in P8_CANONICAL_OPERATIONS
     )
     assert dict(P8_OPERATION_ALIASES)["FINANCE.CREATE_VOUCHER_DRAFT"] == (
         "FINANCE.VOUCHER_DRAFT.CREATE"
     )
 
 
-@pytest.mark.parametrize("value", (None, "PROJECT.GET", "project.project.get", "UNKNOWN.X.Y"))
+@pytest.mark.parametrize(
+    "value", (None, "PROJECT.GET", "project.project.get", "UNKNOWN.X.Y")
+)
 def test_registry_rejects_unadmitted_or_noncanonical_names(value) -> None:
     with pytest.raises(OperationNameError):
         DEFAULT_OPERATION_REGISTRY.resolve(value)
@@ -77,9 +78,7 @@ def test_alias_resolution_precedes_payload_hashing() -> None:
         "requester_subject_id": "employee-a",
         "project_id": "92000000-0000-4000-8000-000000000001",
     }
-    canonical = project_operation_payload_hash(
-        payload, "FINANCE.VOUCHER_DRAFT.CREATE"
-    )
+    canonical = project_operation_payload_hash(payload, "FINANCE.VOUCHER_DRAFT.CREATE")
     legacy = project_operation_payload_hash(payload, "FINANCE.CREATE_VOUCHER_DRAFT")
     assert legacy == canonical
 
@@ -136,10 +135,15 @@ def test_eos_project_openapi_uses_canonical_operation_ids() -> None:
 
 def test_alias_contract_accepts_positive_and_rejects_negative_example() -> None:
     schema = json.loads(
-        (ROOT / "contracts/schemas/common/canonical_operation_alias.v1.schema.json").read_text()
+        (
+            ROOT / "contracts/schemas/common/canonical_operation_alias.v1.schema.json"
+        ).read_text()
     )
     positive = json.loads(
-        (ROOT / "contracts/examples/common/canonical_operation_alias.project_get.json").read_text()
+        (
+            ROOT
+            / "contracts/examples/common/canonical_operation_alias.project_get.json"
+        ).read_text()
     )
     negative = json.loads(
         (

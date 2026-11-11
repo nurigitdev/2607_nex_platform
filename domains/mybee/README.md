@@ -57,8 +57,14 @@ S1-05 binds the immutable D12 catalog and its five mandatory FL work codes to
 an EOS Project WorkCodeSet revision stream. Technical Project `ACTIVE` remains
 separate from the `BUSINESS_READY` projection, which additionally requires an
 effective company binding, an active human PM and Project membership, and a
-distinct PA identity reference. WorkAssignment, Grade, and planned Man-Day are
-deferred to S1-06.
+distinct PA identity reference.
+
+S1-06 adds immutable Project WorkAssignment planning against an exact S1-05
+WorkCodeSet revision. A human performer requires both current OA execution
+authority and an effective non-viewer Project membership; an Agent performer
+must match the admitted PA identity. Standard projections contain Grade and
+exact planned Man-Day only. Employee salary, actual rate, payroll, and actual
+labor cost are rejected and remain outside this planning boundary.
 
 MB1-02 publishes the immutable `mybee.d12.required-five` Project template and
 a transport-neutral consumer for the S1-05 EOS WorkCodeSet and BusinessReady
