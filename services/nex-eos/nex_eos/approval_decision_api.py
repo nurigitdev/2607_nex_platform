@@ -20,6 +20,10 @@ from .approval_transitions import (
     EosApprovalTransitionError,
     EosBusinessApprovalTransitionService,
 )
+from .project_application_approvals import (
+    EosProjectApplicationApprovalError,
+    is_project_application_approval_delivery,
+)
 
 
 def register_approval_decision_routes(app: FastAPI) -> None:
@@ -47,6 +51,32 @@ def register_approval_decision_routes(app: FastAPI) -> None:
                 detail="Only nex-ae-api may deliver a business approval decision.",
                 retryable=False,
             )
+        if is_project_application_approval_delivery(payload):
+            service = getattr(
+                request.app.state,
+                "eos_project_application_approval_service",
+                None,
+            )
+            if service is None:
+                return problem_response(
+                    request,
+                    status_code=503,
+                    error_code="EOS_PROJECT_APPLICATION_APPROVAL_UNAVAILABLE",
+                    title="EOS Project application approval unavailable",
+                    detail="Project committee finalizer dependencies are not configured.",
+                    retryable=True,
+                )
+            try:
+                return service.ingest_wc_delivery(payload)
+            except EosProjectApplicationApprovalError as exc:
+                return problem_response(
+                    request,
+                    status_code=exc.status_code,
+                    error_code=exc.error_code,
+                    title="EOS Project application approval failed",
+                    detail=exc.detail,
+                    retryable=exc.retryable,
+                )
         if is_scoped_approval_delivery(payload):
             return ingest_scoped_accounting_delivery(
                 payload=payload,

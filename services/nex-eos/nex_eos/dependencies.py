@@ -67,6 +67,7 @@ from .legal_entities import (
 )
 from .organization import SqlAlchemyEosOrganizationRepository
 from .persistence import EosDatabaseRuntime, build_eos_database_runtime
+from .project_application_approvals import EosProjectApplicationApprovalService
 from .project_applications import (
     EosProjectApplicationService,
     SqlAlchemyEosProjectApplicationRepository,
@@ -100,6 +101,7 @@ class EosDependencies:
     approver_resolution_service: EosApproverResolutionService | None
     projects: SqlAlchemyEosProjectRepository | None
     project_application_service: EosProjectApplicationService | None
+    project_application_approval_service: EosProjectApplicationApprovalService | None
     project_memberships: SqlAlchemyEosProjectMembershipRepository | None
     project_operations: EosGovernedProjectService | None
     project_business_service: EosProjectBusinessService | None
@@ -247,15 +249,27 @@ def build_eos_dependencies(
     )
     project_application_service = (
         EosProjectApplicationService(
-            SqlAlchemyEosProjectApplicationRepository(
-                database_runtime.session_factory
-            ),
+            SqlAlchemyEosProjectApplicationRepository(database_runtime.session_factory),
             authorization_source,
             projects,
         )
         if database_runtime is not None
         and authorization_source is not None
         and projects is not None
+        else None
+    )
+    project_application_approval_service = (
+        EosProjectApplicationApprovalService(
+            session_factory=database_runtime.session_factory,
+            authorization_source=authorization_source,
+            wc_client=HttpWcApprovalWorkItemClient(
+                base_url=environ.get("NEX_WC_BASE_URL", DEFAULT_WC_BASE_URL),
+                service_token=wc_token,
+            ),
+        )
+        if database_runtime is not None
+        and authorization_source is not None
+        and wc_token
         else None
     )
     approved_document_service = (
@@ -341,6 +355,9 @@ def build_eos_dependencies(
             session_factory=database_runtime.session_factory,
             coordinator=business_transactions,
             authorization_source=authorization_source,
+            allow_legacy_project_create=(
+                environ.get("NEX_EOS_ALLOW_LEGACY_DIRECT_PROJECT_CREATE", "0") == "1"
+            ),
         )
         if database_runtime is not None
         and business_transactions is not None
@@ -474,6 +491,7 @@ def build_eos_dependencies(
         approver_resolution_service=approver_resolution_service,
         projects=projects,
         project_application_service=project_application_service,
+        project_application_approval_service=project_application_approval_service,
         project_memberships=project_memberships,
         project_operations=project_operations,
         project_business_service=project_business_service,

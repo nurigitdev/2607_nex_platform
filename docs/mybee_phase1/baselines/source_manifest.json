@@ -42,9 +42,9 @@
       "sha256": "sha256:362b083e52cafefef1825d4e4930d8df238fb96f044cb821121af9c664da9b0a"
     },
     "nex-eos": {
-      "version": 2531,
-      "path": "database/nex-eos/migrations/2531_eos_project_application_lifecycle.sql",
-      "sha256": "sha256:c2779405046f0116bf343c4402a107210eb5a27d95677a682150b49dfc8bcc20"
+      "version": 2532,
+      "path": "database/nex-eos/migrations/2532_eos_project_application_approval.sql",
+      "sha256": "sha256:66cbcef0c3bb43307c11186ebf0c7156b87357931a7fbb2f418664bff4e7aadb"
     },
     "nex-mo": {
       "version": 1470,

@@ -327,6 +327,33 @@ paths:
         "409": {description: Application state or expected version conflicts.}
         "422": {description: Request code or expected version is invalid.}
         "503": {description: OA authorization or EOS persistence is unavailable.}
+  /internal/v2/project-applications/{project_request_code}:request-approval:
+    post:
+      operationId: PROJECT.APPLICATION.REQUEST_APPROVAL
+      tags: [Project]
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes: [service:call]
+      x-nex-business-scope: project:application:request-approval
+      x-nex-route-class: WRITE
+      parameters:
+        - $ref: "#/components/parameters/ProjectRequestCodePath"
+        - $ref: "#/components/parameters/TenantCodeHeader"
+        - $ref: "#/components/parameters/SubjectHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProjectApplicationApprovalCommand"
+      responses:
+        "200": {description: BUSINESS_FORMAL committee approval was requested or exactly replayed.}
+        "401": {description: Service claim is missing or invalid.}
+        "403": {description: Fresh OA authority or applicant ownership is denied.}
+        "404": {description: Application or approval policy is absent from tenant scope.}
+        "409": {description: "Application, policy, version, or replay semantics conflict."}
+        "422": {description: "Request code, policy identity, or expected version is invalid."}
+        "503": {description: "OA, WC, or EOS persistence is unavailable."}
   /internal/v2/projects:resolve:
     get:
       operationId: PROJECT.PROJECT.RESOLVE
@@ -1653,6 +1680,13 @@ components:
       additionalProperties: false
       required: [expected_version]
       properties:
+        expected_version: {type: integer, minimum: 1}
+    ProjectApplicationApprovalCommand:
+      type: object
+      additionalProperties: false
+      required: [approval_policy_id, expected_version]
+      properties:
+        approval_policy_id: {type: string, format: uuid}
         expected_version: {type: integer, minimum: 1}
     ApprovedDocumentEnvelope:
       type: object

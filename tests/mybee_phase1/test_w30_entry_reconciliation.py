@@ -77,8 +77,9 @@ def test_w30_ca01_migration_reservations_follow_actual_inventory() -> None:
     assert implemented == reserved_versions[: len(implemented)]
     ca02 = CA02_PATH.read_text(encoding="utf-8")
     assert "2531_eos_project_application_lifecycle.sql" in ca02
-    assert "2532_eos_voucher_candidate_v2.sql" in ca02
-    expected_highest = 2531
+    assert "2532_eos_project_application_approval.sql" in ca02
+    assert "2533_eos_voucher_candidate_v2.sql" in ca02
+    expected_highest = 2532
     assert versions[-1] == expected_highest
 
 

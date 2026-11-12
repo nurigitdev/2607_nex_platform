@@ -18,8 +18,8 @@ from .dependencies import build_eos_dependencies
 from .fx_api import register_fx_rate_routes
 from .legal_entity_api import register_legal_entity_routes
 from .organization_api import register_organization_routes
-from .project_application_api import register_project_application_routes
 from .project_api import register_project_routes
+from .project_application_api import register_project_application_routes
 from .project_business_api import register_project_business_routes
 from .project_work_assignment_api import register_project_work_assignment_routes
 from .reporting_map_api import register_reporting_map_routes
@@ -70,6 +70,9 @@ def create_eos_app(
     app.state.eos_projects = dependencies.projects
     app.state.eos_project_application_service = (
         dependencies.project_application_service
+    )
+    app.state.eos_project_application_approval_service = (
+        dependencies.project_application_approval_service
     )
     app.state.eos_project_memberships = dependencies.project_memberships
     app.state.eos_project_operations = dependencies.project_operations

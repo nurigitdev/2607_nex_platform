@@ -22,8 +22,8 @@ from .business_transactions import (
     EosBusinessTransactionCoordinator,
 )
 from .project_memberships import (
-    EOS_PROJECT_MEMBER_TABLE,
     EOS_PROJECT_MEMBER_ROLES,
+    EOS_PROJECT_MEMBER_TABLE,
     EosProjectMembershipError,
     ProjectMembershipInput,
     SqlAlchemyEosProjectMembershipRepository,
@@ -81,10 +81,12 @@ class EosGovernedProjectService:
         session_factory: sessionmaker[Session],
         coordinator: EosBusinessTransactionCoordinator,
         authorization_source: AuthorizationSource,
+        allow_legacy_project_create: bool = True,
     ) -> None:
         self._session_factory = session_factory
         self._coordinator = coordinator
         self._authorization_source = authorization_source
+        self._allow_legacy_project_create = allow_legacy_project_create
         self._projects = SqlAlchemyEosProjectRepository(session_factory)
         self._memberships = SqlAlchemyEosProjectMembershipRepository(session_factory)
 
@@ -96,7 +98,9 @@ class EosGovernedProjectService:
     ) -> dict[str, Any]:
         _require_service_caller(caller)
         envelope = _write_envelope(payload, NVT_PROJECT_CREATE_OPERATION)
-        requester = _scoped_id("requester_subject_id", payload.get("requester_subject_id"))
+        requester = _scoped_id(
+            "requester_subject_id", payload.get("requester_subject_id")
+        )
         nvt_payload = _object("nvt_project", payload.get("nvt_project"))
         nvt_project = NvtProjectInput(
             tenant_id=envelope["tenant_id"],
@@ -117,7 +121,9 @@ class EosGovernedProjectService:
 
         def mutation(session: Session | None) -> Mapping[str, Any]:
             if session is None:
-                raise RuntimeError("NVTProject creation requires a database transaction")
+                raise RuntimeError(
+                    "NVTProject creation requires a database transaction"
+                )
             created = self._projects.create_nvt_project_in_session(session, nvt_project)
             return {
                 "business_result_ref": f"eos.nvt-project:{nvt_project.nvt_project_id}",
@@ -135,11 +141,15 @@ class EosGovernedProjectService:
     ) -> dict[str, Any]:
         _require_service_caller(caller)
         envelope = _write_envelope(payload, NVT_PROJECT_UPDATE_OPERATION)
-        requester = _scoped_id("requester_subject_id", payload.get("requester_subject_id"))
+        requester = _scoped_id(
+            "requester_subject_id", payload.get("requester_subject_id")
+        )
         changes = _object("changes", payload.get("changes"))
         unexpected = sorted(set(changes) - {"name", "status"})
         if unexpected:
-            raise _invalid(f"changes contains immutable or unknown fields: {unexpected}")
+            raise _invalid(
+                f"changes contains immutable or unknown fields: {unexpected}"
+            )
         update_value = NvtProjectUpdate(
             tenant_id=envelope["tenant_id"],
             nvt_project_id=_uuid("nvt_project_id", payload.get("nvt_project_id")),
@@ -158,7 +168,9 @@ class EosGovernedProjectService:
         def mutation(session: Session | None) -> Mapping[str, Any]:
             if session is None:
                 raise RuntimeError("NVTProject update requires a database transaction")
-            updated = self._projects.update_nvt_project_in_session(session, update_value)
+            updated = self._projects.update_nvt_project_in_session(
+                session, update_value
+            )
             return {
                 "business_result_ref": f"eos.nvt-project:{update_value.nvt_project_id}",
                 "nvt_project": _wire(updated),
@@ -176,9 +188,7 @@ class EosGovernedProjectService:
     ) -> dict[str, Any]:
         tenant_id = _scoped_id("tenant_id", tenant_id)
         nvt_project_id = _uuid("nvt_project_id", nvt_project_id)
-        requester_subject_id = _scoped_id(
-            "requester_subject_id", requester_subject_id
-        )
+        requester_subject_id = _scoped_id("requester_subject_id", requester_subject_id)
         self._authorize(
             tenant_id=tenant_id,
             subject_id=requester_subject_id,
@@ -209,9 +219,7 @@ class EosGovernedProjectService:
         offset: int = 0,
     ) -> list[dict[str, Any]]:
         tenant_id = _scoped_id("tenant_id", tenant_id)
-        requester_subject_id = _scoped_id(
-            "requester_subject_id", requester_subject_id
-        )
+        requester_subject_id = _scoped_id("requester_subject_id", requester_subject_id)
         self._authorize(
             tenant_id=tenant_id,
             subject_id=requester_subject_id,
@@ -235,8 +243,16 @@ class EosGovernedProjectService:
         caller: EosServiceCaller,
     ) -> dict[str, Any]:
         _require_service_caller(caller)
+        if not self._allow_legacy_project_create:
+            raise EosGovernedProjectError(
+                "EOS_PROJECT_DIRECT_CREATE_RETIRED",
+                "Direct Project creation is retired; submit a Project application.",
+                status_code=410,
+            )
         envelope = _write_envelope(payload, PROJECT_CREATE_OPERATION)
-        requester = _scoped_id("requester_subject_id", payload.get("requester_subject_id"))
+        requester = _scoped_id(
+            "requester_subject_id", payload.get("requester_subject_id")
+        )
         project_payload = _object("project", payload.get("project"))
         owner_subject = _scoped_id(
             "initial_owner_subject_id", payload.get("initial_owner_subject_id")
@@ -248,7 +264,9 @@ class EosGovernedProjectService:
         project = ProjectInput(
             tenant_id=envelope["tenant_id"],
             project_id=_uuid("project.project_id", project_payload.get("project_id")),
-            project_code=_text("project.project_code", project_payload.get("project_code")),
+            project_code=_text(
+                "project.project_code", project_payload.get("project_code")
+            ),
             name=_text("project.name", project_payload.get("name")),
             parent_project_id=project_payload.get("parent_project_id"),
             nvt_project_id=project_payload.get("nvt_project_id"),
@@ -297,10 +315,16 @@ class EosGovernedProjectService:
     ) -> dict[str, Any]:
         _require_service_caller(caller)
         envelope = _write_envelope(payload, PROJECT_MEMBERSHIP_ADD_OPERATION)
-        requester = _scoped_id("requester_subject_id", payload.get("requester_subject_id"))
+        requester = _scoped_id(
+            "requester_subject_id", payload.get("requester_subject_id")
+        )
         project_id = _uuid("project_id", payload.get("project_id"))
-        target_subject = _scoped_id("target_subject_id", payload.get("target_subject_id"))
-        membership_id = _uuid("project_membership_id", payload.get("project_membership_id"))
+        target_subject = _scoped_id(
+            "target_subject_id", payload.get("target_subject_id")
+        )
+        membership_id = _uuid(
+            "project_membership_id", payload.get("project_membership_id")
+        )
         role = _text("member_role", payload.get("member_role")).upper()
         authorization = self._authorize(
             tenant_id=envelope["tenant_id"],
@@ -345,7 +369,9 @@ class EosGovernedProjectService:
     ) -> dict[str, Any]:
         _require_service_caller(caller)
         envelope = _batch_write_envelope(payload)
-        requester = _scoped_id("requester_subject_id", payload.get("requester_subject_id"))
+        requester = _scoped_id(
+            "requester_subject_id", payload.get("requester_subject_id")
+        )
         project_id = _uuid("project_id", payload.get("project_id"))
         target_subject_ids = _canonical_subject_ids(payload.get("target_subject_ids"))
         member_role = _text("member_role", payload.get("member_role", "MEMBER")).upper()
@@ -374,7 +400,9 @@ class EosGovernedProjectService:
 
         def mutation(session: Session | None) -> Mapping[str, Any]:
             if session is None:
-                raise RuntimeError("Membership ADD_MANY requires a database transaction")
+                raise RuntimeError(
+                    "Membership ADD_MANY requires a database transaction"
+                )
             applied = self._memberships.add_memberships_in_session(
                 session,
                 tenant_id=envelope["tenant_id"],
@@ -392,8 +420,7 @@ class EosGovernedProjectService:
             operation_status = _batch_operation_status(counts)
             return {
                 "business_result_ref": (
-                    "eos.project-membership-batch:"
-                    f"{envelope['business_operation_id']}"
+                    f"eos.project-membership-batch:{envelope['business_operation_id']}"
                 ),
                 "operation_status": operation_status,
                 "requested_count": len(target_subject_ids),
@@ -416,9 +443,13 @@ class EosGovernedProjectService:
     ) -> dict[str, Any]:
         _require_service_caller(caller)
         envelope = _write_envelope(payload, PROJECT_MEMBERSHIP_REMOVE_OPERATION)
-        requester = _scoped_id("requester_subject_id", payload.get("requester_subject_id"))
+        requester = _scoped_id(
+            "requester_subject_id", payload.get("requester_subject_id")
+        )
         project_id = _uuid("project_id", payload.get("project_id"))
-        target_subject = _scoped_id("target_subject_id", payload.get("target_subject_id"))
+        target_subject = _scoped_id(
+            "target_subject_id", payload.get("target_subject_id")
+        )
         authorization = self._authorize(
             tenant_id=envelope["tenant_id"],
             subject_id=requester,
@@ -455,9 +486,13 @@ class EosGovernedProjectService:
     ) -> dict[str, Any]:
         _require_service_caller(caller)
         envelope = _write_envelope(payload, PROJECT_DEACTIVATE_OPERATION)
-        requester = _scoped_id("requester_subject_id", payload.get("requester_subject_id"))
+        requester = _scoped_id(
+            "requester_subject_id", payload.get("requester_subject_id")
+        )
         project_id = _uuid("project_id", payload.get("project_id"))
-        expected_version = _positive_int("expected_version", payload.get("expected_version"))
+        expected_version = _positive_int(
+            "expected_version", payload.get("expected_version")
+        )
         authorization = self._authorize(
             tenant_id=envelope["tenant_id"],
             subject_id=requester,
@@ -467,7 +502,9 @@ class EosGovernedProjectService:
 
         def mutation(session: Session | None) -> Mapping[str, Any]:
             if session is None:
-                raise RuntimeError("Project deactivation requires a database transaction")
+                raise RuntimeError(
+                    "Project deactivation requires a database transaction"
+                )
             self._require_project_role(
                 session,
                 tenant_id=envelope["tenant_id"],
@@ -532,9 +569,7 @@ class EosGovernedProjectService:
     ) -> dict[str, Any]:
         tenant_id = _scoped_id("tenant_id", tenant_id)
         project_id = _uuid("project_id", project_id)
-        requester_subject_id = _scoped_id(
-            "requester_subject_id", requester_subject_id
-        )
+        requester_subject_id = _scoped_id("requester_subject_id", requester_subject_id)
         authorization = self._authorize(
             tenant_id=tenant_id,
             subject_id=requester_subject_id,
@@ -550,12 +585,16 @@ class EosGovernedProjectService:
                         project_id=project_id,
                         subject_id=requester_subject_id,
                     )
-                project = session.execute(
-                    select(EOS_PROJECT_TABLE).where(
-                        EOS_PROJECT_TABLE.c.tenant_id == tenant_id,
-                        EOS_PROJECT_TABLE.c.project_id == project_id,
+                project = (
+                    session.execute(
+                        select(EOS_PROJECT_TABLE).where(
+                            EOS_PROJECT_TABLE.c.tenant_id == tenant_id,
+                            EOS_PROJECT_TABLE.c.project_id == project_id,
+                        )
                     )
-                ).mappings().one_or_none()
+                    .mappings()
+                    .one_or_none()
+                )
         except EosGovernedProjectError:
             raise
         except SQLAlchemyError as exc:
@@ -577,9 +616,7 @@ class EosGovernedProjectService:
         offset: int = 0,
     ) -> list[dict[str, Any]]:
         tenant_id = _scoped_id("tenant_id", tenant_id)
-        requester_subject_id = _scoped_id(
-            "requester_subject_id", requester_subject_id
-        )
+        requester_subject_id = _scoped_id("requester_subject_id", requester_subject_id)
         limit = _limit(limit)
         offset = _offset(offset)
         authorization = self._authorize(
@@ -601,9 +638,11 @@ class EosGovernedProjectService:
                 & (EOS_PROJECT_MEMBER_TABLE.c.subject_id == requester_subject_id)
                 & (EOS_PROJECT_MEMBER_TABLE.c.status == "ACTIVE"),
             )
-        statement = statement.order_by(EOS_PROJECT_TABLE.c.project_code).limit(
-            limit
-        ).offset(offset)
+        statement = (
+            statement.order_by(EOS_PROJECT_TABLE.c.project_code)
+            .limit(limit)
+            .offset(offset)
+        )
         try:
             with self._session_factory() as session:
                 rows = session.execute(statement).mappings().all()
@@ -622,9 +661,7 @@ class EosGovernedProjectService:
     ) -> list[dict[str, Any]]:
         tenant_id = _scoped_id("tenant_id", tenant_id)
         project_id = _uuid("project_id", project_id)
-        requester_subject_id = _scoped_id(
-            "requester_subject_id", requester_subject_id
-        )
+        requester_subject_id = _scoped_id("requester_subject_id", requester_subject_id)
         authorization = self._authorize(
             tenant_id=tenant_id,
             subject_id=requester_subject_id,
@@ -809,9 +846,7 @@ class EosGovernedProjectService:
             )
 
 
-def project_operation_payload_hash(
-    payload: Mapping[str, Any], operation: str
-) -> str:
+def project_operation_payload_hash(payload: Mapping[str, Any], operation: str) -> str:
     try:
         canonical_operation = DEFAULT_OPERATION_REGISTRY.resolve(
             operation
@@ -830,9 +865,7 @@ def project_operation_payload_hash(
             "trace",
         }
     }
-    return nsl_write_payload_hash_ref(
-        {"operation": canonical_operation, **projected}
-    )
+    return nsl_write_payload_hash_ref({"operation": canonical_operation, **projected})
 
 
 def project_membership_add_many_payload_hash(payload: Mapping[str, Any]) -> str:
@@ -856,9 +889,7 @@ def project_membership_add_many_payload_hash(payload: Mapping[str, Any]) -> str:
     )
 
 
-def _write_envelope(
-    payload: Mapping[str, Any], operation: str
-) -> dict[str, str]:
+def _write_envelope(payload: Mapping[str, Any], operation: str) -> dict[str, str]:
     if not isinstance(payload, Mapping):
         raise _invalid("payload must be an object")
     requested_operation = payload.get("requested_operation", operation)
@@ -989,10 +1020,17 @@ def _admit_authorization(
     if required_scope is not None and required_scope not in scopes:
         raise _authorization_denied(required_scope)
     revision_hash = value.get("revision_hash")
-    if not isinstance(revision_hash, str) or _REVISION_HASH.fullmatch(revision_hash) is None:
+    if (
+        not isinstance(revision_hash, str)
+        or _REVISION_HASH.fullmatch(revision_hash) is None
+    ):
         raise _authorization_denied(required_scope or "active subject")
     project_ids = value.get("project_ids")
-    if project_id is not None and project_ids is not None and project_id not in _string_set(project_ids):
+    if (
+        project_id is not None
+        and project_ids is not None
+        and project_id not in _string_set(project_ids)
+    ):
         raise _authorization_denied(required_scope or "Project scope")
     return {"scopes": scopes, "revision_hash": revision_hash}
 

@@ -317,8 +317,9 @@ for S3-01 is now a historical plan and is superseded as follows:
 | Migration | Owner | Purpose |
 | --- | --- | --- |
 | `2531_eos_project_application_lifecycle.sql` | `W30-S00A` | application, annual counter, Project code/lifecycle additions, accounting reference foundation |
+| `2532_eos_project_application_approval.sql` | `W30-S00B` | Project committee approval state, immutable WC decision ledger, final Project materialization |
 | next available AE migration after inventory refresh | `W30-S00C` | PA lifecycle inbox/projection only if current AE tables are insufficient |
-| `2532_eos_voucher_candidate_v2.sql` | `S3-01` | immutable Project-specific Candidate/revision/line foundation |
+| `2533_eos_voucher_candidate_v2.sql` | `S3-01` | immutable Project-specific Candidate/revision/line foundation |
 
 Every implementation Slice must recheck repository migration inventory before
 creating a file. This document reserves intent, not proof that a migration has

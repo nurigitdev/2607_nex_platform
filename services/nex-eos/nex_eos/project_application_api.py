@@ -12,6 +12,7 @@ from nex_runtime import (
     problem_response,
 )
 
+from .project_application_approvals import EosProjectApplicationApprovalError
 from .project_applications import (
     EosProjectApplicationError,
     ProjectApplicationDraft,
@@ -88,6 +89,31 @@ def register_project_application_routes(app: FastAPI) -> None:
                 expected_version=_positive_int(
                     "expected_version", payload.get("expected_version")
                 ),
+                requester_subject_id=requester_subject_id,
+            ),
+        )
+
+    @app.post(
+        "/internal/v2/project-applications/{project_request_code}:request-approval",
+        response_model=None,
+        operation_id="PROJECT.APPLICATION.REQUEST_APPROVAL",
+    )
+    def request_project_application_approval(
+        project_request_code: str,
+        payload: dict[str, Any],
+        request: Request,
+        tenant_id: str = Header(alias="X-NeX-Tenant-Id"),
+        requester_subject_id: str = Header(alias="X-NeX-Subject-Id"),
+        authorization: str | None = Header(default=None),
+    ):
+        return _approval_call(
+            request,
+            authorization,
+            lambda service: service.request_approval(
+                tenant_id=tenant_id,
+                project_request_code=project_request_code,
+                approval_policy_id=str(payload.get("approval_policy_id", "")),
+                expected_version=payload.get("expected_version"),
                 requester_subject_id=requester_subject_id,
             ),
         )
@@ -229,6 +255,45 @@ def _call(
         )
     status = created_status if created_status is not None else 200
     return JSONResponse(result, status_code=status)
+
+
+def _approval_call(
+    request: Request,
+    authorization: str | None,
+    operation: Callable,
+):
+    admitted = admit_service_token_from_request(
+        request,
+        authorization,
+        expected_audience="nex-eos",
+        required_scopes=(DEFAULT_SERVICE_SCOPE,),
+    )
+    if isinstance(admitted, JSONResponse):
+        return admitted
+    service = getattr(
+        request.app.state, "eos_project_application_approval_service", None
+    )
+    if service is None:
+        return problem_response(
+            request,
+            status_code=503,
+            error_code="EOS_PROJECT_APPLICATION_APPROVAL_UNAVAILABLE",
+            title="EOS Project application approval unavailable",
+            detail="Project application committee dependencies are not configured",
+            retryable=True,
+        )
+    try:
+        result = operation(service)
+    except EosProjectApplicationApprovalError as exc:
+        return problem_response(
+            request,
+            status_code=exc.status_code,
+            error_code=exc.error_code,
+            title="EOS Project application approval failed",
+            detail=exc.detail,
+            retryable=exc.retryable,
+        )
+    return JSONResponse(result, status_code=200)
 
 
 def _optional_string(value: object) -> str | None:
