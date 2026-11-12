@@ -1235,6 +1235,11 @@
       "name": "eos_voucher_candidate_validate_missing_hash",
       "path": "tests/negative/service/eos_voucher_candidate_validate.missing_hash.json",
       "schema": "schemas/service/nex_eos/voucher_candidate_validate.v1.schema.json"
+    },
+    {
+      "name": "eos_voucher_candidate_review_invalidate_missing_reason",
+      "path": "tests/negative/service/eos_voucher_candidate_review_invalidate.missing_reason.json",
+      "schema": "schemas/service/nex_eos/voucher_candidate_review_invalidate.v1.schema.json"
     }
   ]
 }

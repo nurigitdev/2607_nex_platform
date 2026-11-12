@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_eos/voucher_candidate_review.v1.schema.json",
+  "title": "EOS VoucherCandidate Review Projection v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "tenant_id", "candidate_id", "state",
+    "candidate_version", "current_revision_no", "events"
+  ],
+  "properties": {
+    "schema_version": {"const": "eos_candidate_review.v1"},
+    "tenant_id": {"type": "string", "minLength": 1, "maxLength": 128},
+    "candidate_id": {"type": "string", "format": "uuid"},
+    "state": {
+      "enum": ["DRAFT", "READY_FOR_REVIEW", "RETURNED_FOR_CORRECTION"]
+    },
+    "candidate_version": {"type": "integer", "minimum": 1},
+    "current_revision_no": {"type": "integer", "minimum": 1},
+    "events": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/review_event"}
+    }
+  },
+  "$defs": {
+    "hash_ref": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "review_event": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version", "event_id", "candidate_id", "candidate_revision",
+        "candidate_hash", "approval_case_id", "transition_kind", "from_state",
+        "to_state", "expected_version", "resulting_version", "actor_subject_id",
+        "reason", "validation_hash", "review_hash", "event_hash", "created_at"
+      ],
+      "properties": {
+        "schema_version": {"const": "eos_candidate_review_event.v1"},
+        "event_id": {"type": "string", "format": "uuid"},
+        "candidate_id": {"type": "string", "format": "uuid"},
+        "candidate_revision": {"type": "integer", "minimum": 1},
+        "candidate_hash": {"$ref": "#/$defs/hash_ref"},
+        "approval_case_id": {"type": "string", "format": "uuid"},
+        "transition_kind": {"enum": ["SUBMIT", "RETURN", "INVALIDATE"]},
+        "from_state": {
+          "enum": ["DRAFT", "READY_FOR_REVIEW", "RETURNED_FOR_CORRECTION"]
+        },
+        "to_state": {"enum": ["READY_FOR_REVIEW", "RETURNED_FOR_CORRECTION"]},
+        "expected_version": {"type": "integer", "minimum": 1},
+        "resulting_version": {"type": "integer", "minimum": 2},
+        "actor_subject_id": {"type": "string", "minLength": 1, "maxLength": 128},
+        "reason": {"type": ["string", "null"], "maxLength": 2000},
+        "validation_hash": {
+          "oneOf": [{"$ref": "#/$defs/hash_ref"}, {"type": "null"}]
+        },
+        "review_hash": {"$ref": "#/$defs/hash_ref"},
+        "event_hash": {"$ref": "#/$defs/hash_ref"},
+        "created_at": {"type": "string", "format": "date-time"}
+      }
+    }
+  }
+}

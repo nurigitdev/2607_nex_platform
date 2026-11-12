@@ -157,6 +157,12 @@ from .business_transactions import (
     InMemoryEosBusinessTransactionCoordinator,
     SqlAlchemyEosBusinessTransactionCoordinator,
 )
+from .candidate_review import (
+    CANDIDATE_REVIEW_PROJECTION_VERSION,
+    EOS_CANDIDATE_REVIEW_EVENT_TABLE,
+    EosCandidateReviewError,
+    SqlAlchemyEosCandidateReviewRepository,
+)
 from .candidate_validation import (
     VALIDATE_VOUCHER_CANDIDATE_OPERATION,
     EosCandidateValidationError,
@@ -480,6 +486,7 @@ __all__ = (
     "APPROVED_DOCUMENT_SCOPE_TYPES",
     "APPROVED_DOCUMENT_STATES",
     "BUSINESS_DOCUMENT_APPROVED_GET_OPERATION",
+    "CANDIDATE_REVIEW_PROJECTION_VERSION",
     "D12_CATALOG_DIGEST",
     "D12_CATALOG_ID",
     "D12_CATALOG_VERSION",
@@ -511,6 +518,7 @@ __all__ = (
     "EOS_APPROVED_DOCUMENT_CONSUMPTION_TABLE",
     "EOS_APPROVED_DOCUMENT_TABLE",
     "EOS_BUSINESS_OPERATION_TABLE",
+    "EOS_CANDIDATE_REVIEW_EVENT_TABLE",
     "EOS_COA_ACCOUNT_BINDING_TABLE",
     "EOS_COA_CATEGORIES",
     "EOS_COA_CODE_IDENTITY_TABLE",
@@ -708,6 +716,7 @@ __all__ = (
     "EosBusinessQueryError",
     "EosBusinessTransactionCoordinator",
     "EosBusinessTransactionResult",
+    "EosCandidateReviewError",
     "EosCandidateValidationError",
     "EosCandidateValidationService",
     "EosCoaOperationError",
@@ -801,6 +810,7 @@ __all__ = (
     "SqlAlchemyEosAttachmentRepository",
     "SqlAlchemyEosBusinessOperationQuery",
     "SqlAlchemyEosBusinessTransactionCoordinator",
+    "SqlAlchemyEosCandidateReviewRepository",
     "SqlAlchemyEosCoaOperationsRepository",
     "SqlAlchemyEosCoaReleaseAdminRepository",
     "SqlAlchemyEosFxRateRepository",

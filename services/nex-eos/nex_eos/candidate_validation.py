@@ -139,10 +139,17 @@ class EosCandidateValidationService:
         fx_rate_set_hash = semantic_sha256_hash_ref(
             {"domain": "EOS-CANDIDATE-FX-RATE-SET-V1", **fx_evidence}
         )
+        candidate_version = int(candidate.get("version", 1))
         evidence = {
             "candidate_id": request["candidate_id"],
+            "candidate_version": candidate_version,
             "candidate_hash": revision["candidate_hash"],
             "revision_no": revision["revision_no"],
+            "company_id": str(candidate["company_id"]),
+            "project_id": str(candidate["project_id"]),
+            "document_envelope_id": str(candidate["document_envelope_id"]),
+            "approved_document_hash": revision["approved_document_hash"],
+            "preparer_subject_id": candidate["preparer_subject_id"],
             "accounting_period_id": period["period_id"],
             "posting_rule_release_hash": posting_rule["rule_hash"],
             "account_policy_set_hash": account_policy_set_hash,
@@ -159,6 +166,7 @@ class EosCandidateValidationService:
                 "type": "eos.voucher_candidate",
                 "id": request["candidate_id"],
             },
+            "candidate_version": candidate_version,
             "revision_ref": {
                 "type": "eos.voucher_candidate_revision",
                 "id": str(revision["revision_id"]),
@@ -170,7 +178,13 @@ class EosCandidateValidationService:
                 "id": str(candidate["project_id"]),
                 "code": str(candidate["project_code"]),
             },
+            "document_ref": {
+                "type": "eos.approved_document_envelope",
+                "id": str(candidate["document_envelope_id"]),
+                "hash": revision["approved_document_hash"],
+            },
             "company_id": str(candidate["company_id"]),
+            "preparer_subject_id": str(candidate["preparer_subject_id"]),
             "accounting_period_id": str(period["period_id"]),
             "recognition_date": recognition_date.isoformat(),
             "transaction_currency": str(candidate["transaction_currency"]),

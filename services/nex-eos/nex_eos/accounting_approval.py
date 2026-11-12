@@ -32,6 +32,7 @@ from .approval_policies import EOS_APPROVAL_POLICY_STAGE_TABLE
 from .authorization import AuthorizationSource, AuthorizationSubjectDenied
 from .business_formal_wc import WcApprovalWorkItemClient
 from .business_transactions import EOS_METADATA
+from .candidate_review import EosCandidateReviewError
 from .scoped_approvals import (
     EOS_SCOPED_APPROVAL_BINDING_TABLE,
     EOS_SCOPED_APPROVAL_CASE_TABLE,
@@ -46,7 +47,7 @@ _HASH_REF = re.compile(r"^sha256:[0-9a-f]{64}$")
 _SCOPED_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:@/-]{0,255}$")
 _CURRENCY = re.compile(r"^[A-Z]{3}$")
 _AGENT_PREFIXES = ("agent:", "job:", "service:", "nex-")
-_REVIEW_FIELDS = frozenset(
+_REVIEW_FIELDS_V2 = frozenset(
     {
         "schema_version",
         "candidate_id",
@@ -68,6 +69,9 @@ _REVIEW_FIELDS = frozenset(
         "fx_exception",
     }
 )
+_REVIEW_FIELDS_V3 = _REVIEW_FIELDS_V2 | frozenset(
+    {"candidate_version", "validation_hash", "validation_observed_at"}
+)
 
 
 EOS_ACCOUNTING_REVIEW_CONTEXT_TABLE = Table(
@@ -75,9 +79,18 @@ EOS_ACCOUNTING_REVIEW_CONTEXT_TABLE = Table(
     EOS_METADATA,
     Column("tenant_id", String(128), primary_key=True),
     Column("case_id", Uuid(as_uuid=False), primary_key=True),
+    Column(
+        "review_schema_version",
+        String(64),
+        nullable=False,
+        default="eos_accounting_review_context.v2",
+    ),
     Column("candidate_id", Uuid(as_uuid=False), nullable=False),
     Column("candidate_revision", Integer, nullable=False),
     Column("candidate_hash", String(71), nullable=False),
+    Column("candidate_version", Integer, nullable=True),
+    Column("validation_hash", String(71), nullable=True),
+    Column("validation_observed_at", DateTime(timezone=True), nullable=True),
     Column("document_envelope_hash", String(71), nullable=False),
     Column("fx_rate_set_hash", String(71), nullable=False),
     Column("rule_release_hash", String(71), nullable=False),
@@ -255,11 +268,13 @@ class EosAccountingApprovalService:
         session_factory: sessionmaker[Session],
         authorization_source: AuthorizationSource,
         wc_client: WcApprovalWorkItemClient,
+        candidate_review_repository=None,
         clock=None,
     ) -> None:
         self._session_factory = session_factory
         self._authorization_source = authorization_source
         self._wc_client = wc_client
+        self._candidate_review_repository = candidate_review_repository
         self._clock = clock or (lambda: datetime.now(UTC))
 
     def ingest_wc_delivery(self, delivery: Mapping[str, Any]) -> dict[str, Any]:
@@ -303,6 +318,23 @@ class EosAccountingApprovalService:
                         )
                     created = False
                 else:
+                    review_projection = _review_projection(review)
+                    if (
+                        review_projection["schema_version"]
+                        == "eos_accounting_review_context.v3"
+                        and self._candidate_review_repository is None
+                    ):
+                        raise _unavailable(
+                            "Candidate review persistence is unavailable"
+                        )
+                    current_candidate_review = None
+                    if self._candidate_review_repository is not None:
+                        current_candidate_review = self._candidate_review_repository.require_current_review_in_session(
+                            session,
+                            tenant_id=admitted["tenant_id"],
+                            approval_case_id=admitted["case_id"],
+                            review=review_projection,
+                        )
                     _reject_conflicting_stage_decision(session, case, admitted)
                     decision_record = _decision_record(
                         admitted,
@@ -314,6 +346,19 @@ class EosAccountingApprovalService:
                             **decision_record
                         )
                     )
+                    if (
+                        admitted["decision"] == "REJECT"
+                        and current_candidate_review is not None
+                    ):
+                        self._candidate_review_repository.return_from_rejection_in_session(
+                            session,
+                            tenant_id=admitted["tenant_id"],
+                            approval_case_id=admitted["case_id"],
+                            review=review_projection,
+                            actor_subject_id=admitted["decided_by"],
+                            reason=admitted["decision_comment"],
+                            decided_at=admitted["decided_at"],
+                        )
                     _advance_case(
                         session,
                         case=case,
@@ -325,6 +370,13 @@ class EosAccountingApprovalService:
                     created = True
         except EosAccountingApprovalError:
             raise
+        except EosCandidateReviewError as exc:
+            raise EosAccountingApprovalError(
+                exc.error_code,
+                exc.detail,
+                status_code=exc.status_code,
+                retryable=exc.retryable,
+            ) from exc
         except IntegrityError as exc:
             raise _conflict(
                 "Accounting approval decision changed concurrently"
@@ -441,9 +493,18 @@ class EosAccountingApprovalService:
 
 
 def admit_accounting_review(value: Mapping[str, Any]) -> dict[str, Any]:
-    if not isinstance(value, Mapping) or set(value) != _REVIEW_FIELDS:
+    if not isinstance(value, Mapping):
         raise _invalid("accounting_review fields do not match the admitted contract")
-    if value.get("schema_version") != "eos_accounting_review_context.v2":
+    schema_version = value.get("schema_version")
+    expected_fields = (
+        _REVIEW_FIELDS_V3
+        if schema_version == "eos_accounting_review_context.v3"
+        else _REVIEW_FIELDS_V2
+    )
+    if set(value) != expected_fields or schema_version not in {
+        "eos_accounting_review_context.v2",
+        "eos_accounting_review_context.v3",
+    }:
         raise _invalid("accounting_review schema_version is invalid")
     business_approvers = _subject_ids(
         "business_approver_subject_ids", value.get("business_approver_subject_ids")
@@ -458,8 +519,8 @@ def admit_accounting_review(value: Mapping[str, Any]) -> dict[str, Any]:
         "functional_amount", value.get("functional_amount")
     )
     reference_date = _date("rate_reference_date", value.get("rate_reference_date"))
-    return {
-        "schema_version": "eos_accounting_review_context.v2",
+    admitted = {
+        "schema_version": schema_version,
         "candidate_id": _uuid("candidate_id", value.get("candidate_id")),
         "candidate_revision": _positive_int(
             "candidate_revision", value.get("candidate_revision")
@@ -494,10 +555,24 @@ def admit_accounting_review(value: Mapping[str, Any]) -> dict[str, Any]:
         "functional_amount": _decimal_text(functional_amount),
         "fx_exception": _optional_text("fx_exception", value.get("fx_exception"), 512),
     }
+    if schema_version == "eos_accounting_review_context.v3":
+        admitted.update(
+            candidate_version=_positive_int(
+                "candidate_version", value.get("candidate_version")
+            ),
+            validation_hash=_hash_ref("validation_hash", value.get("validation_hash")),
+            validation_observed_at=_aware_datetime(
+                "validation_observed_at",
+                _datetime(
+                    "validation_observed_at", value.get("validation_observed_at")
+                ),
+            ),
+        )
+    return admitted
 
 
 def accounting_review_hash(review: Mapping[str, Any]) -> str:
-    return semantic_sha256_hash_ref(admit_accounting_review(review))
+    return _accounting_review_semantic_hash(admit_accounting_review(review))
 
 
 def _review_record(
@@ -510,9 +585,13 @@ def _review_record(
     return {
         "tenant_id": tenant_id,
         "case_id": case_id,
+        "review_schema_version": review["schema_version"],
         "candidate_id": review["candidate_id"],
         "candidate_revision": review["candidate_revision"],
         "candidate_hash": review["candidate_hash"],
+        "candidate_version": review.get("candidate_version"),
+        "validation_hash": review.get("validation_hash"),
+        "validation_observed_at": review.get("validation_observed_at"),
         "document_envelope_hash": review["document_envelope_hash"],
         "fx_rate_set_hash": review["fx_rate_set_hash"],
         "rule_release_hash": review["rule_release_hash"],
@@ -527,14 +606,27 @@ def _review_record(
         "functional_currency": review["functional_currency"],
         "functional_amount": Decimal(review["functional_amount"]),
         "fx_exception": review["fx_exception"],
-        "review_hash": semantic_sha256_hash_ref(review),
+        "review_hash": _accounting_review_semantic_hash(review),
         "created_at": created_at,
     }
 
 
+def _accounting_review_semantic_hash(review: Mapping[str, Any]) -> str:
+    semantics = dict(review)
+    observed_at = semantics.get("validation_observed_at")
+    if isinstance(observed_at, datetime):
+        semantics["validation_observed_at"] = _aware_datetime(
+            "validation_observed_at", observed_at
+        ).isoformat()
+    return semantic_sha256_hash_ref(semantics)
+
+
 def _review_projection(value: Mapping[str, Any]) -> dict[str, Any]:
-    return {
-        "schema_version": "eos_accounting_review_context.v2",
+    schema_version = value.get(
+        "review_schema_version", "eos_accounting_review_context.v2"
+    )
+    projection = {
+        "schema_version": schema_version,
         "tenant_id": value["tenant_id"],
         "case_id": str(value["case_id"]),
         "candidate_id": str(value["candidate_id"]),
@@ -556,6 +648,13 @@ def _review_projection(value: Mapping[str, Any]) -> dict[str, Any]:
         "fx_exception": value["fx_exception"],
         "review_hash": value["review_hash"],
     }
+    if schema_version == "eos_accounting_review_context.v3":
+        projection.update(
+            candidate_version=value["candidate_version"],
+            validation_hash=value["validation_hash"],
+            validation_observed_at=_timestamp(value["validation_observed_at"]),
+        )
+    return projection
 
 
 def _admit_delivery(value: Mapping[str, Any]) -> dict[str, Any]:

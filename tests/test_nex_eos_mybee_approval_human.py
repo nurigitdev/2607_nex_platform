@@ -151,7 +151,9 @@ def _review(**overrides):
     return value
 
 
-def _build_runtime(*, engine=None, stages=("TEAM_LEAD", "CEO")):
+def _build_runtime(
+    *, engine=None, stages=("TEAM_LEAD", "CEO"), candidate_review_repository=None
+):
     engine = engine or create_engine(
         "sqlite+pysqlite:///:memory:",
         connect_args={"check_same_thread": False},
@@ -220,6 +222,7 @@ def _build_runtime(*, engine=None, stages=("TEAM_LEAD", "CEO")):
         session_factory=sessions,
         authorization_source=auth,
         wc_client=wc,
+        candidate_review_repository=candidate_review_repository,
         clock=lambda: NOW + timedelta(minutes=5),
     )
     return sessions, scoped_service, decision_service, auth, wc
@@ -382,6 +385,43 @@ def test_two_stage_human_decision_creates_exact_evidence_and_replays() -> None:
     assert len(wc.items) == 2
 
 
+def test_candidate_review_rejection_hook_is_transactional_and_replay_safe() -> None:
+    class CandidateReviewSpy:
+        def __init__(self) -> None:
+            self.current_calls = []
+            self.return_calls = []
+
+        def require_current_review_in_session(self, _session, **kwargs):
+            self.current_calls.append(kwargs)
+            return {"candidate": {}, "submitted_event": {}}
+
+        def return_from_rejection_in_session(self, _session, **kwargs):
+            self.return_calls.append(kwargs)
+            return {"transition_kind": "RETURN"}
+
+    reviews = CandidateReviewSpy()
+    _sessions, scoped, decisions, _auth, _wc = _build_runtime(
+        stages=("TEAM_LEAD",), candidate_review_repository=reviews
+    )
+    item = _create_case(scoped)["wc_publication"]["work_item"]
+    delivery = _delivery(
+        item,
+        decided_by="accountant-lead",
+        decision="REJECT",
+        suffix="7",
+    )
+
+    first = decisions.ingest_wc_delivery(delivery)
+    replay = decisions.ingest_wc_delivery(delivery)
+
+    assert first["case_state"] == "REJECTED"
+    assert replay["created"] is False
+    assert len(reviews.current_calls) == 1
+    assert len(reviews.return_calls) == 1
+    assert reviews.return_calls[0]["reason"] == "decision 7"
+    assert reviews.return_calls[0]["approval_case_id"] == CASE_ID
+
+
 @pytest.mark.parametrize(
     ("principal", "expected"),
     (
@@ -535,9 +575,9 @@ def test_duplicate_out_of_order_conflict_reject_and_missing_context() -> None:
         decided_by="accountant-ceo",
         suffix="2",
     )
-    out_of_order["work_item"][
-        "resume_target_ref"
-    ] = f"eos.scoped-approval-case:{CASE_ID}:stage:1"
+    out_of_order["work_item"]["resume_target_ref"] = (
+        f"eos.scoped-approval-case:{CASE_ID}:stage:1"
+    )
     with pytest.raises(EosAccountingApprovalError):
         decisions.ingest_wc_delivery(out_of_order)
 
@@ -572,9 +612,9 @@ def test_duplicate_out_of_order_conflict_reject_and_missing_context() -> None:
         decided_by="accountant-lead",
         suffix="4",
     )
-    missing_delivery["work_item"][
-        "resume_target_ref"
-    ] = f"eos.scoped-approval-case:{missing_case}:stage:1"
+    missing_delivery["work_item"]["resume_target_ref"] = (
+        f"eos.scoped-approval-case:{missing_case}:stage:1"
+    )
     with pytest.raises(EosAccountingApprovalError) as missing:
         decisions.ingest_wc_delivery(missing_delivery)
     assert missing.value.status_code == 409
@@ -595,9 +635,9 @@ def test_case_identity_expiry_and_terminal_lineage_are_fail_closed(mode) -> None
     delivery = _delivery(item, decided_by="accountant-lead")
     if mode == "unknown":
         unknown = str(uuid.uuid4())
-        delivery["work_item"][
-            "resume_target_ref"
-        ] = f"eos.scoped-approval-case:{unknown}:stage:1"
+        delivery["work_item"]["resume_target_ref"] = (
+            f"eos.scoped-approval-case:{unknown}:stage:1"
+        )
         expected_status = 404
     elif mode == "expired":
         with sessions.begin() as session:

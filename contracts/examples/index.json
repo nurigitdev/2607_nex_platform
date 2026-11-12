@@ -1474,6 +1474,16 @@
       "name": "eos_voucher_candidate_validation_pass",
       "path": "examples/service/eos_voucher_candidate_validation.pass.json",
       "schema": "schemas/service/nex_eos/voucher_candidate_validation.v1.schema.json"
+    },
+    {
+      "name": "eos_voucher_candidate_review_ready",
+      "path": "examples/service/eos_voucher_candidate_review.ready.json",
+      "schema": "schemas/service/nex_eos/voucher_candidate_review.v1.schema.json"
+    },
+    {
+      "name": "eos_voucher_candidate_review_invalidate_v1",
+      "path": "examples/service/eos_voucher_candidate_review_invalidate.v1.json",
+      "schema": "schemas/service/nex_eos/voucher_candidate_review_invalidate.v1.schema.json"
     }
   ]
 }

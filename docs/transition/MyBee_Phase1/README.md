@@ -44,7 +44,15 @@ It does not claim completion of the full W30 Wave, which still includes
 [`mybee_phase1_s3_01_voucher_candidate_v2.md`](../../slices/mybee_phase1_s3_01_voucher_candidate_v2.md).
 It closes the proof-bound Project-specific VoucherCandidate v2 header,
 immutable revision/line persistence, command/API, replay, and actual EOS
-PostgreSQL boundary. `S3-02`, `S3-03`, and `MB3-01` remain pending.
+PostgreSQL boundary.
+
+`S3-02` and `S3-03` implementation evidence is recorded in
+[`mybee_phase1_s3_02_candidate_accounting_fx_period_balance_validation.md`](../../slices/mybee_phase1_s3_02_candidate_accounting_fx_period_balance_validation.md)
+and
+[`mybee_phase1_s3_03_candidate_review_state_machine.md`](../../slices/mybee_phase1_s3_03_candidate_review_state_machine.md).
+Together they close authoritative accounting/FX/period/balance validation and
+the durable Submit/Return/Invalidate review state machine. `MB3-01` remains the
+next W30 entry.
 
 ### COA Follow-up Reading Order
 

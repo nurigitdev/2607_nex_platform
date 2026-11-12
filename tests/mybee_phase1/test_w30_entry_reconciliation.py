@@ -84,7 +84,9 @@ def test_w30_ca01_migration_reservations_follow_actual_inventory() -> None:
     )
     expected = manifest["migration_heads"]["nex-eos"]
     assert versions[-1] == expected["version"]
-    assert expected["path"].endswith("2534_eos_voucher_candidate_v2.sql")
+    expected_path = ROOT / expected["path"]
+    assert expected_path.is_file()
+    assert expected_path.name.startswith(f"{expected['version']}_")
 
 
 def test_w30_ca01_source_facts_match_current_provider_boundary() -> None:

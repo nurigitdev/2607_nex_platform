@@ -113,6 +113,7 @@ def create_eos_app(
     app.state.eos_candidate_validation_service = (
         dependencies.candidate_validation_service
     )
+    app.state.eos_candidate_review_repository = dependencies.candidate_review_repository
     register_voucher_command_routes(app)
     register_finance_v2_routes(app)
     register_approval_decision_routes(app)

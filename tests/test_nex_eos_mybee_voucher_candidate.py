@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import os
 import uuid
 from dataclasses import replace
@@ -18,6 +19,7 @@ from nex_eos import (
     EOS_APPROVAL_POLICY_TABLE,
     EOS_APPROVED_DOCUMENT_TABLE,
     EOS_BUSINESS_OPERATION_TABLE,
+    EOS_CANDIDATE_REVIEW_EVENT_TABLE,
     EOS_DOCUMENT_SIGNOFF_EVIDENCE_TABLE,
     EOS_METADATA,
     EOS_SCOPED_APPROVAL_CASE_TABLE,
@@ -25,6 +27,7 @@ from nex_eos import (
     EOS_VOUCHER_CANDIDATE_REVISION_TABLE,
     EOS_VOUCHER_CANDIDATE_TABLE,
     AccountInput,
+    EosCandidateReviewError,
     EosCreateVoucherCandidateService,
     EosServiceCaller,
     EosVoucherAuthorizationClient,
@@ -35,6 +38,7 @@ from nex_eos import (
     ProjectInput,
     SqlAlchemyEosAccountRepository,
     SqlAlchemyEosBusinessTransactionCoordinator,
+    SqlAlchemyEosCandidateReviewRepository,
     SqlAlchemyEosLegalEntityRepository,
     SqlAlchemyEosProjectRepository,
     SqlAlchemyEosVoucherCandidateRepository,
@@ -44,12 +48,13 @@ from nex_eos import (
     voucher_candidate_payload_hash,
     voucher_candidates,
 )
+from nex_eos import candidate_review as candidate_review_module
 from nex_eos.finance_v2_api import register_finance_v2_routes
 from nex_runtime import psycopg_database_url
 from psycopg import sql
 from run_migrations import load_migrations, run_service_migrations
 from sqlalchemy import create_engine, func, make_url, select, update
-from sqlalchemy.exc import DBAPIError
+from sqlalchemy.exc import DBAPIError, IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
@@ -68,6 +73,7 @@ BUSINESS_OPERATION_ID = "32000000-0000-4000-8000-000000000009"
 CANDIDATE_ID = "32000000-0000-4000-8000-000000000010"
 REVISION_ID = "32000000-0000-4000-8000-000000000011"
 CASE_ID = "32000000-0000-4000-8000-000000000012"
+REVIEW_CASE_ID = "32000000-0000-4000-8000-000000000020"
 EVIDENCE_ID = "32000000-0000-4000-8000-000000000013"
 DOCUMENT_HASH = "sha256:" + "a" * 64
 ATTACHMENT_HASH = "sha256:" + "b" * 64
@@ -77,6 +83,8 @@ PAYLOAD_HASH = "sha256:" + "e" * 64
 EVIDENCE_HASH = "sha256:" + "f" * 64
 DATABASE_URL = os.getenv("NEX_EOS_TEST_DATABASE_URL", "")
 POSTGRES_SMOKE = os.getenv("NEX_EOS_MYBEE_S3_01_POSTGRES_SMOKE") == "1"
+REVIEW_POSTGRES_SMOKE = os.getenv("NEX_EOS_MYBEE_S3_03_POSTGRES_SMOKE") == "1"
+VALIDATION_HASH = "sha256:" + "9" * 64
 
 
 class AuthorizationSource:
@@ -301,8 +309,8 @@ def _seed(
         )
 
 
-def _runtime(**seed_options):
-    engine = _engine()
+def _runtime(*, engine=None, **seed_options):
+    engine = engine or _engine()
     EOS_METADATA.create_all(engine)
     sessions = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
     _seed(sessions, **seed_options)
@@ -328,6 +336,127 @@ def _runtime(**seed_options):
         clock=lambda: NOW,
     )
     return engine, sessions, repository, service, authorization
+
+
+def _candidate_review_fixture(sessions, repository):
+    candidate = repository.get(tenant_id=TENANT, candidate_id=CANDIDATE_ID)
+    assert candidate is not None
+    with sessions.begin() as session:
+        session.execute(
+            EOS_SCOPED_APPROVAL_CASE_TABLE.insert().values(
+                tenant_id=TENANT,
+                case_id=REVIEW_CASE_ID,
+                idempotency_key="w30-s3-03-candidate-review",
+                company_id=COMPANY_ID,
+                purpose="ACCOUNTING_POSTING",
+                scope_type="PROJECT",
+                project_set_hash=PROOF_HASH,
+                subject_ref=f"eos.voucher-candidate:{CANDIDATE_ID}",
+                subject_revision=1,
+                subject_hash=candidate["revision"]["candidate_hash"],
+                requester_ref_type="oa.user",
+                requester_id="employee-1001",
+                approval_policy_id=POLICY_ID,
+                approval_policy_version=1,
+                approval_policy_hash=POLICY_HASH,
+                oa_decision_ref="oa.authorization:w30-s3-03",
+                authorization_revision_hash=PROOF_HASH,
+                authorization_checked_at=NOW,
+                state="PENDING",
+                active_stage_order=1,
+                stage_count=1,
+                target_role_ref="TEAM_LEAD",
+                version=1,
+                case_hash="sha256:" + "8" * 64,
+                created_business_operation_id=BUSINESS_OPERATION_ID,
+                correlation_id="correlation-w30-s3-03",
+                causation_id="causation-w30-s3-03",
+                expires_at=NOW + timedelta(days=7),
+                created_at=NOW,
+                updated_at=NOW,
+                decided_at=None,
+            )
+        )
+    case = {
+        "tenant_id": TENANT,
+        "case_id": REVIEW_CASE_ID,
+        "company_id": COMPANY_ID,
+        "purpose": "ACCOUNTING_POSTING",
+        "subject_ref": f"eos.voucher-candidate:{CANDIDATE_ID}",
+        "subject_revision": 1,
+        "subject_hash": candidate["revision"]["candidate_hash"],
+        "project_ids": [PROJECT_ID],
+        "requester_ref": {"type": "oa.user", "id": "employee-1001"},
+    }
+    review = {
+        "schema_version": "eos_accounting_review_context.v3",
+        "candidate_id": CANDIDATE_ID,
+        "candidate_revision": 1,
+        "candidate_hash": candidate["revision"]["candidate_hash"],
+        "candidate_version": 1,
+        "validation_hash": VALIDATION_HASH,
+        "validation_observed_at": NOW,
+        "document_envelope_hash": DOCUMENT_HASH,
+        "fx_rate_set_hash": PROOF_HASH,
+        "rule_release_hash": POLICY_HASH,
+        "accounting_period_id": "32000000-0000-4000-8000-000000000021",
+        "candidate_preparer_subject_id": "employee-1001",
+        "business_approver_subject_ids": ["business-approver"],
+        "original_currency": "KRW",
+        "original_amount": "10000",
+        "market_base_rate": "1",
+        "rate_reference_date": "2026-11-12",
+        "rate_publication": "SAME_CURRENCY",
+        "functional_currency": "KRW",
+        "functional_amount": "10000",
+        "fx_exception": None,
+    }
+    validation = {
+        "schema_version": "eos_voucher_candidate_validation.v1",
+        "status": "PASS",
+        "tenant_id": TENANT,
+        "candidate_ref": {"id": CANDIDATE_ID},
+        "candidate_version": 1,
+        "revision_ref": {
+            "revision_no": 1,
+            "hash": candidate["revision"]["candidate_hash"],
+        },
+        "company_id": COMPANY_ID,
+        "project_ref": {"id": PROJECT_ID},
+        "document_ref": {"id": ENVELOPE_ID, "hash": DOCUMENT_HASH},
+        "accounting_period_id": review["accounting_period_id"],
+        "posting_rule_release_hash": POLICY_HASH,
+        "fx_rate_set_hash": PROOF_HASH,
+        "preparer_subject_id": "employee-1001",
+        "transaction_currency": "KRW",
+        "functional_currency": "KRW",
+        "validation_hash": VALIDATION_HASH,
+        "observed_at": NOW.isoformat(),
+        "fx_evidence": {"normalized_rate": "1"},
+        "totals": {
+            "debit_original": "10000",
+            "debit_functional": "10000",
+        },
+    }
+    return case, review, validation
+
+
+def _review_invalidation_payload(review, **overrides):
+    payload = {
+        "schema_version": "eos_candidate_review_invalidate.v1",
+        "tenant_id": TENANT,
+        "event_id": str(uuid.uuid4()),
+        "candidate_id": CANDIDATE_ID,
+        "approval_case_id": REVIEW_CASE_ID,
+        "expected_candidate_version": 2,
+        "expected_revision_no": 1,
+        "expected_candidate_hash": review["candidate_hash"],
+        "actor_subject_id": "accounting-controller",
+        "reason": "Candidate accounting inputs changed after review submission.",
+        "invalidated_at": (NOW + timedelta(minutes=2)).isoformat(),
+    }
+    payload.update(overrides)
+    return payload
 
 
 def _payload(**overrides):
@@ -932,3 +1061,634 @@ def test_actual_postgres_migration_immutability_and_zero_residue() -> None:
             )
             cursor.execute("SELECT to_regnamespace(%s)", (schema_name,))
             assert cursor.fetchone() == (None,)
+
+
+def test_candidate_review_submit_replay_invalidate_and_stale_decision_guard() -> None:
+    _engine_value, sessions, candidates, command, _authorization = _runtime()
+    command.execute(_payload(), caller=CALLER)
+    case, review, validation = _candidate_review_fixture(sessions, candidates)
+    reviews = SqlAlchemyEosCandidateReviewRepository(sessions, clock=lambda: NOW)
+
+    with sessions.begin() as session:
+        submitted = reviews.submit_in_session(
+            session,
+            scoped_case=case,
+            review=review,
+            validation=validation,
+        )
+    with sessions.begin() as session:
+        replay = reviews.submit_in_session(
+            session,
+            scoped_case=case,
+            review=review,
+            validation=validation,
+        )
+
+    assert submitted == replay
+    assert submitted["transition_kind"] == "SUBMIT"
+    projection = reviews.get(tenant_id=TENANT, candidate_id=CANDIDATE_ID)
+    assert projection is not None
+    assert projection["state"] == "READY_FOR_REVIEW"
+    assert projection["candidate_version"] == 2
+    assert len(projection["events"]) == 1
+
+    invalidation = {
+        "schema_version": "eos_candidate_review_invalidate.v1",
+        "tenant_id": TENANT,
+        "event_id": str(uuid.uuid4()),
+        "candidate_id": CANDIDATE_ID,
+        "approval_case_id": REVIEW_CASE_ID,
+        "expected_candidate_version": 2,
+        "expected_revision_no": 1,
+        "expected_candidate_hash": review["candidate_hash"],
+        "actor_subject_id": "accounting-controller",
+        "reason": "Candidate accounting inputs changed after review submission.",
+        "invalidated_at": (NOW + timedelta(minutes=2)).isoformat(),
+    }
+    invalidated = reviews.invalidate(invalidation)
+    assert reviews.invalidate(invalidation) == invalidated
+    assert invalidated["transition_kind"] == "INVALIDATE"
+    assert invalidated["to_state"] == "RETURNED_FOR_CORRECTION"
+    with (
+        sessions.begin() as session,
+        pytest.raises(EosCandidateReviewError) as stale,
+    ):
+        reviews.require_current_review_in_session(
+            session,
+            tenant_id=TENANT,
+            approval_case_id=REVIEW_CASE_ID,
+            review=review,
+        )
+    assert stale.value.status_code == 409
+    projection = reviews.get(tenant_id=TENANT, candidate_id=CANDIDATE_ID)
+    assert projection is not None
+    assert projection["candidate_version"] == 3
+    assert [event["transition_kind"] for event in projection["events"]] == [
+        "SUBMIT",
+        "INVALIDATE",
+    ]
+
+
+def test_s3_03_migration_and_openapi_contract_are_additive() -> None:
+    migration = next(
+        item
+        for item in load_migrations("nex-eos")
+        if item.version == "2535_eos_candidate_review_state"
+    )
+    compact = " ".join(migration.sql.lower().split())
+    assert "create table if not exists eos_candidate_review_event" in compact
+    assert "trg_eos_candidate_review_immutable" in compact
+    assert "returned_for_correction" in compact
+    assert all(
+        constraint.name is None or len(constraint.name) <= 63
+        for constraint in EOS_CANDIDATE_REVIEW_EVENT_TABLE.constraints
+    )
+    spec = yaml.safe_load(
+        Path("contracts/openapi/nex-eos.openapi.yaml").read_text(encoding="utf-8")
+    )
+    review_path = spec["paths"][
+        "/internal/v2/finance/voucher-candidates/{candidate_id}/review"
+    ]["get"]
+    invalidate_path = spec["paths"][
+        "/internal/v2/finance/voucher-candidates/{candidate_id}/review-invalidation"
+    ]["post"]
+    assert review_path["operationId"] == "FINANCE.VOUCHER_CANDIDATE.REVIEW_GET"
+    assert review_path["x-nex-side-effect-free"] is True
+    assert (
+        invalidate_path["operationId"] == "FINANCE.VOUCHER_CANDIDATE.INVALIDATE_REVIEW"
+    )
+
+
+def test_candidate_review_query_and_invalidation_api(monkeypatch) -> None:
+    _admit_service_token(monkeypatch)
+    _engine_value, sessions, candidates, command, _authorization = _runtime()
+    command.execute(_payload(), caller=CALLER)
+    case, review, validation = _candidate_review_fixture(sessions, candidates)
+    reviews = SqlAlchemyEosCandidateReviewRepository(sessions, clock=lambda: NOW)
+    with sessions.begin() as session:
+        reviews.submit_in_session(
+            session,
+            scoped_case=case,
+            review=review,
+            validation=validation,
+        )
+    app = FastAPI()
+    register_finance_v2_routes(app)
+    app.state.eos_candidate_review_repository = reviews
+    client = TestClient(app)
+
+    loaded = client.get(
+        f"/internal/v2/finance/voucher-candidates/{CANDIDATE_ID}/review",
+        headers={
+            "Authorization": "Bearer service-token",
+            "X-NeX-Tenant-Id": TENANT,
+        },
+    )
+    assert loaded.status_code == 200
+    assert loaded.json()["state"] == "READY_FOR_REVIEW"
+
+    payload = {
+        "schema_version": "eos_candidate_review_invalidate.v1",
+        "tenant_id": TENANT,
+        "event_id": str(uuid.uuid4()),
+        "candidate_id": CANDIDATE_ID,
+        "approval_case_id": REVIEW_CASE_ID,
+        "expected_candidate_version": 2,
+        "expected_revision_no": 1,
+        "expected_candidate_hash": review["candidate_hash"],
+        "actor_subject_id": "accounting-controller",
+        "reason": "Invalidate stale review.",
+        "invalidated_at": (NOW + timedelta(minutes=2)).isoformat(),
+    }
+    mismatch = client.post(
+        f"/internal/v2/finance/voucher-candidates/{uuid.uuid4()}/review-invalidation",
+        json=payload,
+        headers={"Authorization": "Bearer service-token"},
+    )
+    assert mismatch.status_code == 422
+    invalidated = client.post(
+        f"/internal/v2/finance/voucher-candidates/{CANDIDATE_ID}/review-invalidation",
+        json=payload,
+        headers={"Authorization": "Bearer service-token"},
+    )
+    assert invalidated.status_code == 200
+    assert invalidated.json()["transition_kind"] == "INVALIDATE"
+
+    del app.state.eos_candidate_review_repository
+    unavailable = client.get(
+        f"/internal/v2/finance/voucher-candidates/{CANDIDATE_ID}/review",
+        headers={
+            "Authorization": "Bearer service-token",
+            "X-NeX-Tenant-Id": TENANT,
+        },
+    )
+    assert unavailable.status_code == 503
+
+
+def test_candidate_review_rejection_requires_reason_and_is_exactly_once() -> None:
+    _engine_value, sessions, candidates, command, _authorization = _runtime()
+    command.execute(_payload(), caller=CALLER)
+    case, review, validation = _candidate_review_fixture(sessions, candidates)
+    reviews = SqlAlchemyEosCandidateReviewRepository(sessions, clock=lambda: NOW)
+    with sessions.begin() as session:
+        reviews.submit_in_session(
+            session,
+            scoped_case=case,
+            review=review,
+            validation=validation,
+        )
+
+    with (
+        pytest.raises(EosCandidateReviewError) as missing_reason,
+        sessions.begin() as session,
+    ):
+        reviews.return_from_rejection_in_session(
+            session,
+            tenant_id=TENANT,
+            approval_case_id=REVIEW_CASE_ID,
+            review=review,
+            actor_subject_id="accountant-lead",
+            reason=None,
+            decided_at=NOW + timedelta(minutes=1),
+        )
+    assert missing_reason.value.status_code == 422
+
+    with sessions.begin() as session:
+        returned = reviews.return_from_rejection_in_session(
+            session,
+            tenant_id=TENANT,
+            approval_case_id=REVIEW_CASE_ID,
+            review=review,
+            actor_subject_id="accountant-lead",
+            reason="Correct the expense evidence.",
+            decided_at=NOW + timedelta(minutes=1),
+        )
+    with sessions.begin() as session:
+        replay = reviews.return_from_rejection_in_session(
+            session,
+            tenant_id=TENANT,
+            approval_case_id=REVIEW_CASE_ID,
+            review=review,
+            actor_subject_id="accountant-lead",
+            reason="Correct the expense evidence.",
+            decided_at=NOW + timedelta(minutes=1),
+        )
+    assert returned == replay
+    assert returned is not None
+    assert returned["transition_kind"] == "RETURN"
+    with sessions() as session:
+        assert (
+            session.scalar(
+                select(func.count()).select_from(EOS_CANDIDATE_REVIEW_EVENT_TABLE)
+            )
+            == 2
+        )
+
+
+@pytest.mark.parametrize(
+    ("mutator", "expected_detail"),
+    (
+        (
+            lambda case, review, validation: review.update(
+                schema_version="eos_accounting_review_context.v2"
+            ),
+            "requires review v3",
+        ),
+        (
+            lambda case, review, validation: case.update(purpose="EXPENSE_REVIEW"),
+            "case does not match",
+        ),
+        (
+            lambda case, review, validation: review.update(candidate_version=2),
+            "version or revision changed",
+        ),
+        (
+            lambda case, review, validation: validation.pop("fx_evidence"),
+            "evidence is incomplete",
+        ),
+        (
+            lambda case, review, validation: validation.update(status="FAIL"),
+            "differs from review context",
+        ),
+        (
+            lambda case, review, validation: validation["totals"].update(
+                debit_original="not-a-decimal"
+            ),
+            "amount evidence is malformed",
+        ),
+        (
+            lambda case, review, validation: validation["totals"].update(
+                debit_original="9999"
+            ),
+            "amounts differ",
+        ),
+    ),
+)
+def test_candidate_review_submission_rejects_contract_and_lineage_drift(
+    mutator,
+    expected_detail,
+) -> None:
+    _engine_value, sessions, candidates, command, _authorization = _runtime()
+    command.execute(_payload(), caller=CALLER)
+    case, review, validation = _candidate_review_fixture(sessions, candidates)
+    case = copy.deepcopy(case)
+    review = copy.deepcopy(review)
+    validation = copy.deepcopy(validation)
+    mutator(case, review, validation)
+    reviews = SqlAlchemyEosCandidateReviewRepository(sessions, clock=lambda: NOW)
+
+    with sessions.begin() as session, pytest.raises(EosCandidateReviewError) as error:
+        reviews.submit_in_session(
+            session,
+            scoped_case=case,
+            review=review,
+            validation=validation,
+        )
+
+    assert expected_detail in error.value.detail
+    assert reviews.get(tenant_id=TENANT, candidate_id=CANDIDATE_ID)["state"] == "DRAFT"
+
+
+def test_candidate_review_submission_rejects_ineligible_state_and_naive_clock() -> None:
+    _engine_value, sessions, candidates, command, _authorization = _runtime()
+    command.execute(_payload(), caller=CALLER)
+    case, review, validation = _candidate_review_fixture(sessions, candidates)
+    reviews = SqlAlchemyEosCandidateReviewRepository(sessions, clock=lambda: NOW)
+    with sessions.begin() as session:
+        session.execute(
+            update(EOS_VOUCHER_CANDIDATE_TABLE)
+            .where(EOS_VOUCHER_CANDIDATE_TABLE.c.candidate_id == CANDIDATE_ID)
+            .values(state="READY_FOR_REVIEW")
+        )
+    with sessions.begin() as session, pytest.raises(EosCandidateReviewError) as state:
+        reviews.submit_in_session(
+            session,
+            scoped_case=case,
+            review=review,
+            validation=validation,
+        )
+    assert state.value.status_code == 409
+
+    with sessions.begin() as session:
+        session.execute(
+            update(EOS_VOUCHER_CANDIDATE_TABLE)
+            .where(EOS_VOUCHER_CANDIDATE_TABLE.c.candidate_id == CANDIDATE_ID)
+            .values(state="DRAFT")
+        )
+    reviews = SqlAlchemyEosCandidateReviewRepository(
+        sessions,
+        clock=lambda: NOW.replace(tzinfo=None),
+    )
+    with sessions.begin() as session, pytest.raises(EosCandidateReviewError) as clock:
+        reviews.submit_in_session(
+            session,
+            scoped_case=case,
+            review=review,
+            validation=validation,
+        )
+    assert clock.value.status_code == 422
+
+
+def test_candidate_review_legacy_decision_and_replay_guards() -> None:
+    _engine_value, sessions, candidates, command, _authorization = _runtime()
+    command.execute(_payload(), caller=CALLER)
+    case, review, validation = _candidate_review_fixture(sessions, candidates)
+    reviews = SqlAlchemyEosCandidateReviewRepository(sessions, clock=lambda: NOW)
+
+    assert reviews.get(tenant_id=TENANT, candidate_id=str(uuid.uuid4())) is None
+    with sessions.begin() as session:
+        assert (
+            reviews.require_current_review_in_session(
+                session,
+                tenant_id=TENANT,
+                approval_case_id=REVIEW_CASE_ID,
+                review=review,
+            )
+            is None
+        )
+        assert (
+            reviews.return_from_rejection_in_session(
+                session,
+                tenant_id=TENANT,
+                approval_case_id=REVIEW_CASE_ID,
+                review=review,
+                actor_subject_id="accountant-lead",
+                reason="Legacy review has no candidate transition.",
+                decided_at=NOW,
+            )
+            is None
+        )
+
+    with sessions.begin() as session:
+        reviews.submit_in_session(
+            session,
+            scoped_case=case,
+            review=review,
+            validation=validation,
+        )
+    stale_review = copy.deepcopy(review)
+    stale_review["candidate_hash"] = PROOF_HASH
+    with sessions.begin() as session, pytest.raises(EosCandidateReviewError) as stale:
+        reviews.require_current_review_in_session(
+            session,
+            tenant_id=TENANT,
+            approval_case_id=REVIEW_CASE_ID,
+            review=stale_review,
+        )
+    assert stale.value.status_code == 409
+
+    changed_validation = copy.deepcopy(validation)
+    changed_validation["validation_hash"] = PROOF_HASH
+    with sessions.begin() as session, pytest.raises(EosCandidateReviewError) as replay:
+        reviews.submit_in_session(
+            session,
+            scoped_case=case,
+            review=review,
+            validation=changed_validation,
+        )
+    assert "replay changed immutable semantics" in replay.value.detail
+
+    with sessions.begin() as session:
+        reviews.return_from_rejection_in_session(
+            session,
+            tenant_id=TENANT,
+            approval_case_id=REVIEW_CASE_ID,
+            review=review,
+            actor_subject_id="accountant-lead",
+            reason="Correct the expense evidence.",
+            decided_at=NOW + timedelta(minutes=1),
+        )
+    with (
+        sessions.begin() as session,
+        pytest.raises(EosCandidateReviewError) as returned,
+    ):
+        reviews.return_from_rejection_in_session(
+            session,
+            tenant_id=TENANT,
+            approval_case_id=REVIEW_CASE_ID,
+            review=review,
+            actor_subject_id="accountant-lead",
+            reason="A different replay reason.",
+            decided_at=NOW + timedelta(minutes=1),
+        )
+    assert "return replay changed immutable semantics" in returned.value.detail
+
+
+@pytest.mark.parametrize(
+    "mutator",
+    (
+        lambda value: value.pop("reason"),
+        lambda value: value.update(schema_version="unsupported"),
+        lambda value: value.update(tenant_id=""),
+        lambda value: value.update(tenant_id="x" * 129),
+        lambda value: value.update(event_id="not-a-uuid"),
+        lambda value: value.update(expected_candidate_version=True),
+        lambda value: value.update(expected_candidate_version=0),
+        lambda value: value.update(expected_candidate_version="1"),
+        lambda value: value.update(expected_candidate_hash="not-a-hash"),
+        lambda value: value.update(actor_subject_id=None),
+        lambda value: value.update(actor_subject_id="x" * 129),
+        lambda value: value.update(reason=None),
+        lambda value: value.update(reason="x" * 2001),
+        lambda value: value.update(invalidated_at="not-a-date-time"),
+        lambda value: value.update(invalidated_at="2026-11-12T02:00:00"),
+    ),
+)
+def test_candidate_review_invalidation_contract_rejects_malformed_values(
+    mutator,
+) -> None:
+    payload = _review_invalidation_payload({"candidate_hash": PROOF_HASH})
+    mutator(payload)
+    reviews = SqlAlchemyEosCandidateReviewRepository(None)
+    with pytest.raises(EosCandidateReviewError) as error:
+        reviews.invalidate(payload)
+    assert error.value.status_code == 422
+
+
+def test_candidate_review_invalidation_rejects_missing_stale_and_changed_replay() -> (
+    None
+):
+    _engine_value, sessions, candidates, command, _authorization = _runtime()
+    command.execute(_payload(), caller=CALLER)
+    case, review, validation = _candidate_review_fixture(sessions, candidates)
+    reviews = SqlAlchemyEosCandidateReviewRepository(sessions, clock=lambda: NOW)
+
+    with pytest.raises(EosCandidateReviewError) as missing:
+        reviews.invalidate(
+            _review_invalidation_payload(review, expected_candidate_version=1)
+        )
+    assert missing.value.status_code == 404
+
+    with sessions.begin() as session:
+        reviews.submit_in_session(
+            session,
+            scoped_case=case,
+            review=review,
+            validation=validation,
+        )
+    with pytest.raises(EosCandidateReviewError) as absent_candidate:
+        reviews.invalidate(
+            _review_invalidation_payload(review, candidate_id=str(uuid.uuid4()))
+        )
+    assert absent_candidate.value.status_code == 404
+    with pytest.raises(EosCandidateReviewError) as stale:
+        reviews.invalidate(
+            _review_invalidation_payload(review, expected_candidate_version=3)
+        )
+    assert stale.value.status_code == 409
+
+    payload = _review_invalidation_payload(review)
+    reviews.invalidate(payload)
+    changed_replay = dict(payload, reason="Changed replay semantics.")
+    with pytest.raises(EosCandidateReviewError) as replay:
+        reviews.invalidate(changed_replay)
+    assert "replay changed immutable semantics" in replay.value.detail
+
+
+def test_candidate_review_persistence_failures_and_cas_conflicts_are_typed(
+    monkeypatch,
+) -> None:
+    engine, sessions, candidates, command, _authorization = _runtime()
+    command.execute(_payload(), caller=CALLER)
+    _case, review, _validation = _candidate_review_fixture(sessions, candidates)
+    reviews = SqlAlchemyEosCandidateReviewRepository(sessions, clock=lambda: NOW)
+    payload = _review_invalidation_payload(review)
+
+    def raise_integrity(*_args, **_kwargs):
+        raise IntegrityError("candidate review", {}, RuntimeError("duplicate"))
+
+    monkeypatch.setattr(reviews, "_event_by_id", raise_integrity)
+    with pytest.raises(EosCandidateReviewError) as conflict:
+        reviews.invalidate(payload)
+    assert conflict.value.status_code == 409
+
+    def raise_database_error(*_args, **_kwargs):
+        raise SQLAlchemyError("database unavailable")
+
+    monkeypatch.setattr(reviews, "_event_by_id", raise_database_error)
+    with pytest.raises(EosCandidateReviewError) as unavailable:
+        reviews.invalidate(payload)
+    assert unavailable.value.status_code == 503
+    assert unavailable.value.retryable is True
+
+    engine.dispose()
+    with pytest.raises(EosCandidateReviewError) as get_unavailable:
+        reviews.get(tenant_id=TENANT, candidate_id=CANDIDATE_ID)
+    assert get_unavailable.value.status_code == 503
+
+
+def test_candidate_review_low_level_cas_event_and_timestamp_guards() -> None:
+    class ConcurrentSession:
+        def execute(self, _statement):
+            return SimpleNamespace(rowcount=0)
+
+    candidate = {
+        "tenant_id": TENANT,
+        "candidate_id": CANDIDATE_ID,
+        "state": "DRAFT",
+        "version": 1,
+    }
+    record = {
+        "to_state": "READY_FOR_REVIEW",
+        "resulting_version": 2,
+        "created_at": NOW,
+    }
+    with pytest.raises(EosCandidateReviewError) as cas:
+        SqlAlchemyEosCandidateReviewRepository._advance_candidate(
+            ConcurrentSession(),
+            candidate=candidate,
+            record=record,
+        )
+    assert cas.value.status_code == 409
+
+    class DuplicateSession:
+        def execute(self, _statement):
+            raise IntegrityError("candidate review", {}, RuntimeError("duplicate"))
+
+    with pytest.raises(EosCandidateReviewError) as duplicate:
+        SqlAlchemyEosCandidateReviewRepository._insert_event(DuplicateSession(), {})
+    assert duplicate.value.status_code == 409
+
+    assert candidate_review_module._review_hash(
+        {"validation_observed_at": NOW.isoformat(), "candidate_id": CANDIDATE_ID}
+    ).startswith("sha256:")
+    assert candidate_review_module._timestamp(NOW.replace(tzinfo=None)).endswith(
+        "+00:00"
+    )
+    with pytest.raises(EosCandidateReviewError) as timestamp:
+        candidate_review_module._timestamp("not-a-timestamp")
+    assert timestamp.value.status_code == 422
+
+
+@pytest.mark.skipif(
+    not DATABASE_URL or not REVIEW_POSTGRES_SMOKE,
+    reason="Protected W30-S3-03 EOS PostgreSQL smoke is disabled",
+)
+def test_actual_postgres_candidate_review_state_machine_and_immutability() -> None:
+    schema_name = f"mybee_w30s303_{uuid.uuid4().hex}"
+    psycopg_url = psycopg_database_url(DATABASE_URL)
+    with psycopg.connect(psycopg_url, autocommit=True) as connection:
+        assert connection.execute(
+            "SELECT current_database(), current_user"
+        ).fetchone() == ("nex_eos_test", "nex_eos_user")
+        connection.execute(
+            sql.SQL("CREATE SCHEMA {}").format(sql.Identifier(schema_name))
+        )
+    scoped_url = (
+        make_url(DATABASE_URL)
+        .update_query_dict({"options": f"-csearch_path={schema_name}"})
+        .render_as_string(hide_password=False)
+    )
+    engine = None
+    try:
+        migration = run_service_migrations(
+            "nex-eos", database_url=scoped_url, profile="test"
+        )
+        assert "2535_eos_candidate_review_state" in migration.applied
+        engine = create_engine(scoped_url, pool_pre_ping=True)
+        _engine_value, sessions, candidates, command, _authorization = _runtime(
+            engine=engine
+        )
+        command.execute(_payload(), caller=CALLER)
+        case, review, validation = _candidate_review_fixture(sessions, candidates)
+        reviews = SqlAlchemyEosCandidateReviewRepository(sessions, clock=lambda: NOW)
+        with sessions.begin() as session:
+            reviews.submit_in_session(
+                session,
+                scoped_case=case,
+                review=review,
+                validation=validation,
+            )
+        with sessions.begin() as session:
+            returned = reviews.return_from_rejection_in_session(
+                session,
+                tenant_id=TENANT,
+                approval_case_id=REVIEW_CASE_ID,
+                review=review,
+                actor_subject_id="accountant-lead",
+                reason="Return for correction.",
+                decided_at=NOW + timedelta(minutes=1),
+            )
+        assert returned is not None
+        assert returned["to_state"] == "RETURNED_FOR_CORRECTION"
+        with sessions() as session:
+            with pytest.raises(DBAPIError):
+                session.execute(
+                    update(EOS_CANDIDATE_REVIEW_EVENT_TABLE).values(reason="tampered")
+                )
+                session.commit()
+            session.rollback()
+        engine.dispose()
+        engine = None
+    finally:
+        if engine is not None:
+            engine.dispose()
+        with psycopg.connect(psycopg_url, autocommit=True) as connection:
+            connection.execute(
+                sql.SQL("DROP SCHEMA IF EXISTS {} CASCADE").format(
+                    sql.Identifier(schema_name)
+                )
+            )
+            assert connection.execute(
+                "SELECT to_regnamespace(%s)", (schema_name,)
+            ).fetchone() == (None,)

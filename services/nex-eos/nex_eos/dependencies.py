@@ -44,6 +44,7 @@ from .business_transactions import (
     EosBusinessTransactionCoordinator,
     SqlAlchemyEosBusinessTransactionCoordinator,
 )
+from .candidate_review import SqlAlchemyEosCandidateReviewRepository
 from .candidate_validation import EosCandidateValidationService
 from .coa_operations import (
     EosCoaOperationsService,
@@ -140,6 +141,7 @@ class EosDependencies:
     voucher_candidates: SqlAlchemyEosVoucherCandidateRepository | None
     voucher_candidate_command_service: EosCreateVoucherCandidateService | None
     candidate_validation_service: EosCandidateValidationService | None
+    candidate_review_repository: SqlAlchemyEosCandidateReviewRepository | None
 
 
 def build_eos_dependencies(
@@ -184,6 +186,37 @@ def build_eos_dependencies(
     )
     account_catalog = (
         SqlAlchemyEosAccountCatalogRepository(database_runtime.session_factory)
+        if database_runtime is not None
+        else None
+    )
+    legal_entities = (
+        SqlAlchemyEosLegalEntityRepository(database_runtime.session_factory)
+        if database_runtime is not None
+        else None
+    )
+    voucher_candidates = (
+        SqlAlchemyEosVoucherCandidateRepository(database_runtime.session_factory)
+        if database_runtime is not None
+        else None
+    )
+    candidate_validation_service = (
+        EosCandidateValidationService(
+            candidates=voucher_candidates,
+            legal_entities=legal_entities,
+            periods=SqlAlchemyEosAccountingPeriodRepository(
+                database_runtime.session_factory
+            ),
+            account_catalog=account_catalog,
+            fx_rates=SqlAlchemyEosFxRateRepository(database_runtime.session_factory),
+        )
+        if database_runtime is not None
+        and voucher_candidates is not None
+        and legal_entities is not None
+        and account_catalog is not None
+        else None
+    )
+    candidate_review_repository = (
+        SqlAlchemyEosCandidateReviewRepository(database_runtime.session_factory)
         if database_runtime is not None
         else None
     )
@@ -309,6 +342,8 @@ def build_eos_dependencies(
                     database_runtime.session_factory
                 )
             ),
+            candidate_review_repository=candidate_review_repository,
+            candidate_validation_service=candidate_validation_service,
             document_signoff_repository=(
                 SqlAlchemyDocumentSignoffContextRepository(
                     database_runtime.session_factory
@@ -329,6 +364,7 @@ def build_eos_dependencies(
                 base_url=environ.get("NEX_WC_BASE_URL", DEFAULT_WC_BASE_URL),
                 service_token=wc_token,
             ),
+            candidate_review_repository=candidate_review_repository,
         )
         if database_runtime is not None
         and authorization_source is not None
@@ -400,11 +436,6 @@ def build_eos_dependencies(
         if database_runtime is not None
         and business_transactions is not None
         and authorization_source is not None
-        else None
-    )
-    legal_entities = (
-        SqlAlchemyEosLegalEntityRepository(database_runtime.session_factory)
-        if database_runtime is not None
         else None
     )
     legal_entity_service = (
@@ -485,11 +516,6 @@ def build_eos_dependencies(
         if business_transactions is not None and vouchers is not None and oa_token
         else None
     )
-    voucher_candidates = (
-        SqlAlchemyEosVoucherCandidateRepository(database_runtime.session_factory)
-        if database_runtime is not None
-        else None
-    )
     voucher_candidate_command_service = (
         EosCreateVoucherCandidateService(
             coordinator=business_transactions,
@@ -502,22 +528,6 @@ def build_eos_dependencies(
         if business_transactions is not None
         and voucher_candidates is not None
         and authorization_source is not None
-        else None
-    )
-    candidate_validation_service = (
-        EosCandidateValidationService(
-            candidates=voucher_candidates,
-            legal_entities=legal_entities,
-            periods=SqlAlchemyEosAccountingPeriodRepository(
-                database_runtime.session_factory
-            ),
-            account_catalog=account_catalog,
-            fx_rates=SqlAlchemyEosFxRateRepository(database_runtime.session_factory),
-        )
-        if database_runtime is not None
-        and voucher_candidates is not None
-        and legal_entities is not None
-        and account_catalog is not None
         else None
     )
     business_operation_query = (
@@ -575,4 +585,5 @@ def build_eos_dependencies(
         voucher_candidates=voucher_candidates,
         voucher_candidate_command_service=voucher_candidate_command_service,
         candidate_validation_service=candidate_validation_service,
+        candidate_review_repository=candidate_review_repository,
     )

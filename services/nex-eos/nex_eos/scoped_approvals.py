@@ -43,6 +43,8 @@ from .business_transactions import (
     EosBusinessOperationRequest,
     EosBusinessTransactionCoordinator,
 )
+from .candidate_review import EosCandidateReviewError
+from .candidate_validation import EosCandidateValidationError
 from .legal_entities import (
     EOS_LEGAL_ENTITY_TABLE,
     EOS_PROJECT_COMPANY_BINDING_TABLE,
@@ -473,6 +475,8 @@ class EosScopedApprovalService:
         authorization_source: AuthorizationSource,
         wc_client: WcApprovalWorkItemClient,
         accounting_review_repository=None,
+        candidate_review_repository=None,
+        candidate_validation_service=None,
         document_signoff_repository=None,
         clock=None,
     ) -> None:
@@ -481,6 +485,8 @@ class EosScopedApprovalService:
         self._authorization_source = authorization_source
         self._wc_client = wc_client
         self._accounting_review_repository = accounting_review_repository
+        self._candidate_review_repository = candidate_review_repository
+        self._candidate_validation_service = candidate_validation_service
         self._document_signoff_repository = document_signoff_repository
         self._clock = clock or (lambda: datetime.now(UTC))
 
@@ -494,6 +500,58 @@ class EosScopedApprovalService:
         document_signoff_context = case.pop("document_signoff_context", None)
         if case["tenant_id"] != envelope["tenant_id"]:
             raise _invalid("Case tenant does not match the write envelope")
+        admitted_review = None
+        candidate_validation = None
+        if accounting_review is not None:
+            from .accounting_approval import (
+                EosAccountingApprovalError,
+                admit_accounting_review,
+            )
+
+            try:
+                admitted_review = admit_accounting_review(accounting_review)
+            except EosAccountingApprovalError as exc:
+                raise EosScopedApprovalError(
+                    exc.error_code,
+                    exc.detail,
+                    status_code=exc.status_code,
+                    retryable=exc.retryable,
+                ) from exc
+            if admitted_review["schema_version"] == "eos_accounting_review_context.v3":
+                if (
+                    self._candidate_validation_service is None
+                    or self._candidate_review_repository is None
+                ):
+                    raise EosScopedApprovalError(
+                        "EOS_CANDIDATE_REVIEW_UNAVAILABLE",
+                        "Authoritative Candidate review dependencies are unavailable",
+                        status_code=503,
+                        retryable=True,
+                    )
+                try:
+                    candidate_validation = self._candidate_validation_service.validate(
+                        admitted_review["candidate_id"],
+                        {
+                            "schema_version": "eos_voucher_candidate_validate.v1",
+                            "tenant_id": case["tenant_id"],
+                            "expected_revision_no": admitted_review[
+                                "candidate_revision"
+                            ],
+                            "expected_candidate_hash": admitted_review[
+                                "candidate_hash"
+                            ],
+                            "as_of": admitted_review[
+                                "validation_observed_at"
+                            ].isoformat(),
+                        },
+                    )
+                except EosCandidateValidationError as exc:
+                    raise EosScopedApprovalError(
+                        exc.error_code,
+                        exc.detail,
+                        status_code=exc.status_code,
+                        retryable=exc.retryable,
+                    ) from exc
         authorization = self._authorize(
             tenant_id=envelope["tenant_id"],
             subject_id=case["requester_subject_id"],
@@ -521,6 +579,7 @@ class EosScopedApprovalService:
                     session, value
                 )
                 review_projection = None
+                candidate_review_projection = None
                 document_context_projection = None
                 if accounting_review is not None:
                     if self._accounting_review_repository is None:
@@ -537,6 +596,15 @@ class EosScopedApprovalService:
                             review=accounting_review,
                         )
                     )
+                    if admitted_review is not None and candidate_validation is not None:
+                        candidate_review_projection = (
+                            self._candidate_review_repository.submit_in_session(
+                                session,
+                                scoped_case=scoped_case,
+                                review=admitted_review,
+                                validation=candidate_validation,
+                            )
+                        )
                 if document_signoff_context is not None:
                     if self._document_signoff_repository is None:
                         raise EosScopedApprovalError(
@@ -573,10 +641,18 @@ class EosScopedApprovalService:
                     status_code=exc.status_code,
                     retryable=exc.retryable,
                 ) from exc
+            except EosCandidateReviewError as exc:
+                raise EosBusinessOperationError(
+                    exc.error_code,
+                    exc.detail,
+                    status_code=exc.status_code,
+                    retryable=exc.retryable,
+                ) from exc
             return {
                 "business_result_ref": f"eos.scoped-approval-case:{case['case_id']}",
                 "scoped_approval_case": scoped_case,
                 "accounting_review": review_projection,
+                "candidate_review": candidate_review_projection,
                 "document_signoff_context": document_context_projection,
                 "requested_operation": requested_operation,
                 "canonical_operation": ACCOUNTING_APPROVAL_REQUEST_OPERATION,
@@ -611,7 +687,7 @@ class EosScopedApprovalService:
                 retryable=True,
             ) from exc
         _require_wc_lineage(publication["work_item"], work_item)
-        return {
+        receipt = {
             "schema_version": "eos_scoped_approval_request_receipt.v2",
             "created": operation.created,
             "tenant_id": operation.tenant_id,
@@ -620,6 +696,10 @@ class EosScopedApprovalService:
             "scoped_approval_case": scoped_case,
             "wc_publication": publication,
         }
+        candidate_review = operation.result.get("candidate_review")
+        if candidate_review is not None:
+            receipt["candidate_review"] = candidate_review
+        return receipt
 
     def _authorize(
         self,

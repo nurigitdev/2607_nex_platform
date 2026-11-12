@@ -33,7 +33,9 @@ from .approved_documents import EOS_APPROVED_DOCUMENT_TABLE
 from .business_transactions import EOS_METADATA
 from .projects import EOS_PROJECT_TABLE
 
-EOS_VOUCHER_CANDIDATE_STATES = frozenset({"DRAFT"})
+EOS_VOUCHER_CANDIDATE_STATES = frozenset(
+    {"DRAFT", "READY_FOR_REVIEW", "RETURNED_FOR_CORRECTION"}
+)
 EOS_CREATE_VOUCHER_CANDIDATE_OPERATION = "FINANCE.VOUCHER_CANDIDATE.CREATE_V2"
 EOS_VOUCHER_CANDIDATE_CREATE_SCOPE = "finance:voucher-candidate:create"
 
@@ -98,7 +100,10 @@ EOS_VOUCHER_CANDIDATE_TABLE = Table(
         ),
         name="fk_eos_candidate_operation",
     ),
-    CheckConstraint("state = 'DRAFT'", name="ck_eos_candidate_s3_state"),
+    CheckConstraint(
+        "state IN ('DRAFT', 'READY_FOR_REVIEW', 'RETURNED_FOR_CORRECTION')",
+        name="ck_eos_candidate_s3_state",
+    ),
     CheckConstraint(
         "current_revision_no > 0 AND version > 0",
         name="ck_eos_candidate_versions",

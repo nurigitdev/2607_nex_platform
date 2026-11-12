@@ -10,6 +10,10 @@ from nex_runtime import (
     problem_response,
 )
 
+from .candidate_review import (
+    EosCandidateReviewError,
+    SqlAlchemyEosCandidateReviewRepository,
+)
 from .candidate_validation import (
     EosCandidateValidationError,
     EosCandidateValidationService,
@@ -178,6 +182,104 @@ def register_finance_v2_routes(app: FastAPI) -> None:
         except EosCandidateValidationError as exc:
             return _validation_problem(request, exc)
 
+    @app.get(
+        "/internal/v2/finance/voucher-candidates/{candidate_id}/review",
+        response_model=None,
+        operation_id="FINANCE.VOUCHER_CANDIDATE.REVIEW_GET",
+    )
+    def get_voucher_candidate_review(
+        candidate_id: str,
+        request: Request,
+        tenant_id: str = Header(alias="X-NeX-Tenant-Id"),
+        authorization: str | None = Header(default=None),
+    ):
+        admitted = admit_service_token_from_request(
+            request,
+            authorization,
+            expected_audience="nex-eos",
+            required_scopes=(DEFAULT_SERVICE_SCOPE,),
+        )
+        if isinstance(admitted, JSONResponse):
+            return admitted
+        repository: SqlAlchemyEosCandidateReviewRepository | None = getattr(
+            request.app.state,
+            "eos_candidate_review_repository",
+            None,
+        )
+        if repository is None:
+            return _review_problem(
+                request,
+                EosCandidateReviewError(
+                    "EOS_CANDIDATE_REVIEW_UNAVAILABLE",
+                    "Candidate review persistence is not configured.",
+                    status_code=503,
+                    retryable=True,
+                ),
+            )
+        try:
+            result = repository.get(tenant_id=tenant_id, candidate_id=candidate_id)
+        except EosCandidateReviewError as exc:
+            return _review_problem(request, exc)
+        if result is None:
+            return _review_problem(
+                request,
+                EosCandidateReviewError(
+                    "EOS_CANDIDATE_REVIEW_NOT_FOUND",
+                    "VoucherCandidate was not found in tenant scope.",
+                    status_code=404,
+                ),
+            )
+        return result
+
+    @app.post(
+        "/internal/v2/finance/voucher-candidates/{candidate_id}/review-invalidation",
+        response_model=None,
+        operation_id="FINANCE.VOUCHER_CANDIDATE.INVALIDATE_REVIEW",
+    )
+    def invalidate_voucher_candidate_review(
+        candidate_id: str,
+        payload: dict[str, Any],
+        request: Request,
+        authorization: str | None = Header(default=None),
+    ):
+        admitted = admit_service_token_from_request(
+            request,
+            authorization,
+            expected_audience="nex-eos",
+            required_scopes=(DEFAULT_SERVICE_SCOPE,),
+            route_class="WRITE",
+        )
+        if isinstance(admitted, JSONResponse):
+            return admitted
+        repository: SqlAlchemyEosCandidateReviewRepository | None = getattr(
+            request.app.state,
+            "eos_candidate_review_repository",
+            None,
+        )
+        if repository is None:
+            return _review_problem(
+                request,
+                EosCandidateReviewError(
+                    "EOS_CANDIDATE_REVIEW_UNAVAILABLE",
+                    "Candidate review persistence is not configured.",
+                    status_code=503,
+                    retryable=True,
+                ),
+            )
+        if str(payload.get("candidate_id")) != candidate_id:
+            return _review_problem(
+                request,
+                EosCandidateReviewError(
+                    "EOS_CANDIDATE_REVIEW_INVALID",
+                    "Path candidate_id differs from the invalidation payload.",
+                    status_code=422,
+                ),
+            )
+        try:
+            return repository.invalidate(payload)
+        except EosCandidateReviewError as exc:
+            return _review_problem(request, exc)
+
 
 def _problem(request: Request, exc: EosVoucherCandidateCommandError):
     return problem_response(
@@ -204,5 +306,19 @@ def _validation_problem(request: Request, exc: EosCandidateValidationError):
         type_uri=(
             "https://nex-platform.local/problems/"
             "eos-voucher-candidate-validation-failed"
+        ),
+    )
+
+
+def _review_problem(request: Request, exc: EosCandidateReviewError):
+    return problem_response(
+        request,
+        status_code=exc.status_code,
+        error_code=exc.error_code,
+        title="EOS VoucherCandidate review failed",
+        detail=exc.detail,
+        retryable=exc.retryable,
+        type_uri=(
+            "https://nex-platform.local/problems/eos-voucher-candidate-review-failed"
         ),
     )

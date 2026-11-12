@@ -1,0 +1,29 @@
+{
+  "schema_version": "eos_candidate_review.v1",
+  "tenant_id": "VO00",
+  "candidate_id": "10000000-0000-4000-8000-000000000001",
+  "state": "READY_FOR_REVIEW",
+  "candidate_version": 2,
+  "current_revision_no": 1,
+  "events": [
+    {
+      "schema_version": "eos_candidate_review_event.v1",
+      "event_id": "10000000-0000-4000-8000-000000000009",
+      "candidate_id": "10000000-0000-4000-8000-000000000001",
+      "candidate_revision": 1,
+      "candidate_hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "approval_case_id": "10000000-0000-4000-8000-000000000010",
+      "transition_kind": "SUBMIT",
+      "from_state": "DRAFT",
+      "to_state": "READY_FOR_REVIEW",
+      "expected_version": 1,
+      "resulting_version": 2,
+      "actor_subject_id": "employee-1001",
+      "reason": null,
+      "validation_hash": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "review_hash": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "event_hash": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "created_at": "2026-11-12T02:00:00+00:00"
+    }
+  ]
+}

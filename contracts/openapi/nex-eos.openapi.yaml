@@ -1434,6 +1434,62 @@ paths:
         "409": {description: Candidate revision or authoritative accounting input rejected validation.}
         "422": {description: Validation request is malformed.}
         "503": {description: Authoritative validation dependency is unavailable.}
+  /internal/v2/finance/voucher-candidates/{candidate_id}/review:
+    get:
+      operationId: FINANCE.VOUCHER_CANDIDATE.REVIEW_GET
+      tags: [Finance]
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes: [service:call]
+      x-nex-side-effect-free: true
+      parameters:
+        - name: candidate_id
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+        - name: X-NeX-Tenant-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+      responses:
+        "200":
+          description: Current Candidate review state and immutable transition timeline.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VoucherCandidateReview"
+        "401": {description: Service claim is missing or invalid.}
+        "404": {description: Candidate was not found in tenant scope.}
+        "422": {description: Candidate or tenant identity is invalid.}
+        "503": {description: Candidate review persistence is unavailable.}
+  /internal/v2/finance/voucher-candidates/{candidate_id}/review-invalidation:
+    post:
+      operationId: FINANCE.VOUCHER_CANDIDATE.INVALIDATE_REVIEW
+      tags: [Finance]
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes: [service:call]
+      parameters:
+        - name: candidate_id
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InvalidateVoucherCandidateReview"
+      responses:
+        "200":
+          description: Idempotent Candidate review invalidation transition.
+          content:
+            application/json:
+              schema: {type: object}
+        "401": {description: Service claim is missing or invalid.}
+        "409": {description: Candidate review CAS or immutable replay semantics conflict.}
+        "422": {description: Invalidation request is malformed.}
+        "503": {description: Candidate review persistence is unavailable.}
   /internal/v1/finance/voucher-drafts:
     get:
       operationId: FINANCE.VOUCHER_DRAFT.LIST
@@ -1894,6 +1950,12 @@ components:
     VoucherCandidateValidation:
       type: object
       x-nex-canonical-json-schema: schemas/service/nex_eos/voucher_candidate_validation.v1.schema.json
+    VoucherCandidateReview:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_eos/voucher_candidate_review.v1.schema.json
+    InvalidateVoucherCandidateReview:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_eos/voucher_candidate_review_invalidate.v1.schema.json
     LegalEntity:
       type: object
       additionalProperties: false
@@ -2752,10 +2814,13 @@ components:
       properties:
         schema_version:
           type: string
-          const: eos_accounting_review_context.v2
+          enum: [eos_accounting_review_context.v2, eos_accounting_review_context.v3]
         candidate_id: {type: string, format: uuid}
         candidate_revision: {type: integer, minimum: 1}
         candidate_hash: {type: string, pattern: "^sha256:[0-9a-f]{64}$"}
+        candidate_version: {type: integer, minimum: 1}
+        validation_hash: {type: string, pattern: "^sha256:[0-9a-f]{64}$"}
+        validation_observed_at: {type: string, format: date-time}
         document_envelope_hash: {type: string, pattern: "^sha256:[0-9a-f]{64}$"}
         fx_rate_set_hash: {type: string, pattern: "^sha256:[0-9a-f]{64}$"}
         rule_release_hash: {type: string, pattern: "^sha256:[0-9a-f]{64}$"}
@@ -2774,6 +2839,12 @@ components:
         functional_currency: {type: string, pattern: "^[A-Z]{3}$"}
         functional_amount: {type: string, pattern: "^[0-9]+(?:\\.[0-9]+)?$"}
         fx_exception: {type: [string, "null"], maxLength: 512}
+      allOf:
+        - if:
+            properties:
+              schema_version: {const: eos_accounting_review_context.v3}
+          then:
+            required: [candidate_version, validation_hash, validation_observed_at]
     ScopedApprovalRequestReceipt:
       type: object
       additionalProperties: false
@@ -2795,6 +2866,10 @@ components:
         commit_state: {type: string, const: COMMITTED}
         scoped_approval_case:
           $ref: "#/components/schemas/ScopedApprovalCase"
+        candidate_review:
+          oneOf:
+            - type: object
+            - type: "null"
         wc_publication:
           type: object
           additionalProperties: false

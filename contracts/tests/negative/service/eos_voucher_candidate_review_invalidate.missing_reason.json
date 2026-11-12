@@ -1,0 +1,12 @@
+{
+  "schema_version": "eos_candidate_review_invalidate.v1",
+  "tenant_id": "VO00",
+  "event_id": "10000000-0000-4000-8000-000000000011",
+  "candidate_id": "10000000-0000-4000-8000-000000000001",
+  "approval_case_id": "10000000-0000-4000-8000-000000000010",
+  "expected_candidate_version": 2,
+  "expected_revision_no": 1,
+  "expected_candidate_hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "actor_subject_id": "accounting-controller",
+  "invalidated_at": "2026-11-12T02:05:00+00:00"
+}

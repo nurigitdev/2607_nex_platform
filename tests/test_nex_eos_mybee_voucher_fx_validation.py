@@ -55,6 +55,7 @@ REVISION_ID = "33000000-0000-4000-8000-000000000002"
 COMPANY_ID = "33000000-0000-4000-8000-000000000003"
 PROJECT_ID = "33000000-0000-4000-8000-000000000004"
 PERIOD_ID = "33000000-0000-4000-8000-000000000005"
+DOCUMENT_ID = "33000000-0000-4000-8000-00000000000a"
 DEBIT_ID = "33000000-0000-4000-8000-000000000006"
 CREDIT_ID = "33000000-0000-4000-8000-000000000007"
 RULE_ID = "33000000-0000-4000-8000-000000000008"
@@ -129,13 +130,17 @@ def _candidate(*, currency: str = "KRW") -> dict:
         "project_id": PROJECT_ID,
         "project_code": "VO00D260001",
         "state": "DRAFT",
+        "version": 1,
         "current_revision_no": 1,
+        "document_envelope_id": DOCUMENT_ID,
+        "preparer_subject_id": "employee:preparer",
         "transaction_currency": currency,
         "recognition_date": date(2026, 11, 12),
         "revision": {
             "revision_id": REVISION_ID,
             "revision_no": 1,
             "candidate_hash": HASH_A,
+            "approved_document_hash": HASH_B,
         },
         "lines": [
             {

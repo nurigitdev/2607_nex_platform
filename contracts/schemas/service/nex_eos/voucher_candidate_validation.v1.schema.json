@@ -6,7 +6,8 @@
   "additionalProperties": false,
   "required": [
     "schema_version", "operation", "status", "tenant_id", "candidate_ref",
-    "revision_ref", "project_ref", "company_id", "accounting_period_id",
+    "candidate_version", "revision_ref", "project_ref", "document_ref",
+    "company_id", "preparer_subject_id", "accounting_period_id",
     "recognition_date", "transaction_currency", "functional_currency",
     "posting_rule_release_hash", "account_policy_set_hash", "fx_rate_set_hash",
     "fx_evidence", "lines", "totals", "validation_hash", "observed_at"
@@ -17,6 +18,7 @@
     "status": {"const": "PASS"},
     "tenant_id": {"type": "string", "minLength": 1, "maxLength": 128},
     "candidate_ref": {"$ref": "#/$defs/entity_ref"},
+    "candidate_version": {"type": "integer", "minimum": 1},
     "revision_ref": {
       "type": "object",
       "additionalProperties": false,
@@ -38,7 +40,18 @@
         "code": {"type": "string", "pattern": "^[A-Z0-9]{4}[DMSOIG][0-9]{6}$"}
       }
     },
+    "document_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "id", "hash"],
+      "properties": {
+        "type": {"const": "eos.approved_document_envelope"},
+        "id": {"type": "string", "format": "uuid"},
+        "hash": {"$ref": "#/$defs/hash_ref"}
+      }
+    },
     "company_id": {"type": "string", "format": "uuid"},
+    "preparer_subject_id": {"type": "string", "minLength": 1, "maxLength": 128},
     "accounting_period_id": {"type": "string", "format": "uuid"},
     "recognition_date": {"type": "string", "format": "date"},
     "transaction_currency": {"type": "string", "pattern": "^[A-Z]{3}$"},
