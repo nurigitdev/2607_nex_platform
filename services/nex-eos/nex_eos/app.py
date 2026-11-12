@@ -32,7 +32,7 @@ from .wa_project_verification import (
 )
 
 SERVICE_SPEC = SERVICE_SPECS["nex-eos"]
-CONTRACT_CATALOG_VERSION = "mybee-w30-s3-01"
+CONTRACT_CATALOG_VERSION = "mybee-w30-s3-02"
 
 
 def create_eos_app(
@@ -109,6 +109,9 @@ def create_eos_app(
     app.state.eos_voucher_candidates = dependencies.voucher_candidates
     app.state.eos_voucher_candidate_command_service = (
         dependencies.voucher_candidate_command_service
+    )
+    app.state.eos_candidate_validation_service = (
+        dependencies.candidate_validation_service
     )
     register_voucher_command_routes(app)
     register_finance_v2_routes(app)

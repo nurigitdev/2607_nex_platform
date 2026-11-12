@@ -1,0 +1,25 @@
+{
+  "schema_version": "eos_voucher_candidate_validation.v1",
+  "operation": "FINANCE.VOUCHER_CANDIDATE.VALIDATE",
+  "status": "PASS",
+  "tenant_id": "VO00",
+  "candidate_ref": {"type": "eos.voucher_candidate", "id": "10000000-0000-4000-8000-000000000001"},
+  "revision_ref": {"type": "eos.voucher_candidate_revision", "id": "10000000-0000-4000-8000-000000000002", "revision_no": 1, "hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
+  "project_ref": {"type": "eos.project", "id": "10000000-0000-4000-8000-000000000003", "code": "VO00D260001"},
+  "company_id": "10000000-0000-4000-8000-000000000004",
+  "accounting_period_id": "10000000-0000-4000-8000-000000000005",
+  "recognition_date": "2026-11-12",
+  "transaction_currency": "KRW",
+  "functional_currency": "KRW",
+  "posting_rule_release_hash": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "account_policy_set_hash": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+  "fx_rate_set_hash": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+  "fx_evidence": {"mode": "SAME_CURRENCY", "base_currency": "KRW", "quote_currency": "KRW", "normalized_rate": "1", "desired_rate_date": "2026-11-12", "selected_rate_date": "2026-11-12", "staleness_business_days": 0, "snapshot_hash": null, "policy_hash": null},
+  "lines": [
+    {"line_no": 1, "account_id": "10000000-0000-4000-8000-000000000006", "debit_original": "10000.0000", "credit_original": "0.0000", "debit_functional": "10000", "credit_functional": "0", "functional_currency": "KRW"},
+    {"line_no": 2, "account_id": "10000000-0000-4000-8000-000000000007", "debit_original": "0.0000", "credit_original": "10000.0000", "debit_functional": "0", "credit_functional": "10000", "functional_currency": "KRW"}
+  ],
+  "totals": {"debit_original": "10000.0000", "credit_original": "10000.0000", "debit_functional": "10000", "credit_functional": "10000"},
+  "validation_hash": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+  "observed_at": "2026-11-12T00:00:00+00:00"
+}

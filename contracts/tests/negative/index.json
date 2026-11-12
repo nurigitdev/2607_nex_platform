@@ -1230,6 +1230,11 @@
       "name": "eos_voucher_candidate_create_missing_project_code",
       "path": "tests/negative/service/eos_voucher_candidate_create.missing_project_code.json",
       "schema": "schemas/service/nex_eos/voucher_candidate_create.v2.schema.json"
+    },
+    {
+      "name": "eos_voucher_candidate_validate_missing_hash",
+      "path": "tests/negative/service/eos_voucher_candidate_validate.missing_hash.json",
+      "schema": "schemas/service/nex_eos/voucher_candidate_validate.v1.schema.json"
     }
   ]
 }

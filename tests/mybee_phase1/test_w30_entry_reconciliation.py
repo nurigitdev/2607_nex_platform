@@ -69,12 +69,10 @@ def test_w30_ca01_migration_reservations_follow_actual_inventory() -> None:
         "2530_eos_document_signoff_finalization",
         "2531_eos_voucher_candidate_v2",
     ]
-    implemented = [
-        version
-        for version in reserved_versions
-        if (MIGRATIONS / f"{version}.sql").exists()
-    ]
-    assert implemented == reserved_versions[: len(implemented)]
+    # CA01 is a design-time snapshot. W30-S00 consumed 2530 as reserved, while
+    # CA02 consumed 2531-2533 and moved S3-01 to the next inventory slot, 2534.
+    assert (MIGRATIONS / "2530_eos_document_signoff_finalization.sql").is_file()
+    assert not (MIGRATIONS / "2531_eos_voucher_candidate_v2.sql").exists()
     ca02 = CA02_PATH.read_text(encoding="utf-8")
     assert "2531_eos_project_application_lifecycle.sql" in ca02
     assert "2532_eos_project_application_approval.sql" in ca02
@@ -84,8 +82,9 @@ def test_w30_ca01_migration_reservations_follow_actual_inventory() -> None:
             encoding="utf-8"
         )
     )
-    expected_highest = manifest["migration_heads"]["nex-eos"]["version"]
-    assert versions[-1] == expected_highest
+    expected = manifest["migration_heads"]["nex-eos"]
+    assert versions[-1] == expected["version"]
+    assert expected["path"].endswith("2534_eos_voucher_candidate_v2.sql")
 
 
 def test_w30_ca01_source_facts_match_current_provider_boundary() -> None:
@@ -107,7 +106,9 @@ def test_w30_ca01_source_facts_match_current_provider_boundary() -> None:
     assert "@app.post(" not in approved_api
     assert facts["document_signoff_decision_is_rejected_by_accounting_service"] is True
     assert facts["approved_document_public_create_exists"] is False
-    assert not (ROOT / "services/nex-eos/nex_eos/voucher_candidates.py").exists()
+    assert facts["voucher_candidate_v2_exists"] is False
+    assert (ROOT / "services/nex-eos/nex_eos/voucher_candidates.py").exists()
+    assert (ROOT / "docs/slices/mybee_phase1_s3_01_voucher_candidate_v2.md").exists()
 
 
 def test_mb3_wave_label_is_normalized_by_delta_without_mutating_pinned_matrix() -> None:

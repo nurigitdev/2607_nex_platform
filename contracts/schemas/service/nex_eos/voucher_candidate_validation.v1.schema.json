@@ -1,0 +1,117 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_eos/voucher_candidate_validation.v1.schema.json",
+  "title": "EOS VoucherCandidate Validation v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "operation", "status", "tenant_id", "candidate_ref",
+    "revision_ref", "project_ref", "company_id", "accounting_period_id",
+    "recognition_date", "transaction_currency", "functional_currency",
+    "posting_rule_release_hash", "account_policy_set_hash", "fx_rate_set_hash",
+    "fx_evidence", "lines", "totals", "validation_hash", "observed_at"
+  ],
+  "properties": {
+    "schema_version": {"const": "eos_voucher_candidate_validation.v1"},
+    "operation": {"const": "FINANCE.VOUCHER_CANDIDATE.VALIDATE"},
+    "status": {"const": "PASS"},
+    "tenant_id": {"type": "string", "minLength": 1, "maxLength": 128},
+    "candidate_ref": {"$ref": "#/$defs/entity_ref"},
+    "revision_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "id", "revision_no", "hash"],
+      "properties": {
+        "type": {"const": "eos.voucher_candidate_revision"},
+        "id": {"type": "string", "format": "uuid"},
+        "revision_no": {"type": "integer", "minimum": 1},
+        "hash": {"$ref": "#/$defs/hash_ref"}
+      }
+    },
+    "project_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "id", "code"],
+      "properties": {
+        "type": {"const": "eos.project"},
+        "id": {"type": "string", "format": "uuid"},
+        "code": {"type": "string", "pattern": "^[A-Z0-9]{4}[DMSOIG][0-9]{6}$"}
+      }
+    },
+    "company_id": {"type": "string", "format": "uuid"},
+    "accounting_period_id": {"type": "string", "format": "uuid"},
+    "recognition_date": {"type": "string", "format": "date"},
+    "transaction_currency": {"type": "string", "pattern": "^[A-Z]{3}$"},
+    "functional_currency": {"type": "string", "pattern": "^[A-Z]{3}$"},
+    "posting_rule_release_hash": {"$ref": "#/$defs/hash_ref"},
+    "account_policy_set_hash": {"$ref": "#/$defs/hash_ref"},
+    "fx_rate_set_hash": {"$ref": "#/$defs/hash_ref"},
+    "fx_evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mode", "base_currency", "quote_currency", "normalized_rate",
+        "desired_rate_date", "selected_rate_date", "staleness_business_days",
+        "snapshot_hash", "policy_hash"
+      ],
+      "properties": {
+        "mode": {"enum": ["SAME_CURRENCY", "APPROVED_SNAPSHOT"]},
+        "base_currency": {"type": "string", "pattern": "^[A-Z]{3}$"},
+        "quote_currency": {"type": "string", "pattern": "^[A-Z]{3}$"},
+        "normalized_rate": {"type": "string", "pattern": "^[0-9]+(\\.[0-9]+)?$"},
+        "desired_rate_date": {"type": "string", "format": "date"},
+        "selected_rate_date": {"type": "string", "format": "date"},
+        "staleness_business_days": {"type": "integer", "minimum": 0},
+        "snapshot_hash": {"oneOf": [{"$ref": "#/$defs/hash_ref"}, {"type": "null"}]},
+        "policy_hash": {"oneOf": [{"$ref": "#/$defs/hash_ref"}, {"type": "null"}]}
+      }
+    },
+    "lines": {
+      "type": "array", "minItems": 1,
+      "items": {"$ref": "#/$defs/functional_line"}
+    },
+    "totals": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "debit_original", "credit_original", "debit_functional", "credit_functional"
+      ],
+      "properties": {
+        "debit_original": {"$ref": "#/$defs/amount"},
+        "credit_original": {"$ref": "#/$defs/amount"},
+        "debit_functional": {"$ref": "#/$defs/amount"},
+        "credit_functional": {"$ref": "#/$defs/amount"}
+      }
+    },
+    "validation_hash": {"$ref": "#/$defs/hash_ref"},
+    "observed_at": {"type": "string", "format": "date-time"}
+  },
+  "$defs": {
+    "hash_ref": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "amount": {"type": "string", "pattern": "^[0-9]+(\\.[0-9]+)?$"},
+    "entity_ref": {
+      "type": "object", "additionalProperties": false,
+      "required": ["type", "id"],
+      "properties": {
+        "type": {"const": "eos.voucher_candidate"},
+        "id": {"type": "string", "format": "uuid"}
+      }
+    },
+    "functional_line": {
+      "type": "object", "additionalProperties": false,
+      "required": [
+        "line_no", "account_id", "debit_original", "credit_original",
+        "debit_functional", "credit_functional", "functional_currency"
+      ],
+      "properties": {
+        "line_no": {"type": "integer", "minimum": 1},
+        "account_id": {"type": "string", "format": "uuid"},
+        "debit_original": {"$ref": "#/$defs/amount"},
+        "credit_original": {"$ref": "#/$defs/amount"},
+        "debit_functional": {"$ref": "#/$defs/amount"},
+        "credit_functional": {"$ref": "#/$defs/amount"},
+        "functional_currency": {"type": "string", "pattern": "^[A-Z]{3}$"}
+      }
+    }
+  }
+}

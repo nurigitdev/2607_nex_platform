@@ -157,6 +157,11 @@ from .business_transactions import (
     InMemoryEosBusinessTransactionCoordinator,
     SqlAlchemyEosBusinessTransactionCoordinator,
 )
+from .candidate_validation import (
+    VALIDATE_VOUCHER_CANDIDATE_OPERATION,
+    EosCandidateValidationError,
+    EosCandidateValidationService,
+)
 from .coa_operations import (
     FINANCE_COA_ADOPT_OPERATION,
     FINANCE_COA_ADOPT_SCOPE,
@@ -654,6 +659,7 @@ __all__ = (
     "PROJECT_WORK_CODE_APPROVE_SCOPE",
     "PROJECT_WORK_CODE_READ_SCOPE",
     "PROJECT_WORK_CODE_SET_APPROVE_OPERATION",
+    "VALIDATE_VOUCHER_CANDIDATE_OPERATION",
     "AccountCatalogReleaseInput",
     "AccountInput",
     "AccountingPeriodInput",
@@ -702,6 +708,8 @@ __all__ = (
     "EosBusinessQueryError",
     "EosBusinessTransactionCoordinator",
     "EosBusinessTransactionResult",
+    "EosCandidateValidationError",
+    "EosCandidateValidationService",
     "EosCoaOperationError",
     "EosCoaOperationsService",
     "EosCoaReleaseAdminError",

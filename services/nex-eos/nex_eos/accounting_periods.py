@@ -182,6 +182,35 @@ class SqlAlchemyEosAccountingPeriodRepository:
             raise _unavailable() from exc
         return _wire(found) if found is not None else None
 
+    def find_period_for_date(
+        self, *, tenant_id: str, company_id: str, posting_date: date
+    ) -> dict[str, Any] | None:
+        """Resolve the exact period without acquiring a posting lock."""
+        tenant_id = _scoped_id("tenant_id", tenant_id)
+        company_id = _uuid("company_id", company_id)
+        posting_date = _date("posting_date", posting_date)
+        try:
+            with self._session_factory() as session:
+                rows = (
+                    session.execute(
+                        select(EOS_ACCOUNTING_PERIOD_TABLE)
+                        .where(
+                            EOS_ACCOUNTING_PERIOD_TABLE.c.tenant_id == tenant_id,
+                            EOS_ACCOUNTING_PERIOD_TABLE.c.company_id == company_id,
+                            EOS_ACCOUNTING_PERIOD_TABLE.c.start_date <= posting_date,
+                            EOS_ACCOUNTING_PERIOD_TABLE.c.end_date >= posting_date,
+                        )
+                        .order_by(EOS_ACCOUNTING_PERIOD_TABLE.c.period_id)
+                    )
+                    .mappings()
+                    .all()
+                )
+        except SQLAlchemyError as exc:
+            raise _unavailable() from exc
+        if len(rows) > 1:
+            raise _conflict("AccountingPeriod range is ambiguous")
+        return _wire(rows[0]) if rows else None
+
     def lock_open_for_post(
         self,
         session: Session,

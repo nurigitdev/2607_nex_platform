@@ -44,6 +44,7 @@ from .business_transactions import (
     EosBusinessTransactionCoordinator,
     SqlAlchemyEosBusinessTransactionCoordinator,
 )
+from .candidate_validation import EosCandidateValidationService
 from .coa_operations import (
     EosCoaOperationsService,
     PinnedCoaPublicationAdmission,
@@ -138,6 +139,7 @@ class EosDependencies:
     voucher_verification_query: SqlAlchemyEosVoucherVerificationQuery | None
     voucher_candidates: SqlAlchemyEosVoucherCandidateRepository | None
     voucher_candidate_command_service: EosCreateVoucherCandidateService | None
+    candidate_validation_service: EosCandidateValidationService | None
 
 
 def build_eos_dependencies(
@@ -502,6 +504,22 @@ def build_eos_dependencies(
         and authorization_source is not None
         else None
     )
+    candidate_validation_service = (
+        EosCandidateValidationService(
+            candidates=voucher_candidates,
+            legal_entities=legal_entities,
+            periods=SqlAlchemyEosAccountingPeriodRepository(
+                database_runtime.session_factory
+            ),
+            account_catalog=account_catalog,
+            fx_rates=SqlAlchemyEosFxRateRepository(database_runtime.session_factory),
+        )
+        if database_runtime is not None
+        and voucher_candidates is not None
+        and legal_entities is not None
+        and account_catalog is not None
+        else None
+    )
     business_operation_query = (
         SqlAlchemyEosBusinessOperationQuery(database_runtime.session_factory)
         if database_runtime is not None
@@ -556,4 +574,5 @@ def build_eos_dependencies(
         voucher_verification_query=voucher_verification_query,
         voucher_candidates=voucher_candidates,
         voucher_candidate_command_service=voucher_candidate_command_service,
+        candidate_validation_service=candidate_validation_service,
     )

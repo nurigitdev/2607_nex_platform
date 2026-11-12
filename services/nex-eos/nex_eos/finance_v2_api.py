@@ -10,6 +10,10 @@ from nex_runtime import (
     problem_response,
 )
 
+from .candidate_validation import (
+    EosCandidateValidationError,
+    EosCandidateValidationService,
+)
 from .voucher_candidate_commands import (
     EosCreateVoucherCandidateService,
     EosVoucherCandidateCommandError,
@@ -135,6 +139,45 @@ def register_finance_v2_routes(app: FastAPI) -> None:
             )
         return result
 
+    @app.post(
+        "/internal/v2/finance/voucher-candidates/{candidate_id}/validation",
+        response_model=None,
+        operation_id="FINANCE.VOUCHER_CANDIDATE.VALIDATE",
+    )
+    def validate_voucher_candidate(
+        candidate_id: str,
+        payload: dict[str, Any],
+        request: Request,
+        authorization: str | None = Header(default=None),
+    ):
+        admitted = admit_service_token_from_request(
+            request,
+            authorization,
+            expected_audience="nex-eos",
+            required_scopes=(DEFAULT_SERVICE_SCOPE,),
+        )
+        if isinstance(admitted, JSONResponse):
+            return admitted
+        service: EosCandidateValidationService | None = getattr(
+            request.app.state,
+            "eos_candidate_validation_service",
+            None,
+        )
+        if service is None:
+            return _validation_problem(
+                request,
+                EosCandidateValidationError(
+                    "EOS_CANDIDATE_VALIDATION_UNAVAILABLE",
+                    "VoucherCandidate validation dependencies are not configured.",
+                    status_code=503,
+                    retryable=True,
+                ),
+            )
+        try:
+            return service.validate(candidate_id, payload)
+        except EosCandidateValidationError as exc:
+            return _validation_problem(request, exc)
+
 
 def _problem(request: Request, exc: EosVoucherCandidateCommandError):
     return problem_response(
@@ -146,5 +189,20 @@ def _problem(request: Request, exc: EosVoucherCandidateCommandError):
         retryable=exc.retryable,
         type_uri=(
             "https://nex-platform.local/problems/eos-voucher-candidate-command-failed"
+        ),
+    )
+
+
+def _validation_problem(request: Request, exc: EosCandidateValidationError):
+    return problem_response(
+        request,
+        status_code=exc.status_code,
+        error_code=exc.error_code,
+        title="EOS VoucherCandidate validation failed",
+        detail=exc.detail,
+        retryable=exc.retryable,
+        type_uri=(
+            "https://nex-platform.local/problems/"
+            "eos-voucher-candidate-validation-failed"
         ),
     )

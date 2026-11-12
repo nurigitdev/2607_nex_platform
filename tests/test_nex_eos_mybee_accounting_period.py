@@ -187,6 +187,27 @@ def test_create_get_exact_replay_overlap_and_company_guards(runtime) -> None:
         )
 
 
+def test_find_period_for_date_is_side_effect_free(runtime) -> None:
+    _engine, _factory, repository, _auth, _service = runtime
+    repository.create_open_period(_period())
+
+    found = repository.find_period_for_date(
+        tenant_id=TENANT_ID,
+        company_id=COMPANY_ID,
+        posting_date=date(2026, 1, 15),
+    )
+    missing = repository.find_period_for_date(
+        tenant_id=TENANT_ID,
+        company_id=COMPANY_ID,
+        posting_date=date(2026, 2, 1),
+    )
+
+    assert found is not None
+    assert found["period_id"] == PERIOD_ID
+    assert found["state"] == "OPEN"
+    assert missing is None
+
+
 def test_close_state_machine_and_posting_admission_are_fail_closed(runtime) -> None:
     _engine, factory, repository, _auth, _service = runtime
     repository.create_open_period(_period())
@@ -336,7 +357,9 @@ def test_period_lock_rejects_corrupt_ambiguity_and_lock_scope_is_dialect_aware(
 
     fake = FakeSession()
     repository._lock_company_scope(
-        fake, tenant_id=TENANT_ID, company_id=COMPANY_ID  # type: ignore[arg-type]
+        fake,
+        tenant_id=TENANT_ID,
+        company_id=COMPANY_ID,  # type: ignore[arg-type]
     )
     assert fake.executed is True
 
@@ -344,7 +367,9 @@ def test_period_lock_rejects_corrupt_ambiguity_and_lock_scope_is_dialect_aware(
         bind = None
 
     repository._lock_company_scope(
-        UnboundSession(), tenant_id=TENANT_ID, company_id=COMPANY_ID  # type: ignore[arg-type]
+        UnboundSession(),
+        tenant_id=TENANT_ID,
+        company_id=COMPANY_ID,  # type: ignore[arg-type]
     )
 
 

@@ -1403,6 +1403,37 @@ paths:
         "404": {description: Candidate was not found in tenant scope.}
         "422": {description: Candidate or tenant identity is invalid.}
         "503": {description: EOS query persistence is unavailable.}
+  /internal/v2/finance/voucher-candidates/{candidate_id}/validation:
+    post:
+      operationId: FINANCE.VOUCHER_CANDIDATE.VALIDATE
+      tags: [Finance]
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes: [service:call]
+      x-nex-side-effect-free: true
+      parameters:
+        - name: candidate_id
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ValidateVoucherCandidateRequest"
+      responses:
+        "200":
+          description: Hash-bound accounting, FX, period, and balance validation receipt.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VoucherCandidateValidation"
+        "401": {description: Service claim is missing or invalid.}
+        "404": {description: Candidate was not found in tenant scope.}
+        "409": {description: Candidate revision or authoritative accounting input rejected validation.}
+        "422": {description: Validation request is malformed.}
+        "503": {description: Authoritative validation dependency is unavailable.}
   /internal/v1/finance/voucher-drafts:
     get:
       operationId: FINANCE.VOUCHER_DRAFT.LIST
@@ -1857,6 +1888,12 @@ components:
     CreateVoucherCandidateResult:
       type: object
       x-nex-canonical-json-schema: schemas/service/nex_eos/voucher_candidate_create_result.v2.schema.json
+    ValidateVoucherCandidateRequest:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_eos/voucher_candidate_validate.v1.schema.json
+    VoucherCandidateValidation:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_eos/voucher_candidate_validation.v1.schema.json
     LegalEntity:
       type: object
       additionalProperties: false
