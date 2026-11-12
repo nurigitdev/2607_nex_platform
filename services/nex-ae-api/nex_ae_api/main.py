@@ -51,6 +51,13 @@ from nex_ae_api.private_object_store import (
     AePrivateObjectStorageError,
     build_ae_private_object_store,
 )
+from nex_ae_api.project_agent_lifecycle import (
+    AdmittedProjectAgentProfilePolicy,
+    SqlAlchemyProjectAgentLifecycleService,
+)
+from nex_ae_api.project_agent_lifecycle_api import (
+    register_project_agent_lifecycle_routes,
+)
 from nex_ae_api.prompts import build_default_ae_prompt_store
 from nex_ae_api.recovery_requests import register_generation_recovery_request_routes
 from nex_ae_api.repaired_response_decisions import (
@@ -78,13 +85,13 @@ from nex_ae_api.wa_source_projections import (
     register_wa_agent_result_source_routes,
     register_wa_artifact_source_routes,
 )
-from nex_ae_api.work_result_event_api import register_work_result_event_routes
-from nex_ae_api.work_result_events import SqlAlchemyWorkResultEventService
-from nex_ae_api.workspace import register_workspace_routes
 from nex_ae_api.web_operations import (
     build_ae_web_operations_summary,
     register_ae_web_operations_routes,
 )
+from nex_ae_api.work_result_event_api import register_work_result_event_routes
+from nex_ae_api.work_result_events import SqlAlchemyWorkResultEventService
+from nex_ae_api.workspace import register_workspace_routes
 from nex_ae_api.workspace_result_publication import (
     SqlAlchemyInteractionAgentResultSource,
 )
@@ -153,9 +160,7 @@ register_chat_routes(
 register_interaction_agent_result_routes(
     app,
     source=(
-        SqlAlchemyInteractionAgentResultSource(
-            SERVICE_PERSISTENCE.api_session_factory
-        )
+        SqlAlchemyInteractionAgentResultSource(SERVICE_PERSISTENCE.api_session_factory)
         if SERVICE_PERSISTENCE.api_session_factory is not None
         else None
     ),
@@ -164,9 +169,7 @@ register_wa_agent_result_source_routes(
     app,
     source=(
         SqlAlchemyAgentResultWaProjectionSource(
-            SqlAlchemyAgentResultRepository(
-                SERVICE_PERSISTENCE.api_session_factory
-            )
+            SqlAlchemyAgentResultRepository(SERVICE_PERSISTENCE.api_session_factory)
         )
         if SERVICE_PERSISTENCE.api_session_factory is not None
         else None
@@ -176,9 +179,7 @@ register_wa_artifact_source_routes(
     app,
     source=(
         SqlAlchemyArtifactWaProjectionSource(
-            SqlAlchemyArtifactRecordStore(
-                SERVICE_PERSISTENCE.api_session_factory
-            )
+            SqlAlchemyArtifactRecordStore(SERVICE_PERSISTENCE.api_session_factory)
         )
         if SERVICE_PERSISTENCE.api_session_factory is not None
         else None
@@ -231,6 +232,21 @@ register_approval_decision_event_routes(
 register_eos_outbox_event_routes(
     app,
     store=SERVICE_PERSISTENCE.operational_event_store,
+)
+AE_PROJECT_AGENT_LIFECYCLE = None
+_project_agent_policy_path = os.getenv(
+    "NEX_AE_PROJECT_AGENT_PROFILE_POLICY_PATH", ""
+).strip()
+if SERVICE_PERSISTENCE.api_session_factory is not None and _project_agent_policy_path:
+    AE_PROJECT_AGENT_LIFECYCLE = SqlAlchemyProjectAgentLifecycleService(
+        SERVICE_PERSISTENCE.api_session_factory,
+        profile_policy=AdmittedProjectAgentProfilePolicy.from_path(
+            _project_agent_policy_path
+        ),
+    )
+register_project_agent_lifecycle_routes(
+    app,
+    service=AE_PROJECT_AGENT_LIFECYCLE,
 )
 register_agent_registry_routes(
     app,

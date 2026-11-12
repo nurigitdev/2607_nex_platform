@@ -40,6 +40,7 @@ from .project_applications import (
     EosProjectApplicationError,
     SqlAlchemyEosProjectApplicationRepository,
 )
+from .project_lifecycle_events import append_project_lifecycle_event
 from .project_memberships import (
     ProjectMembershipInput,
     SqlAlchemyEosProjectMembershipRepository,
@@ -176,11 +177,15 @@ class EosProjectApplicationApprovalService:
         session_factory: sessionmaker[Session],
         authorization_source: AuthorizationSource,
         wc_client: WcApprovalWorkItemClient,
+        project_agent_profile_policy_ref: str,
         clock=None,
     ) -> None:
         self._session_factory = session_factory
         self._authorization_source = authorization_source
         self._wc_client = wc_client
+        self._project_agent_profile_policy_ref = _text(
+            "project_agent_profile_policy_ref", project_agent_profile_policy_ref, 256
+        )
         self._applications = SqlAlchemyEosProjectApplicationRepository(session_factory)
         self._projects = SqlAlchemyEosProjectRepository(session_factory)
         self._memberships = SqlAlchemyEosProjectMembershipRepository(session_factory)
@@ -364,6 +369,9 @@ class EosProjectApplicationApprovalService:
                         approval=approval,
                         admitted=admitted,
                         recorded_at=recorded_at,
+                        project_agent_profile_policy_ref=(
+                            self._project_agent_profile_policy_ref
+                        ),
                     )
                     created = True
             state = self._load_current_state(admitted)
@@ -576,6 +584,7 @@ def _advance_approval(
     approval: Mapping[str, Any],
     admitted: Mapping[str, Any],
     recorded_at: datetime,
+    project_agent_profile_policy_ref: str,
 ) -> None:
     if admitted["decision"] == "REJECT":
         _update_approval_terminal(
@@ -687,6 +696,19 @@ def _advance_approval(
             "OWNER",
             admitted["decided_by"],
         ),
+    )
+    append_project_lifecycle_event(
+        session,
+        tenant_id=application["tenant_id"],
+        project_id=project_id,
+        project_code=project_code,
+        previous_state="SUBMITTED",
+        current_state="ACTIVE",
+        project_version=1,
+        profile_policy_ref=project_agent_profile_policy_ref,
+        correlation_id=str(admitted["wc_work_item_id"]),
+        causation_id=str(admitted["wc_event_id"]),
+        occurred_at=recorded_at,
     )
     _update_approval_terminal(
         session, approval, state="APPROVED", decided_at=admitted["decided_at"]

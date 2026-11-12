@@ -266,10 +266,14 @@ def build_eos_dependencies(
                 base_url=environ.get("NEX_WC_BASE_URL", DEFAULT_WC_BASE_URL),
                 service_token=wc_token,
             ),
+            project_agent_profile_policy_ref=environ[
+                "NEX_EOS_PROJECT_AGENT_PROFILE_POLICY_REF"
+            ],
         )
         if database_runtime is not None
         and authorization_source is not None
         and wc_token
+        and environ.get("NEX_EOS_PROJECT_AGENT_PROFILE_POLICY_REF", "").strip()
         else None
     )
     approved_document_service = (
@@ -357,6 +361,9 @@ def build_eos_dependencies(
             authorization_source=authorization_source,
             allow_legacy_project_create=(
                 environ.get("NEX_EOS_ALLOW_LEGACY_DIRECT_PROJECT_CREATE", "0") == "1"
+            ),
+            project_agent_profile_policy_ref=environ.get(
+                "NEX_EOS_PROJECT_AGENT_PROFILE_POLICY_REF"
             ),
         )
         if database_runtime is not None

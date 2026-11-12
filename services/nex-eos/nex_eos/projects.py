@@ -27,6 +27,7 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
 
 from .business_transactions import EOS_METADATA
+from .project_lifecycle_events import append_project_lifecycle_event
 
 EOS_NVT_PROJECT_STATUSES = frozenset({"ACTIVE", "INACTIVE"})
 EOS_PROJECT_STATUSES = frozenset({"ACTIVE", "INACTIVE", "CLOSING", "CLOSED"})
@@ -352,6 +353,9 @@ class SqlAlchemyEosProjectRepository:
         project_code: str,
         target_status: str,
         expected_version: int,
+        profile_policy_ref: str | None = None,
+        correlation_id: str | None = None,
+        causation_id: str | None = None,
     ) -> dict[str, Any]:
         tenant_id = _scoped_id("tenant_id", tenant_id)
         project_code = _code("project_code", project_code)
@@ -395,11 +399,21 @@ class SqlAlchemyEosProjectRepository:
                         f"Project cannot transition from {current['status']} to {target_status}",
                         status_code=409,
                     )
+                is_approved_application = current["origin"] == "APPROVED_APPLICATION"
+                if is_approved_application and not profile_policy_ref:
+                    raise EosProjectError(
+                        "EOS_PROJECT_AGENT_POLICY_REQUIRED",
+                        "Approved Project lifecycle transition requires a Project Agent policy",
+                        status_code=409,
+                    )
+                changed_at = datetime.now(UTC)
                 changed = {
                     "status": target_status,
                     "version": expected_version + 1,
-                    "updated_at": datetime.now(UTC),
+                    "updated_at": changed_at,
                 }
+                if is_approved_application:
+                    changed["agent_sync_state"] = "PENDING"
                 result = transaction.db.execute(
                     update(EOS_PROJECT_TABLE)
                     .where(
@@ -414,6 +428,21 @@ class SqlAlchemyEosProjectRepository:
                         "EOS_PROJECT_VERSION_CONFLICT",
                         "Project version changed before lifecycle transition",
                         status_code=409,
+                    )
+                if is_approved_application:
+                    event_lineage = f"project-lifecycle:{current['project_id']}:v{expected_version + 1}"
+                    append_project_lifecycle_event(
+                        transaction.db,
+                        tenant_id=tenant_id,
+                        project_id=str(current["project_id"]),
+                        project_code=project_code,
+                        previous_state=str(current["status"]),
+                        current_state=target_status,
+                        project_version=expected_version + 1,
+                        profile_policy_ref=str(profile_policy_ref),
+                        correlation_id=correlation_id or event_lineage,
+                        causation_id=causation_id or event_lineage,
+                        occurred_at=changed_at,
                     )
                 return {**dict(current), **changed}
         except EosProjectError:

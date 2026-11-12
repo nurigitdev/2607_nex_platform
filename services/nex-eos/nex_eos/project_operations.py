@@ -21,6 +21,7 @@ from .business_transactions import (
     EosBusinessOperationRequest,
     EosBusinessTransactionCoordinator,
 )
+from .project_lifecycle_events import append_project_lifecycle_event
 from .project_memberships import (
     EOS_PROJECT_MEMBER_ROLES,
     EOS_PROJECT_MEMBER_TABLE,
@@ -82,11 +83,13 @@ class EosGovernedProjectService:
         coordinator: EosBusinessTransactionCoordinator,
         authorization_source: AuthorizationSource,
         allow_legacy_project_create: bool = True,
+        project_agent_profile_policy_ref: str | None = None,
     ) -> None:
         self._session_factory = session_factory
         self._coordinator = coordinator
         self._authorization_source = authorization_source
         self._allow_legacy_project_create = allow_legacy_project_create
+        self._project_agent_profile_policy_ref = project_agent_profile_policy_ref
         self._projects = SqlAlchemyEosProjectRepository(session_factory)
         self._memberships = SqlAlchemyEosProjectMembershipRepository(session_factory)
 
@@ -537,11 +540,23 @@ class EosGovernedProjectService:
                     status_code=409,
                 )
             if project["status"] == "ACTIVE":
+                if (
+                    project["origin"] == "APPROVED_APPLICATION"
+                    and not self._project_agent_profile_policy_ref
+                ):
+                    raise EosGovernedProjectError(
+                        "EOS_PROJECT_AGENT_POLICY_REQUIRED",
+                        "Approved Project lifecycle transition requires a Project Agent policy",
+                        status_code=409,
+                    )
+                changed_at = datetime.now(UTC)
                 changed = {
                     "status": "INACTIVE",
                     "version": expected_version + 1,
-                    "updated_at": datetime.now(UTC),
+                    "updated_at": changed_at,
                 }
+                if project["origin"] == "APPROVED_APPLICATION":
+                    changed["agent_sync_state"] = "PENDING"
                 session.execute(
                     update(EOS_PROJECT_TABLE)
                     .where(
@@ -552,6 +567,20 @@ class EosGovernedProjectService:
                     .values(**changed)
                 )
                 project = {**dict(project), **changed}
+                if project["origin"] == "APPROVED_APPLICATION":
+                    append_project_lifecycle_event(
+                        session,
+                        tenant_id=envelope["tenant_id"],
+                        project_id=project_id,
+                        project_code=str(project["project_code"]),
+                        previous_state="ACTIVE",
+                        current_state="INACTIVE",
+                        project_version=expected_version + 1,
+                        profile_policy_ref=str(self._project_agent_profile_policy_ref),
+                        correlation_id=envelope["business_operation_id"],
+                        causation_id=envelope["idempotency_key"],
+                        occurred_at=changed_at,
+                    )
             return {
                 "business_result_ref": f"eos.project:{project_id}",
                 "project": _wire(project),

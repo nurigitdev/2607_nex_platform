@@ -34,6 +34,7 @@ from sqlalchemy.orm import Session, sessionmaker
 EOS_EVENT_TYPES = frozenset(
     {
         "BUSINESS_TRANSACTION_COMMITTED",
+        "PROJECT_LIFECYCLE_CHANGED",
         "VOUCHER_DRAFT_CREATED",
     }
 )

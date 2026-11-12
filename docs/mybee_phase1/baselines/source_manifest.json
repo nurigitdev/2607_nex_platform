@@ -27,9 +27,9 @@
   },
   "migration_heads": {
     "nex-ae-api": {
-      "version": 2514,
-      "path": "database/nex-ae-api/migrations/2514_ae_nsl_v02_profile.sql",
-      "sha256": "sha256:e8fd710c88d1954e48e5f1cec70c7abd2b818b68c58505397145e19677b99b51"
+      "version": 2515,
+      "path": "database/nex-ae-api/migrations/2515_ae_project_agent_lifecycle.sql",
+      "sha256": "sha256:f0d2ed50862965bfd2c0fb6d0d1b80dec2c6351ab0052281780d23f652540bc6"
     },
     "nex-ag": {
       "version": 1477,

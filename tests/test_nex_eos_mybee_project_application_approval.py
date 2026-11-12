@@ -13,6 +13,7 @@ from nex_eos import (
     EOS_APPROVAL_POLICY_STAGE_TABLE,
     EOS_APPROVAL_POLICY_TABLE,
     EOS_METADATA,
+    EOS_OUTBOX_TABLE,
     EOS_PROJECT_APP_APPROVAL_TABLE,
     EOS_PROJECT_APP_DECISION_TABLE,
     EOS_PROJECT_APP_REVISION_TABLE,
@@ -54,6 +55,7 @@ APPLICATION_ID = "b4000000-0000-4000-8000-000000000002"
 POLICY_ID = "b4000000-0000-4000-8000-000000000003"
 DATABASE_URL = os.getenv("NEX_EOS_TEST_DATABASE_URL", "")
 POSTGRES_SMOKE = os.getenv("NEX_EOS_MYBEE_W30_S00B_POSTGRES_SMOKE") == "1"
+PROJECT_AGENT_POLICY_REF = "policy://nex-platform/project-agent-lifecycle/v1"
 
 
 class AuthorizationSource:
@@ -152,6 +154,7 @@ def runtime():
         session_factory=sessions,
         authorization_source=auth,
         wc_client=wc,
+        project_agent_profile_policy_ref=PROJECT_AGENT_POLICY_REF,
         clock=lambda: NOW,
     )
     yield sessions, submitted, auth, wc, service
@@ -259,6 +262,19 @@ def test_two_stage_committee_finalizes_one_project_and_exact_replay(runtime) -> 
         assert project["project_request_code"] == application["project_request_code"]
         assert project["origin"] == "APPROVED_APPLICATION"
         assert project["agent_sync_state"] == "PENDING"
+        lifecycle = (
+            session.execute(
+                select(EOS_OUTBOX_TABLE).where(
+                    EOS_OUTBOX_TABLE.c.event_type == "PROJECT_LIFECYCLE_CHANGED"
+                )
+            )
+            .mappings()
+            .one()
+        )
+        assert lifecycle["delivery_state"] == "PENDING"
+        assert lifecycle["event_payload"]["profile_policy_ref"] == (
+            PROJECT_AGENT_POLICY_REF
+        )
         assert membership["subject_id"] == APPLICANT
         assert membership["member_role"] == "OWNER"
         assert (
@@ -707,6 +723,7 @@ def test_actual_postgres_project_committee_finalization_and_zero_residue() -> No
             session_factory=database.session_factory,
             authorization_source=AuthorizationSource(),
             wc_client=WcClient(),
+            project_agent_profile_policy_ref=PROJECT_AGENT_POLICY_REF,
             clock=lambda: NOW,
         )
         item = service.request_approval(

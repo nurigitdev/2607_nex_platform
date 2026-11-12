@@ -2646,6 +2646,35 @@ paths:
         "404": {description: Artifact version is absent in the tenant scope.}
         "409": {description: Artifact is not READY or lineage is inconsistent.}
         "503": {description: AE persistence is unavailable.}
+  /internal/v1/project-lifecycle-events:
+    post:
+      operationId: ingestAeProjectLifecycleEvent
+      tags: [Project Agents]
+      summary: Apply one EOS-authoritative Project lifecycle event to its AE Project Agent.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AeProjectLifecycleEvent"
+      responses:
+        "200":
+          description: Exact lifecycle event replay was accepted idempotently.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AeProjectAgentLifecycleReceipt"
+        "201":
+          description: Project Agent lifecycle event was applied.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AeProjectAgentLifecycleReceipt"
+        "401": {description: Signed service token is missing or invalid.}
+        "403": {description: Caller is not nex-eos.}
+        "409": {description: "Lifecycle, version, or profile-policy binding conflicts."}
+        "422": {description: Event envelope or payload is invalid.}
+        "503": {description: Project Agent lifecycle persistence or policy is unavailable.}
 components:
   securitySchemes:
     serviceBearer:
@@ -2704,6 +2733,78 @@ components:
         type: string
         format: uuid
   schemas:
+    AeProjectLifecycleEvent:
+      type: object
+      additionalProperties: false
+      required:
+        - event_id
+        - tenant_id
+        - business_operation_id
+        - event_type
+        - event_payload_hash
+        - event_payload
+      properties:
+        event_id: {type: string, format: uuid}
+        tenant_id: {type: string, minLength: 1, maxLength: 128}
+        business_operation_id: {type: string, format: uuid}
+        event_type: {type: string, enum: [PROJECT_LIFECYCLE_CHANGED]}
+        event_payload_hash: {type: string, pattern: '^sha256:[0-9a-f]{64}$'}
+        event_payload:
+          type: object
+          additionalProperties: false
+          required:
+            - schema_version
+            - tenant_id
+            - project_id
+            - project_code
+            - previous_state
+            - current_state
+            - project_version
+            - profile_policy_ref
+            - correlation_id
+            - causation_id
+            - occurred_at
+          properties:
+            schema_version: {type: string, enum: [eos.project_lifecycle_event.v1]}
+            tenant_id: {type: string, minLength: 1, maxLength: 128}
+            project_id: {type: string, format: uuid}
+            project_code: {type: string, minLength: 1, maxLength: 64}
+            previous_state:
+              type: string
+              enum: [SUBMITTED, ACTIVE, INACTIVE, CLOSING, CLOSED]
+            current_state:
+              type: string
+              enum: [ACTIVE, INACTIVE, CLOSING, CLOSED]
+            project_version: {type: integer, minimum: 1}
+            profile_policy_ref: {type: string, minLength: 1, maxLength: 256}
+            correlation_id: {type: string, minLength: 1, maxLength: 256}
+            causation_id: {type: string, minLength: 1, maxLength: 256}
+            occurred_at: {type: string, format: date-time}
+    AeProjectAgentLifecycleReceipt:
+      type: object
+      additionalProperties: false
+      required:
+        - schema_version
+        - event_id
+        - event_payload_hash
+        - receipt_ref
+        - project_id
+        - project_code
+        - project_version
+        - agent_id
+        - agent_status
+        - capability_mode
+      properties:
+        schema_version: {type: string, enum: [ae.project_agent_lifecycle_receipt.v1]}
+        event_id: {type: string, format: uuid}
+        event_payload_hash: {type: string, pattern: '^sha256:[0-9a-f]{64}$'}
+        receipt_ref: {type: string, minLength: 1}
+        project_id: {type: string, format: uuid}
+        project_code: {type: string, minLength: 1}
+        project_version: {type: integer, minimum: 1}
+        agent_id: {type: string, format: uuid}
+        agent_status: {type: string, enum: [ACTIVE, SUSPENDED, RETIRED]}
+        capability_mode: {type: string, enum: [ORDINARY, SUSPENDED, CLOSURE, RETIRED]}
     AeBusinessResultSummary:
       type: object
       x-nex-canonical-json-schema: schemas/service/nex_ae_api/business_result_summary.v1.schema.json

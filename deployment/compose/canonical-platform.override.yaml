@@ -43,6 +43,7 @@ x-canonical-platform-eos-environment: &canonical-platform-eos-environment
   NEX_EOS_TO_WC_SERVICE_TOKEN_REF: secret://openbao/nex-platform/staging/nex-eos/NEX_EOS_TO_WC_SERVICE_TOKEN@${NEX_CANONICAL_PLATFORM_SECRET_VERSION:-v1}
   NEX_EOS_TO_AE_SERVICE_TOKEN_REF: secret://openbao/nex-platform/staging/nex-eos/NEX_EOS_TO_AE_SERVICE_TOKEN@${NEX_CANONICAL_PLATFORM_SECRET_VERSION:-v1}
   NEX_EOS_TO_OA_SERVICE_TOKEN_REF: secret://openbao/nex-platform/staging/nex-eos/NEX_EOS_TO_OA_SERVICE_TOKEN@${NEX_CANONICAL_PLATFORM_SECRET_VERSION:-v1}
+  NEX_EOS_PROJECT_AGENT_PROFILE_POLICY_REF: policy://nex-platform/project-agent-lifecycle/v1
   NEX_SERVICE_CREDENTIAL_ID_REF: secret://openbao/nex-platform/staging/nex-eos/NEX_SERVICE_CREDENTIAL_ID@${NEX_CANONICAL_PLATFORM_SECRET_VERSION:-v1}
   NEX_SERVICE_CLIENT_SECRET_REF: secret://openbao/nex-platform/staging/nex-eos/NEX_SERVICE_CLIENT_SECRET@${NEX_CANONICAL_PLATFORM_SECRET_VERSION:-v1}
 
@@ -147,6 +148,7 @@ services:
       NEX_AE_PLANNING_MODE: required
       NEX_AE_FINANCE_GOLDEN_A_AUTHORITY_PROFILE_PATH: /app/deployment/product/config/finance-golden-a-vo00.v1.json
       NEX_AE_PRODUCT_CAPABILITY_REGISTRY_PATH: /app/deployment/product/config/ae-product-capability-registry.v1.json
+      NEX_AE_PROJECT_AGENT_PROFILE_POLICY_PATH: /app/deployment/product/config/project-agent-profile-policy.v1.json
       NEX_AE_P65_SEMANTIC_CALIBRATION_POLICIES_JSON: ${NEX_CANONICAL_PLATFORM_SEMANTIC_CALIBRATION_POLICIES_JSON:?semantic calibration policies are required}
       NEX_AE_TO_MO_SERVICE_TOKEN_REF: secret://openbao/nex-platform/staging/nex-ae-api/NEX_AE_TO_MO_SERVICE_TOKEN@${NEX_CANONICAL_PLATFORM_SECRET_VERSION:-v1}
       NEX_AE_TO_AG_SERVICE_TOKEN_REF: secret://openbao/nex-platform/staging/nex-ae-api/NEX_AE_TO_AG_SERVICE_TOKEN@${NEX_CANONICAL_PLATFORM_SECRET_VERSION:-v1}

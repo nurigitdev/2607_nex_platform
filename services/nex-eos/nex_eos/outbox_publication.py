@@ -13,6 +13,8 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
 
 from .business_transactions import EOS_OUTBOX_TABLE
+from .project_lifecycle_events import PROJECT_LIFECYCLE_EVENT_TYPE
+from .projects import EOS_PROJECT_TABLE
 
 _SCOPED_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$")
 
@@ -86,9 +88,13 @@ class SqlAlchemyEosOutboxPublisher:
         session = self._session_factory()
         try:
             with session.begin():
-                row = session.execute(
-                    _claim_statement(session, tenant_id=normalized_tenant)
-                ).mappings().first()
+                row = (
+                    session.execute(
+                        _claim_statement(session, tenant_id=normalized_tenant)
+                    )
+                    .mappings()
+                    .first()
+                )
                 if row is None:
                     return None
                 event = _event_from_row(row)
@@ -120,6 +126,7 @@ class SqlAlchemyEosOutboxPublisher:
                     attempted_at=attempted_at,
                     published_at=attempted_at,
                 )
+                _record_project_agent_sync(session, event)
                 return _result(
                     event,
                     delivery_state="PUBLISHED",
@@ -243,6 +250,35 @@ def _record_attempt(
         )
 
 
+def _record_project_agent_sync(session: Session, event: EosOutboxEvent) -> None:
+    if event.event_type != PROJECT_LIFECYCLE_EVENT_TYPE:
+        return
+    payload = event.event_payload
+    try:
+        project_id = _uuid("project_id", payload["project_id"])
+        project_version = _project_version(payload["project_version"])
+        project_state = _project_state(payload["current_state"])
+    except (KeyError, TypeError, ValueError) as exc:
+        raise _invalid("Project lifecycle outbox payload is malformed.") from exc
+    result = session.execute(
+        EOS_PROJECT_TABLE.update()
+        .where(
+            EOS_PROJECT_TABLE.c.tenant_id == event.tenant_id,
+            EOS_PROJECT_TABLE.c.project_id == project_id,
+            EOS_PROJECT_TABLE.c.version == project_version,
+            EOS_PROJECT_TABLE.c.status == project_state,
+            EOS_PROJECT_TABLE.c.agent_sync_state == "PENDING",
+        )
+        .values(agent_sync_state="IN_SYNC")
+    )
+    if int(result.rowcount or 0) != 1:
+        raise EosOutboxPublicationError(
+            "EOS_PROJECT_AGENT_SYNC_CONFLICT",
+            "Project state changed before Project Agent acknowledgement.",
+            retryable=True,
+        )
+
+
 def _result(
     event: EosOutboxEvent,
     *,
@@ -296,6 +332,18 @@ def _attempt_count(value: object) -> int:
     if isinstance(value, bool) or not isinstance(value, int) or value < 0:
         raise _invalid("EOS outbox attempt_count is invalid.")
     return value
+
+
+def _project_version(value: object) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+        raise _invalid("Project lifecycle version is invalid.")
+    return value
+
+
+def _project_state(value: object) -> str:
+    if value not in {"ACTIVE", "INACTIVE", "CLOSING", "CLOSED"}:
+        raise _invalid("Project lifecycle state is invalid.")
+    return str(value)
 
 
 def _aware_datetime(value: object) -> datetime:
