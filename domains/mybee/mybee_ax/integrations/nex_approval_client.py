@@ -76,6 +76,27 @@ _CASE_PROJECTION_FIELDS = frozenset(
         "project_bindings",
     }
 )
+_CANDIDATE_REVIEW_EVENT_FIELDS = frozenset(
+    {
+        "schema_version",
+        "event_id",
+        "candidate_id",
+        "candidate_revision",
+        "candidate_hash",
+        "approval_case_id",
+        "transition_kind",
+        "from_state",
+        "to_state",
+        "expected_version",
+        "resulting_version",
+        "actor_subject_id",
+        "reason",
+        "validation_hash",
+        "review_hash",
+        "event_hash",
+        "created_at",
+    }
+)
 
 
 class ScopedApprovalContractError(ValueError):
@@ -211,7 +232,11 @@ def admit_scoped_approval_receipt(
         "scoped_approval_case",
         "wc_publication",
     }
-    if not isinstance(value, Mapping) or set(value) != fields:
+    observed_fields = frozenset(value) if isinstance(value, Mapping) else frozenset()
+    if not isinstance(value, Mapping) or observed_fields not in {
+        frozenset(fields),
+        frozenset((*fields, "candidate_review")),
+    }:
         raise _error("MYBEE_APPROVAL_RECEIPT_INVALID", "receipt fields drifted")
     receipt = dict(value)
     if receipt["schema_version"] != "eos_scoped_approval_request_receipt.v2":
@@ -250,7 +275,47 @@ def admit_scoped_approval_receipt(
         or work_item.get("protected_request_ref") != case["subject_ref"]
     ):
         raise _error("MYBEE_APPROVAL_WC_INVALID", "WC lineage drifted")
+    if "candidate_review" in receipt:
+        _admit_candidate_review_event(
+            receipt["candidate_review"],
+            tenant_id=tenant_id,
+            case_id=case_id,
+            case=case,
+        )
     return MappingProxyType(receipt)
+
+
+def _admit_candidate_review_event(
+    value: object,
+    *,
+    tenant_id: str,
+    case_id: str,
+    case: Mapping[str, Any],
+) -> None:
+    if not isinstance(value, Mapping) or set(value) != _CANDIDATE_REVIEW_EVENT_FIELDS:
+        raise _error("MYBEE_APPROVAL_CANDIDATE_REVIEW_INVALID", "event fields drifted")
+    candidate_id = case["subject_ref"].removeprefix("eos.voucher-candidate:")
+    if (
+        value["schema_version"] != "eos_candidate_review_event.v1"
+        or case["purpose"] != "ACCOUNTING_POSTING"
+        or candidate_id == case["subject_ref"]
+        or value["candidate_id"] != candidate_id
+        or value["approval_case_id"] != _uuid("case_id", case_id)
+        or value["transition_kind"] != "SUBMIT"
+        or value["to_state"] != "READY_FOR_REVIEW"
+        or value["candidate_revision"] != case["subject_revision"]
+        or value["candidate_hash"] != case["subject_hash"]
+        or value["reason"] is not None
+        or value["validation_hash"] is None
+    ):
+        raise _error("MYBEE_APPROVAL_CANDIDATE_REVIEW_INVALID", "event lineage drifted")
+    _scoped_id("tenant_id", tenant_id, 128)
+    _uuid("candidate_review.event_id", value["event_id"])
+    _positive_int("candidate_review.expected_version", value["expected_version"])
+    _positive_int("candidate_review.resulting_version", value["resulting_version"])
+    for field in ("validation_hash", "review_hash", "event_hash"):
+        _hash_ref(field, value[field])
+    _timestamp(value["created_at"])
 
 
 def _admit_case(value: object, *, tenant_id: str, case_id: str) -> Mapping[str, Any]:

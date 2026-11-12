@@ -51,8 +51,14 @@ PostgreSQL boundary.
 and
 [`mybee_phase1_s3_03_candidate_review_state_machine.md`](../../slices/mybee_phase1_s3_03_candidate_review_state_machine.md).
 Together they close authoritative accounting/FX/period/balance validation and
-the durable Submit/Return/Invalidate review state machine. `MB3-01` remains the
-next W30 entry.
+the durable Submit/Return/Invalidate review state machine.
+
+`MB3-01` implementation and W30 closure evidence is recorded in
+[`mybee_phase1_mb3_01_voucher_candidate_consumer.md`](../../slices/mybee_phase1_mb3_01_voucher_candidate_consumer.md).
+It closes the MyBee-owned provider consumer for create, validate,
+BUSINESS_FORMAL review submission, and review projection while preserving EOS
+as the persistence owner and prohibiting direct GL writes. The next planned
+entry after the W30 Full Gate is W40 `S4-01`.
 
 ### COA Follow-up Reading Order
 
