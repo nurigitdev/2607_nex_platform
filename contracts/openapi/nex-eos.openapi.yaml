@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: NeX Enterprise Operations System API
-  version: 2.1.0-p8-s105-mybee-s1-05
+  version: 2.1.0-p8-s105-mybee-w30-s00a
   description: >-
     NeX-EOS service shell and canonical Voucher Draft command contract. The
     P8-S18 path is contract-first and becomes executable in P8-S19.
@@ -227,6 +227,133 @@ paths:
           description: Patch, payload hash, or domain invariant is invalid.
         "503":
           description: OA authorization or EOS persistence is unavailable.
+  /internal/v2/project-applications:
+    post:
+      operationId: PROJECT.APPLICATION.CREATE
+      tags: [Project]
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes: [service:call]
+      x-nex-business-scope: project:application:create
+      x-nex-route-class: WRITE
+      parameters:
+        - $ref: "#/components/parameters/TenantCodeHeader"
+        - $ref: "#/components/parameters/SubjectHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProjectApplicationDraftCommand"
+      responses:
+        "201":
+          description: DRAFT application and immutable request code were created atomically.
+        "401": {description: Service claim is missing or invalid.}
+        "403": {description: Fresh OA application authority is denied.}
+        "404": {description: Hierarchy target is absent from tenant scope.}
+        "409": {description: Application identity or annual code allocation conflicts.}
+        "422": {description: Draft or Project hierarchy input is invalid.}
+        "503": {description: OA authorization or EOS persistence is unavailable.}
+  /internal/v2/project-applications/{project_request_code}:
+    get:
+      operationId: PROJECT.APPLICATION.GET
+      tags: [Project]
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes: [service:call]
+      x-nex-business-scope: project:application:read
+      x-nex-side-effect-free: true
+      parameters:
+        - $ref: "#/components/parameters/ProjectRequestCodePath"
+        - $ref: "#/components/parameters/TenantCodeHeader"
+        - $ref: "#/components/parameters/SubjectHeader"
+      responses:
+        "200": {description: Owner-scoped current application revision.}
+        "401": {description: Service claim is missing or invalid.}
+        "403": {description: Fresh OA read authority or owner scope is denied.}
+        "404": {description: Request code is absent from tenant scope.}
+        "422": {description: Tenant or request code syntax is invalid.}
+        "503": {description: OA authorization or EOS persistence is unavailable.}
+    patch:
+      operationId: PROJECT.APPLICATION.REVISE
+      tags: [Project]
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes: [service:call]
+      x-nex-business-scope: project:application:create
+      x-nex-route-class: WRITE
+      parameters:
+        - $ref: "#/components/parameters/ProjectRequestCodePath"
+        - $ref: "#/components/parameters/TenantCodeHeader"
+        - $ref: "#/components/parameters/SubjectHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProjectApplicationRevisionCommand"
+      responses:
+        "200": {description: DRAFT revision was appended or exactly replayed.}
+        "401": {description: Service claim is missing or invalid.}
+        "403": {description: Fresh OA authority or owner scope is denied.}
+        "404": {description: Request code or hierarchy target is absent.}
+        "409": {description: Application is not DRAFT or version changed.}
+        "422": {description: Revision input is invalid.}
+        "503": {description: OA authorization or EOS persistence is unavailable.}
+  /internal/v2/project-applications/{project_request_code}:submit:
+    post:
+      operationId: PROJECT.APPLICATION.SUBMIT
+      tags: [Project]
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes: [service:call]
+      x-nex-business-scope: project:application:submit
+      x-nex-route-class: WRITE
+      parameters:
+        - $ref: "#/components/parameters/ProjectRequestCodePath"
+        - $ref: "#/components/parameters/TenantCodeHeader"
+        - $ref: "#/components/parameters/SubjectHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ExpectedVersionCommand"
+      responses:
+        "200": {description: Application became SUBMITTED or replayed exactly.}
+        "401": {description: Service claim is missing or invalid.}
+        "403": {description: Fresh OA submit authority or owner scope is denied.}
+        "404": {description: Request code is absent from tenant scope.}
+        "409": {description: Application state or expected version conflicts.}
+        "422": {description: Request code or expected version is invalid.}
+        "503": {description: OA authorization or EOS persistence is unavailable.}
+  /internal/v2/projects:resolve:
+    get:
+      operationId: PROJECT.PROJECT.RESOLVE
+      tags: [Project]
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes: [service:call]
+      x-nex-business-scope: project:project:read
+      x-nex-side-effect-free: true
+      parameters:
+        - $ref: "#/components/parameters/TenantCodeHeader"
+        - $ref: "#/components/parameters/SubjectHeader"
+        - name: project_code
+          in: query
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 64}
+        - name: active_only
+          in: query
+          required: false
+          schema: {type: boolean, default: false}
+      responses:
+        "200": {description: Exact tenant-scoped Project business-code projection without internal UUIDs.}
+        "401": {description: Service claim is missing or invalid.}
+        "403": {description: Fresh OA Project read authority is denied.}
+        "404": {description: Project code is absent from tenant scope.}
+        "422": {description: "Tenant, subject, or Project code is invalid."}
+        "503": {description: OA authorization or EOS persistence is unavailable.}
   /internal/v2/finance/legal-entities/{company_id}:
     get:
       operationId: FINANCE.LEGAL_ENTITY.GET
@@ -1462,7 +1589,71 @@ components:
     serviceBearer:
       type: http
       scheme: bearer
+  parameters:
+    TenantCodeHeader:
+      name: X-NeX-Tenant-Id
+      in: header
+      required: true
+      schema: {type: string, pattern: "^[A-Z0-9]{4}$"}
+    SubjectHeader:
+      name: X-NeX-Subject-Id
+      in: header
+      required: true
+      schema: {type: string, minLength: 1, maxLength: 128}
+    ProjectRequestCodePath:
+      name: project_request_code
+      in: path
+      required: true
+      schema: {type: string, pattern: "^[A-Z0-9]{4}R[0-9]{6}$"}
   schemas:
+    ProjectApplicationDraftCommand:
+      type: object
+      additionalProperties: false
+      required: [application_id, purpose_type, name, currency]
+      properties:
+        application_id: {type: string, format: uuid}
+        purpose_type: {type: string, enum: [D, M, S, O, I, G]}
+        name: {type: string, minLength: 1, maxLength: 256}
+        parent_project_id: {type: [string, "null"], format: uuid}
+        nvt_project_id: {type: [string, "null"], format: uuid}
+        company_id: {type: [string, "null"], format: uuid}
+        start_date: {type: [string, "null"], format: date}
+        end_date: {type: [string, "null"], format: date}
+        currency: {type: string, pattern: "^[A-Z]{3}$"}
+      oneOf:
+        - required: [parent_project_id]
+          properties:
+            nvt_project_id: {type: "null"}
+        - required: [nvt_project_id]
+          properties:
+            parent_project_id: {type: "null"}
+    ProjectApplicationRevisionCommand:
+      type: object
+      additionalProperties: false
+      required: [expected_version, purpose_type, name, currency]
+      properties:
+        expected_version: {type: integer, minimum: 1}
+        purpose_type: {type: string, enum: [D, M, S, O, I, G]}
+        name: {type: string, minLength: 1, maxLength: 256}
+        parent_project_id: {type: [string, "null"], format: uuid}
+        nvt_project_id: {type: [string, "null"], format: uuid}
+        company_id: {type: [string, "null"], format: uuid}
+        start_date: {type: [string, "null"], format: date}
+        end_date: {type: [string, "null"], format: date}
+        currency: {type: string, pattern: "^[A-Z]{3}$"}
+      oneOf:
+        - required: [parent_project_id]
+          properties:
+            nvt_project_id: {type: "null"}
+        - required: [nvt_project_id]
+          properties:
+            parent_project_id: {type: "null"}
+    ExpectedVersionCommand:
+      type: object
+      additionalProperties: false
+      required: [expected_version]
+      properties:
+        expected_version: {type: integer, minimum: 1}
     ApprovedDocumentEnvelope:
       type: object
       additionalProperties: false

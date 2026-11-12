@@ -16,6 +16,7 @@ MyBee office-work AX Service Phase-1 program.
 9. `NeX_MyBee_Implementation_Slice_Plan_Execution_Matrix_v1.2.json`
 10. `NeX_MyBee_W30_CA01_W20_to_W30_Entry_Reconciliation_v1.0.md`
 11. `NeX_MyBee_W30_CA01_Entry_Decision_v1.0.json`
+12. `NeX_MyBee_W30_CA02_Project_Application_Code_Lifecycle_and_PA_Contract_Closure_v1.0.md`
 
 The Markdown Slice Plan and its Execution Matrix JSON are one planning set.
 The JSON is machine-readable traceability input, not runtime configuration or
@@ -25,6 +26,12 @@ The W30-CA01 pair is the source-backed post-W20 delta. It takes precedence
 only for W30 entry ordering, current migration-number reservations, the
 `MB3-01` wave label, and the scoped `DOCUMENT_SIGNOFF` finalization gap. It
 does not rewrite the remaining v1.2 packet requirements.
+
+W30-CA02 is the subsequent controlled amendment for Project application,
+business codes, lifecycle, Project Agent synchronization, and mandatory
+Project attribution in new MyBee accounting writes. Where those boundaries or
+the `S3-01` migration reservation differ, W30-CA02 takes precedence over
+W30-CA01 while preserving W30-CA01 as historical entry evidence.
 
 ### COA Follow-up Reading Order
 

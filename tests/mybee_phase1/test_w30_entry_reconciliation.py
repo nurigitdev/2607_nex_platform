@@ -8,6 +8,10 @@ ROOT = Path(__file__).resolve().parents[2]
 DOCS = ROOT / "docs/transition/MyBee_Phase1"
 DECISION_PATH = DOCS / "NeX_MyBee_W30_CA01_Entry_Decision_v1.0.json"
 MATRIX_PATH = DOCS / "NeX_MyBee_Implementation_Slice_Plan_Execution_Matrix_v1.2.json"
+CA02_PATH = (
+    DOCS
+    / "NeX_MyBee_W30_CA02_Project_Application_Code_Lifecycle_and_PA_Contract_Closure_v1.0.md"
+)
 MIGRATIONS = ROOT / "database/nex-eos/migrations"
 
 
@@ -39,6 +43,7 @@ def test_w30_ca01_reading_order_and_decision_identity() -> None:
 
     assert "NeX_MyBee_W30_CA01_W20_to_W30_Entry_Reconciliation_v1.0.md" in readme
     assert DECISION_PATH.name in readme
+    assert CA02_PATH.name in readme
     assert decision["schema_version"] == "nex.mybee.w30-ca01.entry-decision.v1"
     assert decision["status"] == "DESIGN_CLOSED_RUNTIME_ENTRY_CONDITIONAL"
     assert decision["w30_order"] == [
@@ -70,10 +75,10 @@ def test_w30_ca01_migration_reservations_follow_actual_inventory() -> None:
         if (MIGRATIONS / f"{version}.sql").exists()
     ]
     assert implemented == reserved_versions[: len(implemented)]
-    expected_highest = max(
-        2529,
-        *(int(version.split("_", 1)[0]) for version in implemented),
-    )
+    ca02 = CA02_PATH.read_text(encoding="utf-8")
+    assert "2531_eos_project_application_lifecycle.sql" in ca02
+    assert "2532_eos_voucher_candidate_v2.sql" in ca02
+    expected_highest = 2531
     assert versions[-1] == expected_highest
 
 

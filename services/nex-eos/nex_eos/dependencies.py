@@ -67,6 +67,10 @@ from .legal_entities import (
 )
 from .organization import SqlAlchemyEosOrganizationRepository
 from .persistence import EosDatabaseRuntime, build_eos_database_runtime
+from .project_applications import (
+    EosProjectApplicationService,
+    SqlAlchemyEosProjectApplicationRepository,
+)
 from .project_memberships import SqlAlchemyEosProjectMembershipRepository
 from .project_operations import EosGovernedProjectService
 from .project_work_assignments import EosProjectWorkAssignmentService
@@ -95,6 +99,7 @@ class EosDependencies:
     organization: SqlAlchemyEosOrganizationRepository | None
     approver_resolution_service: EosApproverResolutionService | None
     projects: SqlAlchemyEosProjectRepository | None
+    project_application_service: EosProjectApplicationService | None
     project_memberships: SqlAlchemyEosProjectMembershipRepository | None
     project_operations: EosGovernedProjectService | None
     project_business_service: EosProjectBusinessService | None
@@ -238,6 +243,19 @@ def build_eos_dependencies(
             service_token=oa_token,
         )
         if oa_token
+        else None
+    )
+    project_application_service = (
+        EosProjectApplicationService(
+            SqlAlchemyEosProjectApplicationRepository(
+                database_runtime.session_factory
+            ),
+            authorization_source,
+            projects,
+        )
+        if database_runtime is not None
+        and authorization_source is not None
+        and projects is not None
         else None
     )
     approved_document_service = (
@@ -455,6 +473,7 @@ def build_eos_dependencies(
         organization=organization,
         approver_resolution_service=approver_resolution_service,
         projects=projects,
+        project_application_service=project_application_service,
         project_memberships=project_memberships,
         project_operations=project_operations,
         project_business_service=project_business_service,

@@ -28,7 +28,14 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from .business_transactions import EOS_METADATA
 
-EOS_PROJECT_STATUSES = frozenset({"ACTIVE", "INACTIVE"})
+EOS_NVT_PROJECT_STATUSES = frozenset({"ACTIVE", "INACTIVE"})
+EOS_PROJECT_STATUSES = frozenset({"ACTIVE", "INACTIVE", "CLOSING", "CLOSED"})
+EOS_PROJECT_TRANSITIONS = {
+    "ACTIVE": frozenset({"INACTIVE", "CLOSING"}),
+    "INACTIVE": frozenset({"ACTIVE"}),
+    "CLOSING": frozenset({"ACTIVE", "CLOSED"}),
+    "CLOSED": frozenset(),
+}
 EOS_PROJECT_MAX_DEPTH = 3
 _SCOPED_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$")
 _CODE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$")
@@ -45,9 +52,7 @@ EOS_NVT_PROJECT_TABLE = Table(
     Column("version", Integer, nullable=False),
     Column("created_at", DateTime(timezone=True), nullable=False),
     Column("updated_at", DateTime(timezone=True), nullable=False),
-    UniqueConstraint(
-        "tenant_id", "nvt_project_code", name="ux_eos_nvt_project_code"
-    ),
+    UniqueConstraint("tenant_id", "nvt_project_code", name="ux_eos_nvt_project_code"),
 )
 Index(
     "ix_eos_nvt_project_status",
@@ -62,6 +67,22 @@ EOS_PROJECT_TABLE = Table(
     Column("tenant_id", String(128), primary_key=True),
     Column("project_id", Uuid(as_uuid=False), primary_key=True),
     Column("project_code", String(64), nullable=False),
+    Column("project_request_code", String(11), nullable=True),
+    Column("purpose_type", String(1), nullable=True),
+    Column(
+        "origin",
+        String(32),
+        nullable=False,
+        server_default="LEGACY_DIRECT",
+    ),
+    Column("approval_evidence_ref", String(256), nullable=True),
+    Column("approval_evidence_hash", String(71), nullable=True),
+    Column(
+        "agent_sync_state",
+        String(16),
+        nullable=False,
+        server_default="IN_SYNC",
+    ),
     Column("name", String(256), nullable=False),
     Column("parent_project_id", Uuid(as_uuid=False), nullable=True),
     Column("nvt_project_id", Uuid(as_uuid=False), nullable=True),
@@ -74,6 +95,11 @@ EOS_PROJECT_TABLE = Table(
     Column("created_at", DateTime(timezone=True), nullable=False),
     Column("updated_at", DateTime(timezone=True), nullable=False),
     UniqueConstraint("tenant_id", "project_code", name="ux_eos_project_code"),
+    UniqueConstraint(
+        "tenant_id",
+        "project_request_code",
+        name="ux_eos_project_request_code",
+    ),
     ForeignKeyConstraint(
         ("tenant_id", "nvt_project_id"),
         ("eos_nvt_project.tenant_id", "eos_nvt_project.nvt_project_id"),
@@ -89,8 +115,22 @@ EOS_PROJECT_TABLE = Table(
         "(parent_project_id IS NOT NULL AND nvt_project_id IS NULL)",
         name="ck_eos_project_lineage",
     ),
+    CheckConstraint("hierarchy_depth BETWEEN 1 AND 3", name="ck_eos_project_depth"),
     CheckConstraint(
-        "hierarchy_depth BETWEEN 1 AND 3", name="ck_eos_project_depth"
+        "status IN ('ACTIVE', 'INACTIVE', 'CLOSING', 'CLOSED')",
+        name="ck_eos_project_status",
+    ),
+    CheckConstraint(
+        "origin IN ('LEGACY_DIRECT', 'APPROVED_APPLICATION')",
+        name="ck_eos_project_origin",
+    ),
+    CheckConstraint(
+        "purpose_type IS NULL OR purpose_type IN ('D', 'M', 'S', 'O', 'I', 'G')",
+        name="ck_eos_project_purpose",
+    ),
+    CheckConstraint(
+        "agent_sync_state IN ('PENDING', 'IN_SYNC', 'FAILED')",
+        name="ck_eos_project_agent_sync",
     ),
 )
 Index(
@@ -145,6 +185,12 @@ class ProjectInput:
     end_date: date | None = None
     currency: str = "KRW"
     version: int = 1
+    project_request_code: str | None = None
+    purpose_type: str | None = None
+    origin: str = "LEGACY_DIRECT"
+    approval_evidence_ref: str | None = None
+    approval_evidence_hash: str | None = None
+    agent_sync_state: str = "IN_SYNC"
 
 
 class SqlAlchemyEosProjectRepository:
@@ -177,7 +223,7 @@ class SqlAlchemyEosProjectRepository:
             "nvt_project_id": _uuid("nvt_project_id", value.nvt_project_id),
             "nvt_project_code": _code("nvt_project_code", value.nvt_project_code),
             "name": _text("name", value.name, 256),
-            "status": _status(value.status),
+            "status": _nvt_status(value.status),
             "version": _positive_int("version", value.version),
             "created_at": now,
             "updated_at": now,
@@ -209,9 +255,7 @@ class SqlAlchemyEosProjectRepository:
     ) -> dict[str, Any]:
         tenant_id = _scoped_id("tenant_id", value.tenant_id)
         project_id = _uuid("project_id", value.project_id)
-        parent_project_id = _optional_uuid(
-            "parent_project_id", value.parent_project_id
-        )
+        parent_project_id = _optional_uuid("parent_project_id", value.parent_project_id)
         nvt_project_id = _optional_uuid("nvt_project_id", value.nvt_project_id)
         version = _positive_int("version", value.version)
         if version != 1:
@@ -233,11 +277,23 @@ class SqlAlchemyEosProjectRepository:
             "tenant_id": tenant_id,
             "project_id": project_id,
             "project_code": _code("project_code", value.project_code),
+            "project_request_code": _optional_project_request_code(
+                value.project_request_code
+            ),
+            "purpose_type": _optional_purpose_type(value.purpose_type),
+            "origin": _project_origin(value.origin),
+            "approval_evidence_ref": _optional_text(
+                "approval_evidence_ref", value.approval_evidence_ref, 256
+            ),
+            "approval_evidence_hash": _optional_hash_ref(
+                "approval_evidence_hash", value.approval_evidence_hash
+            ),
+            "agent_sync_state": _agent_sync_state(value.agent_sync_state),
             "name": _text("name", value.name, 256),
             "parent_project_id": parent_project_id,
             "nvt_project_id": nvt_project_id,
             "hierarchy_depth": depth,
-            "status": _status(value.status),
+            "status": _project_status(value.status),
             "start_date": start_date,
             "end_date": end_date,
             "currency": _currency(value.currency),
@@ -245,6 +301,7 @@ class SqlAlchemyEosProjectRepository:
             "created_at": now,
             "updated_at": now,
         }
+        _require_project_origin_lineage(record)
         session.execute(EOS_PROJECT_TABLE.insert().values(**record))
         return dict(record)
 
@@ -268,6 +325,102 @@ class SqlAlchemyEosProjectRepository:
             raise _persistence_error() from exc
         return dict(row) if row is not None else None
 
+    def get_project_by_code(
+        self,
+        *,
+        tenant_id: str,
+        project_code: str,
+        active_only: bool = False,
+    ) -> dict[str, Any] | None:
+        statement = select(EOS_PROJECT_TABLE).where(
+            EOS_PROJECT_TABLE.c.tenant_id == _scoped_id("tenant_id", tenant_id),
+            EOS_PROJECT_TABLE.c.project_code == _code("project_code", project_code),
+        )
+        if active_only:
+            statement = statement.where(EOS_PROJECT_TABLE.c.status == "ACTIVE")
+        try:
+            with self._session_factory() as session:
+                row = session.execute(statement).mappings().one_or_none()
+        except SQLAlchemyError as exc:
+            raise _persistence_error() from exc
+        return dict(row) if row is not None else None
+
+    def transition_project_status(
+        self,
+        *,
+        tenant_id: str,
+        project_code: str,
+        target_status: str,
+        expected_version: int,
+    ) -> dict[str, Any]:
+        tenant_id = _scoped_id("tenant_id", tenant_id)
+        project_code = _code("project_code", project_code)
+        target_status = _project_status(target_status)
+        expected_version = _positive_int("expected_version", expected_version)
+        try:
+            with build_unit_of_work(self._session_factory) as transaction:
+                current = (
+                    transaction.db.execute(
+                        select(EOS_PROJECT_TABLE)
+                        .where(
+                            EOS_PROJECT_TABLE.c.tenant_id == tenant_id,
+                            EOS_PROJECT_TABLE.c.project_code == project_code,
+                        )
+                        .with_for_update()
+                    )
+                    .mappings()
+                    .one_or_none()
+                )
+                if current is None:
+                    raise EosProjectError(
+                        "EOS_PROJECT_NOT_FOUND",
+                        "Project was not found in tenant scope",
+                        status_code=404,
+                    )
+                current_version = int(current["version"])
+                if (
+                    current["status"] == target_status
+                    and current_version == expected_version + 1
+                ):
+                    return dict(current)
+                if current_version != expected_version:
+                    raise EosProjectError(
+                        "EOS_PROJECT_VERSION_CONFLICT",
+                        "Project version changed before lifecycle transition",
+                        status_code=409,
+                    )
+                if target_status not in EOS_PROJECT_TRANSITIONS[current["status"]]:
+                    raise EosProjectError(
+                        "EOS_PROJECT_TRANSITION_DENIED",
+                        f"Project cannot transition from {current['status']} to {target_status}",
+                        status_code=409,
+                    )
+                changed = {
+                    "status": target_status,
+                    "version": expected_version + 1,
+                    "updated_at": datetime.now(UTC),
+                }
+                result = transaction.db.execute(
+                    update(EOS_PROJECT_TABLE)
+                    .where(
+                        EOS_PROJECT_TABLE.c.tenant_id == tenant_id,
+                        EOS_PROJECT_TABLE.c.project_id == current["project_id"],
+                        EOS_PROJECT_TABLE.c.version == expected_version,
+                    )
+                    .values(**changed)
+                )
+                if result.rowcount != 1:
+                    raise EosProjectError(
+                        "EOS_PROJECT_VERSION_CONFLICT",
+                        "Project version changed before lifecycle transition",
+                        status_code=409,
+                    )
+                return {**dict(current), **changed}
+        except EosProjectError:
+            raise
+        except SQLAlchemyError as exc:
+            raise _persistence_error() from exc
+
     def find_project_tenants(
         self,
         *,
@@ -276,9 +429,7 @@ class SqlAlchemyEosProjectRepository:
     ) -> tuple[str, ...]:
         statement = (
             select(EOS_PROJECT_TABLE.c.tenant_id)
-            .where(
-                EOS_PROJECT_TABLE.c.project_id == _uuid("project_id", project_id)
-            )
+            .where(EOS_PROJECT_TABLE.c.project_id == _uuid("project_id", project_id))
             .order_by(EOS_PROJECT_TABLE.c.tenant_id)
             .limit(_bounded_limit(limit))
         )
@@ -311,10 +462,7 @@ class SqlAlchemyEosProjectRepository:
         descendants = select(EOS_PROJECT_TABLE).join(
             project_tree,
             (EOS_PROJECT_TABLE.c.tenant_id == project_tree.c.tenant_id)
-            & (
-                EOS_PROJECT_TABLE.c.parent_project_id
-                == project_tree.c.project_id
-            ),
+            & (EOS_PROJECT_TABLE.c.parent_project_id == project_tree.c.project_id),
         )
         project_tree = project_tree.union_all(descendants)
         statement = (
@@ -417,9 +565,7 @@ class SqlAlchemyEosProjectRepository:
             return 1
 
         if nvt_project_id is not None:
-            raise _invalid(
-                "nvt_project_id", "must be omitted for a Child Project"
-            )
+            raise _invalid("nvt_project_id", "must be omitted for a Child Project")
         if parent_project_id == project_id:
             raise EosProjectError(
                 "EOS_PROJECT_CYCLE",
@@ -438,15 +584,19 @@ class SqlAlchemyEosProjectRepository:
                     status_code=409,
                 )
             visited.add(current_id)
-            row = session.execute(
-                select(
-                    EOS_PROJECT_TABLE.c.parent_project_id,
-                    EOS_PROJECT_TABLE.c.hierarchy_depth,
-                ).where(
-                    EOS_PROJECT_TABLE.c.tenant_id == tenant_id,
-                    EOS_PROJECT_TABLE.c.project_id == current_id,
+            row = (
+                session.execute(
+                    select(
+                        EOS_PROJECT_TABLE.c.parent_project_id,
+                        EOS_PROJECT_TABLE.c.hierarchy_depth,
+                    ).where(
+                        EOS_PROJECT_TABLE.c.tenant_id == tenant_id,
+                        EOS_PROJECT_TABLE.c.project_id == current_id,
+                    )
                 )
-            ).mappings().one_or_none()
+                .mappings()
+                .one_or_none()
+            )
             if row is None:
                 raise EosProjectError(
                     "EOS_PROJECT_PARENT_NOT_FOUND",
@@ -504,12 +654,16 @@ class SqlAlchemyEosProjectRepository:
         )
         if status is not None:
             statement = statement.where(
-                EOS_NVT_PROJECT_TABLE.c.status == _status(status)
+                EOS_NVT_PROJECT_TABLE.c.status == _nvt_status(status)
             )
-        statement = statement.order_by(
-            EOS_NVT_PROJECT_TABLE.c.nvt_project_code,
-            EOS_NVT_PROJECT_TABLE.c.nvt_project_id,
-        ).limit(_bounded_limit(limit)).offset(_bounded_offset(offset))
+        statement = (
+            statement.order_by(
+                EOS_NVT_PROJECT_TABLE.c.nvt_project_code,
+                EOS_NVT_PROJECT_TABLE.c.nvt_project_id,
+            )
+            .limit(_bounded_limit(limit))
+            .offset(_bounded_offset(offset))
+        )
         try:
             with self._session_factory() as session:
                 rows = session.execute(statement).mappings().all()
@@ -538,7 +692,7 @@ class SqlAlchemyEosProjectRepository:
         if value.name is not None:
             requested_changes["name"] = _text("name", value.name, 256)
         if value.status is not None:
-            requested_changes["status"] = _status(value.status)
+            requested_changes["status"] = _nvt_status(value.status)
         if not requested_changes:
             raise _invalid("update", "must change name or status")
 
@@ -575,7 +729,10 @@ class SqlAlchemyEosProjectRepository:
         if not semantic_changes:
             return dict(current)
 
-        if current["status"] == "ACTIVE" and semantic_changes.get("status") == "INACTIVE":
+        if (
+            current["status"] == "ACTIVE"
+            and semantic_changes.get("status") == "INACTIVE"
+        ):
             active_project_id = session.execute(
                 select(EOS_PROJECT_TABLE.c.project_id)
                 .where(
@@ -616,11 +773,98 @@ class SqlAlchemyEosProjectRepository:
         return {**dict(current), **changes}
 
 
-def _status(value: object) -> str:
+def _nvt_status(value: object) -> str:
+    normalized = str(value).strip().upper() if value is not None else ""
+    if normalized not in EOS_NVT_PROJECT_STATUSES:
+        raise _invalid("status", f"must be one of {sorted(EOS_NVT_PROJECT_STATUSES)}")
+    return normalized
+
+
+def _project_status(value: object) -> str:
     normalized = str(value).strip().upper() if value is not None else ""
     if normalized not in EOS_PROJECT_STATUSES:
         raise _invalid("status", f"must be one of {sorted(EOS_PROJECT_STATUSES)}")
     return normalized
+
+
+def _optional_project_request_code(value: object) -> str | None:
+    if value is None:
+        return None
+    normalized = str(value).strip().upper()
+    if re.fullmatch(r"[A-Z0-9]{4}R[0-9]{6}", normalized) is None:
+        raise _invalid("project_request_code", "has invalid request-code syntax")
+    return normalized
+
+
+def _optional_purpose_type(value: object) -> str | None:
+    if value is None:
+        return None
+    normalized = str(value).strip().upper()
+    if normalized not in {"D", "M", "S", "O", "I", "G"}:
+        raise _invalid("purpose_type", "has invalid purpose type")
+    return normalized
+
+
+def _project_origin(value: object) -> str:
+    normalized = str(value).strip().upper() if value is not None else ""
+    if normalized not in {"LEGACY_DIRECT", "APPROVED_APPLICATION"}:
+        raise _invalid("origin", "has invalid Project origin")
+    return normalized
+
+
+def _agent_sync_state(value: object) -> str:
+    normalized = str(value).strip().upper() if value is not None else ""
+    if normalized not in {"PENDING", "IN_SYNC", "FAILED"}:
+        raise _invalid("agent_sync_state", "has invalid synchronization state")
+    return normalized
+
+
+def _optional_text(field_name: str, value: object, maximum: int) -> str | None:
+    return None if value is None else _text(field_name, value, maximum)
+
+
+def _optional_hash_ref(field_name: str, value: object) -> str | None:
+    if value is None:
+        return None
+    normalized = str(value).strip()
+    if re.fullmatch(r"sha256:[0-9a-f]{64}", normalized) is None:
+        raise _invalid(field_name, "must be a SHA-256 hash reference")
+    return normalized
+
+
+def _require_project_origin_lineage(record: dict[str, Any]) -> None:
+    if record["origin"] == "LEGACY_DIRECT":
+        if (
+            record["project_request_code"] is not None
+            or record["purpose_type"] is not None
+        ):
+            raise _invalid(
+                "origin", "LEGACY_DIRECT must not claim approved application lineage"
+            )
+        return
+    required = (
+        "project_request_code",
+        "purpose_type",
+        "approval_evidence_ref",
+        "approval_evidence_hash",
+    )
+    if any(record[field] is None for field in required):
+        raise _invalid(
+            "origin", "APPROVED_APPLICATION requires request and approval lineage"
+        )
+    if re.fullmatch(r"[A-Z0-9]{4}[DMSOIG][0-9]{6}", record["project_code"]) is None:
+        raise _invalid(
+            "project_code",
+            "must be an 11-character approved Project registration code",
+        )
+    expected = (
+        f"{record['project_request_code'][:4]}{record['purpose_type']}"
+        f"{record['project_code'][5:]}"
+    )
+    if record["project_code"] != expected:
+        raise _invalid(
+            "project_code", "does not match request tenant and approved purpose"
+        )
 
 
 def _uuid(field_name: str, value: object) -> str:

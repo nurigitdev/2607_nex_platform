@@ -18,6 +18,7 @@ from .dependencies import build_eos_dependencies
 from .fx_api import register_fx_rate_routes
 from .legal_entity_api import register_legal_entity_routes
 from .organization_api import register_organization_routes
+from .project_application_api import register_project_application_routes
 from .project_api import register_project_routes
 from .project_business_api import register_project_business_routes
 from .project_work_assignment_api import register_project_work_assignment_routes
@@ -30,7 +31,7 @@ from .wa_project_verification import (
 )
 
 SERVICE_SPEC = SERVICE_SPECS["nex-eos"]
-CONTRACT_CATALOG_VERSION = "p8-s07"
+CONTRACT_CATALOG_VERSION = "mybee-w30-s00a"
 
 
 def create_eos_app(
@@ -67,6 +68,9 @@ def create_eos_app(
     app.state.eos_organization = dependencies.organization
     app.state.eos_approver_resolution_service = dependencies.approver_resolution_service
     app.state.eos_projects = dependencies.projects
+    app.state.eos_project_application_service = (
+        dependencies.project_application_service
+    )
     app.state.eos_project_memberships = dependencies.project_memberships
     app.state.eos_project_operations = dependencies.project_operations
     app.state.eos_project_business_service = dependencies.project_business_service
@@ -105,6 +109,7 @@ def create_eos_app(
     register_approved_document_routes(app)
     register_scoped_approval_routes(app)
     register_organization_routes(app)
+    register_project_application_routes(app)
     register_project_routes(app)
     register_project_business_routes(app)
     register_project_work_assignment_routes(app)
