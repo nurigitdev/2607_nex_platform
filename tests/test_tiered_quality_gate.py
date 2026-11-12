@@ -17,6 +17,11 @@ def _minimal_root(tmp_path: Path) -> Path:
         "tests/test_ae_p4_contract.py",
         "tests/test_ae_p5_plan.py",
         "tests/test_ae_p6_runtime.py",
+        "tests/test_gb2_ca00_s20b_trust_approval_boundaries.py",
+        "tests/test_nex_eos_alpha.py",
+        "tests/test_nex_oa_eos_mybee_project_entitlement_sync.py",
+        "tests/test_nex_platform_p8_demo_domain_composition.py",
+        "tests/test_nex_runtime_p8_demo_domain_activation.py",
         "tests/test_platform_alpha.py",
         "tests/test_s97_example_closure.py",
         "scripts/smoke/run_current_smoke.py",
@@ -133,6 +138,30 @@ def test_ae_api_slice_profile_includes_owned_transition_runtime_regression(
     assert "tests/test_ae_p4_contract.py" in plan.commands[0]
     assert "tests/test_ae_p5_plan.py" in plan.commands[0]
     assert "tests/test_ae_p6_runtime.py" in plan.commands[0]
+
+
+def test_eos_slice_profile_includes_cross_service_owned_regression(
+    tmp_path: Path,
+) -> None:
+    root = _minimal_root(tmp_path)
+
+    plan = gate.build_slice_plan(
+        root=root,
+        python_bin="python-test",
+        service="nex-eos",
+    )
+
+    pytest_command = plan.commands[0]
+    expected = {
+        "tests/test_nex_eos_alpha.py",
+        "tests/test_gb2_ca00_s20b_trust_approval_boundaries.py",
+        "tests/test_nex_oa_eos_mybee_project_entitlement_sync.py",
+        "tests/test_nex_platform_p8_demo_domain_composition.py",
+        "tests/test_nex_runtime_p8_demo_domain_activation.py",
+    }
+    assert expected <= set(pytest_command)
+    assert plan.test_count == len(expected)
+    assert "--cov=services/nex-eos/nex_eos" in pytest_command
 
 
 def test_platform_slice_profile_requires_explicit_changed_coverage_scope(
