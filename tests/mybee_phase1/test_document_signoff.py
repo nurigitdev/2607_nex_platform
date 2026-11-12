@@ -15,6 +15,7 @@ from mybee_ax.domain.documents import (
     BUSINESS_PROPOSAL_TEMPLATE_VERSION,
     BusinessProposalAttachment,
     BusinessProposalContractError,
+    BusinessProposalProjectRef,
     build_business_proposal_form,
     calculate_business_proposal_template_digest,
     load_business_proposal_template,
@@ -27,10 +28,12 @@ from mybee_ax.integrations.nex_business_approval_client import (
     build_business_proposal_approval_request,
 )
 
-TENANT = "tenant-mb2-01"
+TENANT = "VO00"
 COMPANY_ID = "26000000-0000-4000-8000-000000000001"
 PROJECT_A = "26000000-0000-4000-8000-000000000002"
 PROJECT_B = "26000000-0000-4000-8000-000000000003"
+PROJECT_CODE_A = "VO00D260001"
+PROJECT_CODE_B = "VO00D260002"
 CASE_ID = "26000000-0000-4000-8000-000000000004"
 POLICY_ID = "26000000-0000-4000-8000-000000000005"
 OPERATION_ID = "26000000-0000-4000-8000-000000000006"
@@ -60,7 +63,10 @@ def _proposal(**overrides):
         "purpose": "개발팀 공용 테스트 장비 구매",
         "business_justification": "프로젝트 A와 B에서 공동 사용합니다.",
         "scope_type": "PROJECT_SET",
-        "project_ids": (PROJECT_B, PROJECT_A),
+        "project_refs": (
+            BusinessProposalProjectRef(PROJECT_B, PROJECT_CODE_B),
+            BusinessProposalProjectRef(PROJECT_A, PROJECT_CODE_A),
+        ),
         "requested_amount": Decimal(1250000),
         "currency": "KRW",
         "requester_subject_id": "employee-1004",
@@ -156,7 +162,7 @@ def _receipt(request=None):
 def _envelope(proposal=None):
     proposal = proposal or _proposal()
     return {
-        "schema_version": "eos_approved_document_envelope.v1",
+        "schema_version": "eos_approved_document_envelope.v2",
         "tenant_id": TENANT,
         "envelope_id": ENVELOPE_ID,
         "company_id": COMPANY_ID,
@@ -174,6 +180,7 @@ def _envelope(proposal=None):
         "scope_type": proposal.scope_type,
         "project_set_hash": "sha256:" + "2" * 64,
         "allowed_project_ids": list(proposal.project_ids),
+        "allowed_project_codes": list(proposal.project_codes),
         "approved_amount": "1250000.0000",
         "approved_currency": "KRW",
         "remaining_amount": "1250000.0000",
@@ -223,7 +230,7 @@ def test_template_is_immutable_admitted_provider_contract() -> None:
     [
         (lambda item: item.pop("status"), "MYBEE_PROPOSAL_TEMPLATE_INVALID"),
         (
-            lambda item: item.__setitem__("template_version", "2.0.0"),
+            lambda item: item.__setitem__("template_version", "3.0.0"),
             "MYBEE_PROPOSAL_TEMPLATE_INVALID",
         ),
         (
@@ -256,7 +263,7 @@ def test_template_is_immutable_admitted_provider_contract() -> None:
 )
 def test_template_drift_fails_closed(tmp_path, mutator, code) -> None:
     source = json.loads(
-        Path("domains/mybee/templates/d04/business_proposal.v1.json").read_text(
+        Path("domains/mybee/templates/d04/business_proposal.v2.json").read_text(
             encoding="utf-8"
         )
     )
@@ -280,9 +287,12 @@ def test_template_unreadable_or_non_object_fails_closed(tmp_path, raw) -> None:
     }
 
 
-def test_proposal_normalizes_projects_attachments_and_hashes_deterministically() -> None:
+def test_proposal_normalizes_projects_attachments_and_hashes_deterministically() -> (
+    None
+):
     proposal = _proposal()
     assert proposal.project_ids == (PROJECT_A, PROJECT_B)
+    assert proposal.project_codes == (PROJECT_CODE_A, PROJECT_CODE_B)
     assert tuple(item.object_ref for item in proposal.attachments) == (
         "wa.private-object:receipt-1",
         "wa.private-object:receipt-2",
@@ -290,10 +300,15 @@ def test_proposal_normalizes_projects_attachments_and_hashes_deterministically()
     assert proposal.document_content_hash.startswith("sha256:")
     assert proposal.attachment_manifest_hash.startswith("sha256:")
     assert proposal.approval_subject_hash.startswith("sha256:")
-    assert proposal.subject_ref == "mybee.business-proposal:proposal-2026-0042:revision:1"
+    assert (
+        proposal.subject_ref == "mybee.business-proposal:proposal-2026-0042:revision:1"
+    )
 
     reordered = _proposal(
-        project_ids=(PROJECT_A, PROJECT_B),
+        project_refs=(
+            BusinessProposalProjectRef(PROJECT_A, PROJECT_CODE_A),
+            BusinessProposalProjectRef(PROJECT_B, PROJECT_CODE_B),
+        ),
         attachments=(_attachment(1), _attachment(2)),
         valid_from=datetime(2026, 11, 12, 15, 0, tzinfo=timezone(timedelta(hours=9))),
         valid_until=datetime(2026, 12, 12, 15, 0, tzinfo=timezone(timedelta(hours=9))),
@@ -316,11 +331,25 @@ def test_proposal_normalizes_projects_attachments_and_hashes_deterministically()
         {"purpose": " bad"},
         {"business_justification": "bad\x00text"},
         {"scope_type": "PERSONAL"},
-        {"scope_type": "COMPANY", "project_ids": (PROJECT_A,)},
-        {"scope_type": "PROJECT", "project_ids": ()},
-        {"scope_type": "PROJECT_SET", "project_ids": (PROJECT_A,)},
-        {"project_ids": (PROJECT_A, PROJECT_A)},
-        {"project_ids": "not-an-array"},
+        {"scope_type": "COMPANY"},
+        {"scope_type": "PROJECT", "project_refs": ()},
+        {
+            "scope_type": "PROJECT_SET",
+            "project_refs": (BusinessProposalProjectRef(PROJECT_A, PROJECT_CODE_A),),
+        },
+        {
+            "project_refs": (
+                BusinessProposalProjectRef(PROJECT_A, PROJECT_CODE_A),
+                BusinessProposalProjectRef(PROJECT_A, PROJECT_CODE_B),
+            )
+        },
+        {"project_refs": "not-an-array"},
+        {
+            "project_refs": (
+                BusinessProposalProjectRef(PROJECT_A, "VO00R260001"),
+                BusinessProposalProjectRef(PROJECT_B, PROJECT_CODE_B),
+            )
+        },
         {"requested_amount": Decimal(0)},
         {"requested_amount": Decimal("1.00001")},
         {"requested_amount": object()},
@@ -546,12 +575,10 @@ def test_provider_openapi_operations_remain_canonical() -> None:
     spec = yaml.safe_load(
         Path("contracts/openapi/nex-eos.openapi.yaml").read_text(encoding="utf-8")
     )
-    approval = spec["paths"]["/internal/v2/finance/accounting-approval-cases"][
-        "post"
+    approval = spec["paths"]["/internal/v2/finance/accounting-approval-cases"]["post"]
+    approved = spec["paths"]["/internal/v2/finance/approved-documents/{envelope_id}"][
+        "get"
     ]
-    approved = spec["paths"][
-        "/internal/v2/finance/approved-documents/{envelope_id}"
-    ]["get"]
     assert approval["operationId"] == "FINANCE.ACCOUNTING_APPROVAL.REQUEST"
     assert approval["x-nex-business-scope"] == "finance:journal:request-approval"
     assert approved["operationId"] == "BUSINESS.DOCUMENT_APPROVED.GET"

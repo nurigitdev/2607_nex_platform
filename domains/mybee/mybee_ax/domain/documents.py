@@ -19,16 +19,15 @@ GET_APPROVED_DOCUMENT_OPERATION = "BUSINESS.DOCUMENT_APPROVED.GET"
 GET_APPROVED_DOCUMENT_PATH = "/internal/v2/finance/approved-documents/{envelope_id}"
 APPROVED_DOCUMENT_STATES = frozenset({"ACTIVE", "REVOKED", "EXPIRED", "SUPERSEDED"})
 APPROVED_DOCUMENT_SCOPES = frozenset({"COMPANY", "PROJECT", "PROJECT_SET"})
-BUSINESS_PROPOSAL_TEMPLATE_SCHEMA = "nex.mybee.business-proposal-template.v1"
-BUSINESS_PROPOSAL_SCHEMA = "nex.mybee.business-proposal.v1"
+BUSINESS_PROPOSAL_TEMPLATE_SCHEMA = "nex.mybee.business-proposal-template.v2"
+BUSINESS_PROPOSAL_SCHEMA = "nex.mybee.business-proposal.v2"
 BUSINESS_PROPOSAL_TEMPLATE_ID = "mybee.d04.business-proposal"
-BUSINESS_PROPOSAL_TEMPLATE_VERSION = "1.0.0"
+BUSINESS_PROPOSAL_TEMPLATE_VERSION = "2.0.0"
 BUSINESS_PROPOSAL_TEMPLATE_STATUS = "EOS_CONSUMER_ADMITTED"
 BUSINESS_PROPOSAL_DOCUMENT_TYPE = "BUSINESS_PROPOSAL"
 BUSINESS_PROPOSAL_WORK_CODE = "FL0004011"
 DEFAULT_BUSINESS_PROPOSAL_TEMPLATE_PATH = (
-    Path(__file__).resolve().parents[2]
-    / "templates/d04/business_proposal.v1.json"
+    Path(__file__).resolve().parents[2] / "templates/d04/business_proposal.v2.json"
 )
 _BUSINESS_PROPOSAL_REQUIRED_FIELDS = (
     "proposal_id",
@@ -38,7 +37,7 @@ _BUSINESS_PROPOSAL_REQUIRED_FIELDS = (
     "purpose",
     "business_justification",
     "scope_type",
-    "project_ids",
+    "project_refs",
     "requested_amount",
     "currency",
     "requester_subject_id",
@@ -48,6 +47,7 @@ _BUSINESS_PROPOSAL_REQUIRED_FIELDS = (
 _SCOPED_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:@/-]{0,255}$")
 _WORK_CODE = re.compile(r"^FL[0-9]{7}$")
 _CURRENCY = re.compile(r"^[A-Z]{3}$")
+_PROJECT_REGISTRATION_CODE = re.compile(r"^[A-Z0-9]{4}[DMSOIG][0-9]{6}$")
 _FIELDS = frozenset(
     {
         "schema_version",
@@ -84,6 +84,7 @@ _FIELDS = frozenset(
         "created_at",
     }
 )
+_V2_FIELDS = _FIELDS | {"allowed_project_codes"}
 
 
 class ApprovedDocumentContractError(ValueError):
@@ -108,6 +109,12 @@ class BusinessProposalAttachment:
 
 
 @dataclass(frozen=True)
+class BusinessProposalProjectRef:
+    project_id: str
+    project_code: str
+
+
+@dataclass(frozen=True)
 class BusinessProposalForm:
     tenant_id: str
     proposal_id: str
@@ -117,7 +124,7 @@ class BusinessProposalForm:
     purpose: str
     business_justification: str
     scope_type: str
-    project_ids: tuple[str, ...]
+    project_refs: tuple[BusinessProposalProjectRef, ...]
     requested_amount: Decimal
     currency: str
     requester_subject_id: str
@@ -128,6 +135,14 @@ class BusinessProposalForm:
     template_version: str = BUSINESS_PROPOSAL_TEMPLATE_VERSION
     document_type: str = BUSINESS_PROPOSAL_DOCUMENT_TYPE
     work_code: str = BUSINESS_PROPOSAL_WORK_CODE
+
+    @property
+    def project_ids(self) -> tuple[str, ...]:
+        return tuple(item.project_id for item in self.project_refs)
+
+    @property
+    def project_codes(self) -> tuple[str, ...]:
+        return tuple(item.project_code for item in self.project_refs)
 
     @property
     def subject_ref(self) -> str:
@@ -145,13 +160,13 @@ class BusinessProposalForm:
     def approval_subject_hash(self) -> str:
         return semantic_sha256_hash_ref(
             {
-                "schema_version": "nex.mybee.business-proposal-approval.v1",
+                "schema_version": "nex.mybee.business-proposal-approval.v2",
                 "tenant_id": self.tenant_id,
                 "proposal_id": self.proposal_id,
                 "revision": self.revision,
                 "company_id": self.company_id,
                 "scope_type": self.scope_type,
-                "project_ids": list(self.project_ids),
+                "project_refs": self._project_ref_wire(),
                 "requested_amount": _decimal_text(self.requested_amount),
                 "currency": self.currency,
                 "document_content_hash": self.document_content_hash,
@@ -179,7 +194,7 @@ class BusinessProposalForm:
             "purpose": self.purpose,
             "business_justification": self.business_justification,
             "scope_type": self.scope_type,
-            "project_ids": list(self.project_ids),
+            "project_refs": self._project_ref_wire(),
             "requested_amount": _decimal_text(self.requested_amount),
             "currency": self.currency,
             "requester_subject_id": self.requester_subject_id,
@@ -190,6 +205,12 @@ class BusinessProposalForm:
                 else None
             ),
         }
+
+    def _project_ref_wire(self) -> list[dict[str, str]]:
+        return [
+            {"project_id": item.project_id, "project_code": item.project_code}
+            for item in self.project_refs
+        ]
 
     def attachment_manifest(self) -> Mapping[str, Any]:
         return {
@@ -219,7 +240,7 @@ def build_business_proposal_form(
     purpose: str,
     business_justification: str,
     scope_type: str,
-    project_ids: Sequence[str],
+    project_refs: Sequence[BusinessProposalProjectRef],
     requested_amount: Decimal,
     currency: str,
     requester_subject_id: str,
@@ -230,15 +251,15 @@ def build_business_proposal_form(
     admitted_scope = _proposal_choice(
         "scope_type", scope_type, APPROVED_DOCUMENT_SCOPES
     )
-    admitted_projects = _proposal_projects(project_ids)
+    admitted_projects = _proposal_projects(project_refs, tenant_id=tenant_id)
     if (
-        (admitted_scope == "COMPANY" and admitted_projects)
+        admitted_scope == "COMPANY"
         or (admitted_scope == "PROJECT" and len(admitted_projects) != 1)
         or (admitted_scope == "PROJECT_SET" and len(admitted_projects) < 2)
     ):
         raise _proposal_error(
             "MYBEE_PROPOSAL_SCOPE_INVALID",
-            "scope type and Project set do not agree",
+            "new MyBee proposals require a non-empty approved Project scope",
         )
     admitted_valid_from = _proposal_datetime("valid_from", valid_from)
     admitted_valid_until = (
@@ -262,7 +283,7 @@ def build_business_proposal_form(
             "business_justification", business_justification, 4000
         ),
         scope_type=admitted_scope,
-        project_ids=admitted_projects,
+        project_refs=admitted_projects,
         requested_amount=_proposal_positive_decimal(
             "requested_amount", requested_amount
         ),
@@ -317,7 +338,7 @@ def load_business_proposal_template(
         BUSINESS_PROPOSAL_TEMPLATE_SCHEMA,
         BUSINESS_PROPOSAL_TEMPLATE_ID,
         BUSINESS_PROPOSAL_TEMPLATE_VERSION,
-        1,
+        2,
         BUSINESS_PROPOSAL_TEMPLATE_STATUS,
         BUSINESS_PROPOSAL_DOCUMENT_TYPE,
         BUSINESS_PROPOSAL_WORK_CODE,
@@ -362,6 +383,7 @@ def load_business_proposal_template(
             "direct_wc_submission": False,
             "service_private_imports": False,
             "approved_document_creation_owned_by_eos": True,
+            "user_facing_project_code_only": True,
         }.items()
     ):
         raise _proposal_error(
@@ -409,10 +431,19 @@ def build_approved_document_request(
 def admit_approved_document_envelope(
     value: object, *, tenant_id: str, envelope_id: str
 ) -> Mapping[str, Any]:
-    if not isinstance(value, Mapping) or set(value) != _FIELDS:
+    if not isinstance(value, Mapping):
         raise _error("EOS_APPROVED_DOCUMENT_FIELDS_INVALID", "fields drifted")
     item = dict(value)
-    if item["schema_version"] != "eos_approved_document_envelope.v1":
+    schema_version = item.get("schema_version")
+    expected_fields = (
+        _V2_FIELDS if schema_version == "eos_approved_document_envelope.v2" else _FIELDS
+    )
+    if set(item) != expected_fields:
+        raise _error("EOS_APPROVED_DOCUMENT_FIELDS_INVALID", "fields drifted")
+    if schema_version not in {
+        "eos_approved_document_envelope.v1",
+        "eos_approved_document_envelope.v2",
+    }:
         raise _error("EOS_APPROVED_DOCUMENT_SCHEMA_INVALID", "version drifted")
     if item["tenant_id"] != _scoped_id("tenant_id", tenant_id, 128):
         raise _error("EOS_APPROVED_DOCUMENT_SCOPE_MISMATCH", "tenant drifted")
@@ -459,6 +490,24 @@ def admit_approved_document_envelope(
         or (scope_type == "PROJECT_SET" and len(project_ids) < 2)
     ):
         raise _error("EOS_APPROVED_DOCUMENT_PROJECT_SET_INVALID", "scope shape drifted")
+    if schema_version == "eos_approved_document_envelope.v2":
+        project_codes = item["allowed_project_codes"]
+        if (
+            scope_type == "COMPANY"
+            or not isinstance(project_codes, list)
+            or project_codes != sorted(set(project_codes))
+            or len(project_codes) != len(project_ids)
+            or any(
+                not isinstance(code, str)
+                or _PROJECT_REGISTRATION_CODE.fullmatch(code) is None
+                or code[:4] != item["tenant_id"]
+                for code in project_codes
+            )
+        ):
+            raise _error(
+                "EOS_APPROVED_DOCUMENT_PROJECT_SET_INVALID",
+                "Project registration-code scope drifted",
+            )
     approved = _decimal("approved_amount", item["approved_amount"])
     remaining = _decimal("remaining_amount", item["remaining_amount"])
     if remaining < 0 or remaining > approved:
@@ -555,25 +604,19 @@ def _proposal_scoped_id(field: str, value: object, maximum: int) -> str:
     try:
         return _scoped_id(field, value, maximum)
     except ApprovedDocumentContractError as exc:
-        raise _proposal_error(
-            "MYBEE_PROPOSAL_ID_INVALID", f"{field} invalid"
-        ) from exc
+        raise _proposal_error("MYBEE_PROPOSAL_ID_INVALID", f"{field} invalid") from exc
 
 
 def _proposal_uuid(field: str, value: object) -> str:
     try:
         return _uuid(field, value)
     except ApprovedDocumentContractError as exc:
-        raise _proposal_error(
-            "MYBEE_PROPOSAL_ID_INVALID", f"{field} invalid"
-        ) from exc
+        raise _proposal_error("MYBEE_PROPOSAL_ID_INVALID", f"{field} invalid") from exc
 
 
 def _proposal_positive_int(field: str, value: object) -> int:
     if isinstance(value, bool) or not isinstance(value, int) or value < 1:
-        raise _proposal_error(
-            "MYBEE_PROPOSAL_FIELD_INVALID", f"{field} invalid"
-        )
+        raise _proposal_error("MYBEE_PROPOSAL_FIELD_INVALID", f"{field} invalid")
     return value
 
 
@@ -585,31 +628,52 @@ def _proposal_text(field: str, value: object, maximum: int) -> str:
         or len(value) > maximum
         or any(ord(character) < 32 and character not in "\n\t" for character in value)
     ):
-        raise _proposal_error(
-            "MYBEE_PROPOSAL_FIELD_INVALID", f"{field} invalid"
-        )
+        raise _proposal_error("MYBEE_PROPOSAL_FIELD_INVALID", f"{field} invalid")
     return value
 
 
 def _proposal_choice(field: str, value: object, choices: frozenset[str]) -> str:
     if not isinstance(value, str) or value not in choices:
-        raise _proposal_error(
-            "MYBEE_PROPOSAL_FIELD_INVALID", f"{field} invalid"
-        )
+        raise _proposal_error("MYBEE_PROPOSAL_FIELD_INVALID", f"{field} invalid")
     return value
 
 
-def _proposal_projects(value: object) -> tuple[str, ...]:
+def _proposal_projects(
+    value: object, *, tenant_id: object
+) -> tuple[BusinessProposalProjectRef, ...]:
     if isinstance(value, (str, bytes)) or not isinstance(value, Sequence):
         raise _proposal_error(
-            "MYBEE_PROPOSAL_SCOPE_INVALID", "project_ids must be an array"
+            "MYBEE_PROPOSAL_SCOPE_INVALID", "project_refs must be an array"
         )
-    admitted = tuple(sorted(_proposal_uuid("project_ids", item) for item in value))
-    if len(admitted) != len(set(admitted)):
+    tenant = _proposal_scoped_id("tenant_id", tenant_id, 128)
+    admitted: list[BusinessProposalProjectRef] = []
+    for item in value:
+        if not isinstance(item, BusinessProposalProjectRef):
+            raise _proposal_error(
+                "MYBEE_PROPOSAL_SCOPE_INVALID",
+                "project_refs must contain BusinessProposalProjectRef values",
+            )
+        code = str(item.project_code).strip().upper()
+        if not _PROJECT_REGISTRATION_CODE.fullmatch(code) or code[:4] != tenant:
+            raise _proposal_error(
+                "MYBEE_PROPOSAL_PROJECT_CODE_INVALID",
+                "Project registration code must match the tenant",
+            )
+        admitted.append(
+            BusinessProposalProjectRef(
+                project_id=_proposal_uuid("project_refs.project_id", item.project_id),
+                project_code=code,
+            )
+        )
+    admitted.sort(key=lambda item: item.project_code)
+    if len({item.project_id for item in admitted}) != len(admitted) or len(
+        {item.project_code for item in admitted}
+    ) != len(admitted):
         raise _proposal_error(
-            "MYBEE_PROPOSAL_SCOPE_INVALID", "project_ids must be unique"
+            "MYBEE_PROPOSAL_SCOPE_INVALID",
+            "Project IDs and registration codes must be unique",
         )
-    return admitted
+    return tuple(admitted)
 
 
 def _proposal_positive_decimal(field: str, value: object) -> Decimal:
@@ -620,9 +684,7 @@ def _proposal_positive_decimal(field: str, value: object) -> Decimal:
             "MYBEE_PROPOSAL_AMOUNT_INVALID", f"{field} invalid"
         ) from exc
     if not admitted.is_finite() or admitted <= 0 or admitted.as_tuple().exponent < -4:
-        raise _proposal_error(
-            "MYBEE_PROPOSAL_AMOUNT_INVALID", f"{field} invalid"
-        )
+        raise _proposal_error("MYBEE_PROPOSAL_AMOUNT_INVALID", f"{field} invalid")
     try:
         return admitted.quantize(Decimal("0.0001"))
     except InvalidOperation as exc:
@@ -633,17 +695,13 @@ def _proposal_positive_decimal(field: str, value: object) -> Decimal:
 
 def _proposal_currency(field: str, value: object) -> str:
     if not isinstance(value, str) or not _CURRENCY.fullmatch(value):
-        raise _proposal_error(
-            "MYBEE_PROPOSAL_CURRENCY_INVALID", f"{field} invalid"
-        )
+        raise _proposal_error("MYBEE_PROPOSAL_CURRENCY_INVALID", f"{field} invalid")
     return value
 
 
 def _proposal_datetime(field: str, value: object) -> datetime:
     if not isinstance(value, datetime) or value.tzinfo is None:
-        raise _proposal_error(
-            "MYBEE_PROPOSAL_TIME_INVALID", f"{field} invalid"
-        )
+        raise _proposal_error("MYBEE_PROPOSAL_TIME_INVALID", f"{field} invalid")
     return value.astimezone(UTC)
 
 

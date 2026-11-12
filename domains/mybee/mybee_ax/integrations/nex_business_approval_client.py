@@ -219,7 +219,7 @@ def build_business_proposal_approval_request(
         correlation_id=correlation_id,
         causation_id=causation_id,
         document_signoff_context={
-            "schema_version": "eos_document_signoff_context.v1",
+            "schema_version": "eos_document_signoff_context.v2",
             "envelope_id": str(
                 uuid5(
                     NAMESPACE_URL,
@@ -243,6 +243,7 @@ def build_business_proposal_approval_request(
                 else None
             ),
             "subject_hash": proposal.approval_subject_hash,
+            "allowed_project_codes": list(proposal.project_codes),
         },
         expires_at=expires_at,
     )
@@ -290,6 +291,7 @@ def _require_envelope_binding(
         "attachment_manifest_hash": proposal.attachment_manifest_hash,
         "scope_type": proposal.scope_type,
         "allowed_project_ids": list(proposal.project_ids),
+        "allowed_project_codes": list(proposal.project_codes),
         "approved_amount": _money_text(proposal.requested_amount),
         "approved_currency": proposal.currency,
         "valid_from": _timestamp(proposal.valid_from),

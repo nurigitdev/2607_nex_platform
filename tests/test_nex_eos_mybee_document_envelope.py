@@ -383,6 +383,25 @@ def test_document_input_requires_typed_value_and_valid_project_shapes() -> None:
         approved_document_payload_hash(
             _value(allowed_project_ids=(PROJECT_ID, PROJECT_ID))
         )
+    with pytest.raises(EosApprovedDocumentError):
+        approved_document_payload_hash(
+            _value(allowed_project_codes=("ABCDD260001", "ABCDD260002"))
+        )
+    with pytest.raises(EosApprovedDocumentError):
+        approved_document_payload_hash(
+            _value(
+                scope_type="PROJECT_SET",
+                allowed_project_ids=(PROJECT_ID, str(uuid.uuid4())),
+                allowed_project_codes=("ABCDD260001", "ABCDD260001"),
+            )
+        )
+    with pytest.raises(EosApprovedDocumentError):
+        approved_document_payload_hash(_value(allowed_project_codes=("ABCDR260001",)))
+
+    versioned = _value(allowed_project_codes=("ABCDD260001",))
+    assert approved_document_payload_hash(versioned) != approved_document_payload_hash(
+        _value()
+    )
 
 
 def test_repository_rejects_stale_company_missing_proof_and_broken_lineage() -> None:
@@ -817,7 +836,7 @@ def test_actual_postgres_proof_binding_immutability_and_zero_residue() -> None:
                 )
             connection.execute(
                 sql.SQL(
-                    "UPDATE {}.eos_approved_document_envelope " "SET state = 'REVOKED'"
+                    "UPDATE {}.eos_approved_document_envelope SET state = 'REVOKED'"
                 ).format(sql.Identifier(schema_name))
             )
             assert connection.execute(

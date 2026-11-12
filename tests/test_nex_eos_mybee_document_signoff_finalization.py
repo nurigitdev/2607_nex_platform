@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import os
 import uuid
 from datetime import UTC, date, datetime, timedelta
@@ -7,7 +8,7 @@ from pathlib import Path
 
 import nex_eos.document_signoff as document_signoff_module
 import pytest
-from mybee_ax.domain import build_business_proposal_form
+from mybee_ax.domain import BusinessProposalProjectRef, build_business_proposal_form
 from mybee_ax.integrations.nex_business_approval_client import (
     build_business_proposal_approval_request,
 )
@@ -24,6 +25,7 @@ from nex_eos import (
     EosDocumentSignoffError,
     EosDocumentSignoffService,
     EosScopedApprovalDecisionRouter,
+    EosScopedApprovalError,
     EosScopedApprovalService,
     EosServiceCaller,
     LegalEntityInput,
@@ -38,6 +40,7 @@ from nex_eos import (
     SqlAlchemyEosProjectRepository,
     SqlAlchemyEosScopedApprovalRepository,
     admit_document_signoff_context,
+    scoped_approval_payload_hash,
 )
 from nex_oa.authorization_repository import build_authorization_repository_for_runtime
 from nex_oa.authorization_resolver import OaEffectiveAuthorizationResolver
@@ -63,10 +66,11 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 NOW = datetime(2026, 11, 11, 6, 0, tzinfo=UTC)
-TENANT = "tenant-w30-s00"
+TENANT = "VO00"
 COMPANY_ID = "30000000-0000-4000-8000-000000000001"
 NVT_ID = "30000000-0000-4000-8000-000000000002"
 PROJECT_ID = "30000000-0000-4000-8000-000000000003"
+PROJECT_CODE = "VO00D260001"
 POLICY_ID = "30000000-0000-4000-8000-000000000004"
 CASE_ID = "30000000-0000-4000-8000-000000000005"
 OPERATION_ID = "30000000-0000-4000-8000-000000000006"
@@ -175,7 +179,7 @@ def _proposal():
         purpose="개발 장비 구매",
         business_justification="프로젝트 수행에 필요한 공용 장비입니다.",
         scope_type="PROJECT",
-        project_ids=(PROJECT_ID,),
+        project_refs=(BusinessProposalProjectRef(PROJECT_ID, PROJECT_CODE),),
         requested_amount="1250000",
         currency="KRW",
         requester_subject_id="employee-1004",
@@ -222,7 +226,13 @@ def _runtime(*, stages=("TEAM_LEAD",), engine=None, auth=None, wc=None):
     projects = SqlAlchemyEosProjectRepository(sessions)
     projects.create_nvt_project(NvtProjectInput(TENANT, NVT_ID, "NVT-W30", "NVT"))
     projects.create_project(
-        ProjectInput(TENANT, PROJECT_ID, "W30", "W30 Project", nvt_project_id=NVT_ID)
+        ProjectInput(
+            TENANT,
+            PROJECT_ID,
+            PROJECT_CODE,
+            "W30 Project",
+            nvt_project_id=NVT_ID,
+        )
     )
     legal.create_project_company_binding(
         ProjectCompanyBindingInput(
@@ -339,9 +349,17 @@ def test_migration_and_request_contract_freeze_document_context_before_decision(
     assert "create table if not exists eos_document_signoff_evidence" in compact
     assert "ck_eos_approved_doc_proof_source" in compact
     assert "eos_reject_document_signoff_mutation" in compact
+    attribution_migration = next(
+        item
+        for item in load_migrations("nex-eos")
+        if item.version == "2533_eos_mandatory_project_attribution"
+    )
+    attribution_sql = " ".join(attribution_migration.sql.lower().split())
+    assert "allowed_project_codes jsonb not null" in attribution_sql
     context = _request().payload["case"]["document_signoff_context"]
     assert context["approved_document_id"] == "proposal-w30-0001"
     assert context["subject_hash"] == _proposal().approval_subject_hash
+    assert context["allowed_project_codes"] == [PROJECT_CODE]
     assert all(
         constraint.name is None or len(constraint.name) <= 63
         for table in (
@@ -366,7 +384,10 @@ def test_terminal_approval_materializes_exact_evidence_and_envelope_once():
     assert result["case_state"] == "APPROVED"
     assert result["document_signoff_evidence"]["proof_hash"].startswith("sha256:")
     envelope = result["approved_document_envelope"]
+    assert envelope["schema_version"] == "eos_approved_document_envelope.v2"
     assert envelope["approved_document_id"] == "proposal-w30-0001"
+    assert envelope["allowed_project_ids"] == [PROJECT_ID]
+    assert envelope["allowed_project_codes"] == [PROJECT_CODE]
     assert (
         envelope["business_approval_proof_id"]
         == result["document_signoff_evidence"]["evidence_id"]
@@ -385,6 +406,35 @@ def test_terminal_approval_materializes_exact_evidence_and_envelope_once():
             EOS_APPROVED_DOCUMENT_TABLE,
         ):
             assert session.scalar(select(func.count()).select_from(table)) == 1
+
+
+def test_project_code_mismatch_rolls_back_case_and_document_context():
+    sessions, scoped, _finalizer, _router, _auth, _wc, _accounting = _runtime()
+    payload = copy.deepcopy(dict(_request().payload))
+    payload["case"]["document_signoff_context"]["allowed_project_codes"] = [
+        "VO00D260999"
+    ]
+    payload["payload_hash"] = scoped_approval_payload_hash(payload)
+
+    with pytest.raises(EosScopedApprovalError) as error:
+        scoped.request_case(
+            payload,
+            caller=EosServiceCaller("nex-ae-api", "nex-eos", ("service:call",)),
+        )
+    assert error.value.error_code == "EOS_DOCUMENT_SIGNOFF_CONFLICT"
+    with sessions() as session:
+        assert (
+            session.scalar(
+                select(func.count()).select_from(EOS_SCOPED_APPROVAL_CASE_TABLE)
+            )
+            == 0
+        )
+        assert (
+            session.scalar(
+                select(func.count()).select_from(EOS_DOCUMENT_SIGNOFF_CONTEXT_TABLE)
+            )
+            == 0
+        )
 
 
 def test_reject_creates_no_evidence_or_envelope():
@@ -493,6 +543,61 @@ def test_context_contract_rejects_field_drift_wrong_purpose_and_naive_time():
         admit_document_signoff_context(context, scoped_case=case)
 
 
+def test_context_contract_preserves_v1_read_compatibility() -> None:
+    case = dict(_request().payload["case"])
+    context = dict(case.pop("document_signoff_context"))
+    context["schema_version"] = "eos_document_signoff_context.v1"
+    context.pop("allowed_project_codes")
+
+    admitted = admit_document_signoff_context(context, scoped_case=case)
+
+    assert "allowed_project_codes" not in admitted
+    assert admitted["context_hash"].startswith("sha256:")
+
+
+@pytest.mark.parametrize(
+    "project_codes",
+    (
+        None,
+        "VO00D260001",
+        [],
+        ["VO00D260001", "VO00D260001"],
+        ["VO00R260001"],
+    ),
+)
+def test_context_v2_rejects_malformed_project_code_collections(project_codes) -> None:
+    case = dict(_request().payload["case"])
+    context = dict(case.pop("document_signoff_context"))
+    context["allowed_project_codes"] = project_codes
+
+    with pytest.raises(EosDocumentSignoffError) as error:
+        admit_document_signoff_context(context, scoped_case=case)
+
+    assert error.value.status_code == 422
+
+
+@pytest.mark.parametrize(
+    ("case_overrides", "project_codes"),
+    (
+        ({"scope_type": "COMPANY", "project_ids": []}, [PROJECT_CODE]),
+        ({}, [PROJECT_CODE, "VO00D260002"]),
+        ({}, ["OTHRD260001"]),
+    ),
+)
+def test_context_v2_requires_codes_for_exact_non_company_tenant_scope(
+    case_overrides, project_codes
+) -> None:
+    case = dict(_request().payload["case"])
+    context = dict(case.pop("document_signoff_context"))
+    case.update(case_overrides)
+    context["allowed_project_codes"] = project_codes
+
+    with pytest.raises(EosDocumentSignoffError) as error:
+        admit_document_signoff_context(context, scoped_case=case)
+
+    assert error.value.status_code == 422
+
+
 @pytest.mark.parametrize(
     ("field", "value"),
     (
@@ -551,9 +656,9 @@ def test_router_preserves_accounting_path_and_missing_case_fails_closed():
 
     missing = _delivery(item, suffix="9")
     missing_id = str(uuid.uuid4())
-    missing["work_item"][
-        "resume_target_ref"
-    ] = f"eos.scoped-approval-case:{missing_id}:stage:1"
+    missing["work_item"]["resume_target_ref"] = (
+        f"eos.scoped-approval-case:{missing_id}:stage:1"
+    )
     with pytest.raises(EosDocumentSignoffError) as error:
         router.ingest_wc_delivery(missing)
     assert error.value.status_code == 404
@@ -584,9 +689,9 @@ def test_direct_finalizer_missing_case_fails_closed():
     item = _create_case(scoped)["wc_publication"]["work_item"]
     missing = _delivery(item, suffix="9")
     missing_id = str(uuid.uuid4())
-    missing["work_item"][
-        "resume_target_ref"
-    ] = f"eos.scoped-approval-case:{missing_id}:stage:1"
+    missing["work_item"]["resume_target_ref"] = (
+        f"eos.scoped-approval-case:{missing_id}:stage:1"
+    )
     with pytest.raises(EosDocumentSignoffError) as error:
         finalizer.ingest_wc_delivery(missing)
     assert error.value.status_code == 404

@@ -10,6 +10,7 @@ from uuid import NAMESPACE_URL, uuid5
 
 from nex_runtime.semantic_hashes import semantic_sha256_hash_ref, validate_hash_ref
 from sqlalchemy import (
+    JSON,
     CheckConstraint,
     Column,
     DateTime,
@@ -45,6 +46,7 @@ from .approved_documents import (
 from .authorization import AuthorizationSource, AuthorizationSubjectDenied
 from .business_formal_wc import WcApprovalWorkItemClient
 from .business_transactions import EOS_METADATA
+from .projects import EOS_PROJECT_TABLE
 from .scoped_approvals import (
     EOS_SCOPED_APPROVAL_CASE_TABLE,
     scoped_approval_case_projection,
@@ -53,11 +55,13 @@ from .scoped_approvals import (
 
 DOCUMENT_SIGNOFF_APPROVAL_SCOPE = "approval:decide"
 DOCUMENT_SIGNOFF_CONTEXT_SCHEMA = "eos_document_signoff_context.v1"
+DOCUMENT_SIGNOFF_CONTEXT_SCHEMA_V2 = "eos_document_signoff_context.v2"
 DOCUMENT_SIGNOFF_EVIDENCE_SCHEMA = "eos_document_signoff_evidence.v1"
 
 _SCOPED_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:@/-]{0,255}$")
 _WORK_CODE = re.compile(r"^FL[0-9]{7}$")
 _CURRENCY = re.compile(r"^[A-Z]{3}$")
+_PROJECT_REGISTRATION_CODE = re.compile(r"^[A-Z0-9]{4}[DMSOIG][0-9]{6}$")
 
 
 EOS_DOCUMENT_SIGNOFF_CONTEXT_TABLE = Table(
@@ -78,6 +82,13 @@ EOS_DOCUMENT_SIGNOFF_CONTEXT_TABLE = Table(
     Column("valid_from", DateTime(timezone=True), nullable=False),
     Column("valid_until", DateTime(timezone=True), nullable=True),
     Column("subject_hash", String(71), nullable=False),
+    Column(
+        "allowed_project_codes",
+        JSON,
+        nullable=False,
+        default=list,
+        server_default="[]",
+    ),
     Column("document_payload_hash", String(71), nullable=False),
     Column("context_hash", String(71), nullable=False),
     Column("created_at", DateTime(timezone=True), nullable=False),
@@ -152,6 +163,12 @@ class SqlAlchemyDocumentSignoffContextRepository:
         context: Mapping[str, Any],
     ) -> dict[str, Any]:
         admitted = admit_document_signoff_context(context, scoped_case=scoped_case)
+        _require_project_code_bindings(
+            session,
+            tenant_id=admitted["tenant_id"],
+            project_ids=scoped_case["project_ids"],
+            project_codes=admitted.get("allowed_project_codes", []),
+        )
         now = _aware_datetime("clock", self._clock())
         record = {**admitted, "created_at": now}
         existing = _load_context(
@@ -377,6 +394,7 @@ class EosDocumentSignoffService:
                     project_ids=tuple(
                         sorted(str(item["project_id"]) for item in bindings)
                     ),
+                    project_codes=tuple(context.get("allowed_project_codes", [])),
                 ),
                 evidence=evidence,
                 approval_policy={
@@ -475,7 +493,7 @@ class EosScopedApprovalDecisionRouter:
 def admit_document_signoff_context(
     value: Mapping[str, Any], *, scoped_case: Mapping[str, Any]
 ) -> dict[str, Any]:
-    fields = {
+    common_fields = {
         "schema_version",
         "envelope_id",
         "approved_document_id",
@@ -491,10 +509,16 @@ def admit_document_signoff_context(
         "valid_until",
         "subject_hash",
     }
-    if not isinstance(value, Mapping) or set(value) != fields:
+    if not isinstance(value, Mapping):
         raise _invalid("document_signoff_context fields do not match the contract")
-    if value.get("schema_version") != DOCUMENT_SIGNOFF_CONTEXT_SCHEMA:
+    schema_version = value.get("schema_version")
+    fields = set(common_fields)
+    if schema_version == DOCUMENT_SIGNOFF_CONTEXT_SCHEMA_V2:
+        fields.add("allowed_project_codes")
+    elif schema_version != DOCUMENT_SIGNOFF_CONTEXT_SCHEMA:
         raise _invalid("document_signoff_context schema is invalid")
+    if set(value) != fields:
+        raise _invalid("document_signoff_context fields do not match the contract")
     if scoped_case.get("purpose") != "DOCUMENT_SIGNOFF":
         raise _invalid("document_signoff_context requires DOCUMENT_SIGNOFF")
     revision = _positive_int("document_revision", value.get("document_revision"))
@@ -536,6 +560,17 @@ def admit_document_signoff_context(
         ),
         "subject_hash": subject_hash,
     }
+    if schema_version == DOCUMENT_SIGNOFF_CONTEXT_SCHEMA_V2:
+        project_codes = _project_codes(value.get("allowed_project_codes"))
+        if (
+            scoped_case.get("scope_type") == "COMPANY"
+            or len(project_codes) != len(scoped_case.get("project_ids", []))
+            or any(code[:4] != scoped_case.get("tenant_id") for code in project_codes)
+        ):
+            raise _invalid(
+                "Project registration codes must match the non-empty Project scope"
+            )
+        context["allowed_project_codes"] = project_codes
     if (
         context["valid_until"] is not None
         and context["valid_until"] <= context["valid_from"]
@@ -546,11 +581,16 @@ def admit_document_signoff_context(
         context,
         None,
         project_ids=tuple(scoped_case["project_ids"]),
+        project_codes=tuple(context.get("allowed_project_codes", [])),
     )
     context["document_payload_hash"] = approved_document_payload_hash(document_input)
     context["context_hash"] = semantic_sha256_hash_ref(
         {
-            "schema_version": "eos_document_signoff_context_semantics.v1",
+            "schema_version": (
+                "eos_document_signoff_context_semantics.v2"
+                if context.get("allowed_project_codes")
+                else "eos_document_signoff_context_semantics.v1"
+            ),
             **_context_wire(context),
             "company_id": scoped_case["company_id"],
             "scope_type": scoped_case["scope_type"],
@@ -562,7 +602,11 @@ def admit_document_signoff_context(
 
 def document_signoff_context_projection(value: Mapping[str, Any]) -> dict[str, Any]:
     return {
-        "schema_version": DOCUMENT_SIGNOFF_CONTEXT_SCHEMA,
+        "schema_version": (
+            DOCUMENT_SIGNOFF_CONTEXT_SCHEMA_V2
+            if value.get("allowed_project_codes")
+            else DOCUMENT_SIGNOFF_CONTEXT_SCHEMA
+        ),
         **_context_wire(value),
     }
 
@@ -696,7 +740,12 @@ def _insert_evidence(session, *, case, context, admitted, authorization, recorde
 
 
 def _approved_document_input(
-    case, context, evidence, *, project_ids: Sequence[str]
+    case,
+    context,
+    evidence,
+    *,
+    project_ids: Sequence[str],
+    project_codes: Sequence[str] = (),
 ) -> ApprovedDocumentInput:
     evidence_id = (
         evidence["evidence_id"]
@@ -721,6 +770,7 @@ def _approved_document_input(
         business_approval_proof_id=str(evidence_id),
         scope_type=case["scope_type"],
         allowed_project_ids=tuple(project_ids),
+        allowed_project_codes=tuple(project_codes),
         approved_amount=Decimal(context["approved_amount"]),
         approved_currency=context["approved_currency"],
         valid_from=_aware_datetime("valid_from", context["valid_from"]),
@@ -734,7 +784,7 @@ def _approved_document_input(
 
 
 def _context_wire(value):
-    return {
+    wire = {
         "tenant_id": value["tenant_id"],
         "case_id": str(value["case_id"]),
         "envelope_id": str(value["envelope_id"]),
@@ -757,6 +807,9 @@ def _context_wire(value):
         "document_payload_hash": value.get("document_payload_hash"),
         "context_hash": value.get("context_hash"),
     }
+    if value.get("allowed_project_codes"):
+        wire["allowed_project_codes"] = list(value["allowed_project_codes"])
+    return wire
 
 
 def _terminal_values(case, state, admitted, recorded_at):
@@ -796,6 +849,41 @@ def _load_evidence(session, *, tenant_id, case_id):
         .one_or_none()
     )
     return dict(row) if row is not None else None
+
+
+def _require_project_code_bindings(
+    session: Session,
+    *,
+    tenant_id: str,
+    project_ids: Sequence[str],
+    project_codes: Sequence[str],
+) -> None:
+    if not project_codes:
+        return
+    rows = (
+        session.execute(
+            select(
+                EOS_PROJECT_TABLE.c.project_id,
+                EOS_PROJECT_TABLE.c.project_code,
+                EOS_PROJECT_TABLE.c.status,
+            ).where(
+                EOS_PROJECT_TABLE.c.tenant_id == tenant_id,
+                EOS_PROJECT_TABLE.c.project_code.in_(project_codes),
+            )
+        )
+        .mappings()
+        .all()
+    )
+    if (
+        len(rows) != len(project_codes)
+        or {str(row["project_id"]) for row in rows}
+        != {str(item) for item in project_ids}
+        or {row["project_code"] for row in rows} != set(project_codes)
+        or any(row["status"] != "ACTIVE" for row in rows)
+    ):
+        raise _conflict(
+            "Project registration codes must resolve to the exact active Project scope"
+        )
 
 
 def _from_accounting_error(exc):
@@ -852,6 +940,21 @@ def _work_code(value):
     if not isinstance(value, str) or _WORK_CODE.fullmatch(value) is None:
         raise _invalid("work_code must be an FL work code")
     return value
+
+
+def _project_codes(value: object) -> list[str]:
+    if isinstance(value, (str, bytes)) or not isinstance(value, Sequence):
+        raise _invalid("allowed_project_codes must be an array")
+    admitted = sorted(str(item).strip().upper() for item in value)
+    if (
+        not admitted
+        or len(admitted) != len(set(admitted))
+        or any(_PROJECT_REGISTRATION_CODE.fullmatch(item) is None for item in admitted)
+    ):
+        raise _invalid(
+            "allowed_project_codes must contain unique approved Project codes"
+        )
+    return admitted
 
 
 def _currency(value):

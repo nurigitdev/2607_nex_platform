@@ -78,8 +78,13 @@ def test_w30_ca01_migration_reservations_follow_actual_inventory() -> None:
     ca02 = CA02_PATH.read_text(encoding="utf-8")
     assert "2531_eos_project_application_lifecycle.sql" in ca02
     assert "2532_eos_project_application_approval.sql" in ca02
-    assert "2533_eos_voucher_candidate_v2.sql" in ca02
-    expected_highest = 2532
+    assert "2533_eos_mandatory_project_attribution.sql" in ca02
+    manifest = json.loads(
+        (ROOT / "docs/mybee_phase1/baselines/source_manifest.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    expected_highest = manifest["migration_heads"]["nex-eos"]["version"]
     assert versions[-1] == expected_highest
 
 

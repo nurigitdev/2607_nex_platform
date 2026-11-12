@@ -1725,7 +1725,9 @@ components:
         - created_business_operation_id
         - created_at
       properties:
-        schema_version: {type: string, const: eos_approved_document_envelope.v1}
+        schema_version:
+          type: string
+          enum: [eos_approved_document_envelope.v1, eos_approved_document_envelope.v2]
         tenant_id: {type: string, minLength: 1, maxLength: 128}
         envelope_id: {type: string, format: uuid}
         company_id: {type: string, format: uuid}
@@ -1746,6 +1748,12 @@ components:
           type: array
           uniqueItems: true
           items: {type: string, format: uuid}
+        allowed_project_codes:
+          type: array
+          uniqueItems: true
+          items:
+            type: string
+            pattern: "^[A-Z0-9]{4}[DMSOIG][0-9]{6}$"
         approved_amount: {type: string, pattern: "^[0-9]+(\\.[0-9]{1,4})?$"}
         approved_currency: {type: string, pattern: "^[A-Z]{3}$"}
         remaining_amount: {type: string, pattern: "^[0-9]+(\\.[0-9]{1,4})?$"}
@@ -1770,6 +1778,12 @@ components:
         payload_hash: {type: string, pattern: "^sha256:[0-9a-f]{64}$"}
         created_business_operation_id: {type: string, format: uuid}
         created_at: {type: string, format: date-time}
+      allOf:
+        - if:
+            properties:
+              schema_version: {const: eos_approved_document_envelope.v2}
+          then:
+            required: [allowed_project_codes]
     ApproverResolutionRequest:
       type: object
       x-nex-canonical-json-schema: schemas/service/nex_eos/approver_resolution_request.v1.schema.json
@@ -2586,7 +2600,7 @@ components:
       properties:
         schema_version:
           type: string
-          const: eos_document_signoff_context.v1
+          enum: [eos_document_signoff_context.v1, eos_document_signoff_context.v2]
         envelope_id: {type: string, format: uuid}
         approved_document_id: {type: string, minLength: 1, maxLength: 128}
         document_revision: {type: integer, minimum: 1}
@@ -2602,6 +2616,19 @@ components:
         valid_from: {type: string, format: date-time}
         valid_until: {type: [string, "null"], format: date-time}
         subject_hash: {type: string, pattern: "^sha256:[0-9a-f]{64}$"}
+        allowed_project_codes:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items:
+            type: string
+            pattern: "^[A-Z0-9]{4}[DMSOIG][0-9]{6}$"
+      allOf:
+        - if:
+            properties:
+              schema_version: {const: eos_document_signoff_context.v2}
+          then:
+            required: [allowed_project_codes]
     AccountingReviewContext:
       type: object
       additionalProperties: false

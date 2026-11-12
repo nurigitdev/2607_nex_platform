@@ -51,6 +51,7 @@ APPROVED_DOCUMENT_STATES = frozenset({"ACTIVE", "REVOKED", "EXPIRED", "SUPERSEDE
 _SCOPED_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:@/-]{0,255}$")
 _WORK_CODE = re.compile(r"^FL[0-9]{7}$")
 _CURRENCY = re.compile(r"^[A-Z]{3}$")
+_PROJECT_REGISTRATION_CODE = re.compile(r"^[A-Z0-9]{4}[DMSOIG][0-9]{6}$")
 
 EOS_APPROVED_DOCUMENT_TABLE = Table(
     "eos_approved_document_envelope",
@@ -73,6 +74,13 @@ EOS_APPROVED_DOCUMENT_TABLE = Table(
     Column("scope_type", String(16), nullable=False),
     Column("project_set_hash", String(71), nullable=False),
     Column("allowed_project_ids", JSON, nullable=False),
+    Column(
+        "allowed_project_codes",
+        JSON,
+        nullable=False,
+        default=list,
+        server_default="[]",
+    ),
     Column("approved_amount", Numeric(20, 4), nullable=False),
     Column("approved_currency", String(3), nullable=False),
     Column("tolerance_policy_hash", String(71), nullable=True),
@@ -207,6 +215,7 @@ class ApprovedDocumentInput:
     approved_amount: Decimal
     approved_currency: str
     valid_from: datetime
+    allowed_project_codes: Sequence[str] = ()
     valid_until: datetime | None = None
     tolerance_policy_hash: str | None = None
 
@@ -295,8 +304,7 @@ class SqlAlchemyEosApprovedDocumentRepository:
                     "approved_by_ref_type": decision["decided_by_ref_type"],
                     "approved_by_id": decision["decided_by_id"],
                     "source_work_item_ref": (
-                        "wc.approval-work-item:"
-                        f"{decision['wc_approval_work_item_id']}"
+                        f"wc.approval-work-item:{decision['wc_approval_work_item_id']}"
                     ),
                     "payload_hash": payload_hash,
                     "created_business_operation_id": str(
@@ -574,15 +582,24 @@ class SqlAlchemyEosApprovedDocumentRepository:
     ) -> None:
         del company
         project_ids = semantics["allowed_project_ids"]
+        project_codes = semantics.get("allowed_project_codes", [])
         if not project_ids:
             return
+        project_code_set = set(project_codes)
         for project_id in project_ids:
-            project = session.execute(
-                select(EOS_PROJECT_TABLE.c.status).where(
-                    EOS_PROJECT_TABLE.c.tenant_id == semantics["tenant_id"],
-                    EOS_PROJECT_TABLE.c.project_id == project_id,
+            project = (
+                session.execute(
+                    select(
+                        EOS_PROJECT_TABLE.c.status,
+                        EOS_PROJECT_TABLE.c.project_code,
+                    ).where(
+                        EOS_PROJECT_TABLE.c.tenant_id == semantics["tenant_id"],
+                        EOS_PROJECT_TABLE.c.project_id == project_id,
+                    )
                 )
-            ).scalar_one_or_none()
+                .mappings()
+                .one_or_none()
+            )
             binding = session.execute(
                 select(EOS_PROJECT_COMPANY_BINDING_TABLE.c.binding_id).where(
                     EOS_PROJECT_COMPANY_BINDING_TABLE.c.tenant_id
@@ -602,9 +619,15 @@ class SqlAlchemyEosApprovedDocumentRepository:
                     ),
                 )
             ).scalar_one_or_none()
-            if project != "ACTIVE" or binding is None:
+            if (
+                project is None
+                or project["status"] != "ACTIVE"
+                or (project_codes and project["project_code"] not in project_code_set)
+                or binding is None
+            ):
                 raise _conflict(
-                    "Every approved Project must be active and bound to the company"
+                    "Every approved Project ID and registration code must resolve to "
+                    "one active Project bound to the company"
                 )
 
 
@@ -674,7 +697,14 @@ def _payload_hash(semantics: Mapping[str, Any]) -> str:
         _timestamp(wire["valid_until"]) if wire["valid_until"] is not None else None
     )
     return semantic_sha256_hash_ref(
-        {"schema_version": "eos_approved_document_payload.v1", **wire}
+        {
+            "schema_version": (
+                "eos_approved_document_payload.v2"
+                if wire.get("allowed_project_codes")
+                else "eos_approved_document_payload.v1"
+            ),
+            **wire,
+        }
     )
 
 
@@ -699,9 +729,20 @@ def _document_semantics(value: ApprovedDocumentInput) -> dict[str, Any]:
     raw_project_ids = [
         _uuid("allowed_project_ids", item) for item in value.allowed_project_ids
     ]
-    project_ids = sorted(set(raw_project_ids))
-    if len(project_ids) != len(raw_project_ids):
+    raw_project_codes = [
+        _project_registration_code(item) for item in value.allowed_project_codes
+    ]
+    if raw_project_codes and len(raw_project_codes) != len(raw_project_ids):
+        raise _invalid(
+            "allowed_project_codes",
+            "must contain one registration code for every Project ID",
+        )
+    project_ids = sorted(raw_project_ids)
+    project_codes = sorted(raw_project_codes)
+    if len(set(project_ids)) != len(raw_project_ids):
         raise _invalid("allowed_project_ids", "must be unique")
+    if len(set(project_codes)) != len(project_codes):
+        raise _invalid("allowed_project_codes", "must be unique")
     if scope_type == "COMPANY" and project_ids:
         raise _invalid("allowed_project_ids", "must be empty for COMPANY scope")
     if scope_type == "PROJECT" and len(project_ids) != 1:
@@ -735,6 +776,13 @@ def _document_semantics(value: ApprovedDocumentInput) -> dict[str, Any]:
         "scope_type": scope_type,
         "project_set_hash": semantic_sha256_hash_ref(
             {
+                "schema_version": "eos_approved_project_set.v2",
+                "scope_type": scope_type,
+                "allowed_project_ids": project_ids,
+                "allowed_project_codes": project_codes,
+            }
+            if project_codes
+            else {
                 "schema_version": "eos_approved_project_set.v1",
                 "scope_type": scope_type,
                 "allowed_project_ids": project_ids,
@@ -751,6 +799,8 @@ def _document_semantics(value: ApprovedDocumentInput) -> dict[str, Any]:
         "valid_from": valid_from,
         "valid_until": valid_until,
     }
+    if project_codes:
+        semantics["allowed_project_codes"] = project_codes
     return semantics
 
 
@@ -811,7 +861,11 @@ def _projection(
         raise _unavailable()
     amount = _decimal_text(approved)
     return {
-        "schema_version": "eos_approved_document_envelope.v1",
+        "schema_version": (
+            "eos_approved_document_envelope.v2"
+            if value.get("allowed_project_codes")
+            else "eos_approved_document_envelope.v1"
+        ),
         "tenant_id": value["tenant_id"],
         "envelope_id": str(value["envelope_id"]),
         "company_id": str(value["company_id"]),
@@ -831,6 +885,11 @@ def _projection(
         "scope_type": value["scope_type"],
         "project_set_hash": value["project_set_hash"],
         "allowed_project_ids": [str(item) for item in value["allowed_project_ids"]],
+        **(
+            {"allowed_project_codes": list(value["allowed_project_codes"])}
+            if value.get("allowed_project_codes")
+            else {}
+        ),
         "approved_amount": amount,
         "approved_currency": value["approved_currency"],
         "remaining_amount": _decimal_text(approved - consumed),
@@ -866,6 +925,16 @@ def _uuid(field: str, value: object) -> str:
         return str(uuid.UUID(str(value)))
     except (ValueError, TypeError, AttributeError) as exc:
         raise _invalid(field, "must be a UUID") from exc
+
+
+def _project_registration_code(value: object) -> str:
+    normalized = str(value).strip().upper()
+    if _PROJECT_REGISTRATION_CODE.fullmatch(normalized) is None:
+        raise _invalid(
+            "allowed_project_codes",
+            "must contain approved 11-character Project registration codes",
+        )
+    return normalized
 
 
 def _positive_int(field: str, value: object) -> int:
