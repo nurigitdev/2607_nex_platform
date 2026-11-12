@@ -33,6 +33,13 @@ Project attribution in new MyBee accounting writes. Where those boundaries or
 the `S3-01` migration reservation differ, W30-CA02 takes precedence over
 W30-CA01 while preserving W30-CA01 as historical entry evidence.
 
+Runtime implementation evidence for the W30-CA02 Project foundation is
+recorded in
+[`mybee_phase1_w30_project_foundation_checkpoint.md`](../../slices/mybee_phase1_w30_project_foundation_checkpoint.md).
+That Checkpoint closes `W30-S00A` through `W30-S00D-A` and opens `S3-01`.
+It does not claim completion of the full W30 Wave, which still includes
+`S3-01` through `S3-03` and `MB3-01` under the active Slice Plan.
+
 ### COA Follow-up Reading Order
 
 Read the post-S1-02 standard Chart of Accounts design set in this order:
