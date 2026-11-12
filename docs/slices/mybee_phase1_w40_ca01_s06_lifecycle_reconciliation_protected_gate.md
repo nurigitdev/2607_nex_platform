@@ -100,6 +100,37 @@ Machine-readable evidence:
 - `reports/quality/w40-ca01-s06-eos-slice-gate.json`
 - `reports/quality/w40-ca01-s06-oa-slice-gate.json`
 
+## Repository Full Gate Reconciliation
+
+The canonical Repository Full Gate was executed after the Slice gates:
+
+```text
+command: ./scripts/quality/run_quality_gate.sh
+status: PASS
+tests: 21695 passed, 161 protected/optional skips
+statement coverage: 96.73% (threshold 96.00%)
+branch coverage: 95.90% (threshold 94.00%)
+product coverage: 98.52% statement / 97.08% branch
+harness coverage: 94.18% statement / 92.95% branch
+contract validation: PASS (245 schemas, 303 examples, 254 negative examples, 10 OpenAPI documents)
+AE Web full acceptance: PASS (6 journeys, 71 checks, 16 screenshots)
+```
+
+The Full Gate found and closed two baseline reconciliation gaps before the
+successful rerun:
+
+- The MyBee platform compatibility lock still referenced the pre-S06 NeX-OA
+  OpenAPI digest. The lock now admits the exact current contract digest.
+- The pre-W40 AE/EOS lifecycle integration fixture created a memberless
+  approved Project and consumed only the AE lifecycle outbox event. It now
+  seeds governed `OWNER` and `MANAGER` memberships and acknowledges both the
+  AE lifecycle and OA entitlement events, preserving W40 fail-closed behavior.
+
+Protected PostgreSQL, RustFS, browser, and live-provider tests that require an
+explicit opt-in environment remained reported as `SKIPPED`; the actual
+W40-CA01-S06 EOS/OA PostgreSQL evidence above remains the authoritative live
+database proof for this Slice.
+
 ## W40 Entry Decision
 
 The W40 Project entitlement amendment is closed. Project membership and

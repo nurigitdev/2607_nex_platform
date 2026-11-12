@@ -24,13 +24,17 @@ from nex_eos import (
     EOS_METADATA,
     EOS_OUTBOX_TABLE,
     EOS_PROJECT_TABLE,
+    PROJECT_LIFECYCLE_EVENT_TYPE,
     EosOutboxPublishReceipt,
     EosProjectLifecycleEventError,
     NvtProjectInput,
     ProjectInput,
+    ProjectMembershipInput,
     SqlAlchemyEosOutboxPublisher,
+    SqlAlchemyEosProjectMembershipRepository,
     SqlAlchemyEosProjectRepository,
     append_project_lifecycle_event,
+    deterministic_project_membership_id,
     project_lifecycle_event_payload,
 )
 from nex_runtime import SERVICE_SPECS, build_service_app, issue_mock_service_token
@@ -116,6 +120,23 @@ def lifecycle_runtime():
             agent_sync_state="PENDING",
         )
     )
+    memberships = SqlAlchemyEosProjectMembershipRepository(eos_sessions)
+    for subject_id, role in (
+        ("employee-manager", "MANAGER"),
+        ("employee-owner", "OWNER"),
+    ):
+        memberships.create_membership(
+            ProjectMembershipInput(
+                tenant_id=TENANT,
+                project_membership_id=deterministic_project_membership_id(
+                    TENANT, PROJECT_ID, subject_id
+                ),
+                project_id=PROJECT_ID,
+                subject_id=subject_id,
+                member_role=role,
+                created_by_subject_id="employee-owner",
+            )
+        )
     correlation_id = str(uuid4())
     with eos_sessions.begin() as session:
         append_project_lifecycle_event(
@@ -142,6 +163,12 @@ class DirectAeTransport:
         self.envelopes: list[dict] = []
 
     def publish(self, event):
+        if event.event_type != PROJECT_LIFECYCLE_EVENT_TYPE:
+            return EosOutboxPublishReceipt(
+                event_id=event.event_id,
+                event_payload_hash=event.event_payload_hash,
+                receipt_ref=f"oa.project-entitlement:{event.event_id}",
+            )
         envelope = {
             "event_id": event.event_id,
             "tenant_id": event.tenant_id,
@@ -225,6 +252,9 @@ def test_direct_lifecycle_sync_reuses_one_pa_and_acknowledges_eos(
         assert changed["agent_sync_state"] == "PENDING"
         result = publisher.publish_next(transport, tenant_id=TENANT)
         assert result is not None and result.retry_required is False
+        entitlement_result = publisher.publish_next(transport, tenant_id=TENANT)
+        assert entitlement_result is not None
+        assert entitlement_result.retry_required is False
         with ae_sessions() as session:
             projection = (
                 session.execute(select(AE_PROJECT_AGENT_SYNC_TABLE)).mappings().one()
