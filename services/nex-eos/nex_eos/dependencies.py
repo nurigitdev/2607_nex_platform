@@ -70,14 +70,18 @@ from .legal_entities import (
 from .organization import SqlAlchemyEosOrganizationRepository
 from .persistence import EosDatabaseRuntime, build_eos_database_runtime
 from .project_application_approvals import EosProjectApplicationApprovalService
+from .project_applications import (
+    EosProjectApplicationService,
+    SqlAlchemyEosProjectApplicationRepository,
+)
 from .project_authorization import (
     EosProjectAuthorizationGate,
     HttpOaProjectAuthorizationDecisionSource,
     SqlAlchemyEosProjectAuthorizationContextSource,
 )
-from .project_applications import (
-    EosProjectApplicationService,
-    SqlAlchemyEosProjectApplicationRepository,
+from .project_entitlement_reconciliation import (
+    EosProjectEntitlementReconciliationService,
+    HttpOaProjectEntitlementProjectionSource,
 )
 from .project_memberships import SqlAlchemyEosProjectMembershipRepository
 from .project_operations import EosGovernedProjectService
@@ -116,6 +120,7 @@ class EosDependencies:
     project_application_approval_service: EosProjectApplicationApprovalService | None
     project_memberships: SqlAlchemyEosProjectMembershipRepository | None
     project_operations: EosGovernedProjectService | None
+    project_entitlement_reconciliation: EosProjectEntitlementReconciliationService | None
     project_business_service: EosProjectBusinessService | None
     project_work_assignment_service: EosProjectWorkAssignmentService | None
     legal_entities: SqlAlchemyEosLegalEntityRepository | None
@@ -439,6 +444,20 @@ def build_eos_dependencies(
         and oa_token
         else None
     )
+    project_entitlement_reconciliation = (
+        EosProjectEntitlementReconciliationService(
+            session_factory=database_runtime.session_factory,
+            projection_source=HttpOaProjectEntitlementProjectionSource(
+                base_url=environ.get("NEX_OA_BASE_URL", "http://127.0.0.1:8101"),
+                service_token=oa_token,
+                timeout_seconds=float(
+                    environ.get("NEX_EOS_OA_PROJECT_TIMEOUT_SECONDS", "10")
+                ),
+            ),
+        )
+        if database_runtime is not None and oa_token
+        else None
+    )
     project_business_service = (
         EosProjectBusinessService(
             session_factory=database_runtime.session_factory,
@@ -584,6 +603,7 @@ def build_eos_dependencies(
         project_application_approval_service=project_application_approval_service,
         project_memberships=project_memberships,
         project_operations=project_operations,
+        project_entitlement_reconciliation=project_entitlement_reconciliation,
         project_business_service=project_business_service,
         project_work_assignment_service=project_work_assignment_service,
         legal_entities=legal_entities,

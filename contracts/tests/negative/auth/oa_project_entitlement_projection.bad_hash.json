@@ -1,0 +1,12 @@
+{
+  "schema_version": "oa_project_entitlement_projection.v1",
+  "tenant_id": "VO00",
+  "project_code": "VO00D260001",
+  "found": false,
+  "source_project_id": null,
+  "source_version": 0,
+  "project_status": null,
+  "members": [],
+  "correlation_id": "w40-ca01-s06-reconcile-001",
+  "projection_hash": "not-a-hash"
+}

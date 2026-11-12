@@ -68,6 +68,7 @@ SERVICE_PROFILES = {
             "test_nex_eos_*.py",
             "test_eos_*.py",
             "test_gb2_ca00_s20b_trust_approval_boundaries.py",
+            "test_nex_oa_eos_mybee_project_entitlement_lifecycle.py",
             "test_nex_oa_eos_mybee_project_entitlement_sync.py",
             "test_nex_platform_p8_demo_domain_composition.py",
             "test_nex_runtime_p8_demo_domain_activation.py",

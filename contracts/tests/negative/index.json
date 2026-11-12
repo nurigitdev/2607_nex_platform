@@ -1260,6 +1260,16 @@
       "name": "oa_project_entitlement_receipt_wrong_state",
       "path": "tests/negative/auth/oa_project_entitlement_receipt.wrong_state.json",
       "schema": "schemas/service/nex_oa/project_entitlement_receipt.v1.schema.json"
+    },
+    {
+      "name": "oa_project_entitlement_projection_request_missing_correlation",
+      "path": "tests/negative/auth/oa_project_entitlement_projection_request.missing_correlation.json",
+      "schema": "schemas/service/nex_oa/project_entitlement_projection_request.v1.schema.json"
+    },
+    {
+      "name": "oa_project_entitlement_projection_bad_hash",
+      "path": "tests/negative/auth/oa_project_entitlement_projection.bad_hash.json",
+      "schema": "schemas/service/nex_oa/project_entitlement_projection.v1.schema.json"
     }
   ]
 }

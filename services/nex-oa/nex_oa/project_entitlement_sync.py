@@ -27,7 +27,11 @@ from nex_oa.service_auth import (
     authorize_oa_service_request,
 )
 
-from .project_entitlements import PROJECT_ROLES, PROJECT_STATUSES
+from .project_entitlements import (
+    PROJECT_ROLES,
+    PROJECT_STATUSES,
+    OaProjectGrantRepository,
+)
 
 OA_PROJECT_ENTITLEMENT_WRITE_SCOPE = "project-entitlement:write"
 OA_PROJECT_ENTITLEMENT_EVENT_TYPE = "PROJECT_ENTITLEMENT_SNAPSHOT"
@@ -120,7 +124,10 @@ def build_project_entitlement_inbox_for_runtime(
 
 
 def register_project_entitlement_sync_routes(
-    app: FastAPI, *, inbox: OaProjectEntitlementInbox
+    app: FastAPI,
+    *,
+    inbox: OaProjectEntitlementInbox,
+    repository: OaProjectGrantRepository | None = None,
 ) -> None:
     @app.post("/internal/v1/auth/project-entitlement-events", response_model=None)
     def apply_project_entitlement_event(
@@ -172,6 +179,118 @@ def register_project_entitlement_sync_routes(
             return inbox.apply_event(payload)
         except OaAuthorizationError as exc:
             return _problem(request, exc)
+
+    if repository is None:
+        return
+
+    @app.post(
+        "/internal/v1/auth/project-entitlement-projections:resolve",
+        response_model=None,
+    )
+    def resolve_project_entitlement_projection(
+        payload: dict[str, Any],
+        request: Request,
+        response: Response,
+        authorization: str | None = Header(default=None),
+    ):
+        response.headers["Cache-Control"] = "no-store, max-age=0"
+        response.headers["Pragma"] = "no-cache"
+        required_scopes = (DEFAULT_SERVICE_SCOPE, OA_PROJECT_ENTITLEMENT_WRITE_SCOPE)
+        if getattr(request.app.state, "service_token_admission", None) is None:
+            checked = validate_authorization_header(
+                authorization,
+                expected_audience="nex-oa",
+                required_scopes=required_scopes,
+            )
+            if not checked.ok:
+                return _problem(
+                    request,
+                    OaAuthorizationError(
+                        403 if checked.error_code == "TOKEN_SCOPE_MISSING" else 401,
+                        checked.error_code or "SERVICE_CLAIM_INVALID",
+                        checked.detail or "A valid OA service claim is required.",
+                    ),
+                )
+        problem = authorize_oa_service_request(
+            request,
+            authorization,
+            required_scopes=required_scopes,
+            route_class="READ",
+        )
+        if problem is not None:
+            return problem
+        try:
+            claims = authenticated_oa_service_claims(request)
+            if claims.service_id != "nex-eos":
+                raise OaAuthorizationError(
+                    403,
+                    "OA_PROJECT_ENTITLEMENT_CALLER_FORBIDDEN",
+                    "Project entitlement projections are available only to NeX-EOS.",
+                )
+            return _project_projection(repository, payload)
+        except OaAuthorizationError as exc:
+            return _problem(request, exc)
+
+
+def _project_projection(
+    repository: OaProjectGrantRepository, payload: Mapping[str, Any]
+) -> dict[str, Any]:
+    if set(payload) != {"tenant_id", "project_code", "correlation_id"}:
+        raise _invalid("Project entitlement projection request is incomplete")
+    tenant_id = _scoped("tenant_id", payload["tenant_id"], maximum=128)
+    project_code = _project_code(payload["project_code"])
+    correlation_id = _scoped(
+        "correlation_id", payload["correlation_id"], maximum=256
+    )
+    rows = repository.list_project_grants(
+        tenant_id=tenant_id, project_code=project_code
+    )
+    if not rows:
+        semantics = {
+            "tenant_id": tenant_id,
+            "project_code": project_code,
+            "found": False,
+            "source_project_id": None,
+            "source_version": 0,
+            "project_status": None,
+            "members": [],
+            "correlation_id": correlation_id,
+        }
+    else:
+        latest = max(int(row["source_version"]) for row in rows)
+        current = [row for row in rows if int(row["source_version"]) == latest]
+        identities = {
+            (str(row["source_project_id"]), str(row["project_status"]))
+            for row in current
+        }
+        if len(identities) != 1:
+            raise _unavailable()
+        source_project_id, project_status = identities.pop()
+        semantics = {
+            "tenant_id": tenant_id,
+            "project_code": project_code,
+            "found": True,
+            "source_project_id": source_project_id,
+            "source_version": latest,
+            "project_status": project_status,
+            "members": sorted(
+                (
+                    {
+                        "subject_id": str(row["subject_id"]),
+                        "project_role": str(row["project_role"]),
+                    }
+                    for row in current
+                    if row["grant_status"] == "ACTIVE"
+                ),
+                key=lambda item: item["subject_id"],
+            ),
+            "correlation_id": correlation_id,
+        }
+    return {
+        "schema_version": "oa_project_entitlement_projection.v1",
+        **semantics,
+        "projection_hash": semantic_sha256_hash_ref(semantics),
+    }
 
 
 def _admit_event(envelope: Mapping[str, Any]) -> dict[str, Any]:

@@ -42,7 +42,7 @@ def test_repository_contract_api_audit_confirms_known_drift() -> None:
     assert summary["negative_fixture_covered_count"] == summary["schema_count"]
     assert summary["drift_count"] == summary["missing_openapi_operation_count"]
     assert summary["audit_issue_count"] == 0
-    assert result["openapi_version"] == "0.0.0-w40-ca01-s03"
+    assert result["openapi_version"] == "0.0.0-w40-ca01-s06"
     assert result["hardening_handoff"]["target_requirement"] == "S123"
     assert len(result["missing_openapi_operations"]) == summary[
         "missing_openapi_operation_count"

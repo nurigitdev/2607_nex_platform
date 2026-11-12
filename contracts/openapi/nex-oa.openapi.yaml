@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: NeX OA API
-  version: 0.0.0-w40-ca01-s03
+  version: 0.0.0-w40-ca01-s06
 tags:
   - name: Platform
   - name: Auth
@@ -507,6 +507,37 @@ paths:
           description: Entitlement write scope is missing or caller is not NeX-EOS.
         "409":
           description: Event replay changed or source version is stale.
+        "503":
+          description: OA Project entitlement persistence is unavailable.
+  /internal/v1/auth/project-entitlement-projections:resolve:
+    post:
+      operationId: resolveOaProjectEntitlementProjection
+      tags:
+        - Authorization
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes:
+        - service:call
+        - project-entitlement:write
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProjectEntitlementProjectionRequest"
+      responses:
+        "200":
+          description: Current hash-bound Project entitlement projection.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectEntitlementProjection"
+        "400":
+          description: Projection request is malformed.
+        "401":
+          description: Service claim is missing or invalid.
+        "403":
+          description: Entitlement scope is missing or caller is not NeX-EOS.
         "503":
           description: OA Project entitlement persistence is unavailable.
   /internal/v1/subject-registry/ensure:
@@ -1333,6 +1364,12 @@ components:
     ProjectEntitlementReceipt:
       type: object
       x-nex-canonical-json-schema: schemas/service/nex_oa/project_entitlement_receipt.v1.schema.json
+    ProjectEntitlementProjectionRequest:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_oa/project_entitlement_projection_request.v1.schema.json
+    ProjectEntitlementProjection:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_oa/project_entitlement_projection.v1.schema.json
     AuthorizationEventList:
       type: object
       x-nex-canonical-json-schema: schemas/service/nex_oa/authorization_event_list.v1.schema.json

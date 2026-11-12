@@ -22,6 +22,9 @@ from .organization_api import register_organization_routes
 from .project_api import register_project_routes
 from .project_application_api import register_project_application_routes
 from .project_business_api import register_project_business_routes
+from .project_entitlement_reconciliation_api import (
+    register_project_entitlement_reconciliation_routes,
+)
 from .project_work_assignment_api import register_project_work_assignment_routes
 from .reporting_map_api import register_reporting_map_routes
 from .scoped_approval_api import register_scoped_approval_routes
@@ -75,6 +78,9 @@ def create_eos_app(
     )
     app.state.eos_project_memberships = dependencies.project_memberships
     app.state.eos_project_operations = dependencies.project_operations
+    app.state.eos_project_entitlement_reconciliation = (
+        dependencies.project_entitlement_reconciliation
+    )
     app.state.eos_project_business_service = dependencies.project_business_service
     app.state.eos_project_work_assignment_service = (
         dependencies.project_work_assignment_service
@@ -122,6 +128,7 @@ def create_eos_app(
     register_organization_routes(app)
     register_project_application_routes(app)
     register_project_routes(app)
+    register_project_entitlement_reconciliation_routes(app)
     register_project_business_routes(app)
     register_project_work_assignment_routes(app)
     register_account_routes(app)

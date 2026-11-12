@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_oa/project_entitlement_projection.v1.schema.json",
+  "title": "OA Project Entitlement Projection",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "tenant_id",
+    "project_code",
+    "found",
+    "source_project_id",
+    "source_version",
+    "project_status",
+    "members",
+    "correlation_id",
+    "projection_hash"
+  ],
+  "properties": {
+    "schema_version": {"const": "oa_project_entitlement_projection.v1"},
+    "tenant_id": {"type": "string", "minLength": 1, "maxLength": 128},
+    "project_code": {"type": "string", "pattern": "^[A-Z0-9]{4}[DMSOIG][0-9]{6}$"},
+    "found": {"type": "boolean"},
+    "source_project_id": {
+      "oneOf": [
+        {"type": "string", "format": "uuid"},
+        {"type": "null"}
+      ]
+    },
+    "source_version": {"type": "integer", "minimum": 0},
+    "project_status": {
+      "oneOf": [
+        {"enum": ["ACTIVE", "INACTIVE", "CLOSING", "CLOSED"]},
+        {"type": "null"}
+      ]
+    },
+    "members": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["subject_id", "project_role"],
+        "properties": {
+          "subject_id": {"type": "string", "minLength": 1, "maxLength": 128},
+          "project_role": {"enum": ["OWNER", "MANAGER", "MEMBER", "VIEWER"]}
+        }
+      }
+    },
+    "correlation_id": {"type": "string", "minLength": 1, "maxLength": 256},
+    "projection_hash": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}
+  }
+}

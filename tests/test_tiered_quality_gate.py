@@ -19,6 +19,7 @@ def _minimal_root(tmp_path: Path) -> Path:
         "tests/test_ae_p6_runtime.py",
         "tests/test_gb2_ca00_s20b_trust_approval_boundaries.py",
         "tests/test_nex_eos_alpha.py",
+        "tests/test_nex_oa_eos_mybee_project_entitlement_lifecycle.py",
         "tests/test_nex_oa_eos_mybee_project_entitlement_sync.py",
         "tests/test_nex_platform_p8_demo_domain_composition.py",
         "tests/test_nex_runtime_p8_demo_domain_activation.py",
@@ -155,6 +156,7 @@ def test_eos_slice_profile_includes_cross_service_owned_regression(
     expected = {
         "tests/test_nex_eos_alpha.py",
         "tests/test_gb2_ca00_s20b_trust_approval_boundaries.py",
+        "tests/test_nex_oa_eos_mybee_project_entitlement_lifecycle.py",
         "tests/test_nex_oa_eos_mybee_project_entitlement_sync.py",
         "tests/test_nex_platform_p8_demo_domain_composition.py",
         "tests/test_nex_runtime_p8_demo_domain_activation.py",

@@ -497,6 +497,79 @@ class SqlAlchemyEosProjectMembershipRepository:
             raise _concurrent_change()
         return {**dict(existing), **changes}
 
+    def change_membership_role_in_session(
+        self,
+        session: Session,
+        *,
+        tenant_id: str,
+        project_id: str,
+        subject_id: str,
+        member_role: str,
+        changed_by_subject_id: str,
+    ) -> dict[str, Any]:
+        tenant_id = _scoped_id("tenant_id", tenant_id)
+        project_id = _uuid("project_id", project_id)
+        subject_id = _scoped_id("subject_id", subject_id)
+        member_role = _choice("member_role", member_role, {"MEMBER", "VIEWER"})
+        changed_by_subject_id = _scoped_id(
+            "changed_by_subject_id", changed_by_subject_id
+        )
+        project_status = self._locked_project_status(
+            session, tenant_id=tenant_id, project_id=project_id
+        )
+        if project_status != "ACTIVE":
+            raise EosProjectMembershipError(
+                "EOS_PROJECT_INACTIVE",
+                "Project must be active before a membership role can change",
+                status_code=409,
+            )
+        self._require_manager(
+            session,
+            tenant_id=tenant_id,
+            project_id=project_id,
+            subject_id=changed_by_subject_id,
+        )
+        existing = self._locked_subject_membership(
+            session,
+            tenant_id=tenant_id,
+            project_id=project_id,
+            subject_id=subject_id,
+        )
+        if existing is None or existing["status"] != "ACTIVE":
+            raise EosProjectMembershipError(
+                "EOS_PROJECT_MEMBERSHIP_NOT_FOUND",
+                "Active Project membership was not found in tenant scope",
+                status_code=404,
+            )
+        if existing["member_role"] not in {"MEMBER", "VIEWER"}:
+            raise EosProjectMembershipError(
+                "EOS_PROJECT_ACCOUNTABLE_ROLE_CHANGE_REQUIRES_GOVERNANCE",
+                "OWNER and MANAGER changes require the governed Project party workflow",
+                status_code=409,
+            )
+        if existing["member_role"] == member_role:
+            return dict(existing)
+        changed_at = datetime.now(UTC)
+        changes = {
+            "member_role": member_role,
+            "version": int(existing["version"]) + 1,
+            "updated_at": changed_at,
+        }
+        updated = session.execute(
+            update(EOS_PROJECT_MEMBER_TABLE)
+            .where(
+                EOS_PROJECT_MEMBER_TABLE.c.tenant_id == tenant_id,
+                EOS_PROJECT_MEMBER_TABLE.c.project_membership_id
+                == existing["project_membership_id"],
+                EOS_PROJECT_MEMBER_TABLE.c.status == "ACTIVE",
+                EOS_PROJECT_MEMBER_TABLE.c.version == existing["version"],
+            )
+            .values(**changes)
+        )
+        if int(updated.rowcount or 0) != 1:
+            raise _concurrent_change()
+        return {**dict(existing), **changes}
+
     @staticmethod
     def _require_manager(
         session: Session,

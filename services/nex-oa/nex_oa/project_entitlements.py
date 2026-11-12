@@ -77,6 +77,10 @@ class OaProjectGrantRepository(Protocol):
         self, *, tenant_id: str, project_code: str, subject_id: str
     ) -> dict[str, Any] | None: ...
 
+    def list_project_grants(
+        self, *, tenant_id: str, project_code: str
+    ) -> list[dict[str, Any]]: ...
+
 
 class EffectiveAuthorizationSource(Protocol):
     def effective_authorization(
@@ -114,6 +118,17 @@ class InMemoryOaProjectGrantRepository:
         )
         found = self.grants.get(key)
         return deepcopy(found) if found is not None else None
+
+    def list_project_grants(
+        self, *, tenant_id: str, project_code: str
+    ) -> list[dict[str, Any]]:
+        tenant = _scoped_id("tenant_id", tenant_id)
+        code = _project_code(project_code)
+        return [
+            deepcopy(value)
+            for key, value in sorted(self.grants.items())
+            if key[:2] == (tenant, code)
+        ]
 
 
 class SqlAlchemyOaProjectGrantRepository:
@@ -161,6 +176,31 @@ class SqlAlchemyOaProjectGrantRepository:
                 return _select_grant(session, identity)
         except SQLAlchemyError as exc:
             raise _grant_unavailable() from exc
+
+    def list_project_grants(
+        self, *, tenant_id: str, project_code: str
+    ) -> list[dict[str, Any]]:
+        identity = {
+            "tenant_id": _scoped_id("tenant_id", tenant_id),
+            "project_code": _project_code(project_code),
+        }
+        try:
+            with self._session_factory() as session:
+                rows = (
+                    session.execute(
+                        text(
+                            "SELECT * FROM oa_project_grant "
+                            "WHERE tenant_id = :tenant_id AND project_code = :project_code "
+                            "ORDER BY subject_id"
+                        ),
+                        identity,
+                    )
+                    .mappings()
+                    .all()
+                )
+        except SQLAlchemyError as exc:
+            raise _grant_unavailable() from exc
+        return [dict(row) for row in rows]
 
 
 @dataclass

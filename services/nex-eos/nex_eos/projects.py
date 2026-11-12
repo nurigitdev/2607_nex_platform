@@ -500,6 +500,23 @@ class SqlAlchemyEosProjectRepository:
                         causation_id=causation_id or event_lineage,
                         occurred_at=changed_at,
                     )
+                    from .project_entitlement_state import (
+                        append_managed_project_entitlement_snapshot,
+                    )
+
+                    synchronization = append_managed_project_entitlement_snapshot(
+                        transaction.db,
+                        tenant_id=tenant_id,
+                        project_id=str(current["project_id"]),
+                        correlation_id=correlation_id or event_lineage,
+                        causation_id=causation_id or event_lineage,
+                        occurred_at=changed_at,
+                    )
+                    if synchronization is not None:
+                        changed["authorization_version"] = synchronization[
+                            "source_version"
+                        ]
+                        changed["authorization_sync_state"] = "PENDING"
                 return {**dict(current), **changed}
         except EosProjectError:
             raise

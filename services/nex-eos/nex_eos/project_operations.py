@@ -21,6 +21,14 @@ from .business_transactions import (
     EosBusinessOperationRequest,
     EosBusinessTransactionCoordinator,
 )
+from .project_authorization import (
+    EosProjectAuthorizationError,
+    EosProjectAuthorizationGate,
+)
+from .project_entitlement_state import (
+    EosProjectEntitlementStateError,
+    append_managed_project_entitlement_snapshot,
+)
 from .project_lifecycle_events import append_project_lifecycle_event
 from .project_memberships import (
     EOS_PROJECT_MEMBER_ROLES,
@@ -28,10 +36,6 @@ from .project_memberships import (
     EosProjectMembershipError,
     ProjectMembershipInput,
     SqlAlchemyEosProjectMembershipRepository,
-)
-from .project_authorization import (
-    EosProjectAuthorizationError,
-    EosProjectAuthorizationGate,
 )
 from .projects import (
     EOS_PROJECT_TABLE,
@@ -56,6 +60,7 @@ PROJECT_DEACTIVATE_OPERATION = "PROJECT.PROJECT.DEACTIVATE"
 PROJECT_MEMBERSHIP_ADD_OPERATION = "PROJECT.MEMBERSHIP.ADD"
 PROJECT_MEMBERSHIP_ADD_MANY_OPERATION = "PROJECT.MEMBERSHIP.ADD_MANY"
 PROJECT_MEMBERSHIP_REMOVE_OPERATION = "PROJECT.MEMBERSHIP.REMOVE"
+PROJECT_MEMBERSHIP_CHANGE_ROLE_OPERATION = "PROJECT.MEMBERSHIP.CHANGE_ROLE"
 NVT_PROJECT_CREATE_OPERATION = "PROJECT.NVT_PROJECT.CREATE"
 NVT_PROJECT_UPDATE_OPERATION = "PROJECT.NVT_PROJECT.UPDATE"
 
@@ -360,11 +365,20 @@ class EosGovernedProjectService:
                 ),
                 manager_subject_id=requester,
             )
+            synchronization = append_managed_project_entitlement_snapshot(
+                session,
+                tenant_id=envelope["tenant_id"],
+                project_id=project_id,
+                correlation_id=envelope["business_operation_id"],
+                causation_id=envelope["idempotency_key"],
+                occurred_at=datetime.now(UTC),
+            )
             return {
                 "business_result_ref": (
                     f"eos.project-membership:{membership['project_membership_id']}"
                 ),
                 "membership": _wire(membership),
+                "authorization_synchronization": synchronization,
                 "authorization_revision_hash": authorization["revision_hash"],
             }
 
@@ -421,6 +435,14 @@ class EosGovernedProjectService:
                 created_by_subject_id=requester,
                 manager_subject_id=requester,
             )
+            synchronization = append_managed_project_entitlement_snapshot(
+                session,
+                tenant_id=envelope["tenant_id"],
+                project_id=project_id,
+                correlation_id=envelope["business_operation_id"],
+                causation_id=envelope["idempotency_key"],
+                occurred_at=datetime.now(UTC),
+            )
             combined = sorted(
                 [*item_results, *applied],
                 key=lambda item: str(item["subject_id"]).encode("utf-8"),
@@ -439,6 +461,7 @@ class EosGovernedProjectService:
                 "member_role": member_role,
                 "resolution_evidence_hash": resolution_evidence_hash,
                 "item_results": combined,
+                "authorization_synchronization": synchronization,
                 "authorization_revision_hash": authorization["revision_hash"],
             }
 
@@ -477,11 +500,75 @@ class EosGovernedProjectService:
                 removed_by_subject_id=requester,
                 manager_subject_id=requester,
             )
+            synchronization = append_managed_project_entitlement_snapshot(
+                session,
+                tenant_id=envelope["tenant_id"],
+                project_id=project_id,
+                correlation_id=envelope["business_operation_id"],
+                causation_id=envelope["idempotency_key"],
+                occurred_at=datetime.now(UTC),
+            )
             return {
                 "business_result_ref": (
                     f"eos.project-membership:{membership['project_membership_id']}"
                 ),
                 "membership": _wire(membership),
+                "authorization_synchronization": synchronization,
+                "authorization_revision_hash": authorization["revision_hash"],
+            }
+
+        return self._execute_write(envelope, mutation)
+
+    def change_membership_role(
+        self,
+        payload: Mapping[str, Any],
+        *,
+        caller: EosServiceCaller,
+    ) -> dict[str, Any]:
+        _require_service_caller(caller)
+        envelope = _write_envelope(payload, PROJECT_MEMBERSHIP_CHANGE_ROLE_OPERATION)
+        requester = _scoped_id(
+            "requester_subject_id", payload.get("requester_subject_id")
+        )
+        project_id = _uuid("project_id", payload.get("project_id"))
+        target_subject = _scoped_id(
+            "target_subject_id", payload.get("target_subject_id")
+        )
+        member_role = _text("member_role", payload.get("member_role")).upper()
+        authorization = self._authorize(
+            tenant_id=envelope["tenant_id"],
+            subject_id=requester,
+            required_scope=PROJECT_MEMBERSHIP_MANAGE_SCOPE,
+            project_id=project_id,
+        )
+
+        def mutation(session: Session | None) -> Mapping[str, Any]:
+            if session is None:
+                raise RuntimeError(
+                    "Membership CHANGE_ROLE requires a database transaction"
+                )
+            membership = self._memberships.change_membership_role_in_session(
+                session,
+                tenant_id=envelope["tenant_id"],
+                project_id=project_id,
+                subject_id=target_subject,
+                member_role=member_role,
+                changed_by_subject_id=requester,
+            )
+            synchronization = append_managed_project_entitlement_snapshot(
+                session,
+                tenant_id=envelope["tenant_id"],
+                project_id=project_id,
+                correlation_id=envelope["business_operation_id"],
+                causation_id=envelope["idempotency_key"],
+                occurred_at=datetime.now(UTC),
+            )
+            return {
+                "business_result_ref": (
+                    f"eos.project-membership:{membership['project_membership_id']}"
+                ),
+                "membership": _wire(membership),
+                "authorization_synchronization": synchronization,
                 "authorization_revision_hash": authorization["revision_hash"],
             }
 
@@ -587,6 +674,20 @@ class EosGovernedProjectService:
                         causation_id=envelope["idempotency_key"],
                         occurred_at=changed_at,
                     )
+                    synchronization = append_managed_project_entitlement_snapshot(
+                        session,
+                        tenant_id=envelope["tenant_id"],
+                        project_id=project_id,
+                        correlation_id=envelope["business_operation_id"],
+                        causation_id=envelope["idempotency_key"],
+                        occurred_at=changed_at,
+                    )
+                    if synchronization is not None:
+                        project = {
+                            **project,
+                            "authorization_version": synchronization["source_version"],
+                            "authorization_sync_state": "PENDING",
+                        }
             return {
                 "business_result_ref": f"eos.project:{project_id}",
                 "project": _wire(project),
@@ -748,6 +849,7 @@ class EosGovernedProjectService:
                 EosGovernedProjectError,
                 EosProjectError,
                 EosProjectMembershipError,
+                EosProjectEntitlementStateError,
             ) as exc:
                 raise EosBusinessOperationError(
                     exc.error_code,

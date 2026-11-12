@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_oa/project_entitlement_projection_request.v1.schema.json",
+  "title": "OA Project Entitlement Projection Request",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["tenant_id", "project_code", "correlation_id"],
+  "properties": {
+    "tenant_id": {"type": "string", "minLength": 1, "maxLength": 128},
+    "project_code": {"type": "string", "pattern": "^[A-Z0-9]{4}[DMSOIG][0-9]{6}$"},
+    "correlation_id": {"type": "string", "minLength": 1, "maxLength": 256}
+  }
+}

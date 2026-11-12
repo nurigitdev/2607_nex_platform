@@ -1504,6 +1504,16 @@
       "name": "oa_project_entitlement_receipt_applied",
       "path": "examples/auth/oa_project_entitlement_receipt.applied.json",
       "schema": "schemas/service/nex_oa/project_entitlement_receipt.v1.schema.json"
+    },
+    {
+      "name": "oa_project_entitlement_projection_request_valid",
+      "path": "examples/service/oa_project_entitlement_projection_request.valid.json",
+      "schema": "schemas/service/nex_oa/project_entitlement_projection_request.v1.schema.json"
+    },
+    {
+      "name": "oa_project_entitlement_projection_valid",
+      "path": "examples/service/oa_project_entitlement_projection.valid.json",
+      "schema": "schemas/service/nex_oa/project_entitlement_projection.v1.schema.json"
     }
   ]
 }

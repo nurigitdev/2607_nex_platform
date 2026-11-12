@@ -29,7 +29,7 @@ def test_default_registry_resolves_canonical_and_legacy_names() -> None:
     assert canonical.to_projection() == {
         "requested_operation": "PROJECT.PROJECT.GET",
         "canonical_operation": "PROJECT.PROJECT.GET",
-        "registry_version": "mybee-w30-s00b.v1",
+        "registry_version": "mybee-w40-ca01-s06.v1",
         "alias_applied": False,
     }
     assert alias.canonical_operation == "PROJECT.PROJECT.GET"
@@ -119,7 +119,9 @@ def test_eos_project_openapi_uses_canonical_operation_ids() -> None:
         "PROJECT.MEMBERSHIP.ADD",
         "PROJECT.MEMBERSHIP.ADD_MANY",
         "PROJECT.MEMBERSHIP.REMOVE",
+        "PROJECT.MEMBERSHIP.CHANGE_ROLE",
         "PROJECT.MEMBERSHIP.LIST",
+        "PROJECT.AUTHORIZATION.RECONCILE",
     }
     assert nvt_project_operations == {
         "PROJECT.NVT_PROJECT.CREATE",
