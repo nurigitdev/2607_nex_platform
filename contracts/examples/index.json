@@ -1459,6 +1459,11 @@
       "name": "ae_business_result_summary_voucher_committed",
       "path": "examples/service/ae_business_result_summary.voucher_committed.json",
       "schema": "schemas/service/nex_ae_api/business_result_summary.v1.schema.json"
+    },
+    {
+      "name": "eos_voucher_candidate_create_v2",
+      "path": "examples/service/eos_voucher_candidate_create.v2.json",
+      "schema": "schemas/service/nex_eos/voucher_candidate_create.v2.schema.json"
     }
   ]
 }

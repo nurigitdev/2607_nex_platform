@@ -1225,6 +1225,11 @@
       "name": "ae_project_membership_batch_skill_binding_model_authority",
       "path": "tests/negative/planning/ae_project_membership_batch_skill_binding.model_authority.json",
       "schema": "schemas/service/nex_ae_api/project_membership_batch_skill_binding.v1.schema.json"
+    },
+    {
+      "name": "eos_voucher_candidate_create_missing_project_code",
+      "path": "tests/negative/service/eos_voucher_candidate_create.missing_project_code.json",
+      "schema": "schemas/service/nex_eos/voucher_candidate_create.v2.schema.json"
     }
   ]
 }

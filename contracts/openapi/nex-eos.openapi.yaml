@@ -1348,6 +1348,61 @@ paths:
         "409": {description: Required regulated reporting mapping is pending.}
         "422": {description: Reporting map query is invalid.}
         "503": {description: OA authorization or persistence is unavailable.}
+  /internal/v2/finance/voucher-candidates:
+    post:
+      operationId: FINANCE.VOUCHER_CANDIDATE.CREATE_V2
+      tags: [Finance]
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes: [service:call]
+      x-nex-business-scope: finance:voucher-candidate:create
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateVoucherCandidateCommand"
+      responses:
+        "200":
+          description: Idempotent replay of an existing VoucherCandidate revision.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateVoucherCandidateResult"
+        "201":
+          description: Proof-bound immutable VoucherCandidate revision committed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateVoucherCandidateResult"
+        "401": {description: Service claim is missing or invalid.}
+        "403": {description: Fresh OA candidate-create authority is denied.}
+        "409": {description: Idempotency identity conflicts with prior semantics.}
+        "422": {description: "Proof, Project, hash, or Candidate semantics are invalid."}
+        "503": {description: OA authorization or EOS persistence is unavailable.}
+  /internal/v2/finance/voucher-candidates/{candidate_id}:
+    get:
+      operationId: FINANCE.VOUCHER_CANDIDATE.GET_V2
+      tags: [Finance]
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes: [service:call]
+      x-nex-side-effect-free: true
+      parameters:
+        - name: candidate_id
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+        - name: X-NeX-Tenant-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+      responses:
+        "200": {description: Current immutable VoucherCandidate revision and lines.}
+        "401": {description: Service claim is missing or invalid.}
+        "404": {description: Candidate was not found in tenant scope.}
+        "422": {description: Candidate or tenant identity is invalid.}
+        "503": {description: EOS query persistence is unavailable.}
   /internal/v1/finance/voucher-drafts:
     get:
       operationId: FINANCE.VOUCHER_DRAFT.LIST
@@ -1796,6 +1851,12 @@ components:
     CreateVoucherDraftResult:
       type: object
       x-nex-canonical-json-schema: schemas/service/nex_eos/create_voucher_draft_result.v1.schema.json
+    CreateVoucherCandidateCommand:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_eos/voucher_candidate_create.v2.schema.json
+    CreateVoucherCandidateResult:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_eos/voucher_candidate_create_result.v2.schema.json
     LegalEntity:
       type: object
       additionalProperties: false

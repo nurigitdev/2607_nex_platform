@@ -1,0 +1,109 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_eos/voucher_candidate_create.v2.schema.json",
+  "title": "EOS VoucherCandidate Create v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "tenant_id", "company_id", "business_operation_id",
+    "idempotency_key", "payload_hash", "preparer_subject_id", "project_ref",
+    "business_approval", "candidate", "trace"
+  ],
+  "properties": {
+    "schema_version": {"const": "eos_voucher_candidate_create.v2"},
+    "tenant_id": {"$ref": "#/$defs/scoped_id"},
+    "company_id": {"$ref": "#/$defs/uuid"},
+    "business_operation_id": {"$ref": "#/$defs/uuid"},
+    "idempotency_key": {"type": "string", "minLength": 1, "maxLength": 256},
+    "payload_hash": {"$ref": "#/$defs/hash_ref"},
+    "preparer_subject_id": {"$ref": "#/$defs/scoped_id"},
+    "project_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "id", "code"],
+      "properties": {
+        "type": {"const": "eos.project"},
+        "id": {"$ref": "#/$defs/uuid"},
+        "code": {"type": "string", "pattern": "^[A-Z0-9]{4}[DMSOIG][0-9]{6}$"}
+      }
+    },
+    "business_approval": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "envelope_id", "approved_document_id", "document_revision",
+        "approved_document_hash", "attachment_manifest_hash"
+      ],
+      "properties": {
+        "envelope_id": {"$ref": "#/$defs/uuid"},
+        "approved_document_id": {"$ref": "#/$defs/scoped_id"},
+        "document_revision": {"type": "integer", "minimum": 1},
+        "approved_document_hash": {"$ref": "#/$defs/hash_ref"},
+        "attachment_manifest_hash": {"$ref": "#/$defs/hash_ref"}
+      }
+    },
+    "candidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source_kind", "source_record_ref", "business_work_code",
+        "transaction_currency", "recognition_date", "lines"
+      ],
+      "properties": {
+        "source_kind": {"type": "string", "pattern": "^[A-Z][A-Z0-9_]{0,31}$"},
+        "source_record_ref": {"$ref": "#/$defs/scoped_id"},
+        "business_work_code": {"type": "string", "pattern": "^FL[0-9]{7}$"},
+        "transaction_currency": {"type": "string", "pattern": "^[A-Z]{3}$"},
+        "recognition_date": {"type": "string", "format": "date"},
+        "lines": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 1000,
+          "items": {"$ref": "#/$defs/line"}
+        }
+      }
+    },
+    "trace": {"$ref": "#/$defs/trace"}
+  },
+  "$defs": {
+    "uuid": {"type": "string", "format": "uuid"},
+    "hash_ref": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "scoped_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:@/-]{0,255}$"},
+    "money": {"type": "string", "pattern": "^(?:0|[1-9][0-9]{0,15})\\.[0-9]{4}$"},
+    "line": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "line_no", "account_ref", "debit_original", "credit_original",
+        "source_record_line_ref", "description", "evidence_hash"
+      ],
+      "properties": {
+        "line_no": {"type": "integer", "minimum": 1},
+        "account_ref": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "id"],
+          "properties": {
+            "type": {"const": "eos.account"},
+            "id": {"$ref": "#/$defs/uuid"}
+          }
+        },
+        "debit_original": {"$ref": "#/$defs/money"},
+        "credit_original": {"$ref": "#/$defs/money"},
+        "source_record_line_ref": {"$ref": "#/$defs/scoped_id"},
+        "description": {"type": ["string", "null"], "minLength": 1, "maxLength": 1000},
+        "evidence_hash": {"$ref": "#/$defs/hash_ref"}
+      }
+    },
+    "trace": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["trace_id", "correlation_id", "causation_id"],
+      "properties": {
+        "trace_id": {"$ref": "#/$defs/scoped_id"},
+        "correlation_id": {"$ref": "#/$defs/scoped_id"},
+        "causation_id": {"$ref": "#/$defs/scoped_id"}
+      }
+    }
+  }
+}

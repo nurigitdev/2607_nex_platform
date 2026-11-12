@@ -96,9 +96,11 @@ class EosVoucherAuthorizationClient:
         self,
         source: AuthorizationSource,
         *,
+        required_scope: str = EOS_VOUCHER_CREATE_SCOPE,
         clock=None,
     ) -> None:
         self._source = source
+        self._required_scope = _scoped_id("required_scope", required_scope)
         self._clock = clock or (lambda: datetime.now(UTC))
 
     def authorize_create(
@@ -111,7 +113,7 @@ class EosVoucherAuthorizationClient:
                 subject_id=normalized.subject_id,
             )
         except AuthorizationSubjectDenied as exc:
-            raise _denied() from exc
+            raise _denied(self._required_scope) from exc
         except Exception as exc:
             raise EosAuthorizationError(
                 "EOS_AUTHORIZATION_UNAVAILABLE",
@@ -119,7 +121,11 @@ class EosVoucherAuthorizationClient:
                 status_code=503,
                 retryable=True,
             ) from exc
-        revision_hash = _require_authorization(authorization, normalized)
+        revision_hash = _require_authorization(
+            authorization,
+            normalized,
+            required_scope=self._required_scope,
+        )
         checked_at = self._clock()
         if not isinstance(checked_at, datetime) or checked_at.tzinfo is None:
             raise EosAuthorizationError(
@@ -131,7 +137,7 @@ class EosVoucherAuthorizationClient:
             tenant_id=normalized.tenant_id,
             subject_id=normalized.subject_id,
             service_subject=normalized.service_subject,
-            required_scope=EOS_VOUCHER_CREATE_SCOPE,
+            required_scope=self._required_scope,
             project_id=normalized.project_id,
             resource_type=normalized.resource_type,
             resource_id=normalized.resource_id,
@@ -181,7 +187,12 @@ class HttpOaAuthorizationSource:
                     error_code=error_code,
                 ) from exc
             raise RuntimeError(f"OA authorization failed with HTTP {exc.code}") from exc
-        except (URLError, TimeoutError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        except (
+            URLError,
+            TimeoutError,
+            UnicodeDecodeError,
+            json.JSONDecodeError,
+        ) as exc:
             raise RuntimeError("OA authorization request failed") from exc
         if not isinstance(payload, Mapping) or not isinstance(
             payload.get("authorization"), Mapping
@@ -218,24 +229,28 @@ def _normalize_target(value: object) -> EosAuthorizationTarget:
 
 
 def _require_authorization(
-    value: object, target: EosAuthorizationTarget
+    value: object,
+    target: EosAuthorizationTarget,
+    *,
+    required_scope: str = EOS_VOUCHER_CREATE_SCOPE,
 ) -> str:
     if not isinstance(value, Mapping):
-        raise _denied()
+        raise _denied(required_scope)
     if value.get("active") is not True:
-        raise _denied()
-    if value.get("tenant_id") != target.tenant_id or value.get(
-        "subject_id"
-    ) != target.subject_id:
-        raise _denied()
+        raise _denied(required_scope)
+    if (
+        value.get("tenant_id") != target.tenant_id
+        or value.get("subject_id") != target.subject_id
+    ):
+        raise _denied(required_scope)
     scopes = _string_set(value.get("scopes"), "scopes", deny=True)
-    if EOS_VOUCHER_CREATE_SCOPE not in scopes:
-        raise _denied()
+    if required_scope not in scopes:
+        raise _denied(required_scope)
     revision_hash = value.get("revision_hash")
     if not isinstance(revision_hash, str) or not _REVISION_HASH.fullmatch(
         revision_hash
     ):
-        raise _denied()
+        raise _denied(required_scope)
     _require_optional_scope(value, "project_ids", target.project_id)
     if target.org_unit_id is not None:
         _require_optional_scope(value, "org_unit_ids", target.org_unit_id)
@@ -291,10 +306,10 @@ def _problem_error_code(exc: HTTPError) -> str | None:
     return value if isinstance(value, str) else None
 
 
-def _denied() -> EosAuthorizationError:
+def _denied(required_scope: str = EOS_VOUCHER_CREATE_SCOPE) -> EosAuthorizationError:
     return EosAuthorizationError(
         "EOS_AUTHORIZATION_DENIED",
-        "Current finance:voucher-draft:create authorization was denied.",
+        f"Current {required_scope} authorization was denied.",
         status_code=403,
     )
 

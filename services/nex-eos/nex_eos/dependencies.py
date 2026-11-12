@@ -86,6 +86,11 @@ from .scoped_approvals import (
     SqlAlchemyEosScopedApprovalRepository,
 )
 from .voucher_access import EosVoucherAccessService
+from .voucher_candidate_commands import EosCreateVoucherCandidateService
+from .voucher_candidates import (
+    EOS_VOUCHER_CANDIDATE_CREATE_SCOPE,
+    SqlAlchemyEosVoucherCandidateRepository,
+)
 from .voucher_commands import EosCreateVoucherDraftService
 from .voucher_verification import SqlAlchemyEosVoucherVerificationQuery
 from .vouchers import SqlAlchemyEosVoucherRepository
@@ -131,6 +136,8 @@ class EosDependencies:
     voucher_access_service: EosVoucherAccessService | None
     business_operation_query: SqlAlchemyEosBusinessOperationQuery | None
     voucher_verification_query: SqlAlchemyEosVoucherVerificationQuery | None
+    voucher_candidates: SqlAlchemyEosVoucherCandidateRepository | None
+    voucher_candidate_command_service: EosCreateVoucherCandidateService | None
 
 
 def build_eos_dependencies(
@@ -476,6 +483,25 @@ def build_eos_dependencies(
         if business_transactions is not None and vouchers is not None and oa_token
         else None
     )
+    voucher_candidates = (
+        SqlAlchemyEosVoucherCandidateRepository(database_runtime.session_factory)
+        if database_runtime is not None
+        else None
+    )
+    voucher_candidate_command_service = (
+        EosCreateVoucherCandidateService(
+            coordinator=business_transactions,
+            candidates=voucher_candidates,
+            authorizer=EosVoucherAuthorizationClient(
+                authorization_source,
+                required_scope=EOS_VOUCHER_CANDIDATE_CREATE_SCOPE,
+            ),
+        )
+        if business_transactions is not None
+        and voucher_candidates is not None
+        and authorization_source is not None
+        else None
+    )
     business_operation_query = (
         SqlAlchemyEosBusinessOperationQuery(database_runtime.session_factory)
         if database_runtime is not None
@@ -528,4 +554,6 @@ def build_eos_dependencies(
         voucher_access_service=voucher_access_service,
         business_operation_query=business_operation_query,
         voucher_verification_query=voucher_verification_query,
+        voucher_candidates=voucher_candidates,
+        voucher_candidate_command_service=voucher_candidate_command_service,
     )

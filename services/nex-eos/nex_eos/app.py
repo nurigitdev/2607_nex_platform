@@ -15,6 +15,7 @@ from .coa_api import register_coa_routes
 from .coa_release_admin_api import register_coa_release_admin_routes
 from .config import EosSettings, load_eos_settings
 from .dependencies import build_eos_dependencies
+from .finance_v2_api import register_finance_v2_routes
 from .fx_api import register_fx_rate_routes
 from .legal_entity_api import register_legal_entity_routes
 from .organization_api import register_organization_routes
@@ -31,7 +32,7 @@ from .wa_project_verification import (
 )
 
 SERVICE_SPEC = SERVICE_SPECS["nex-eos"]
-CONTRACT_CATALOG_VERSION = "mybee-w30-s00a"
+CONTRACT_CATALOG_VERSION = "mybee-w30-s3-01"
 
 
 def create_eos_app(
@@ -68,9 +69,7 @@ def create_eos_app(
     app.state.eos_organization = dependencies.organization
     app.state.eos_approver_resolution_service = dependencies.approver_resolution_service
     app.state.eos_projects = dependencies.projects
-    app.state.eos_project_application_service = (
-        dependencies.project_application_service
-    )
+    app.state.eos_project_application_service = dependencies.project_application_service
     app.state.eos_project_application_approval_service = (
         dependencies.project_application_approval_service
     )
@@ -107,7 +106,12 @@ def create_eos_app(
     app.state.eos_voucher_access_service = dependencies.voucher_access_service
     app.state.eos_business_operation_query = dependencies.business_operation_query
     app.state.eos_voucher_verification_query = dependencies.voucher_verification_query
+    app.state.eos_voucher_candidates = dependencies.voucher_candidates
+    app.state.eos_voucher_candidate_command_service = (
+        dependencies.voucher_candidate_command_service
+    )
     register_voucher_command_routes(app)
+    register_finance_v2_routes(app)
     register_approval_decision_routes(app)
     register_approved_document_routes(app)
     register_scoped_approval_routes(app)

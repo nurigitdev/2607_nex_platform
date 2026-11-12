@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_eos/voucher_candidate_create_result.v2.schema.json",
+  "title": "EOS VoucherCandidate Create Result v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "tenant_id", "business_operation_id", "idempotency_key",
+    "payload_hash", "commit_state", "idempotency_disposition", "candidate_ref",
+    "revision_ref", "project_ref", "document_envelope_id", "committed_at",
+    "outbox_event_ref"
+  ],
+  "properties": {
+    "schema_version": {"const": "eos_voucher_candidate_create_result.v2"},
+    "tenant_id": {"type": "string", "minLength": 1},
+    "business_operation_id": {"type": "string", "format": "uuid"},
+    "idempotency_key": {"type": "string", "minLength": 1},
+    "payload_hash": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "commit_state": {"const": "COMMITTED"},
+    "idempotency_disposition": {"enum": ["CREATED", "REPLAYED"]},
+    "candidate_ref": {"$ref": "#/$defs/entity_ref"},
+    "revision_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "id", "revision_no", "hash"],
+      "properties": {
+        "type": {"const": "eos.voucher_candidate_revision"},
+        "id": {"type": "string", "format": "uuid"},
+        "revision_no": {"const": 1},
+        "hash": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}
+      }
+    },
+    "project_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "id", "code"],
+      "properties": {
+        "type": {"const": "eos.project"},
+        "id": {"type": "string", "format": "uuid"},
+        "code": {"type": "string", "pattern": "^[A-Z0-9]{4}[DMSOIG][0-9]{6}$"}
+      }
+    },
+    "document_envelope_id": {"type": "string", "format": "uuid"},
+    "committed_at": {"type": "string", "format": "date-time"},
+    "outbox_event_ref": {"$ref": "#/$defs/entity_ref"}
+  },
+  "$defs": {
+    "entity_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "id"],
+      "properties": {
+        "type": {"type": "string", "minLength": 1},
+        "id": {"type": "string", "format": "uuid"}
+      }
+    }
+  }
+}
