@@ -17,6 +17,7 @@ MyBee office-work AX Service Phase-1 program.
 10. `NeX_MyBee_W30_CA01_W20_to_W30_Entry_Reconciliation_v1.0.md`
 11. `NeX_MyBee_W30_CA01_Entry_Decision_v1.0.json`
 12. `NeX_MyBee_W30_CA02_Project_Application_Code_Lifecycle_and_PA_Contract_Closure_v1.0.md`
+13. `NeX_MyBee_W40_CA01_Project_Membership_and_OA_Project_Code_Entitlement_Contract_Closure_v1.0.md`
 
 The Markdown Slice Plan and its Execution Matrix JSON are one planning set.
 The JSON is machine-readable traceability input, not runtime configuration or
@@ -32,6 +33,14 @@ business codes, lifecycle, Project Agent synchronization, and mandatory
 Project attribution in new MyBee accounting writes. Where those boundaries or
 the `S3-01` migration reservation differ, W30-CA02 takes precedence over
 W30-CA01 while preserving W30-CA01 as historical entry evidence.
+
+W40-CA01 is the subsequent controlled amendment for Project applicant/owner/PM
+separation, initial membership, EOS-to-OA Project-Code entitlement projection,
+and fail-closed Project authorization. It preserves EOS as the Project
+membership business SoR and OA as the authorization-decision SoR. Where these
+authorization boundaries differ from earlier optional `project_ids` behavior,
+W40-CA01 takes precedence. Its implementation and protected EOS/OA PostgreSQL
+gate are mandatory before W40 `S4-01`.
 
 Runtime implementation evidence for the W30-CA02 Project foundation is
 recorded in
