@@ -42,9 +42,9 @@
       "sha256": "sha256:362b083e52cafefef1825d4e4930d8df238fb96f044cb821121af9c664da9b0a"
     },
     "nex-eos": {
-      "version": 2535,
-      "path": "database/nex-eos/migrations/2535_eos_candidate_review_state.sql",
-      "sha256": "sha256:eefe1186d9995b1e506c6dcabfe0e621481a00c7335ca8b29c3e4fc73b728ac1"
+      "version": 2537,
+      "path": "database/nex-eos/migrations/2537_eos_project_approved_parties.sql",
+      "sha256": "sha256:c0fb326c57e7058752adde13aba6653653d724a4753381026ff330607ed6a8b2"
     },
     "nex-mo": {
       "version": 1470,
@@ -52,9 +52,9 @@
       "sha256": "sha256:77e035d2537de241f5c26065b381288100ffd951767e42baa7c4a90d731c6208"
     },
     "nex-oa": {
-      "version": 2517,
-      "path": "database/nex-oa/migrations/2517_oa_service_principal_wa.sql",
-      "sha256": "sha256:44f0810291c238222a0848a69979619233c4cdfcb7ffe91a6e9409f4d461de0f"
+      "version": 2518,
+      "path": "database/nex-oa/migrations/2518_oa_project_grant.sql",
+      "sha256": "sha256:a76e9e7eef861e68ec1b75b1f8e04d39b59632da35890fe5c5e43eb5ef39d0cb"
     },
     "nex-wa": {
       "version": 2607,

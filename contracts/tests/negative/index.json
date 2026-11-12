@@ -1240,6 +1240,16 @@
       "name": "eos_voucher_candidate_review_invalidate_missing_reason",
       "path": "tests/negative/service/eos_voucher_candidate_review_invalidate.missing_reason.json",
       "schema": "schemas/service/nex_eos/voucher_candidate_review_invalidate.v1.schema.json"
+    },
+    {
+      "name": "oa_project_authorization_decision_request_private_field",
+      "path": "tests/negative/auth/oa_project_authorization_decision_request.private_field.json",
+      "schema": "schemas/service/nex_oa/project_authorization_decision_request.v1.schema.json"
+    },
+    {
+      "name": "oa_project_authorization_decision_response_private_field",
+      "path": "tests/negative/auth/oa_project_authorization_decision_response.private_field.json",
+      "schema": "schemas/service/nex_oa/project_authorization_decision_response.v1.schema.json"
     }
   ]
 }

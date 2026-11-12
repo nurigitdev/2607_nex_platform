@@ -5,6 +5,7 @@ from pathlib import Path
 import run_oa_contract_api_drift_audit as runner
 from nex_oa.contract_api_drift_audit import (
     INVENTORY_BASELINE,
+    ROOT,
     _index_entries,
     _load_mapping,
     _openapi_operations,
@@ -33,12 +34,15 @@ def test_repository_contract_api_audit_confirms_known_drift() -> None:
         == summary["runtime_operation_count"]
     )
     assert summary["undocumented_openapi_operation_count"] == 0
-    assert summary["schema_count"] == 30
+    expected_schema_count = len(
+        tuple((ROOT / "contracts/schemas/service/nex_oa").glob("*.schema.json"))
+    )
+    assert summary["schema_count"] == expected_schema_count
     assert summary["positive_fixture_covered_count"] == summary["schema_count"]
     assert summary["negative_fixture_covered_count"] == summary["schema_count"]
     assert summary["drift_count"] == summary["missing_openapi_operation_count"]
     assert summary["audit_issue_count"] == 0
-    assert result["openapi_version"] == "0.0.0-p8-s107"
+    assert result["openapi_version"] == "0.0.0-w40-ca01-s03"
     assert result["hardening_handoff"]["target_requirement"] == "S123"
     assert len(result["missing_openapi_operations"]) == summary[
         "missing_openapi_operation_count"
