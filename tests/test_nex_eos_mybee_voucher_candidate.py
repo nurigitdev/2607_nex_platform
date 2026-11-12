@@ -156,6 +156,16 @@ def _seed(
             approval_evidence_hash=(
                 PROOF_HASH if project_origin == "APPROVED_APPLICATION" else None
             ),
+            project_owner_subject_id=(
+                "employee-owner"
+                if project_origin == "APPROVED_APPLICATION"
+                else None
+            ),
+            project_manager_subject_id=(
+                "employee-manager"
+                if project_origin == "APPROVED_APPLICATION"
+                else None
+            ),
         )
     )
     accounts = SqlAlchemyEosAccountRepository(sessions)

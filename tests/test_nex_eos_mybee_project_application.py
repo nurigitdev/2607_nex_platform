@@ -666,6 +666,8 @@ def test_project_code_resolver_and_lifecycle_matrix(runtime) -> None:
                 origin="APPROVED_APPLICATION",
                 approval_evidence_ref="approval://wc/case-1",
                 approval_evidence_hash=f"sha256:{'a' * 64}",
+                project_owner_subject_id=PROJECT_OWNER,
+                project_manager_subject_id=PROJECT_MANAGER,
                 name="Malformed approved Project",
                 nvt_project_id=NVT_ID,
             )

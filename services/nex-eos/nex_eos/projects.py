@@ -78,6 +78,8 @@ EOS_PROJECT_TABLE = Table(
     ),
     Column("approval_evidence_ref", String(256), nullable=True),
     Column("approval_evidence_hash", String(71), nullable=True),
+    Column("project_owner_subject_id", String(128), nullable=True),
+    Column("project_manager_subject_id", String(128), nullable=True),
     Column(
         "agent_sync_state",
         String(16),
@@ -126,6 +128,12 @@ EOS_PROJECT_TABLE = Table(
         name="ck_eos_project_origin",
     ),
     CheckConstraint(
+        "origin = 'LEGACY_DIRECT' OR "
+        "(project_owner_subject_id IS NOT NULL "
+        "AND project_manager_subject_id IS NOT NULL)",
+        name="ck_eos_project_approved_parties",
+    ),
+    CheckConstraint(
         "purpose_type IS NULL OR purpose_type IN ('D', 'M', 'S', 'O', 'I', 'G')",
         name="ck_eos_project_purpose",
     ),
@@ -143,6 +151,18 @@ Index(
     "ix_eos_project_nvt",
     EOS_PROJECT_TABLE.c.tenant_id,
     EOS_PROJECT_TABLE.c.nvt_project_id,
+)
+Index(
+    "ix_eos_project_owner",
+    EOS_PROJECT_TABLE.c.tenant_id,
+    EOS_PROJECT_TABLE.c.project_owner_subject_id,
+    EOS_PROJECT_TABLE.c.status,
+)
+Index(
+    "ix_eos_project_manager",
+    EOS_PROJECT_TABLE.c.tenant_id,
+    EOS_PROJECT_TABLE.c.project_manager_subject_id,
+    EOS_PROJECT_TABLE.c.status,
 )
 
 
@@ -191,6 +211,8 @@ class ProjectInput:
     origin: str = "LEGACY_DIRECT"
     approval_evidence_ref: str | None = None
     approval_evidence_hash: str | None = None
+    project_owner_subject_id: str | None = None
+    project_manager_subject_id: str | None = None
     agent_sync_state: str = "IN_SYNC"
 
 
@@ -288,6 +310,12 @@ class SqlAlchemyEosProjectRepository:
             ),
             "approval_evidence_hash": _optional_hash_ref(
                 "approval_evidence_hash", value.approval_evidence_hash
+            ),
+            "project_owner_subject_id": _optional_scoped_id(
+                "project_owner_subject_id", value.project_owner_subject_id
+            ),
+            "project_manager_subject_id": _optional_scoped_id(
+                "project_manager_subject_id", value.project_manager_subject_id
             ),
             "agent_sync_state": _agent_sync_state(value.agent_sync_state),
             "name": _text("name", value.name, 256),
@@ -876,6 +904,8 @@ def _require_project_origin_lineage(record: dict[str, Any]) -> None:
         "purpose_type",
         "approval_evidence_ref",
         "approval_evidence_hash",
+        "project_owner_subject_id",
+        "project_manager_subject_id",
     )
     if any(record[field] is None for field in required):
         raise _invalid(
@@ -905,6 +935,10 @@ def _uuid(field_name: str, value: object) -> str:
 
 def _optional_uuid(field_name: str, value: object) -> str | None:
     return None if value is None else _uuid(field_name, value)
+
+
+def _optional_scoped_id(field_name: str, value: object) -> str | None:
+    return None if value is None else _scoped_id(field_name, value)
 
 
 def _scoped_id(field_name: str, value: object) -> str:

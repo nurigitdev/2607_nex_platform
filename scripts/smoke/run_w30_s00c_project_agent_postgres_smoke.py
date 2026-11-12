@@ -108,6 +108,8 @@ def run_smoke(*, eos_database_url: str, ae_database_url: str) -> dict[str, objec
                 origin="APPROVED_APPLICATION",
                 approval_evidence_ref="eos.project-approval:VO0CR260001",
                 approval_evidence_hash="sha256:" + "a" * 64,
+                project_owner_subject_id="employee-owner",
+                project_manager_subject_id="employee-manager",
                 agent_sync_state="PENDING",
             )
         )

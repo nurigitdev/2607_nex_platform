@@ -44,6 +44,7 @@ from .project_lifecycle_events import append_project_lifecycle_event
 from .project_memberships import (
     ProjectMembershipInput,
     SqlAlchemyEosProjectMembershipRepository,
+    deterministic_project_membership_id,
 )
 from .projects import ProjectInput, SqlAlchemyEosProjectRepository
 
@@ -346,6 +347,15 @@ class EosProjectApplicationApprovalService:
                     raise _denied(
                         "Project applicant cannot approve the same application"
                     )
+                if (
+                    admitted["decision"] == "APPROVE"
+                    and admitted["stage_order"] == int(approval["stage_count"])
+                ):
+                    revision = _load_current_revision(session, application)
+                    self._require_active_project_parties(
+                        tenant_id=admitted["tenant_id"],
+                        parties=_project_parties(application, revision["payload"]),
+                    )
                 existing = _load_decision_by_identity(session, admitted)
                 if existing is not None:
                     if existing["decision_hash"] != admitted["decision_hash"]:
@@ -413,6 +423,36 @@ class EosProjectApplicationApprovalService:
             raise _denied("OA denied Project application approval authority")
         _authorization_revision(value)
         return dict(value)
+
+    def _require_active_project_parties(
+        self,
+        *,
+        tenant_id: str,
+        parties: tuple[tuple[str, str], ...],
+    ) -> None:
+        for subject_id, _member_role in parties:
+            try:
+                value = self._authorization_source.effective_authorization(
+                    tenant_id=tenant_id,
+                    subject_id=subject_id,
+                )
+            except AuthorizationSubjectDenied as exc:
+                raise _denied(
+                    "OA denied an inactive or unknown Project party"
+                ) from exc
+            except Exception as exc:
+                raise _unavailable(
+                    "OA Project party validation is unavailable"
+                ) from exc
+            if (
+                not isinstance(value, Mapping)
+                or value.get("active") is not True
+                or value.get("tenant_id") != tenant_id
+                or value.get("subject_id") != subject_id
+            ):
+                raise _denied(
+                    "OA denied an inactive, unknown, or cross-tenant Project party"
+                )
 
     def _load_replay(self, admitted: Mapping[str, Any]) -> dict[str, Any] | None:
         try:
@@ -630,6 +670,7 @@ def _advance_approval(
         return
 
     revision = _load_current_revision(session, application)
+    project_parties = _project_parties(application, revision["payload"])
     project_code = applications.allocate_registration_code_in_session(
         session,
         tenant_id=application["tenant_id"],
@@ -637,9 +678,6 @@ def _advance_approval(
         issued_at=recorded_at,
     )
     project_id = str(uuid5(uuid.UUID(str(application["application_id"])), "project"))
-    membership_id = str(
-        uuid5(uuid.UUID(str(application["application_id"])), "initial-owner")
-    )
     decision_hashes = list(
         session.execute(
             select(EOS_PROJECT_APP_DECISION_TABLE.c.decision_hash)
@@ -683,20 +721,26 @@ def _advance_approval(
                 f"eos.project-application-approval:{application['project_request_code']}"
             ),
             approval_evidence_hash=evidence_hash,
+            project_owner_subject_id=application["project_owner_subject_id"],
+            project_manager_subject_id=application["project_manager_subject_id"],
             agent_sync_state="PENDING",
         ),
     )
-    memberships.add_membership_in_session(
-        session,
-        ProjectMembershipInput(
-            application["tenant_id"],
-            membership_id,
-            project_id,
-            application["applicant_subject_id"],
-            "OWNER",
-            admitted["decided_by"],
-        ),
-    )
+    for subject_id, member_role in project_parties:
+        memberships.add_membership_in_session(
+            session,
+            ProjectMembershipInput(
+                application["tenant_id"],
+                deterministic_project_membership_id(
+                    application["tenant_id"], project_id, subject_id
+                ),
+                project_id,
+                subject_id,
+                member_role,
+                admitted["decided_by"],
+                valid_from=recorded_at,
+            ),
+        )
     append_project_lifecycle_event(
         session,
         tenant_id=application["tenant_id"],
@@ -721,6 +765,53 @@ def _advance_approval(
         approved_project_id=project_id,
         approved_project_code=project_code,
     )
+
+
+def _project_parties(
+    application: Mapping[str, Any], payload: Mapping[str, Any]
+) -> tuple[tuple[str, str], ...]:
+    owner = _scoped_id(
+        "project_owner_subject_id", application.get("project_owner_subject_id")
+    )
+    manager = _scoped_id(
+        "project_manager_subject_id", application.get("project_manager_subject_id")
+    )
+    payload_owner = payload.get("project_owner_subject_id")
+    payload_manager = payload.get("project_manager_subject_id")
+    members = payload.get("initial_members")
+
+    # Historical v1 revisions predate the explicit member list. The migration
+    # backfills both parties from the applicant, preserving their old meaning.
+    if members is None and payload.get("schema_version") != "eos_project_application_draft.v2":
+        legacy = {owner: "OWNER"}
+        if manager != owner:
+            legacy[manager] = "MANAGER"
+        return tuple(sorted(legacy.items()))
+
+    if payload_owner != owner or payload_manager != manager or not isinstance(members, list):
+        raise _unavailable("Project application parties are malformed")
+    normalized: dict[str, str] = {}
+    for item in members:
+        if not isinstance(item, Mapping):
+            raise _unavailable("Project application parties are malformed")
+        subject_id = _scoped_id("initial_members.subject_id", item.get("subject_id"))
+        role = str(item.get("member_role", "")).strip().upper()
+        if role not in {"OWNER", "MANAGER", "MEMBER", "VIEWER"}:
+            raise _unavailable("Project application parties are malformed")
+        if subject_id in normalized:
+            raise _unavailable("Project application parties are malformed")
+        normalized[subject_id] = role
+    if normalized.get(owner) != "OWNER":
+        raise _unavailable("Project application owner role is malformed")
+    if manager != owner and normalized.get(manager) != "MANAGER":
+        raise _unavailable("Project application manager role is malformed")
+    canonical = tuple(sorted(normalized.items()))
+    if [
+        {"subject_id": subject_id, "member_role": role}
+        for subject_id, role in canonical
+    ] != members:
+        raise _unavailable("Project application parties are not canonical")
+    return canonical
 
 
 def _update_approval_terminal(

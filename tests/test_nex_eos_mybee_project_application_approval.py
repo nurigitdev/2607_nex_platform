@@ -38,6 +38,8 @@ from nex_eos import (
     create_eos_app,
     is_project_application_approval_delivery,
 )
+from nex_eos.authorization import AuthorizationSubjectDenied
+from nex_eos.project_application_approvals import _project_parties
 from nex_runtime import issue_mock_service_token, psycopg_database_url
 from psycopg import sql
 from run_migrations import run_service_migrations
@@ -66,6 +68,7 @@ class AuthorizationSource:
     def __init__(self) -> None:
         self.active = True
         self.unavailable = False
+        self.inactive_subjects: set[str] = set()
         self.roles = {TEAM_LEAD: ["TEAM_LEAD"], CEO: ["CEO"]}
 
     def effective_authorization(self, *, tenant_id: str, subject_id: str):
@@ -82,7 +85,7 @@ class AuthorizationSource:
             else ["approval:decide"]
         )
         return {
-            "active": self.active,
+            "active": self.active and subject_id not in self.inactive_subjects,
             "tenant_id": tenant_id,
             "subject_id": subject_id,
             "scopes": scopes,
@@ -141,8 +144,9 @@ def runtime():
             purpose_type="D",
             applicant_subject_id=APPLICANT,
             name="Project Committee Runtime",
-            project_owner_subject_id=APPLICANT,
-            project_manager_subject_id=APPLICANT,
+            project_owner_subject_id=PROJECT_OWNER,
+            project_manager_subject_id=PROJECT_MANAGER,
+            initial_members=(ProjectApplicationMember(PROJECT_MEMBER),),
             nvt_project_id=NVT_ID,
             currency="KRW",
         ),
@@ -233,6 +237,109 @@ def _replace(payload: dict, path: str, value) -> dict:
     return changed
 
 
+def _party_payload() -> dict:
+    return {
+        "schema_version": "eos_project_application_draft.v2",
+        "project_owner_subject_id": PROJECT_OWNER,
+        "project_manager_subject_id": PROJECT_MANAGER,
+        "initial_members": [
+            {"subject_id": PROJECT_OWNER, "member_role": "OWNER"},
+            {"subject_id": PROJECT_MANAGER, "member_role": "MANAGER"},
+            {"subject_id": PROJECT_MEMBER, "member_role": "MEMBER"},
+        ],
+    }
+
+
+@pytest.mark.parametrize(
+    ("mutator", "detail"),
+    (
+        (lambda value: value.update(project_owner_subject_id="different"), "malformed"),
+        (
+            lambda value: value.update(project_manager_subject_id="different"),
+            "malformed",
+        ),
+        (lambda value: value.update(initial_members={}), "malformed"),
+        (lambda value: value["initial_members"].append("bad"), "malformed"),
+        (
+            lambda value: value["initial_members"][2].update(member_role="ADMIN"),
+            "malformed",
+        ),
+        (
+            lambda value: value["initial_members"].append(
+                {"subject_id": PROJECT_MEMBER, "member_role": "MEMBER"}
+            ),
+            "malformed",
+        ),
+        (lambda value: value["initial_members"].pop(0), "owner role"),
+        (lambda value: value["initial_members"].pop(1), "manager role"),
+        (lambda value: value["initial_members"].reverse(), "not canonical"),
+    ),
+)
+def test_project_party_projection_fails_closed_on_corrupt_revision(
+    mutator, detail
+) -> None:
+    payload = _party_payload()
+    mutator(payload)
+    application = {
+        "project_owner_subject_id": PROJECT_OWNER,
+        "project_manager_subject_id": PROJECT_MANAGER,
+    }
+
+    with pytest.raises(EosProjectApplicationApprovalError, match=detail):
+        _project_parties(application, payload)
+
+
+def test_legacy_project_party_projection_preserves_owner_manager_compatibility() -> None:
+    distinct = _project_parties(
+        {
+            "project_owner_subject_id": PROJECT_OWNER,
+            "project_manager_subject_id": PROJECT_MANAGER,
+        },
+        {"schema_version": "eos_project_application_draft.v1"},
+    )
+    shared = _project_parties(
+        {
+            "project_owner_subject_id": PROJECT_OWNER,
+            "project_manager_subject_id": PROJECT_OWNER,
+        },
+        {"schema_version": "eos_project_application_draft.v1"},
+    )
+    assert distinct == (
+        (PROJECT_OWNER, "OWNER"),
+        (PROJECT_MANAGER, "MANAGER"),
+    )
+    assert shared == ((PROJECT_OWNER, "OWNER"),)
+
+
+@pytest.mark.parametrize("mode", ("denied", "unavailable", "malformed", "cross_tenant"))
+def test_project_party_final_authorization_is_typed_and_fail_closed(
+    runtime, monkeypatch, mode
+) -> None:
+    _sessions, _application, auth, _wc, service = runtime
+
+    def failed_authorization(*, tenant_id, subject_id):
+        if mode == "denied":
+            raise AuthorizationSubjectDenied("inactive")
+        if mode == "unavailable":
+            raise RuntimeError("OA offline")
+        if mode == "malformed":
+            return []
+        return {
+            **AuthorizationSource().effective_authorization(
+                tenant_id=tenant_id, subject_id=subject_id
+            ),
+            "tenant_id": "OTHER",
+        }
+
+    monkeypatch.setattr(auth, "effective_authorization", failed_authorization)
+    expected = "unavailable" if mode == "unavailable" else "denied"
+    with pytest.raises(EosProjectApplicationApprovalError, match=expected):
+        service._require_active_project_parties(
+            tenant_id=TENANT,
+            parties=((PROJECT_OWNER, "OWNER"),),
+        )
+
+
 def test_two_stage_committee_finalizes_one_project_and_exact_replay(runtime) -> None:
     sessions, application, _auth, _wc, service = runtime
     requested = _request(service, application)
@@ -263,11 +370,19 @@ def test_two_stage_committee_finalizes_one_project_and_exact_replay(runtime) -> 
 
     with sessions() as session:
         project = session.execute(select(EOS_PROJECT_TABLE)).mappings().one()
-        membership = session.execute(select(EOS_PROJECT_MEMBER_TABLE)).mappings().one()
+        memberships = list(
+            session.execute(
+                select(EOS_PROJECT_MEMBER_TABLE).order_by(
+                    EOS_PROJECT_MEMBER_TABLE.c.subject_id
+                )
+            ).mappings()
+        )
         assert project["project_code"] == "VO00D260001"
         assert project["project_request_code"] == application["project_request_code"]
         assert project["origin"] == "APPROVED_APPLICATION"
         assert project["agent_sync_state"] == "PENDING"
+        assert project["project_owner_subject_id"] == PROJECT_OWNER
+        assert project["project_manager_subject_id"] == PROJECT_MANAGER
         lifecycle = (
             session.execute(
                 select(EOS_OUTBOX_TABLE).where(
@@ -281,8 +396,12 @@ def test_two_stage_committee_finalizes_one_project_and_exact_replay(runtime) -> 
         assert lifecycle["event_payload"]["profile_policy_ref"] == (
             PROJECT_AGENT_POLICY_REF
         )
-        assert membership["subject_id"] == APPLICANT
-        assert membership["member_role"] == "OWNER"
+        assert [(row["subject_id"], row["member_role"]) for row in memberships] == [
+            (PROJECT_OWNER, "OWNER"),
+            (PROJECT_MANAGER, "MANAGER"),
+            (PROJECT_MEMBER, "MEMBER"),
+        ]
+        assert APPLICANT not in {row["subject_id"] for row in memberships}
         assert (
             session.scalar(
                 select(func.count()).select_from(EOS_PROJECT_APP_DECISION_TABLE)
@@ -306,6 +425,39 @@ def test_committee_rejection_retains_application_without_project(runtime) -> Non
             session.scalar(select(func.count()).select_from(EOS_PROJECT_MEMBER_TABLE))
             == 0
         )
+
+
+def test_final_approval_rechecks_all_project_parties_before_mutation(runtime) -> None:
+    sessions, application, auth, _wc, service = runtime
+    first_item = _request(service, application)["wc_publication"]["work_item"]
+    first = service.ingest_wc_delivery(
+        _delivery(first_item, principal=TEAM_LEAD, decision="APPROVE", suffix="31")
+    )
+    second_item = first["wc_publication"]["work_item"]
+    auth.inactive_subjects.add(PROJECT_MANAGER)
+
+    with pytest.raises(EosProjectApplicationApprovalError, match="Project party"):
+        service.ingest_wc_delivery(
+            _delivery(second_item, principal=CEO, decision="APPROVE", suffix="32")
+        )
+
+    with sessions() as session:
+        assert session.scalar(select(func.count()).select_from(EOS_PROJECT_TABLE)) == 0
+        assert (
+            session.scalar(select(func.count()).select_from(EOS_PROJECT_MEMBER_TABLE))
+            == 0
+        )
+        assert (
+            session.scalar(
+                select(func.count()).select_from(EOS_PROJECT_APP_DECISION_TABLE)
+            )
+            == 1
+        )
+
+    auth.inactive_subjects.clear()
+    assert service.ingest_wc_delivery(
+        _delivery(second_item, principal=CEO, decision="APPROVE", suffix="32")
+    )["approval_state"] == "APPROVED"
 
 
 def test_request_and_delivery_fail_closed_on_drift_and_sod(runtime) -> None:
@@ -760,6 +912,12 @@ def test_project_approval_migration_and_operation_contract_are_admitted() -> Non
     assert "eos_project_app_approval" in sql
     assert "eos_project_app_decision" in sql
     assert "eos_guard_project_app_decision_immutable" in sql
+    parties_migration = Path(
+        "database/nex-eos/migrations/2537_eos_project_approved_parties.sql"
+    ).read_text(encoding="utf-8")
+    assert "project_owner_subject_id" in parties_migration
+    assert "ck_eos_project_approved_parties" in parties_migration
+    assert "2537_eos_project_approved_parties" in parties_migration
     assert is_project_application_approval_delivery({}) is False
 
 
@@ -817,8 +975,9 @@ def test_actual_postgres_project_committee_finalization_and_zero_residue() -> No
                 purpose_type="D",
                 applicant_subject_id=APPLICANT,
                 name="PostgreSQL Project Committee",
-                project_owner_subject_id=APPLICANT,
-                project_manager_subject_id=APPLICANT,
+                project_owner_subject_id=PROJECT_OWNER,
+                project_manager_subject_id=PROJECT_MANAGER,
+                initial_members=(ProjectApplicationMember(PROJECT_MEMBER),),
                 nvt_project_id=NVT_ID,
             ),
             issued_at=NOW,
@@ -857,6 +1016,12 @@ def test_actual_postgres_project_committee_finalization_and_zero_residue() -> No
                     select(func.count()).select_from(EOS_PROJECT_APP_DECISION_TABLE)
                 )
                 == 1
+            )
+            assert (
+                session.scalar(
+                    select(func.count()).select_from(EOS_PROJECT_MEMBER_TABLE)
+                )
+                == 3
             )
         database.engine.dispose()
     finally:
