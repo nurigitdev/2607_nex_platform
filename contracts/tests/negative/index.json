@@ -1250,6 +1250,16 @@
       "name": "oa_project_authorization_decision_response_private_field",
       "path": "tests/negative/auth/oa_project_authorization_decision_response.private_field.json",
       "schema": "schemas/service/nex_oa/project_authorization_decision_response.v1.schema.json"
+    },
+    {
+      "name": "oa_project_entitlement_event_hash_missing",
+      "path": "tests/negative/auth/oa_project_entitlement_event.hash_missing.json",
+      "schema": "schemas/service/nex_oa/project_entitlement_event.v1.schema.json"
+    },
+    {
+      "name": "oa_project_entitlement_receipt_wrong_state",
+      "path": "tests/negative/auth/oa_project_entitlement_receipt.wrong_state.json",
+      "schema": "schemas/service/nex_oa/project_entitlement_receipt.v1.schema.json"
     }
   ]
 }

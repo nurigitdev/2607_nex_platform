@@ -476,6 +476,39 @@ paths:
           description: Authorization read scope is missing.
         "503":
           description: OA identity or Project grant persistence is unavailable.
+  /internal/v1/auth/project-entitlement-events:
+    post:
+      operationId: applyOaProjectEntitlementEvent
+      tags:
+        - Authorization
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes:
+        - service:call
+        - project-entitlement:write
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProjectEntitlementEvent"
+      responses:
+        "200":
+          description: Exact Project entitlement snapshot applied or replayed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectEntitlementReceipt"
+        "400":
+          description: Event envelope, tenant binding, or payload hash is invalid.
+        "401":
+          description: Service claim is missing or invalid.
+        "403":
+          description: Entitlement write scope is missing or caller is not NeX-EOS.
+        "409":
+          description: Event replay changed or source version is stale.
+        "503":
+          description: OA Project entitlement persistence is unavailable.
   /internal/v1/subject-registry/ensure:
     post:
       operationId: ensureOaSubjectRegistryEntry
@@ -1294,6 +1327,12 @@ components:
           type: string
         trace_id:
           type: string
+    ProjectEntitlementEvent:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_oa/project_entitlement_event.v1.schema.json
+    ProjectEntitlementReceipt:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_oa/project_entitlement_receipt.v1.schema.json
     AuthorizationEventList:
       type: object
       x-nex-canonical-json-schema: schemas/service/nex_oa/authorization_event_list.v1.schema.json

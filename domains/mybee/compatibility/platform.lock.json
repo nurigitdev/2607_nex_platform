@@ -10,7 +10,7 @@
   "openapi": {
     "nex-oa": {
       "path": "contracts/openapi/nex-oa.openapi.yaml",
-      "sha256": "sha256:597cb20e99929fbea7603952b91e969f80cff074e5f2e83260763e1c10dd1734"
+      "sha256": "sha256:5cc5c3caaf0f3f464cf1ab8afb30e56413c7d2ab3037a74331d5a07ceb61bd63"
     },
     "nex-ae-api": {
       "path": "contracts/openapi/nex-ae-api.openapi.yaml",

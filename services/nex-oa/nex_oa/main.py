@@ -67,6 +67,10 @@ from nex_oa.project_entitlements import (
     build_project_grant_repository_for_runtime,
     register_project_entitlement_routes,
 )
+from nex_oa.project_entitlement_sync import (
+    build_project_entitlement_inbox_for_runtime,
+    register_project_entitlement_sync_routes,
+)
 from nex_oa.service_auth import build_oa_local_service_token_admission
 from nex_oa.service_principal_api import register_service_principal_routes
 from nex_oa.service_principal_repository import (
@@ -141,6 +145,9 @@ AUTHORIZATION_SERVICE = OaAuthorizationService(
 PROJECT_GRANT_REPOSITORY = build_project_grant_repository_for_runtime(
     SERVICE_PERSISTENCE
 )
+PROJECT_ENTITLEMENT_INBOX = build_project_entitlement_inbox_for_runtime(
+    SERVICE_PERSISTENCE
+)
 PROJECT_AUTHORIZATION_SERVICE = OaProjectAuthorizationDecisionService(
     repository=PROJECT_GRANT_REPOSITORY,
     authorization_source=AUTHORIZATION_SERVICE,
@@ -184,7 +191,9 @@ SIGNING_KEY_SERVICE = OaSigningKeyService(
     repository=SIGNED_TOKEN_REPOSITORY,
 )
 TOKEN_SIGNING_PROVIDER = build_oa_signing_provider()
-SERVICE_TOKEN_EXCHANGE_PROFILE = service_token_exchange_profile_for_environment(os.environ)
+SERVICE_TOKEN_EXCHANGE_PROFILE = service_token_exchange_profile_for_environment(
+    os.environ
+)
 TOKEN_EXCHANGE_SERVICE = OaClientCredentialTokenExchangeService(
     principal_service=SERVICE_PRINCIPAL_SERVICE,
     signing_key_service=SIGNING_KEY_SERVICE,
@@ -234,6 +243,7 @@ register_employee_batch_resolution_routes(app, resolver=EMPLOYEE_BATCH_RESOLVER)
 register_subject_verification_routes(app, verifier=SUBJECT_VERIFIER)
 register_authorization_routes(app, service=AUTHORIZATION_SERVICE)
 register_project_entitlement_routes(app, service=PROJECT_AUTHORIZATION_SERVICE)
+register_project_entitlement_sync_routes(app, inbox=PROJECT_ENTITLEMENT_INBOX)
 register_identity_lifecycle_routes(app, service=IDENTITY_LIFECYCLE_SERVICE)
 register_service_principal_routes(
     app,

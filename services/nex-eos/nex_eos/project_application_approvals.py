@@ -41,6 +41,7 @@ from .project_applications import (
     SqlAlchemyEosProjectApplicationRepository,
 )
 from .project_lifecycle_events import append_project_lifecycle_event
+from .project_entitlement_events import append_project_entitlement_snapshot
 from .project_memberships import (
     ProjectMembershipInput,
     SqlAlchemyEosProjectMembershipRepository,
@@ -347,9 +348,8 @@ class EosProjectApplicationApprovalService:
                     raise _denied(
                         "Project applicant cannot approve the same application"
                     )
-                if (
-                    admitted["decision"] == "APPROVE"
-                    and admitted["stage_order"] == int(approval["stage_count"])
+                if admitted["decision"] == "APPROVE" and admitted["stage_order"] == int(
+                    approval["stage_count"]
                 ):
                     revision = _load_current_revision(session, application)
                     self._require_active_project_parties(
@@ -437,9 +437,7 @@ class EosProjectApplicationApprovalService:
                     subject_id=subject_id,
                 )
             except AuthorizationSubjectDenied as exc:
-                raise _denied(
-                    "OA denied an inactive or unknown Project party"
-                ) from exc
+                raise _denied("OA denied an inactive or unknown Project party") from exc
             except Exception as exc:
                 raise _unavailable(
                     "OA Project party validation is unavailable"
@@ -724,6 +722,8 @@ def _advance_approval(
             project_owner_subject_id=application["project_owner_subject_id"],
             project_manager_subject_id=application["project_manager_subject_id"],
             agent_sync_state="PENDING",
+            authorization_sync_state="PENDING",
+            authorization_version=1,
         ),
     )
     for subject_id, member_role in project_parties:
@@ -750,6 +750,21 @@ def _advance_approval(
         current_state="ACTIVE",
         project_version=1,
         profile_policy_ref=project_agent_profile_policy_ref,
+        correlation_id=str(admitted["wc_work_item_id"]),
+        causation_id=str(admitted["wc_event_id"]),
+        occurred_at=recorded_at,
+    )
+    append_project_entitlement_snapshot(
+        session,
+        tenant_id=application["tenant_id"],
+        project_id=project_id,
+        project_code=project_code,
+        project_status="ACTIVE",
+        source_version=1,
+        members=(
+            {"subject_id": subject_id, "project_role": member_role}
+            for subject_id, member_role in project_parties
+        ),
         correlation_id=str(admitted["wc_work_item_id"]),
         causation_id=str(admitted["wc_event_id"]),
         occurred_at=recorded_at,
@@ -782,13 +797,20 @@ def _project_parties(
 
     # Historical v1 revisions predate the explicit member list. The migration
     # backfills both parties from the applicant, preserving their old meaning.
-    if members is None and payload.get("schema_version") != "eos_project_application_draft.v2":
+    if (
+        members is None
+        and payload.get("schema_version") != "eos_project_application_draft.v2"
+    ):
         legacy = {owner: "OWNER"}
         if manager != owner:
             legacy[manager] = "MANAGER"
         return tuple(sorted(legacy.items()))
 
-    if payload_owner != owner or payload_manager != manager or not isinstance(members, list):
+    if (
+        payload_owner != owner
+        or payload_manager != manager
+        or not isinstance(members, list)
+    ):
         raise _unavailable("Project application parties are malformed")
     normalized: dict[str, str] = {}
     for item in members:

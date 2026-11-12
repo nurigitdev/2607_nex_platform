@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from .business_transactions import EOS_OUTBOX_TABLE
 from .project_lifecycle_events import PROJECT_LIFECYCLE_EVENT_TYPE
+from .project_entitlement_events import PROJECT_ENTITLEMENT_EVENT_TYPE
 from .projects import EOS_PROJECT_TABLE
 
 _SCOPED_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$")
@@ -102,8 +103,43 @@ class SqlAlchemyEosOutboxPublisher:
                 attempted_at = _aware_datetime(self._clock())
                 try:
                     receipt = publish(event)
-                    normalized_receipt = _receipt(receipt, event)
+                except EosOutboxPublicationError as exc:
+                    _record_attempt(
+                        session,
+                        event,
+                        attempt_count=attempt_count,
+                        attempted_at=attempted_at,
+                        published_at=None,
+                    )
+                    if not exc.retryable:
+                        _record_project_authorization_failure(session, event)
+                    return _result(
+                        event,
+                        delivery_state="PENDING",
+                        attempt_count=attempt_count,
+                        retry_required=exc.retryable,
+                        receipt_ref=None,
+                        error_code=exc.error_code,
+                    )
                 except (OSError, RuntimeError):
+                    _record_attempt(
+                        session,
+                        event,
+                        attempt_count=attempt_count,
+                        attempted_at=attempted_at,
+                        published_at=None,
+                    )
+                    return _result(
+                        event,
+                        delivery_state="PENDING",
+                        attempt_count=attempt_count,
+                        retry_required=True,
+                        receipt_ref=None,
+                        error_code="EOS_OUTBOX_ACK_UNCONFIRMED",
+                    )
+                try:
+                    normalized_receipt = _receipt(receipt, event)
+                except EosOutboxPublicationError:
                     _record_attempt(
                         session,
                         event,
@@ -127,6 +163,7 @@ class SqlAlchemyEosOutboxPublisher:
                     published_at=attempted_at,
                 )
                 _record_project_agent_sync(session, event)
+                _record_project_authorization_sync(session, event)
                 return _result(
                     event,
                     delivery_state="PUBLISHED",
@@ -277,6 +314,55 @@ def _record_project_agent_sync(session: Session, event: EosOutboxEvent) -> None:
             "Project state changed before Project Agent acknowledgement.",
             retryable=True,
         )
+
+
+def _record_project_authorization_sync(session: Session, event: EosOutboxEvent) -> None:
+    if event.event_type != PROJECT_ENTITLEMENT_EVENT_TYPE:
+        return
+    project_id, source_version = _project_entitlement_identity(event)
+    result = session.execute(
+        EOS_PROJECT_TABLE.update()
+        .where(
+            EOS_PROJECT_TABLE.c.tenant_id == event.tenant_id,
+            EOS_PROJECT_TABLE.c.project_id == project_id,
+            EOS_PROJECT_TABLE.c.authorization_version == source_version,
+            EOS_PROJECT_TABLE.c.authorization_sync_state.in_(("PENDING", "FAILED")),
+        )
+        .values(authorization_sync_state="IN_SYNC")
+    )
+    if int(result.rowcount or 0) != 1:
+        raise EosOutboxPublicationError(
+            "EOS_PROJECT_AUTHORIZATION_SYNC_CONFLICT",
+            "Project state changed before OA authorization acknowledgement.",
+            retryable=True,
+        )
+
+
+def _record_project_authorization_failure(
+    session: Session, event: EosOutboxEvent
+) -> None:
+    if event.event_type != PROJECT_ENTITLEMENT_EVENT_TYPE:
+        return
+    project_id, source_version = _project_entitlement_identity(event)
+    session.execute(
+        EOS_PROJECT_TABLE.update()
+        .where(
+            EOS_PROJECT_TABLE.c.tenant_id == event.tenant_id,
+            EOS_PROJECT_TABLE.c.project_id == project_id,
+            EOS_PROJECT_TABLE.c.authorization_version == source_version,
+            EOS_PROJECT_TABLE.c.authorization_sync_state == "PENDING",
+        )
+        .values(authorization_sync_state="FAILED")
+    )
+
+
+def _project_entitlement_identity(event: EosOutboxEvent) -> tuple[str, int]:
+    try:
+        project_id = _uuid("project_id", event.event_payload["project_id"])
+        source_version = _project_version(event.event_payload["source_version"])
+    except (KeyError, TypeError, ValueError) as exc:
+        raise _invalid("Project entitlement outbox payload is malformed.") from exc
+    return project_id, source_version
 
 
 def _result(

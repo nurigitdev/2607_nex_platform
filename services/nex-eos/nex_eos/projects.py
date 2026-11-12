@@ -86,6 +86,18 @@ EOS_PROJECT_TABLE = Table(
         nullable=False,
         server_default="IN_SYNC",
     ),
+    Column(
+        "authorization_sync_state",
+        String(16),
+        nullable=False,
+        server_default="FAILED",
+    ),
+    Column(
+        "authorization_version",
+        Integer,
+        nullable=False,
+        server_default="0",
+    ),
     Column("name", String(256), nullable=False),
     Column("parent_project_id", Uuid(as_uuid=False), nullable=True),
     Column("nvt_project_id", Uuid(as_uuid=False), nullable=True),
@@ -140,6 +152,14 @@ EOS_PROJECT_TABLE = Table(
     CheckConstraint(
         "agent_sync_state IN ('PENDING', 'IN_SYNC', 'FAILED')",
         name="ck_eos_project_agent_sync",
+    ),
+    CheckConstraint(
+        "authorization_sync_state IN ('PENDING', 'IN_SYNC', 'FAILED')",
+        name="ck_eos_project_authorization_sync",
+    ),
+    CheckConstraint(
+        "authorization_version >= 0",
+        name="ck_eos_project_authorization_version",
     ),
 )
 Index(
@@ -214,6 +234,8 @@ class ProjectInput:
     project_owner_subject_id: str | None = None
     project_manager_subject_id: str | None = None
     agent_sync_state: str = "IN_SYNC"
+    authorization_sync_state: str = "FAILED"
+    authorization_version: int = 0
 
 
 class SqlAlchemyEosProjectRepository:
@@ -318,6 +340,12 @@ class SqlAlchemyEosProjectRepository:
                 "project_manager_subject_id", value.project_manager_subject_id
             ),
             "agent_sync_state": _agent_sync_state(value.agent_sync_state),
+            "authorization_sync_state": _authorization_sync_state(
+                value.authorization_sync_state
+            ),
+            "authorization_version": _nonnegative_int(
+                "authorization_version", value.authorization_version
+            ),
             "name": _text("name", value.name, 256),
             "parent_project_id": parent_project_id,
             "nvt_project_id": nvt_project_id,
@@ -965,6 +993,18 @@ def _text(field_name: str, value: object, maximum: int) -> str:
 def _positive_int(field_name: str, value: object) -> int:
     if isinstance(value, bool) or not isinstance(value, int) or value < 1:
         raise _invalid(field_name, "must be a positive integer")
+    return value
+
+
+def _authorization_sync_state(value: object) -> str:
+    if value not in {"PENDING", "IN_SYNC", "FAILED"}:
+        raise _invalid("authorization_sync_state", "has invalid synchronization state")
+    return str(value)
+
+
+def _nonnegative_int(field_name: str, value: object) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise _invalid(field_name, "must be a nonnegative integer")
     return value
 
 

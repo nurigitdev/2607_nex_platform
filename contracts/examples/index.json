@@ -1494,6 +1494,16 @@
       "name": "oa_project_authorization_decision_allow",
       "path": "examples/auth/oa_project_authorization_decision.allow.json",
       "schema": "schemas/service/nex_oa/project_authorization_decision_response.v1.schema.json"
+    },
+    {
+      "name": "oa_project_entitlement_event_valid",
+      "path": "examples/auth/oa_project_entitlement_event.valid.json",
+      "schema": "schemas/service/nex_oa/project_entitlement_event.v1.schema.json"
+    },
+    {
+      "name": "oa_project_entitlement_receipt_applied",
+      "path": "examples/auth/oa_project_entitlement_receipt.applied.json",
+      "schema": "schemas/service/nex_oa/project_entitlement_receipt.v1.schema.json"
     }
   ]
 }

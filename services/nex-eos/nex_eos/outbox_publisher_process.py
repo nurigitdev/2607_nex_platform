@@ -35,7 +35,12 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from nex_eos.ae_outbox_transport import HttpAeEosOutboxTransport
+from nex_eos.oa_outbox_transport import (
+    HttpOaProjectEntitlementTransport,
+    RoutingEosOutboxTransport,
+)
 from nex_eos.outbox_publication import (
+    EosOutboxTransport,
     EosOutboxPublicationError,
     SqlAlchemyEosOutboxPublisher,
 )
@@ -91,7 +96,7 @@ class InstalledEosOutboxPublisherProcess:
     sessions: sessionmaker[Session]
     heartbeat: WorkerHeartbeatEmitter
     publisher: SqlAlchemyEosOutboxPublisher
-    transport: HttpAeEosOutboxTransport
+    transport: EosOutboxTransport
     worker_id: str
     poll_interval_seconds: float
 
@@ -102,7 +107,7 @@ class InstalledEosOutboxPublisherProcess:
             "eos_migrations_current": database["migrations_current"],
             "outbox_tables_present": not database["missing_tables"],
             "outbox_publisher_available": self.publisher is not None,
-            "signed_ae_transport_configured": self.transport is not None,
+            "signed_routed_transport_configured": self.transport is not None,
             "heartbeat_available": self.heartbeat is not None,
         }
         ready = all(checks.values())
@@ -116,7 +121,7 @@ class InstalledEosOutboxPublisherProcess:
             "database_environment": self.database_environment,
             "checks": checks,
             "database": database,
-            "publication_path": "EOS_OUTBOX_TO_AE",
+            "publication_path": "EOS_OUTBOX_ROUTED_TO_AE_OR_OA",
             "work_capability": "outbox_publishing",
             "content_included": False,
             "secret_included": False,
@@ -188,9 +193,9 @@ def build_source_check() -> dict[str, Any]:
         "service_id": SERVICE_ID,
         "module": "nex_eos.outbox_publisher_process",
         "database_environments": dict(DATABASE_ENVIRONMENTS),
-        "publication_path": "EOS_OUTBOX_TO_AE",
+        "publication_path": "EOS_OUTBOX_ROUTED_TO_AE_OR_OA",
         "publisher_type": SqlAlchemyEosOutboxPublisher.__name__,
-        "transport_type": HttpAeEosOutboxTransport.__name__,
+        "transport_type": RoutingEosOutboxTransport.__name__,
         "work_capability": "outbox_publishing",
         "runtime_ready": False,
         "content_included": False,
@@ -219,11 +224,19 @@ def build_installed_eos_outbox_publisher_process(
     worker_id = _required_environment(
         env, "NEX_EOS_OUTBOX_PUBLISHER_WORKER_ID", DEFAULT_WORKER_ID
     )
-    base_url = _ae_base_url(env)
-    service_token = _required_environment(env, "NEX_EOS_TO_AE_SERVICE_TOKEN")
-    timeout_seconds = _bounded_float(
+    ae_base_url = _service_base_url(env, "NEX_AE_API_BASE_URL")
+    ae_service_token = _required_environment(env, "NEX_EOS_TO_AE_SERVICE_TOKEN")
+    ae_timeout_seconds = _bounded_float(
         env.get("NEX_EOS_AE_OUTBOX_TIMEOUT_SECONDS", "10"),
         "NEX_EOS_AE_OUTBOX_TIMEOUT_SECONDS",
+        minimum=0.001,
+        maximum=120,
+    )
+    oa_base_url = _service_base_url(env, "NEX_OA_BASE_URL")
+    oa_service_token = _required_environment(env, "NEX_EOS_TO_OA_SERVICE_TOKEN")
+    oa_timeout_seconds = _bounded_float(
+        env.get("NEX_EOS_OA_OUTBOX_TIMEOUT_SECONDS", "10"),
+        "NEX_EOS_OA_OUTBOX_TIMEOUT_SECONDS",
         minimum=0.001,
         maximum=120,
     )
@@ -263,10 +276,17 @@ def build_installed_eos_outbox_publisher_process(
             sessions=sessions,
             heartbeat=heartbeat,
             publisher=SqlAlchemyEosOutboxPublisher(sessions),
-            transport=HttpAeEosOutboxTransport(
-                base_url=base_url,
-                service_token=service_token,
-                timeout_seconds=timeout_seconds,
+            transport=RoutingEosOutboxTransport(
+                ae_transport=HttpAeEosOutboxTransport(
+                    base_url=ae_base_url,
+                    service_token=ae_service_token,
+                    timeout_seconds=ae_timeout_seconds,
+                ),
+                oa_transport=HttpOaProjectEntitlementTransport(
+                    base_url=oa_base_url,
+                    service_token=oa_service_token,
+                    timeout_seconds=oa_timeout_seconds,
+                ),
             ),
             worker_id=worker_id,
             poll_interval_seconds=poll_interval_seconds,
@@ -555,14 +575,18 @@ def _required_environment(
     return value
 
 
-def _ae_base_url(environ: Mapping[str, str]) -> str:
-    value = _required_environment(environ, "NEX_AE_API_BASE_URL")
+def _service_base_url(environ: Mapping[str, str], name: str) -> str:
+    value = _required_environment(environ, name)
     parsed = urlsplit(value)
     if parsed.scheme not in {"http", "https"} or not parsed.netloc:
-        raise EosOutboxPublisherProcessError(
-            "NEX_AE_API_BASE_URL must be an HTTP(S) URL"
-        )
+        raise EosOutboxPublisherProcessError(f"{name} must be an HTTP(S) URL")
     return value.rstrip("/")
+
+
+def _ae_base_url(environ: Mapping[str, str]) -> str:
+    """Compatibility helper retained for existing process boundary tests."""
+
+    return _service_base_url(environ, "NEX_AE_API_BASE_URL")
 
 
 def _bounded_float(

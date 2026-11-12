@@ -184,6 +184,8 @@ def test_builder_assembles_existing_components_and_disposes_on_check_failure() -
         "NEX_EOS_TEST_DATABASE_URL": "sqlite+pysqlite:///:memory:",
         "NEX_AE_API_BASE_URL": "http://ae.local",
         "NEX_EOS_TO_AE_SERVICE_TOKEN": "signed-token",
+        "NEX_OA_BASE_URL": "http://oa.local",
+        "NEX_EOS_TO_OA_SERVICE_TOKEN": "signed-oa-token",
         "NEX_EOS_OUTBOX_PUBLISHER_WORKER_ID": "worker-s07",
         "NEX_EOS_OUTBOX_PUBLISH_POLL_SECONDS": "0.5",
     }
@@ -196,7 +198,7 @@ def test_builder_assembles_existing_components_and_disposes_on_check_failure() -
     assert installed.worker_id == "worker-s07"
     assert installed.poll_interval_seconds == 0.5
     assert installed.publisher.__class__.__name__ == "SqlAlchemyEosOutboxPublisher"
-    assert installed.transport.__class__.__name__ == "HttpAeEosOutboxTransport"
+    assert installed.transport.__class__.__name__ == "RoutingEosOutboxTransport"
     installed.close()
 
     rejected = _Engine()
@@ -217,6 +219,8 @@ def test_builder_wraps_component_failure_and_rejects_blank_worker() -> None:
         "NEX_EOS_TEST_DATABASE_URL": "sqlite+pysqlite:///:memory:",
         "NEX_AE_API_BASE_URL": "http://ae.local",
         "NEX_EOS_TO_AE_SERVICE_TOKEN": "signed-token",
+        "NEX_OA_BASE_URL": "http://oa.local",
+        "NEX_EOS_TO_OA_SERVICE_TOKEN": "signed-oa-token",
     }
     with pytest.raises(process.EosOutboxPublisherProcessError, match="unavailable"):
         process.build_installed_eos_outbox_publisher_process(
