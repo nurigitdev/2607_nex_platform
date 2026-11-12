@@ -18,6 +18,7 @@ MyBee office-work AX Service Phase-1 program.
 11. `NeX_MyBee_W30_CA01_Entry_Decision_v1.0.json`
 12. `NeX_MyBee_W30_CA02_Project_Application_Code_Lifecycle_and_PA_Contract_Closure_v1.0.md`
 13. `NeX_MyBee_W40_CA01_Project_Membership_and_OA_Project_Code_Entitlement_Contract_Closure_v1.0.md`
+14. `NeX_MyBee_W40_CA02_Accounting_Product_Runtime_Integration_Checkpoint_v1.0.md`
 
 The Markdown Slice Plan and its Execution Matrix JSON are one planning set.
 The JSON is machine-readable traceability input, not runtime configuration or
@@ -41,6 +42,14 @@ membership business SoR and OA as the authorization-decision SoR. Where these
 authorization boundaries differ from earlier optional `project_ids` behavior,
 W40-CA01 takes precedence. Its implementation and protected EOS/OA PostgreSQL
 gate are mandatory before W40 `S4-01`.
+
+W40-CA02 is the thin installed-product integration checkpoint after W40-CA01.
+It does not implement GL Posting, allocation, or Project P&L. It requires the
+existing W30/W40 code to run through canonical product composition, signed
+service trust, actual PostgreSQL authority, durable outbox/inbox workers, and
+the installed MyBee-to-EOS consumer path before W40 `S4-01` begins. A separate
+final accounting product acceptance remains mandatory after Posting and
+allocation are implemented.
 
 Runtime implementation evidence for the W30-CA02 Project foundation is
 recorded in
