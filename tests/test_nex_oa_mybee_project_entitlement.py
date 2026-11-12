@@ -168,6 +168,33 @@ def test_grant_replay_and_event_collision_fail_closed() -> None:
 
 
 @pytest.mark.parametrize(
+    "action",
+    (
+        "project:project:admin",
+        "project:work-code:approve",
+        "project:work-assignment:manage",
+        "finance:journal:request-approval",
+    ),
+)
+def test_w40_write_actions_require_project_role_and_matching_global_scope(
+    action,
+) -> None:
+    repository = InMemoryOaProjectGrantRepository()
+    repository.apply_grant(_grant(project_role="OWNER"))
+    service = OaProjectAuthorizationDecisionService(
+        repository,
+        AuthorizationSource(scopes=[action]),
+        clock=lambda: NOW,
+    )
+
+    decision = service.decide(_decision(action=action))
+
+    assert decision["allowed"] is True
+    assert decision["reason_code"] == "ALLOW"
+    assert decision["applicable_global_scopes"] == [action]
+
+
+@pytest.mark.parametrize(
     "payload",
     (
         {},

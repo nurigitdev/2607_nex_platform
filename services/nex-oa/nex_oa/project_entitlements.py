@@ -43,6 +43,9 @@ _HASH_REF = re.compile(r"^sha256:[0-9a-f]{64}$")
 _ACTION_ROLES = {
     "project:project:read": PROJECT_ROLES,
     "project:membership:manage": frozenset({"OWNER", "MANAGER"}),
+    "project:project:admin": frozenset({"OWNER", "MANAGER"}),
+    "project:work-code:approve": frozenset({"OWNER", "MANAGER"}),
+    "project:work-assignment:manage": frozenset({"OWNER", "MANAGER"}),
     "project:work-assignment:read": PROJECT_ROLES,
     "project:work-assignment:perform": frozenset(
         {"OWNER", "MANAGER", "MEMBER"}
@@ -52,6 +55,9 @@ _ACTION_ROLES = {
     ),
     "finance:voucher-draft:create": frozenset({"OWNER", "MANAGER", "MEMBER"}),
     "finance:voucher-draft:read": PROJECT_ROLES,
+    "finance:journal:request-approval": frozenset(
+        {"OWNER", "MANAGER", "MEMBER"}
+    ),
     "finance:report:read": PROJECT_ROLES,
 }
 _CLOSING_ACTIONS = frozenset(

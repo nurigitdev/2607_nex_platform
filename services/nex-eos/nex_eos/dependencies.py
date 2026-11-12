@@ -70,6 +70,11 @@ from .legal_entities import (
 from .organization import SqlAlchemyEosOrganizationRepository
 from .persistence import EosDatabaseRuntime, build_eos_database_runtime
 from .project_application_approvals import EosProjectApplicationApprovalService
+from .project_authorization import (
+    EosProjectAuthorizationGate,
+    HttpOaProjectAuthorizationDecisionSource,
+    SqlAlchemyEosProjectAuthorizationContextSource,
+)
 from .project_applications import (
     EosProjectApplicationService,
     SqlAlchemyEosProjectApplicationRepository,
@@ -289,6 +294,22 @@ def build_eos_dependencies(
         if oa_token
         else None
     )
+    project_authorizer = (
+        EosProjectAuthorizationGate(
+            context_source=SqlAlchemyEosProjectAuthorizationContextSource(
+                database_runtime.session_factory
+            ),
+            decision_source=HttpOaProjectAuthorizationDecisionSource(
+                base_url=environ.get("NEX_OA_BASE_URL", "http://127.0.0.1:8101"),
+                service_token=oa_token,
+                timeout_seconds=float(
+                    environ.get("NEX_EOS_OA_PROJECT_TIMEOUT_SECONDS", "10")
+                ),
+            ),
+        )
+        if database_runtime is not None and oa_token
+        else None
+    )
     project_application_service = (
         EosProjectApplicationService(
             SqlAlchemyEosProjectApplicationRepository(database_runtime.session_factory),
@@ -333,6 +354,7 @@ def build_eos_dependencies(
             ),
             coordinator=business_transactions,
             authorization_source=authorization_source,
+            project_authorizer=project_authorizer,
             wc_client=HttpWcApprovalWorkItemClient(
                 base_url=environ.get("NEX_WC_BASE_URL", DEFAULT_WC_BASE_URL),
                 service_token=wc_token,
@@ -404,6 +426,7 @@ def build_eos_dependencies(
             session_factory=database_runtime.session_factory,
             coordinator=business_transactions,
             authorization_source=authorization_source,
+            project_authorizer=project_authorizer,
             allow_legacy_project_create=(
                 environ.get("NEX_EOS_ALLOW_LEGACY_DIRECT_PROJECT_CREATE", "0") == "1"
             ),
@@ -421,6 +444,7 @@ def build_eos_dependencies(
             session_factory=database_runtime.session_factory,
             coordinator=business_transactions,
             authorization_source=authorization_source,
+            project_authorizer=project_authorizer,
         )
         if database_runtime is not None
         and business_transactions is not None
@@ -432,6 +456,7 @@ def build_eos_dependencies(
             session_factory=database_runtime.session_factory,
             coordinator=business_transactions,
             authorization_source=authorization_source,
+            project_authorizer=project_authorizer,
         )
         if database_runtime is not None
         and business_transactions is not None
@@ -509,7 +534,10 @@ def build_eos_dependencies(
         EosCreateVoucherDraftService(
             coordinator=business_transactions,
             vouchers=vouchers,
-            authorizer=EosVoucherAuthorizationClient(authorization_source),
+            authorizer=EosVoucherAuthorizationClient(
+                authorization_source,
+                project_authorizer=project_authorizer,
+            ),
             project_access=voucher_access_service,
             attachments=attachments,
         )
@@ -523,6 +551,7 @@ def build_eos_dependencies(
             authorizer=EosVoucherAuthorizationClient(
                 authorization_source,
                 required_scope=EOS_VOUCHER_CANDIDATE_CREATE_SCOPE,
+                project_authorizer=project_authorizer,
             ),
         )
         if business_transactions is not None

@@ -41,6 +41,10 @@ from .business_transactions import (
 )
 from .legal_entities import EOS_PROJECT_COMPANY_BINDING_TABLE
 from .project_memberships import EOS_PROJECT_MEMBER_TABLE
+from .project_authorization import (
+    EosProjectAuthorizationError,
+    EosProjectAuthorizationGate,
+)
 from .projects import EOS_PROJECT_TABLE
 from .voucher_commands import EosServiceCaller
 
@@ -556,10 +560,12 @@ class EosProjectBusinessService:
         session_factory: sessionmaker[Session],
         coordinator: EosBusinessTransactionCoordinator,
         authorization_source: AuthorizationSource,
+        project_authorizer: EosProjectAuthorizationGate | None = None,
     ) -> None:
         self._session_factory = session_factory
         self._coordinator = coordinator
         self._authorization_source = authorization_source
+        self._project_authorizer = project_authorizer
         self._repository = SqlAlchemyEosProjectWorkCodeRepository(session_factory)
 
     def approve_work_code_set(
@@ -733,13 +739,33 @@ class EosProjectBusinessService:
                 status_code=503,
                 retryable=True,
             ) from exc
-        return _admit_authorization(
+        admitted = _admit_authorization(
             value,
             tenant_id=tenant_id,
             subject_id=subject_id,
             required_scope=required_scope,
             project_id=project_id,
         )
+        if (
+            self._project_authorizer is not None
+            and required_scope == PROJECT_WORK_CODE_APPROVE_SCOPE
+        ):
+            try:
+                self._project_authorizer.authorize(
+                    tenant_id=tenant_id,
+                    subject_id=subject_id,
+                    project_id=project_id,
+                    action=required_scope,
+                    correlation_id=f"eos-work-code:{subject_id}:{project_id}",
+                )
+            except EosProjectAuthorizationError as exc:
+                raise EosProjectWorkCodeError(
+                    exc.error_code,
+                    exc.detail,
+                    status_code=exc.status_code,
+                    retryable=exc.retryable,
+                ) from exc
+        return admitted
 
     def _require_active_subject(self, tenant_id: str, subject_id: str) -> None:
         try:

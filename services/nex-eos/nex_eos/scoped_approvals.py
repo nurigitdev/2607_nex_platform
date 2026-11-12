@@ -50,6 +50,10 @@ from .legal_entities import (
     EOS_PROJECT_COMPANY_BINDING_TABLE,
 )
 from .projects import EOS_PROJECT_TABLE
+from .project_authorization import (
+    EosProjectAuthorizationError,
+    EosProjectAuthorizationGate,
+)
 from .voucher_commands import EosServiceCaller
 
 ACCOUNTING_APPROVAL_REQUEST_OPERATION = "FINANCE.ACCOUNTING_APPROVAL.REQUEST"
@@ -474,6 +478,7 @@ class EosScopedApprovalService:
         coordinator: EosBusinessTransactionCoordinator,
         authorization_source: AuthorizationSource,
         wc_client: WcApprovalWorkItemClient,
+        project_authorizer: EosProjectAuthorizationGate | None = None,
         accounting_review_repository=None,
         candidate_review_repository=None,
         candidate_validation_service=None,
@@ -483,6 +488,7 @@ class EosScopedApprovalService:
         self._repository = repository
         self._coordinator = coordinator
         self._authorization_source = authorization_source
+        self._project_authorizer = project_authorizer
         self._wc_client = wc_client
         self._accounting_review_repository = accounting_review_repository
         self._candidate_review_repository = candidate_review_repository
@@ -557,6 +563,7 @@ class EosScopedApprovalService:
             subject_id=case["requester_subject_id"],
             company_id=case["company_id"],
             project_ids=case["project_ids"],
+            correlation_id=case["correlation_id"],
         )
         requested_operation = envelope.pop("requested_operation")
         value = ScopedApprovalCaseInput(
@@ -708,6 +715,7 @@ class EosScopedApprovalService:
         subject_id: str,
         company_id: str,
         project_ids: Sequence[str],
+        correlation_id: str,
     ) -> dict[str, Any]:
         try:
             value = self._authorization_source.effective_authorization(
@@ -749,6 +757,23 @@ class EosScopedApprovalService:
         decision_ref = value.get("decision_ref")
         if decision_ref is None:
             decision_ref = f"oa-authz:{revision_hash.removeprefix('sha256:')}"
+        if self._project_authorizer is not None:
+            for project_id in project_ids:
+                try:
+                    self._project_authorizer.authorize(
+                        tenant_id=tenant_id,
+                        subject_id=subject_id,
+                        project_id=project_id,
+                        action=ACCOUNTING_APPROVAL_REQUEST_SCOPE,
+                        correlation_id=correlation_id,
+                    )
+                except EosProjectAuthorizationError as exc:
+                    raise EosScopedApprovalError(
+                        exc.error_code,
+                        exc.detail,
+                        status_code=exc.status_code,
+                        retryable=exc.retryable,
+                    ) from exc
         return {
             "revision_hash": revision_hash,
             "decision_ref": _scoped_id("oa_decision_ref", decision_ref, 128),

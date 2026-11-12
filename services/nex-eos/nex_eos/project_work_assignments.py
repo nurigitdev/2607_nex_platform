@@ -41,6 +41,10 @@ from .business_transactions import (
     EosBusinessTransactionCoordinator,
 )
 from .project_memberships import EOS_PROJECT_MEMBER_TABLE
+from .project_authorization import (
+    EosProjectAuthorizationError,
+    EosProjectAuthorizationGate,
+)
 from .project_work_codes import (
     EOS_PROJECT_WORK_CODE_ENTRY_TABLE,
     EOS_PROJECT_WORK_CODE_SET_TABLE,
@@ -426,10 +430,12 @@ class EosProjectWorkAssignmentService:
         session_factory: sessionmaker[Session],
         coordinator: EosBusinessTransactionCoordinator,
         authorization_source: AuthorizationSource,
+        project_authorizer: EosProjectAuthorizationGate | None = None,
     ) -> None:
         self._session_factory = session_factory
         self._coordinator = coordinator
         self._authorization_source = authorization_source
+        self._project_authorizer = project_authorizer
         self._repository = SqlAlchemyEosProjectWorkAssignmentRepository(session_factory)
 
     def assign(
@@ -613,13 +619,37 @@ class EosProjectWorkAssignmentService:
                 status_code=503,
                 retryable=True,
             ) from exc
-        return _admit_authorization(
+        admitted = _admit_authorization(
             value,
             tenant_id=tenant_id,
             subject_id=subject_id,
             required_scope=required_scope,
             project_id=project_id,
         )
+        if (
+            self._project_authorizer is not None
+            and required_scope
+            in {
+                PROJECT_WORK_ASSIGNMENT_MANAGE_SCOPE,
+                PROJECT_WORK_ASSIGNMENT_PERFORM_SCOPE,
+            }
+        ):
+            try:
+                self._project_authorizer.authorize(
+                    tenant_id=tenant_id,
+                    subject_id=subject_id,
+                    project_id=project_id,
+                    action=required_scope,
+                    correlation_id=f"eos-work-assignment:{subject_id}:{project_id}",
+                )
+            except EosProjectAuthorizationError as exc:
+                raise EosProjectWorkAssignmentError(
+                    exc.error_code,
+                    exc.detail,
+                    status_code=exc.status_code,
+                    retryable=exc.retryable,
+                ) from exc
+        return admitted
 
     def _human_performer_authority(
         self, *, tenant_id: str, subject_id: str, project_id: str

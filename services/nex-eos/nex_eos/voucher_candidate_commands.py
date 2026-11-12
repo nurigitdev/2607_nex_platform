@@ -163,8 +163,10 @@ class EosCreateVoucherCandidateService:
                     service_audience=caller.audience,
                     service_scopes=caller.scopes,
                     project_id=command.project_id,
+                    project_code=command.project_code,
                     resource_type="voucher_candidate",
                     resource_id=command.business_operation_id,
+                    correlation_id=command.trace["correlation_id"],
                 )
             )
         except EosAuthorizationError as exc:
