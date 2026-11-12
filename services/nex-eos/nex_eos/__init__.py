@@ -293,6 +293,7 @@ from .project_applications import (
     EosProjectApplicationError,
     EosProjectApplicationService,
     ProjectApplicationDraft,
+    ProjectApplicationMember,
     SqlAlchemyEosProjectApplicationRepository,
 )
 from .project_lifecycle_events import (
@@ -789,6 +790,7 @@ __all__ = (
     "PositionInput",
     "PostingRuleReleaseInput",
     "ProjectApplicationDraft",
+    "ProjectApplicationMember",
     "ProjectCompanyBindingInput",
     "ProjectInput",
     "ProjectMembershipInput",

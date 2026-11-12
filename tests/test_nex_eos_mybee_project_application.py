@@ -22,6 +22,7 @@ from nex_eos import (
     EosProjectError,
     NvtProjectInput,
     ProjectApplicationDraft,
+    ProjectApplicationMember,
     ProjectInput,
     SqlAlchemyEosProjectApplicationRepository,
     SqlAlchemyEosProjectRepository,
@@ -40,6 +41,9 @@ POSTGRES_SMOKE = os.getenv("NEX_EOS_MYBEE_W30_S00A_POSTGRES_SMOKE") == "1"
 
 TENANT = "VO00"
 APPLICANT = "employee-1004"
+PROJECT_OWNER = "employee-2001"
+PROJECT_MANAGER = "employee-2002"
+PROJECT_MEMBER = "employee-2003"
 NVT_ID = "b1000000-0000-4000-8000-000000000001"
 APPLICATION_ID = "b2000000-0000-4000-8000-000000000001"
 PROJECT_ID = "b3000000-0000-4000-8000-000000000001"
@@ -47,6 +51,8 @@ PROJECT_ID = "b3000000-0000-4000-8000-000000000001"
 
 class AuthorizationSource:
     def __init__(self) -> None:
+        self.denied_subjects: set[str] = set()
+        self.unavailable_subjects: set[str] = set()
         self.value: object = {
             "active": True,
             "tenant_id": TENANT,
@@ -61,8 +67,14 @@ class AuthorizationSource:
         }
 
     def effective_authorization(self, *, tenant_id: str, subject_id: str):
+        if subject_id in self.denied_subjects:
+            raise AuthorizationSubjectDenied("inactive")
+        if subject_id in self.unavailable_subjects:
+            raise RuntimeError("OA unavailable")
         if isinstance(self.value, BaseException):
             raise self.value
+        if isinstance(self.value, dict):
+            return {**self.value, "tenant_id": tenant_id, "subject_id": subject_id}
         return self.value
 
 
@@ -98,6 +110,9 @@ def _draft(
         purpose_type=purpose_type,
         applicant_subject_id=APPLICANT,
         name=name,
+        project_owner_subject_id=PROJECT_OWNER,
+        project_manager_subject_id=PROJECT_MANAGER,
+        initial_members=(ProjectApplicationMember(PROJECT_MEMBER),),
         nvt_project_id=NVT_ID,
         currency="KRW",
     )
@@ -113,6 +128,17 @@ def test_application_code_revision_submission_and_exact_replay(runtime) -> None:
     assert created["state"] == "DRAFT"
     assert created["current_revision"] == 1
     assert created["payload"]["name"] == "NeX Project"
+    assert created["payload"]["schema_version"] == (
+        "eos_project_application_draft.v2"
+    )
+    assert created["payload"]["initial_members"] == [
+        {"subject_id": PROJECT_OWNER, "member_role": "OWNER"},
+        {"subject_id": PROJECT_MANAGER, "member_role": "MANAGER"},
+        {"subject_id": PROJECT_MEMBER, "member_role": "MEMBER"},
+    ]
+    assert APPLICANT not in {
+        item["subject_id"] for item in created["payload"]["initial_members"]
+    }
 
     second = applications.create_draft(
         _draft(str(uuid.uuid4()), name="Second Project"),
@@ -242,6 +268,41 @@ def test_code_kinds_year_boundaries_exhaustion_and_validation(runtime) -> None:
     for value in invalid:
         with pytest.raises(EosProjectApplicationError):
             applications.create_draft(value)
+
+    party_invalid = [
+        replace(_draft(str(uuid.uuid4())), project_owner_subject_id=""),
+        replace(_draft(str(uuid.uuid4())), project_manager_subject_id="!"),
+        replace(
+            _draft(str(uuid.uuid4())),
+            initial_members=(
+                ProjectApplicationMember(PROJECT_MEMBER),
+                ProjectApplicationMember(PROJECT_MEMBER),
+            ),
+        ),
+        replace(
+            _draft(str(uuid.uuid4())),
+            initial_members=(ProjectApplicationMember(PROJECT_OWNER, "VIEWER"),),
+        ),
+        replace(
+            _draft(str(uuid.uuid4())),
+            initial_members=(ProjectApplicationMember("employee-2004", "INVALID"),),
+        ),
+    ]
+    for value in party_invalid:
+        with pytest.raises(EosProjectApplicationError):
+            applications.create_draft(value)
+
+    combined = applications.create_draft(
+        replace(
+            _draft(str(uuid.uuid4())),
+            project_owner_subject_id=PROJECT_OWNER,
+            project_manager_subject_id=PROJECT_OWNER,
+            initial_members=(),
+        )
+    )
+    assert combined["payload"]["initial_members"] == [
+        {"subject_id": PROJECT_OWNER, "member_role": "OWNER"}
+    ]
 
     fallback_values = {
         "tenant_id": TENANT,
@@ -418,6 +479,47 @@ def test_owner_scope_authorization_and_exact_request_resolver(runtime) -> None:
     )
 
 
+def test_submit_rechecks_all_project_parties_with_oa(runtime) -> None:
+    _engine, _factory, _projects, applications, authorization, service = runtime
+    created = service.create_draft(_draft(), requester_subject_id=APPLICANT)
+    authorization.denied_subjects.add(PROJECT_MANAGER)
+    with pytest.raises(EosProjectApplicationError) as denied:
+        service.submit(
+            tenant_id=TENANT,
+            project_request_code=created["project_request_code"],
+            expected_version=1,
+            requester_subject_id=APPLICANT,
+        )
+    assert denied.value.error_code == "EOS_PROJECT_APPLICATION_PARTY_DENIED"
+    assert applications.get_by_request_code(
+        tenant_id=TENANT,
+        project_request_code=created["project_request_code"],
+    )["state"] == "DRAFT"
+
+    authorization.denied_subjects.clear()
+    authorization.unavailable_subjects.add(PROJECT_MEMBER)
+    with pytest.raises(EosProjectApplicationError) as unavailable:
+        service.submit(
+            tenant_id=TENANT,
+            project_request_code=created["project_request_code"],
+            expected_version=1,
+            requester_subject_id=APPLICANT,
+        )
+    assert unavailable.value.error_code == (
+        "EOS_PROJECT_APPLICATION_PARTY_UNAVAILABLE"
+    )
+    assert unavailable.value.retryable is True
+
+    authorization.unavailable_subjects.clear()
+    submitted = service.submit(
+        tenant_id=TENANT,
+        project_request_code=created["project_request_code"],
+        expected_version=1,
+        requester_subject_id=APPLICANT,
+    )
+    assert submitted["state"] == "SUBMITTED"
+
+
 def test_authorization_failure_and_cross_owner_read_matrix(runtime) -> None:
     _engine, _factory, _projects, applications, authorization, service = runtime
     created = applications.create_draft(_draft())
@@ -585,6 +687,11 @@ def test_internal_application_api_signed_trust_and_validation(runtime) -> None:
         "application_id": APPLICATION_ID,
         "purpose_type": "D",
         "name": "API Project",
+        "project_owner_subject_id": PROJECT_OWNER,
+        "project_manager_subject_id": PROJECT_MANAGER,
+        "initial_members": [
+            {"subject_id": PROJECT_MEMBER, "member_role": "MEMBER"}
+        ],
         "nvt_project_id": NVT_ID,
         "currency": "KRW",
     }
@@ -652,6 +759,8 @@ def test_internal_application_api_revision_resolver_and_failure_paths(runtime) -
             "application_id": APPLICATION_ID,
             "purpose_type": "D",
             "name": "API revision",
+            "project_owner_subject_id": PROJECT_OWNER,
+            "project_manager_subject_id": PROJECT_MANAGER,
             "nvt_project_id": NVT_ID,
             "start_date": "2026-01-01",
         },
@@ -693,6 +802,8 @@ def test_internal_application_api_revision_resolver_and_failure_paths(runtime) -
             "application_id": str(uuid.uuid4()),
             "purpose_type": "D",
             "name": "Invalid date",
+            "project_owner_subject_id": PROJECT_OWNER,
+            "project_manager_subject_id": PROJECT_MANAGER,
             "nvt_project_id": NVT_ID,
             "start_date": 20260101,
         },
@@ -719,6 +830,14 @@ def test_migration_contract_and_operation_registry() -> None:
     assert "trg_eos_project_app_revision_immutable" in sql_text
     assert "trg_eos_project_business_identity" in sql_text
     assert "CLOSING" in sql_text and "CLOSED" in sql_text
+    party_migration = Path(
+        "database/nex-eos/migrations/2536_eos_project_application_parties.sql"
+    ).read_text(encoding="utf-8")
+    assert "project_owner_subject_id" in party_migration
+    assert "project_manager_subject_id" in party_migration
+    assert "Project parties may change only in a new DRAFT revision" in (
+        party_migration
+    )
     for operation in (
         "PROJECT.APPLICATION.CREATE",
         "PROJECT.APPLICATION.REVISE",

@@ -29,6 +29,7 @@ from nex_eos import (
     EosServiceCaller,
     NvtProjectInput,
     ProjectApplicationDraft,
+    ProjectApplicationMember,
     SqlAlchemyEosApprovalPolicyRepository,
     SqlAlchemyEosBusinessTransactionCoordinator,
     SqlAlchemyEosProjectApplicationRepository,
@@ -48,6 +49,9 @@ from sqlalchemy.pool import StaticPool
 NOW = datetime(2026, 11, 12, 5, 0, tzinfo=UTC)
 TENANT = "VO00"
 APPLICANT = "employee-1004"
+PROJECT_OWNER = "employee-2001"
+PROJECT_MANAGER = "employee-2002"
+PROJECT_MEMBER = "employee-2003"
 TEAM_LEAD = "approver-team-lead"
 CEO = "approver-ceo"
 NVT_ID = "b4000000-0000-4000-8000-000000000001"
@@ -137,6 +141,8 @@ def runtime():
             purpose_type="D",
             applicant_subject_id=APPLICANT,
             name="Project Committee Runtime",
+            project_owner_subject_id=APPLICANT,
+            project_manager_subject_id=APPLICANT,
             nvt_project_id=NVT_ID,
             currency="KRW",
         ),
@@ -811,6 +817,8 @@ def test_actual_postgres_project_committee_finalization_and_zero_residue() -> No
                 purpose_type="D",
                 applicant_subject_id=APPLICANT,
                 name="PostgreSQL Project Committee",
+                project_owner_subject_id=APPLICANT,
+                project_manager_subject_id=APPLICANT,
                 nvt_project_id=NVT_ID,
             ),
             issued_at=NOW,

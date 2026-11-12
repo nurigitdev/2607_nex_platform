@@ -16,6 +16,7 @@ from .project_application_approvals import EosProjectApplicationApprovalError
 from .project_applications import (
     EosProjectApplicationError,
     ProjectApplicationDraft,
+    ProjectApplicationMember,
 )
 
 
@@ -183,7 +184,7 @@ def _revise(
         _draft(
             tenant_id,
             requester_subject_id,
-            {**payload, "application_id": application_id},
+            {**current["payload"], **payload, "application_id": application_id},
         ),
         expected_version=_positive_int(
             "expected_version", payload.get("expected_version")
@@ -201,6 +202,13 @@ def _draft(
         purpose_type=str(payload.get("purpose_type", "")),
         applicant_subject_id=requester_subject_id,
         name=str(payload.get("name", "")),
+        project_owner_subject_id=str(
+            payload.get("project_owner_subject_id", "")
+        ),
+        project_manager_subject_id=str(
+            payload.get("project_manager_subject_id", "")
+        ),
+        initial_members=_initial_members(payload.get("initial_members", [])),
         parent_project_id=_optional_string(payload.get("parent_project_id")),
         nvt_project_id=_optional_string(payload.get("nvt_project_id")),
         company_id=_optional_string(payload.get("company_id")),
@@ -208,6 +216,30 @@ def _draft(
         end_date=_optional_date("end_date", payload.get("end_date")),
         currency=str(payload.get("currency", "KRW")),
     )
+
+
+def _initial_members(value: object) -> tuple[ProjectApplicationMember, ...]:
+    if not isinstance(value, list):
+        raise EosProjectApplicationError(
+            "EOS_PROJECT_APPLICATION_INVALID",
+            "initial_members must be an array",
+            status_code=422,
+        )
+    result: list[ProjectApplicationMember] = []
+    for item in value:
+        if not isinstance(item, dict):
+            raise EosProjectApplicationError(
+                "EOS_PROJECT_APPLICATION_INVALID",
+                "initial_members entries must be objects",
+                status_code=422,
+            )
+        result.append(
+            ProjectApplicationMember(
+                subject_id=str(item.get("subject_id", "")),
+                member_role=str(item.get("member_role", "MEMBER")),
+            )
+        )
+    return tuple(result)
 
 
 def _call(

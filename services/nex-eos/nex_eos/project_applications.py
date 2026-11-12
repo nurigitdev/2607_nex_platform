@@ -51,9 +51,13 @@ PROJECT_REFERENCE_RESOLVE_OPERATION = "PROJECT.PROJECT.RESOLVE"
 
 PROJECT_PURPOSE_TYPES = frozenset({"D", "M", "S", "O", "I", "G"})
 PROJECT_APPLICATION_STATES = frozenset({"DRAFT", "SUBMITTED", "APPROVED", "REJECTED"})
+PROJECT_APPLICATION_MEMBER_ROLES = frozenset(
+    {"OWNER", "MANAGER", "MEMBER", "VIEWER"}
+)
 PROJECT_CODE_KINDS = frozenset({"REQUEST", "REGISTRATION"})
 PROJECT_SERIAL_MIN = 1
 PROJECT_SERIAL_MAX = 9999
+PROJECT_APPLICATION_MEMBER_LIMIT = 500
 
 _SEOUL = ZoneInfo("Asia/Seoul")
 _TENANT_CODE = re.compile(r"^[A-Z0-9]{4}$")
@@ -108,6 +112,8 @@ EOS_PROJECT_APPLICATION_TABLE = Table(
     Column("purpose_type", String(1), nullable=False),
     Column("state", String(16), nullable=False),
     Column("applicant_subject_id", String(128), nullable=False),
+    Column("project_owner_subject_id", String(128), nullable=False),
+    Column("project_manager_subject_id", String(128), nullable=False),
     Column("current_revision", Integer, nullable=False),
     Column("approved_project_id", Uuid(as_uuid=False), nullable=True),
     Column("approved_project_code", String(64), nullable=True),
@@ -198,12 +204,21 @@ class EosProjectApplicationError(RuntimeError):
 
 
 @dataclass(frozen=True)
+class ProjectApplicationMember:
+    subject_id: str
+    member_role: str = "MEMBER"
+
+
+@dataclass(frozen=True)
 class ProjectApplicationDraft:
     tenant_id: str
     application_id: str
     purpose_type: str
     applicant_subject_id: str
     name: str
+    project_owner_subject_id: str
+    project_manager_subject_id: str
+    initial_members: tuple[ProjectApplicationMember, ...] = ()
     parent_project_id: str | None = None
     nvt_project_id: str | None = None
     company_id: str | None = None
@@ -266,6 +281,12 @@ class SqlAlchemyEosProjectApplicationRepository:
                     "purpose_type": payload["purpose_type"],
                     "state": "DRAFT",
                     "applicant_subject_id": payload["applicant_subject_id"],
+                    "project_owner_subject_id": payload[
+                        "project_owner_subject_id"
+                    ],
+                    "project_manager_subject_id": payload[
+                        "project_manager_subject_id"
+                    ],
                     "current_revision": 1,
                     "approved_project_id": None,
                     "approved_project_code": None,
@@ -330,6 +351,12 @@ class SqlAlchemyEosProjectApplicationRepository:
                 revision = int(current["current_revision"]) + 1
                 changed = {
                     "purpose_type": payload["purpose_type"],
+                    "project_owner_subject_id": payload[
+                        "project_owner_subject_id"
+                    ],
+                    "project_manager_subject_id": payload[
+                        "project_manager_subject_id"
+                    ],
                     "current_revision": revision,
                     "version": expected + 1,
                     "updated_at": now,
@@ -796,6 +823,13 @@ class EosProjectApplicationService:
     ) -> dict[str, Any]:
         requester = _scoped_id("requester_subject_id", requester_subject_id)
         self._authorize(tenant_id, requester, PROJECT_APPLICATION_SUBMIT_SCOPE)
+        current = self._repository.get_by_request_code(
+            tenant_id=tenant_id,
+            project_request_code=project_request_code,
+        )
+        if current is None:
+            raise _not_found()
+        self._require_active_project_parties(tenant_id, current["payload"])
         return self._repository.submit(
             tenant_id=tenant_id,
             project_request_code=project_request_code,
@@ -902,6 +936,62 @@ class EosProjectApplicationService:
             )
         return value
 
+    def _require_active_project_parties(
+        self, tenant_id: str, payload: Mapping[str, Any]
+    ) -> None:
+        tenant_id = _tenant_code(tenant_id)
+        members = payload.get("initial_members")
+        if not isinstance(members, list):
+            raise EosProjectApplicationError(
+                "EOS_PROJECT_APPLICATION_PARTIES_INVALID",
+                "Project application parties are malformed",
+                status_code=503,
+                retryable=True,
+            )
+        subject_ids = {
+            item.get("subject_id")
+            for item in members
+            if isinstance(item, Mapping)
+            and isinstance(item.get("subject_id"), str)
+        }
+        if len(subject_ids) != len(members):
+            raise EosProjectApplicationError(
+                "EOS_PROJECT_APPLICATION_PARTIES_INVALID",
+                "Project application parties are malformed",
+                status_code=503,
+                retryable=True,
+            )
+        for subject_id in sorted(subject_ids):
+            try:
+                value = self._authorization_source.effective_authorization(
+                    tenant_id=tenant_id,
+                    subject_id=subject_id,
+                )
+            except AuthorizationSubjectDenied as exc:
+                raise EosProjectApplicationError(
+                    "EOS_PROJECT_APPLICATION_PARTY_DENIED",
+                    "OA denied an inactive or unknown Project party",
+                    status_code=403,
+                ) from exc
+            except Exception as exc:
+                raise EosProjectApplicationError(
+                    "EOS_PROJECT_APPLICATION_PARTY_UNAVAILABLE",
+                    "OA Project party validation is unavailable",
+                    status_code=503,
+                    retryable=True,
+                ) from exc
+            if (
+                not isinstance(value, Mapping)
+                or value.get("active") is not True
+                or value.get("tenant_id") != tenant_id
+                or value.get("subject_id") != subject_id
+            ):
+                raise EosProjectApplicationError(
+                    "EOS_PROJECT_APPLICATION_PARTY_DENIED",
+                    "OA denied an inactive, unknown, or cross-tenant Project party",
+                    status_code=403,
+                )
+
 
 def _draft_payload(value: ProjectApplicationDraft) -> dict[str, Any]:
     tenant_id = _tenant_code(value.tenant_id)
@@ -914,8 +1004,17 @@ def _draft_payload(value: ProjectApplicationDraft) -> dict[str, Any]:
     end_date = _optional_date("end_date", value.end_date)
     if start_date is not None and end_date is not None and end_date < start_date:
         raise _invalid("end_date must not precede start_date")
+    owner = _scoped_id("project_owner_subject_id", value.project_owner_subject_id)
+    manager = _scoped_id(
+        "project_manager_subject_id", value.project_manager_subject_id
+    )
+    initial_members = _normalized_initial_members(
+        owner=owner,
+        manager=manager,
+        members=value.initial_members,
+    )
     return {
-        "schema_version": "eos_project_application_draft.v1",
+        "schema_version": "eos_project_application_draft.v2",
         "tenant_id": tenant_id,
         "tenant_code": tenant_id,
         "application_id": application_id,
@@ -923,6 +1022,9 @@ def _draft_payload(value: ProjectApplicationDraft) -> dict[str, Any]:
         "applicant_subject_id": _scoped_id(
             "applicant_subject_id", value.applicant_subject_id
         ),
+        "project_owner_subject_id": owner,
+        "project_manager_subject_id": manager,
+        "initial_members": initial_members,
         "name": _text("name", value.name, 256),
         "parent_project_id": parent_project_id,
         "nvt_project_id": nvt_project_id,
@@ -931,6 +1033,51 @@ def _draft_payload(value: ProjectApplicationDraft) -> dict[str, Any]:
         "end_date": end_date.isoformat() if end_date else None,
         "currency": _currency(value.currency),
     }
+
+
+def _normalized_initial_members(
+    *,
+    owner: str,
+    manager: str,
+    members: object,
+) -> list[dict[str, str]]:
+    if not isinstance(members, tuple) or len(members) > PROJECT_APPLICATION_MEMBER_LIMIT:
+        raise _invalid(
+            f"initial_members must be a tuple with at most "
+            f"{PROJECT_APPLICATION_MEMBER_LIMIT} entries"
+        )
+    normalized: dict[str, str] = {}
+    for item in members:
+        if not isinstance(item, ProjectApplicationMember):
+            raise _invalid("initial_members entries must be ProjectApplicationMember")
+        subject_id = _scoped_id("initial_members.subject_id", item.subject_id)
+        role = str(item.member_role).strip().upper()
+        if role not in PROJECT_APPLICATION_MEMBER_ROLES:
+            raise _invalid(
+                "initial_members.member_role must be OWNER, MANAGER, MEMBER, or VIEWER"
+            )
+        if subject_id in normalized:
+            raise _invalid("initial_members contains a duplicate subject")
+        normalized[subject_id] = role
+
+    _admit_required_party_role(normalized, owner, "OWNER", "owner")
+    if manager != owner:
+        _admit_required_party_role(normalized, manager, "MANAGER", "manager")
+    return [
+        {"subject_id": subject_id, "member_role": normalized[subject_id]}
+        for subject_id in sorted(normalized)
+    ]
+
+
+def _admit_required_party_role(
+    members: dict[str, str], subject_id: str, role: str, party_name: str
+) -> None:
+    existing = members.get(subject_id)
+    if existing is not None and existing != role:
+        raise _invalid(
+            f"initial_members {party_name} role conflicts with required {role}"
+        )
+    members[subject_id] = role
 
 
 def _format_code(
