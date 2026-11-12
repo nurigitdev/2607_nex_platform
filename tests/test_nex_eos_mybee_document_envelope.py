@@ -404,6 +404,13 @@ def test_document_input_requires_typed_value_and_valid_project_shapes() -> None:
     )
 
 
+def test_repository_get_returns_none_for_unknown_envelope() -> None:
+    _engine, sessions, _document = _build_runtime()
+    repository = SqlAlchemyEosApprovedDocumentRepository(sessions, clock=lambda: NOW)
+
+    assert repository.get(tenant_id=TENANT, envelope_id=str(uuid.uuid4())) is None
+
+
 def test_repository_rejects_stale_company_missing_proof_and_broken_lineage() -> None:
     _engine, sessions, document = _build_runtime()
     with sessions.begin() as session:

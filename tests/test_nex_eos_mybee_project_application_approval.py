@@ -329,6 +329,108 @@ def test_request_and_delivery_fail_closed_on_drift_and_sod(runtime) -> None:
 
 
 @pytest.mark.parametrize(
+    ("overrides", "detail"),
+    (
+        ({"tenant_id": "BAD"}, "tenant_id"),
+        ({"project_request_code": "not-a-request-code"}, "project_request_code"),
+        ({"approval_policy_id": "not-a-uuid"}, "UUID"),
+        ({"expected_version": True}, "positive integer"),
+        ({"expected_version": "01"}, "positive integer"),
+        ({"requester_subject_id": "!"}, "requester_subject_id"),
+    ),
+)
+def test_request_contract_rejects_malformed_boundary_values(
+    runtime, overrides, detail
+) -> None:
+    _sessions, application, _auth, _wc, service = runtime
+    values = {
+        "tenant_id": TENANT,
+        "project_request_code": application["project_request_code"],
+        "approval_policy_id": POLICY_ID,
+        "expected_version": application["version"],
+        "requester_subject_id": APPLICANT,
+    }
+    values.update(overrides)
+
+    with pytest.raises(EosProjectApplicationApprovalError, match=detail):
+        service.request_approval(**values)
+
+
+@pytest.mark.parametrize("roles", (None, [""]))
+def test_project_committee_rejects_malformed_oa_role_projection(runtime, roles) -> None:
+    _sessions, application, auth, _wc, service = runtime
+    item = _request(service, application)["wc_publication"]["work_item"]
+    auth.roles[TEAM_LEAD] = roles
+
+    with pytest.raises(EosProjectApplicationApprovalError, match="roles"):
+        service.ingest_wc_delivery(
+            _delivery(item, principal=TEAM_LEAD, decision="APPROVE", suffix="6")
+        )
+
+
+@pytest.mark.parametrize("payload", (None, [], "not-an-object"))
+def test_project_committee_rejects_non_mapping_delivery(payload, runtime) -> None:
+    _sessions, _application, _auth, _wc, service = runtime
+
+    with pytest.raises(EosProjectApplicationApprovalError, match="schema"):
+        service.ingest_wc_delivery(payload)  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize(
+    "mode",
+    ("inactive", "tenant", "subject"),
+)
+def test_project_committee_rechecks_exact_oa_approver_identity(
+    runtime, mode
+) -> None:
+    _sessions, application, auth, _wc, service = runtime
+    item = _request(service, application)["wc_publication"]["work_item"]
+    if mode == "inactive":
+        auth.active = False
+    else:
+        original = auth.effective_authorization
+
+        def drifted_authorization(**kwargs):
+            projection = dict(original(**kwargs))
+            projection[mode + "_id"] = "DIFF" if mode == "tenant" else CEO
+            return projection
+
+        auth.effective_authorization = drifted_authorization
+
+    with pytest.raises(EosProjectApplicationApprovalError, match="approval authority"):
+        service.ingest_wc_delivery(
+            _delivery(item, principal=TEAM_LEAD, decision="APPROVE", suffix="7")
+        )
+
+
+@pytest.mark.parametrize(
+    ("path", "value", "detail"),
+    (
+        ("decision.authorization_checked_at", 1, "ISO-8601"),
+        ("decision.decided_at", "not-a-time", "ISO-8601"),
+        ("decision.decision_comment", 1, "decision_comment"),
+    ),
+)
+def test_project_committee_rejects_malformed_time_and_comment_scalars(
+    runtime, path, value, detail
+) -> None:
+    _sessions, application, _auth, _wc, service = runtime
+    item = _request(service, application)["wc_publication"]["work_item"]
+    delivery = _delivery(item, principal=TEAM_LEAD, decision="APPROVE", suffix="8")
+
+    with pytest.raises(EosProjectApplicationApprovalError, match=detail):
+        service.ingest_wc_delivery(_replace(delivery, path, value))
+
+
+def test_project_committee_rejects_naive_runtime_clock(runtime) -> None:
+    _sessions, application, _auth, _wc, service = runtime
+    service._clock = lambda: NOW.replace(tzinfo=None)
+
+    with pytest.raises(EosProjectApplicationApprovalError, match="timezone-aware"):
+        _request(service, application)
+
+
+@pytest.mark.parametrize(
     ("mode", "detail"),
     (
         ("missing_application", "not found"),

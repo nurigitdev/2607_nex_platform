@@ -543,6 +543,16 @@ def test_context_contract_rejects_field_drift_wrong_purpose_and_naive_time():
         admit_document_signoff_context(context, scoped_case=case)
 
 
+def test_context_contract_rejects_non_mapping_payload() -> None:
+    case = dict(_request().payload["case"])
+    case.pop("document_signoff_context")
+
+    with pytest.raises(EosDocumentSignoffError) as error:
+        admit_document_signoff_context(None, scoped_case=case)  # type: ignore[arg-type]
+
+    assert error.value.status_code == 422
+
+
 def test_context_contract_preserves_v1_read_compatibility() -> None:
     case = dict(_request().payload["case"])
     context = dict(case.pop("document_signoff_context"))
