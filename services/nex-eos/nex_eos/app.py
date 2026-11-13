@@ -98,6 +98,8 @@ def create_eos_app(
     app.state.eos_accounting_posting_admission_service = (
         dependencies.accounting_posting_admission_service
     )
+    app.state.eos_journals = dependencies.journals
+    app.state.eos_journal_query_service = dependencies.journal_query_service
     app.state.eos_document_signoff_service = dependencies.document_signoff_service
     app.state.eos_scoped_approval_decision_router = (
         dependencies.scoped_approval_decision_router

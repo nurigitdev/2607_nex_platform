@@ -1,0 +1,170 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_eos/posted_journal.v1.schema.json",
+  "title": "EOS PostedJournal v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "operation_id", "header", "lines",
+    "accounting_acceptance", "authorization_revision_hash",
+    "project_authorization"
+  ],
+  "properties": {
+    "schema_version": {"const": "eos_posted_journal.v1"},
+    "operation_id": {"const": "FINANCE.JOURNAL.GET"},
+    "header": {"$ref": "#/$defs/header"},
+    "lines": {
+      "type": "array",
+      "minItems": 2,
+      "items": {"$ref": "#/$defs/line"}
+    },
+    "accounting_acceptance": {"$ref": "#/$defs/acceptance"},
+    "authorization_revision_hash": {"$ref": "#/$defs/hash_ref"},
+    "project_authorization": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/project_authorization"}
+    }
+  },
+  "$defs": {
+    "uuid": {"type": "string", "format": "uuid"},
+    "hash_ref": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "scoped_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:@/-]{0,255}$"},
+    "money": {"type": "string", "pattern": "^[0-9]+\\.[0-9]{4}$"},
+    "header": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "tenant_id", "company_id", "journal_id", "candidate_id",
+        "candidate_revision", "candidate_hash", "period_id", "posting_sequence",
+        "journal_no", "state", "transaction_kind", "recognition_date", "posting_date",
+        "functional_currency", "source_document_id", "source_document_revision",
+        "source_document_hash", "accounting_acceptance_id", "posting_rule_release_hash",
+        "fx_rate_set_hash", "reversal_of_journal_id", "business_operation_id",
+        "idempotency_key", "payload_hash", "line_count", "total_debit_functional",
+        "total_credit_functional", "journal_hash", "posted_at"
+      ],
+      "properties": {
+        "tenant_id": {"$ref": "#/$defs/scoped_id"},
+        "company_id": {"$ref": "#/$defs/uuid"},
+        "journal_id": {"$ref": "#/$defs/uuid"},
+        "candidate_id": {"$ref": "#/$defs/uuid"},
+        "candidate_revision": {"type": "integer", "minimum": 1},
+        "candidate_hash": {"$ref": "#/$defs/hash_ref"},
+        "period_id": {"$ref": "#/$defs/uuid"},
+        "posting_sequence": {"type": "integer", "minimum": 1},
+        "journal_no": {"$ref": "#/$defs/scoped_id"},
+        "state": {"const": "POSTED"},
+        "transaction_kind": {"enum": ["STANDARD", "ADJUSTMENT", "REVERSAL"]},
+        "recognition_date": {"type": "string", "format": "date"},
+        "posting_date": {"type": "string", "format": "date"},
+        "functional_currency": {"type": "string", "pattern": "^[A-Z]{3}$"},
+        "source_document_id": {"$ref": "#/$defs/uuid"},
+        "source_document_revision": {"type": "integer", "minimum": 1},
+        "source_document_hash": {"$ref": "#/$defs/hash_ref"},
+        "accounting_acceptance_id": {"$ref": "#/$defs/uuid"},
+        "posting_rule_release_hash": {"$ref": "#/$defs/hash_ref"},
+        "fx_rate_set_hash": {"$ref": "#/$defs/hash_ref"},
+        "reversal_of_journal_id": {"type": ["string", "null"], "format": "uuid"},
+        "business_operation_id": {"$ref": "#/$defs/uuid"},
+        "idempotency_key": {"$ref": "#/$defs/scoped_id"},
+        "payload_hash": {"$ref": "#/$defs/hash_ref"},
+        "line_count": {"type": "integer", "minimum": 2},
+        "total_debit_functional": {"$ref": "#/$defs/money"},
+        "total_credit_functional": {"$ref": "#/$defs/money"},
+        "journal_hash": {"$ref": "#/$defs/hash_ref"},
+        "posted_at": {"type": "string", "format": "date-time"}
+      }
+    },
+    "line": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "tenant_id", "company_id", "journal_id", "line_no", "candidate_id",
+        "candidate_revision", "candidate_source_line_no", "account_id",
+        "account_code_snapshot", "account_name_snapshot", "account_policy_id",
+        "account_policy_release_hash", "posting_rule_release_hash", "project_id",
+        "project_code", "debit_original", "credit_original", "original_currency",
+        "debit_functional", "credit_functional", "functional_currency",
+        "fx_rate_snapshot_id", "fx_rate_snapshot_hash", "source_record_line_ref",
+        "description", "dimensions_json", "evidence_hash", "line_hash"
+      ],
+      "properties": {
+        "tenant_id": {"$ref": "#/$defs/scoped_id"},
+        "company_id": {"$ref": "#/$defs/uuid"},
+        "journal_id": {"$ref": "#/$defs/uuid"},
+        "line_no": {"type": "integer", "minimum": 1},
+        "candidate_id": {"$ref": "#/$defs/uuid"},
+        "candidate_revision": {"type": "integer", "minimum": 1},
+        "candidate_source_line_no": {"type": "integer", "minimum": 1},
+        "account_id": {"$ref": "#/$defs/uuid"},
+        "account_code_snapshot": {"type": "string", "minLength": 1, "maxLength": 64},
+        "account_name_snapshot": {"type": "string", "minLength": 1, "maxLength": 256},
+        "account_policy_id": {"$ref": "#/$defs/uuid"},
+        "account_policy_release_hash": {"$ref": "#/$defs/hash_ref"},
+        "posting_rule_release_hash": {"$ref": "#/$defs/hash_ref"},
+        "project_id": {"$ref": "#/$defs/uuid"},
+        "project_code": {"type": "string", "pattern": "^[A-Z0-9]{4}[DMSOIG][0-9]{6}$"},
+        "debit_original": {"$ref": "#/$defs/money"},
+        "credit_original": {"$ref": "#/$defs/money"},
+        "original_currency": {"type": "string", "pattern": "^[A-Z]{3}$"},
+        "debit_functional": {"$ref": "#/$defs/money"},
+        "credit_functional": {"$ref": "#/$defs/money"},
+        "functional_currency": {"type": "string", "pattern": "^[A-Z]{3}$"},
+        "fx_rate_snapshot_id": {"type": ["string", "null"], "format": "uuid"},
+        "fx_rate_snapshot_hash": {"oneOf": [{"$ref": "#/$defs/hash_ref"}, {"type": "null"}]},
+        "source_record_line_ref": {"type": "string", "minLength": 1, "maxLength": 256},
+        "description": {"type": ["string", "null"], "maxLength": 1000},
+        "dimensions_json": {"type": "object"},
+        "evidence_hash": {"$ref": "#/$defs/hash_ref"},
+        "line_hash": {"$ref": "#/$defs/hash_ref"}
+      }
+    },
+    "acceptance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "tenant_id", "company_id", "acceptance_id", "candidate_id",
+        "candidate_revision", "candidate_hash", "accounting_evidence_id",
+        "approval_case_id", "purpose", "proof_hash", "wc_decision_id",
+        "oa_decision_ref", "oa_decision_revision_hash", "accepted_by",
+        "accepted_at", "journal_id", "acceptance_hash"
+      ],
+      "properties": {
+        "tenant_id": {"$ref": "#/$defs/scoped_id"},
+        "company_id": {"$ref": "#/$defs/uuid"},
+        "acceptance_id": {"$ref": "#/$defs/uuid"},
+        "candidate_id": {"$ref": "#/$defs/uuid"},
+        "candidate_revision": {"type": "integer", "minimum": 1},
+        "candidate_hash": {"$ref": "#/$defs/hash_ref"},
+        "accounting_evidence_id": {"$ref": "#/$defs/uuid"},
+        "approval_case_id": {"$ref": "#/$defs/uuid"},
+        "purpose": {"const": "ACCOUNTING_POSTING"},
+        "proof_hash": {"$ref": "#/$defs/hash_ref"},
+        "wc_decision_id": {"$ref": "#/$defs/uuid"},
+        "oa_decision_ref": {"$ref": "#/$defs/scoped_id"},
+        "oa_decision_revision_hash": {"$ref": "#/$defs/hash_ref"},
+        "accepted_by": {"$ref": "#/$defs/scoped_id"},
+        "accepted_at": {"type": "string", "format": "date-time"},
+        "journal_id": {"$ref": "#/$defs/uuid"},
+        "acceptance_hash": {"$ref": "#/$defs/hash_ref"}
+      }
+    },
+    "project_authorization": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "decision_ref", "project_code", "project_role", "project_status",
+        "source_version", "authorization_revision_hash"
+      ],
+      "properties": {
+        "decision_ref": {"$ref": "#/$defs/hash_ref"},
+        "project_code": {"type": "string", "pattern": "^[A-Z0-9]{4}[DMSOIG][0-9]{6}$"},
+        "project_role": {"type": "string", "minLength": 1, "maxLength": 64},
+        "project_status": {"enum": ["ACTIVE", "CLOSING"]},
+        "source_version": {"type": "integer", "minimum": 1},
+        "authorization_revision_hash": {"$ref": "#/$defs/hash_ref"}
+      }
+    }
+  }
+}

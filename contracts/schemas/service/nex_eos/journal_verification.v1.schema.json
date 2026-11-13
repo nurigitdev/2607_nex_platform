@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_eos/journal_verification.v1.schema.json",
+  "title": "EOS Journal Verification v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "journal_id", "journal_hash", "accounting_acceptance_hash",
+    "line_hashes", "line_count", "total_debit_functional",
+    "total_credit_functional", "verified_at", "operation_id",
+    "verification_status", "verification_hash", "authorization_revision_hash",
+    "project_authorization"
+  ],
+  "properties": {
+    "schema_version": {"const": "eos_journal_verification.v1"},
+    "journal_id": {"type": "string", "format": "uuid"},
+    "journal_hash": {"$ref": "#/$defs/hash_ref"},
+    "accounting_acceptance_hash": {"$ref": "#/$defs/hash_ref"},
+    "line_hashes": {
+      "type": "array", "minItems": 2,
+      "items": {"$ref": "#/$defs/hash_ref"}
+    },
+    "line_count": {"type": "integer", "minimum": 2},
+    "total_debit_functional": {"$ref": "#/$defs/money"},
+    "total_credit_functional": {"$ref": "#/$defs/money"},
+    "verified_at": {"type": "string", "format": "date-time"},
+    "operation_id": {"const": "FINANCE.JOURNAL.VERIFY"},
+    "verification_status": {"const": "VERIFIED"},
+    "verification_hash": {"$ref": "#/$defs/hash_ref"},
+    "authorization_revision_hash": {"$ref": "#/$defs/hash_ref"},
+    "project_authorization": {
+      "type": "array", "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "decision_ref", "project_code", "project_role", "project_status",
+          "source_version", "authorization_revision_hash"
+        ],
+        "properties": {
+          "decision_ref": {"$ref": "#/$defs/hash_ref"},
+          "project_code": {"type": "string", "pattern": "^[A-Z0-9]{4}[DMSOIG][0-9]{6}$"},
+          "project_role": {"type": "string", "minLength": 1, "maxLength": 64},
+          "project_status": {"enum": ["ACTIVE", "CLOSING"]},
+          "source_version": {"type": "integer", "minimum": 1},
+          "authorization_revision_hash": {"$ref": "#/$defs/hash_ref"}
+        }
+      }
+    }
+  },
+  "$defs": {
+    "hash_ref": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "money": {"type": "string", "pattern": "^[0-9]+\\.[0-9]{4}$"}
+  }
+}

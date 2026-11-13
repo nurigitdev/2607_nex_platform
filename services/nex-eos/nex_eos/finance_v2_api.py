@@ -22,6 +22,8 @@ from .candidate_validation import (
     EosCandidateValidationError,
     EosCandidateValidationService,
 )
+from .journal_verification import EosJournalQueryService
+from .journals import EosJournalError
 from .voucher_candidate_commands import (
     EosCreateVoucherCandidateService,
     EosVoucherCandidateCommandError,
@@ -35,6 +37,78 @@ from .voucher_commands import EosServiceCaller
 
 
 def register_finance_v2_routes(app: FastAPI) -> None:
+    @app.get(
+        "/internal/v2/finance/journals/{journal_id}",
+        response_model=None,
+        operation_id="FINANCE.JOURNAL.GET",
+    )
+    def get_posted_journal(
+        journal_id: str,
+        request: Request,
+        tenant_id: str = Header(alias="X-NeX-Tenant-Id"),
+        company_id: str = Header(alias="X-NeX-Company-Id"),
+        requester_subject_id: str = Header(alias="X-NeX-Subject-Id"),
+        correlation_id: str = Header(alias="X-Correlation-Id"),
+        authorization: str | None = Header(default=None),
+    ):
+        admitted = admit_service_token_from_request(
+            request,
+            authorization,
+            expected_audience="nex-eos",
+            required_scopes=(DEFAULT_SERVICE_SCOPE,),
+        )
+        if isinstance(admitted, JSONResponse):
+            return admitted
+        service = _journal_query_service(request)
+        if isinstance(service, JSONResponse):
+            return service
+        try:
+            return service.get(
+                tenant_id=tenant_id,
+                company_id=company_id,
+                journal_id=journal_id,
+                requester_subject_id=requester_subject_id,
+                correlation_id=correlation_id,
+            )
+        except EosJournalError as exc:
+            return _journal_problem(request, exc)
+
+    @app.get(
+        "/internal/v2/finance/journals/{journal_id}/verification",
+        response_model=None,
+        operation_id="FINANCE.JOURNAL.VERIFY",
+    )
+    def verify_posted_journal(
+        journal_id: str,
+        request: Request,
+        tenant_id: str = Header(alias="X-NeX-Tenant-Id"),
+        company_id: str = Header(alias="X-NeX-Company-Id"),
+        requester_subject_id: str = Header(alias="X-NeX-Subject-Id"),
+        correlation_id: str = Header(alias="X-Correlation-Id"),
+        authorization: str | None = Header(default=None),
+    ):
+        admitted = admit_service_token_from_request(
+            request,
+            authorization,
+            expected_audience="nex-eos",
+            required_scopes=(DEFAULT_SERVICE_SCOPE,),
+        )
+        if isinstance(admitted, JSONResponse):
+            return admitted
+        service = _journal_query_service(request)
+        if isinstance(service, JSONResponse):
+            return service
+        try:
+            return service.verify(
+                tenant_id=tenant_id,
+                company_id=company_id,
+                journal_id=journal_id,
+                requester_subject_id=requester_subject_id,
+                correlation_id=correlation_id,
+            )
+        except EosJournalError as exc:
+            return _journal_problem(request, exc)
+
     @app.post("/internal/v2/finance/voucher-candidates", response_model=None)
     def create_voucher_candidate(
         payload: dict[str, Any],
@@ -436,4 +510,35 @@ def _posting_admission_problem(
             "https://nex-platform.local/problems/"
             "eos-accounting-posting-admission-failed"
         ),
+    )
+
+
+def _journal_query_service(request: Request):
+    service: EosJournalQueryService | None = getattr(
+        request.app.state,
+        "eos_journal_query_service",
+        None,
+    )
+    if service is not None:
+        return service
+    return _journal_problem(
+        request,
+        EosJournalError(
+            "EOS_JOURNAL_QUERY_UNAVAILABLE",
+            "PostedJournal query dependencies are not configured",
+            status_code=503,
+            retryable=True,
+        ),
+    )
+
+
+def _journal_problem(request: Request, exc: EosJournalError):
+    return problem_response(
+        request,
+        status_code=exc.status_code,
+        error_code=exc.error_code,
+        title="EOS PostedJournal query failed",
+        detail=exc.detail,
+        retryable=exc.retryable,
+        type_uri="https://nex-platform.local/problems/eos-journal-query-failed",
     )

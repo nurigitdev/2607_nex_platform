@@ -1529,6 +1529,16 @@
       "name": "eos_accounting_posting_admission_v1",
       "path": "examples/service/eos_accounting_posting_admission.v1.json",
       "schema": "schemas/service/nex_eos/accounting_posting_admission.v1.schema.json"
+    },
+    {
+      "name": "eos_posted_journal_v1",
+      "path": "examples/service/eos_posted_journal.v1.json",
+      "schema": "schemas/service/nex_eos/posted_journal.v1.schema.json"
+    },
+    {
+      "name": "eos_journal_verification_verified",
+      "path": "examples/service/eos_journal_verification.verified.json",
+      "schema": "schemas/service/nex_eos/journal_verification.v1.schema.json"
     }
   ]
 }

@@ -1560,6 +1560,90 @@ paths:
         "409": {description: Candidate review CAS or immutable replay semantics conflict.}
         "422": {description: Invalidation request is malformed.}
         "503": {description: Candidate review persistence is unavailable.}
+  /internal/v2/finance/journals/{journal_id}:
+    get:
+      operationId: FINANCE.JOURNAL.GET
+      tags: [Finance]
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes: [service:call]
+      x-nex-business-scope: finance:report:read
+      x-nex-side-effect-free: true
+      parameters:
+        - name: journal_id
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+        - name: X-NeX-Tenant-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+        - name: X-NeX-Company-Id
+          in: header
+          required: true
+          schema: {type: string, format: uuid}
+        - name: X-NeX-Subject-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+        - name: X-Correlation-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 256}
+      responses:
+        "200":
+          description: Immutable PostedJournal, lines, and accounting acceptance.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PostedJournal"
+        "401": {description: Service claim is missing or invalid.}
+        "403": {description: Current OA or Project read authority is denied.}
+        "404": {description: PostedJournal was not found in tenant and company scope.}
+        "422": {description: Journal query identity is malformed.}
+        "503": {description: Authorization or Journal persistence is unavailable.}
+  /internal/v2/finance/journals/{journal_id}/verification:
+    get:
+      operationId: FINANCE.JOURNAL.VERIFY
+      tags: [Finance]
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes: [service:call]
+      x-nex-business-scope: finance:report:read
+      x-nex-side-effect-free: true
+      parameters:
+        - name: journal_id
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+        - name: X-NeX-Tenant-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+        - name: X-NeX-Company-Id
+          in: header
+          required: true
+          schema: {type: string, format: uuid}
+        - name: X-NeX-Subject-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+        - name: X-Correlation-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 256}
+      responses:
+        "200":
+          description: Recomputed immutable Journal verification receipt.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JournalVerification"
+        "401": {description: Service claim is missing or invalid.}
+        "403": {description: Current OA or Project read authority is denied.}
+        "404": {description: PostedJournal was not found in tenant and company scope.}
+        "422": {description: Journal verification identity is malformed.}
+        "503": {description: "Authorization, persistence, or immutable verification failed."}
   /internal/v1/finance/voucher-drafts:
     get:
       operationId: FINANCE.VOUCHER_DRAFT.LIST
@@ -2032,6 +2116,12 @@ components:
     AccountingPostingAdmission:
       type: object
       x-nex-canonical-json-schema: schemas/service/nex_eos/accounting_posting_admission.v1.schema.json
+    PostedJournal:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_eos/posted_journal.v1.schema.json
+    JournalVerification:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_eos/journal_verification.v1.schema.json
     VoucherCandidateReview:
       type: object
       x-nex-canonical-json-schema: schemas/service/nex_eos/voucher_candidate_review.v1.schema.json

@@ -64,6 +64,8 @@ from .document_signoff import (
 )
 from .fx_rates import EosFxRateService, SqlAlchemyEosFxRateRepository
 from .health import build_configuration_readiness_check
+from .journal_verification import EosJournalQueryService
+from .journals import SqlAlchemyEosJournalRepository
 from .legal_entities import (
     EosLegalEntityService,
     SqlAlchemyEosLegalEntityRepository,
@@ -138,6 +140,8 @@ class EosDependencies:
     accounting_period_service: EosAccountingPeriodService | None
     accounting_approval_service: EosAccountingApprovalService | None
     accounting_posting_admission_service: EosAccountingPostingAdmissionService | None
+    journals: SqlAlchemyEosJournalRepository | None
+    journal_query_service: EosJournalQueryService | None
     document_signoff_service: EosDocumentSignoffService | None
     scoped_approval_decision_router: EosScopedApprovalDecisionRouter | None
     fx_rate_service: EosFxRateService | None
@@ -418,6 +422,22 @@ def build_eos_dependencies(
         and project_authorizer is not None
         else None
     )
+    journals = (
+        SqlAlchemyEosJournalRepository(database_runtime.session_factory)
+        if database_runtime is not None
+        else None
+    )
+    journal_query_service = (
+        EosJournalQueryService(
+            repository=journals,
+            authorization_source=authorization_source,
+            project_authorizer=project_authorizer,
+        )
+        if journals is not None
+        and authorization_source is not None
+        and project_authorizer is not None
+        else None
+    )
     document_signoff_service = (
         EosDocumentSignoffService(
             session_factory=database_runtime.session_factory,
@@ -654,6 +674,8 @@ def build_eos_dependencies(
         accounting_period_service=accounting_period_service,
         accounting_approval_service=accounting_approval_service,
         accounting_posting_admission_service=accounting_posting_admission_service,
+        journals=journals,
+        journal_query_service=journal_query_service,
         document_signoff_service=document_signoff_service,
         scoped_approval_decision_router=scoped_approval_decision_router,
         fx_rate_service=fx_rate_service,

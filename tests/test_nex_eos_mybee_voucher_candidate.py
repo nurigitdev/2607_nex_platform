@@ -17,15 +17,22 @@ from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 from fastapi.testclient import TestClient
 from nex_eos import (
+    EOS_ACCOUNT_CATALOG_RELEASE_TABLE,
+    EOS_ACCOUNTING_APPROVAL_ACCEPTANCE_TABLE,
     EOS_ACCOUNTING_APPROVAL_EVIDENCE_TABLE,
+    EOS_ACCOUNTING_PERIOD_TABLE,
     EOS_APPROVAL_POLICY_STAGE_TABLE,
     EOS_APPROVAL_POLICY_TABLE,
     EOS_APPROVED_DOCUMENT_TABLE,
     EOS_BUSINESS_OPERATION_TABLE,
     EOS_CANDIDATE_REVIEW_EVENT_TABLE,
+    EOS_COMPANY_ACCOUNT_POLICY_TABLE,
     EOS_DOCUMENT_SIGNOFF_EVIDENCE_TABLE,
+    EOS_JOURNAL_HEADER_TABLE,
+    EOS_JOURNAL_LINE_TABLE,
     EOS_METADATA,
     EOS_OUTBOX_TABLE,
+    EOS_POSTING_RULE_RELEASE_TABLE,
     EOS_SCOPED_APPROVAL_CASE_TABLE,
     EOS_SCOPED_APPROVAL_DECISION_TABLE,
     EOS_VOUCHER_CANDIDATE_LINE_TABLE,
@@ -36,6 +43,7 @@ from nex_eos import (
     EosAccountingPostingAdmissionService,
     EosCandidateReviewError,
     EosCreateVoucherCandidateService,
+    EosJournalError,
     EosReviseVoucherCandidateService,
     EosServiceCaller,
     EosVoucherAuthorizationClient,
@@ -48,10 +56,14 @@ from nex_eos import (
     SqlAlchemyEosAccountRepository,
     SqlAlchemyEosBusinessTransactionCoordinator,
     SqlAlchemyEosCandidateReviewRepository,
+    SqlAlchemyEosJournalRepository,
     SqlAlchemyEosLegalEntityRepository,
     SqlAlchemyEosProjectRepository,
     SqlAlchemyEosVoucherCandidateRepository,
     VoucherCandidateInput,
+    build_acceptance_hash,
+    build_journal_hash,
+    build_line_hash,
     finance_v2_api,
     parse_create_voucher_candidate_command,
     parse_revise_voucher_candidate_command,
@@ -100,6 +112,7 @@ REVISION_POSTGRES_SMOKE = os.getenv("NEX_EOS_MYBEE_W40_S4_00A_POSTGRES_SMOKE") =
 POSTING_ADMISSION_POSTGRES_SMOKE = (
     os.getenv("NEX_EOS_MYBEE_W40_S4_01_POSTGRES_SMOKE") == "1"
 )
+JOURNAL_POSTGRES_SMOKE = os.getenv("NEX_EOS_MYBEE_W40_S4_02_POSTGRES_SMOKE") == "1"
 VALIDATION_HASH = "sha256:" + "9" * 64
 
 
@@ -1847,6 +1860,339 @@ def test_actual_postgres_candidate_revision_race_immutability_and_zero_residue()
             ).fetchone() == (None,)
 
 
+@pytest.mark.skipif(
+    not DATABASE_URL or not JOURNAL_POSTGRES_SMOKE,
+    reason="Protected W40-S4-02 EOS PostgreSQL smoke is disabled",
+)
+def test_actual_postgres_posted_journal_is_immutable_and_unique() -> None:
+    schema_name = f"mybee_w40s402_{uuid.uuid4().hex}"
+    psycopg_url = psycopg_database_url(DATABASE_URL)
+    with psycopg.connect(psycopg_url, autocommit=True) as connection:
+        assert connection.execute(
+            "SELECT current_database(), current_user"
+        ).fetchone() == ("nex_eos_test", "nex_eos_user")
+        connection.execute(
+            sql.SQL("CREATE SCHEMA {}").format(sql.Identifier(schema_name))
+        )
+    scoped_url = (
+        make_url(DATABASE_URL)
+        .update_query_dict({"options": f"-csearch_path={schema_name}"})
+        .render_as_string(hide_password=False)
+    )
+    engine = None
+    try:
+        migration = run_service_migrations(
+            "nex-eos", database_url=scoped_url, profile="test"
+        )
+        assert "2539_eos_posted_journal" in migration.applied
+        engine = create_engine(scoped_url, pool_pre_ping=True)
+        _engine_value, sessions, candidates, command, _authorization = _runtime(
+            engine=engine
+        )
+        command.execute(_payload(), caller=CALLER)
+        _case, review, _validation = _candidate_review_fixture(sessions, candidates)
+
+        evidence_id = "32000000-0000-4000-8000-000000000042"
+        decision_id = "32000000-0000-4000-8000-000000000041"
+        period_id = review["accounting_period_id"]
+        catalog_release_id = "32000000-0000-4000-8000-000000000046"
+        posting_rule_id = "32000000-0000-4000-8000-000000000047"
+        debit_policy_id = "32000000-0000-4000-8000-000000000048"
+        credit_policy_id = "32000000-0000-4000-8000-000000000049"
+        acceptance_id = "32000000-0000-4000-8000-000000000050"
+        journal_id = "32000000-0000-4000-8000-000000000051"
+        journal_operation_id = "32000000-0000-4000-8000-000000000052"
+
+        with sessions.begin() as session:
+            session.execute(
+                EOS_ACCOUNTING_APPROVAL_EVIDENCE_TABLE.insert().values(
+                    tenant_id=TENANT,
+                    case_id=REVIEW_CASE_ID,
+                    evidence_id=evidence_id,
+                    company_id=COMPANY_ID,
+                    candidate_id=CANDIDATE_ID,
+                    candidate_revision=1,
+                    candidate_hash=review["candidate_hash"],
+                    document_envelope_hash=DOCUMENT_HASH,
+                    fx_rate_set_hash=PROOF_HASH,
+                    rule_release_hash=POLICY_HASH,
+                    accounting_period_id=period_id,
+                    approver_subject_id="accountant-cfo",
+                    approval_policy_hash=POLICY_HASH,
+                    wc_final_decision_id=decision_id,
+                    oa_authorization_revision_hash=POLICY_HASH,
+                    decided_at=NOW,
+                    proof_hash=EVIDENCE_HASH,
+                    created_at=NOW,
+                )
+            )
+            session.execute(
+                EOS_ACCOUNTING_PERIOD_TABLE.insert().values(
+                    tenant_id=TENANT,
+                    company_id=COMPANY_ID,
+                    period_id=period_id,
+                    fiscal_year=2026,
+                    period_no=11,
+                    start_date=date(2026, 11, 1),
+                    end_date=date(2026, 11, 30),
+                    state="OPEN",
+                    version=1,
+                    close_proof_ref=None,
+                    closed_at=None,
+                    ledger_cutoff_watermark=None,
+                    created_at=NOW,
+                    updated_at=NOW,
+                )
+            )
+            session.execute(
+                EOS_ACCOUNT_CATALOG_RELEASE_TABLE.insert().values(
+                    tenant_id=TENANT,
+                    release_id=catalog_release_id,
+                    source_reference="mybee.coa:w40-s4-02",
+                    source_version="1",
+                    source_hash=POLICY_HASH,
+                    effective_from=date(2026, 1, 1),
+                    published_by="accounting-controller",
+                    approved_proof_ref=PROOF_HASH,
+                    status="PUBLISHED",
+                    created_at=NOW,
+                )
+            )
+            session.execute(
+                EOS_POSTING_RULE_RELEASE_TABLE.insert().values(
+                    tenant_id=TENANT,
+                    posting_rule_id=posting_rule_id,
+                    company_id=COMPANY_ID,
+                    catalog_release_id=catalog_release_id,
+                    rule_code="W40_STANDARD",
+                    rule_version=1,
+                    rule_hash=POLICY_HASH,
+                    effective_date=date(2026, 1, 1),
+                    account_mapping_hash=PROOF_HASH,
+                    approved_proof_ref=EVIDENCE_HASH,
+                    status="PUBLISHED",
+                    created_at=NOW,
+                )
+            )
+            for policy_id, account_id, statement_line in (
+                (debit_policy_id, DEBIT_ID, "EXPENSE.TRAVEL"),
+                (credit_policy_id, CREDIT_ID, "ASSET.CASH"),
+            ):
+                session.execute(
+                    EOS_COMPANY_ACCOUNT_POLICY_TABLE.insert().values(
+                        tenant_id=TENANT,
+                        policy_id=policy_id,
+                        company_id=COMPANY_ID,
+                        account_id=account_id,
+                        catalog_release_id=catalog_release_id,
+                        posting_rule_id=posting_rule_id,
+                        parent_account_id=None,
+                        is_postable_leaf=True,
+                        is_monetary=True,
+                        statement_line_ref=statement_line,
+                        allowed_currencies=["KRW"],
+                        valid_from=date(2026, 1, 1),
+                        valid_until=None,
+                        rule_revision=1,
+                        approved_proof_ref=PROOF_HASH,
+                        state="APPROVED",
+                        created_at=NOW,
+                    )
+                )
+            session.execute(
+                EOS_BUSINESS_OPERATION_TABLE.insert().values(
+                    tenant_id=TENANT,
+                    business_operation_id=journal_operation_id,
+                    idempotency_key="w40-s4-02-posted-journal",
+                    operation="FINANCE.JOURNAL.POST",
+                    payload_hash=PAYLOAD_HASH,
+                    commit_state="COMMITTED",
+                    result_json={"journal_id": journal_id},
+                    created_at=NOW,
+                    committed_at=NOW,
+                )
+            )
+
+        lines: list[dict[str, object]] = []
+        for line_no, account_id, account_code, account_name, policy_id in (
+            (1, DEBIT_ID, "TRAVEL", "Travel", debit_policy_id),
+            (2, CREDIT_ID, "CASH", "Cash", credit_policy_id),
+        ):
+            debit = Decimal("10000.0000") if line_no == 1 else Decimal("0.0000")
+            credit = Decimal("0.0000") if line_no == 1 else Decimal("10000.0000")
+            line: dict[str, object] = {
+                "tenant_id": TENANT,
+                "company_id": COMPANY_ID,
+                "journal_id": journal_id,
+                "line_no": line_no,
+                "candidate_id": CANDIDATE_ID,
+                "candidate_revision": 1,
+                "candidate_source_line_no": line_no,
+                "account_id": account_id,
+                "account_code_snapshot": account_code,
+                "account_name_snapshot": account_name,
+                "account_policy_id": policy_id,
+                "account_policy_release_hash": POLICY_HASH,
+                "posting_rule_release_hash": POLICY_HASH,
+                "project_id": PROJECT_ID,
+                "project_code": PROJECT_CODE,
+                "debit_original": debit,
+                "credit_original": credit,
+                "original_currency": "KRW",
+                "debit_functional": debit,
+                "credit_functional": credit,
+                "functional_currency": "KRW",
+                "fx_rate_snapshot_id": None,
+                "fx_rate_snapshot_hash": None,
+                "source_record_line_ref": f"expense-line-{line_no}",
+                "description": "Protected PostedJournal smoke",
+                "dimensions_json": {"cost_center": "HQ"},
+                "evidence_hash": EVIDENCE_HASH,
+                "line_hash": POLICY_HASH,
+            }
+            line["line_hash"] = build_line_hash(line)
+            lines.append(line)
+        header: dict[str, object] = {
+            "tenant_id": TENANT,
+            "company_id": COMPANY_ID,
+            "journal_id": journal_id,
+            "candidate_id": CANDIDATE_ID,
+            "candidate_revision": 1,
+            "candidate_hash": review["candidate_hash"],
+            "period_id": period_id,
+            "posting_sequence": 1,
+            "journal_no": "VO00-2026-000001",
+            "state": "POSTED",
+            "transaction_kind": "STANDARD",
+            "recognition_date": date(2026, 11, 12),
+            "posting_date": date(2026, 11, 12),
+            "functional_currency": "KRW",
+            "source_document_id": ENVELOPE_ID,
+            "source_document_revision": 1,
+            "source_document_hash": DOCUMENT_HASH,
+            "accounting_acceptance_id": acceptance_id,
+            "posting_rule_release_hash": POLICY_HASH,
+            "fx_rate_set_hash": PROOF_HASH,
+            "reversal_of_journal_id": None,
+            "business_operation_id": journal_operation_id,
+            "idempotency_key": "w40-s4-02-posted-journal",
+            "payload_hash": PAYLOAD_HASH,
+            "line_count": 2,
+            "total_debit_functional": Decimal("10000.0000"),
+            "total_credit_functional": Decimal("10000.0000"),
+            "journal_hash": POLICY_HASH,
+            "posted_at": NOW,
+        }
+        header["journal_hash"] = build_journal_hash(
+            header, line_hashes=[str(line["line_hash"]) for line in lines]
+        )
+        acceptance: dict[str, object] = {
+            "tenant_id": TENANT,
+            "company_id": COMPANY_ID,
+            "acceptance_id": acceptance_id,
+            "candidate_id": CANDIDATE_ID,
+            "candidate_revision": 1,
+            "candidate_hash": review["candidate_hash"],
+            "accounting_evidence_id": evidence_id,
+            "approval_case_id": REVIEW_CASE_ID,
+            "purpose": "ACCOUNTING_POSTING",
+            "proof_hash": EVIDENCE_HASH,
+            "wc_decision_id": decision_id,
+            "oa_decision_ref": "oa-authz:accountant-current",
+            "oa_decision_revision_hash": POLICY_HASH,
+            "accepted_by": "accountant-cfo",
+            "accepted_at": NOW,
+            "journal_id": journal_id,
+            "acceptance_hash": POLICY_HASH,
+        }
+        acceptance["acceptance_hash"] = build_acceptance_hash(acceptance)
+        repository = SqlAlchemyEosJournalRepository(sessions)
+        bundle = {"acceptance": acceptance, "header": header, "lines": lines}
+        with sessions.begin() as session:
+            repository.stage_in_session(session, **bundle)
+
+        persisted = repository.get(
+            tenant_id=TENANT,
+            company_id=COMPANY_ID,
+            journal_id=journal_id,
+        )
+        assert persisted is not None
+        assert persisted["header"]["journal_hash"] == header["journal_hash"]
+        assert len(persisted["lines"]) == 2
+
+        immutable_statements = (
+            update(EOS_JOURNAL_HEADER_TABLE)
+            .where(EOS_JOURNAL_HEADER_TABLE.c.journal_id == journal_id)
+            .values(journal_no="TAMPERED"),
+            delete(EOS_JOURNAL_HEADER_TABLE).where(
+                EOS_JOURNAL_HEADER_TABLE.c.journal_id == journal_id
+            ),
+            update(EOS_JOURNAL_LINE_TABLE)
+            .where(EOS_JOURNAL_LINE_TABLE.c.journal_id == journal_id)
+            .values(description="tampered"),
+            delete(EOS_JOURNAL_LINE_TABLE).where(
+                EOS_JOURNAL_LINE_TABLE.c.journal_id == journal_id
+            ),
+            update(EOS_ACCOUNTING_APPROVAL_ACCEPTANCE_TABLE)
+            .where(
+                EOS_ACCOUNTING_APPROVAL_ACCEPTANCE_TABLE.c.acceptance_id
+                == acceptance_id
+            )
+            .values(accepted_by="tampered"),
+            delete(EOS_ACCOUNTING_APPROVAL_ACCEPTANCE_TABLE).where(
+                EOS_ACCOUNTING_APPROVAL_ACCEPTANCE_TABLE.c.acceptance_id
+                == acceptance_id
+            ),
+        )
+        for statement in immutable_statements:
+            with sessions() as session:
+                with pytest.raises(DBAPIError) as blocked:
+                    session.execute(statement)
+                    session.commit()
+                assert blocked.value.orig.sqlstate == "55000"
+                session.rollback()
+
+        with sessions() as session:
+            with pytest.raises(EosJournalError) as duplicate:
+                repository.stage_in_session(session, **bundle)
+            assert duplicate.value.status_code == 409
+            session.rollback()
+
+        with sessions() as session:
+            assert (
+                session.scalar(
+                    select(func.count()).select_from(EOS_JOURNAL_HEADER_TABLE)
+                )
+                == 1
+            )
+            assert (
+                session.scalar(select(func.count()).select_from(EOS_JOURNAL_LINE_TABLE))
+                == 2
+            )
+            assert (
+                session.scalar(
+                    select(func.count()).select_from(
+                        EOS_ACCOUNTING_APPROVAL_ACCEPTANCE_TABLE
+                    )
+                )
+                == 1
+            )
+        engine.dispose()
+        engine = None
+    finally:
+        if engine is not None:
+            engine.dispose()
+        with psycopg.connect(psycopg_url, autocommit=True) as connection:
+            connection.execute(
+                sql.SQL("DROP SCHEMA IF EXISTS {} CASCADE").format(
+                    sql.Identifier(schema_name)
+                )
+            )
+            assert connection.execute(
+                "SELECT to_regnamespace(%s)", (schema_name,)
+            ).fetchone() == (None,)
+
+
 @pytest.mark.parametrize(
     ("mutator", "expected_detail"),
     (
@@ -2444,7 +2790,17 @@ def test_actual_postgres_accounting_proof_and_fresh_oa_admission() -> None:
                     f"{schema_name}.eos_journal_line",
                 ),
             ).fetchone()
-            assert journal_tables == (None, None)
+            assert all(table is not None for table in journal_tables)
+            assert connection.execute(
+                sql.SQL("SELECT COUNT(*) FROM {}.eos_journal_header").format(
+                    sql.Identifier(schema_name)
+                )
+            ).fetchone() == (0,)
+            assert connection.execute(
+                sql.SQL("SELECT COUNT(*) FROM {}.eos_journal_line").format(
+                    sql.Identifier(schema_name)
+                )
+            ).fetchone() == (0,)
         engine.dispose()
         engine = None
     finally:

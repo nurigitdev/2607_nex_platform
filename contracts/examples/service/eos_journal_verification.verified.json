@@ -1,0 +1,24 @@
+{
+  "schema_version": "eos_journal_verification.v1",
+  "journal_id": "45000000-0000-4000-8000-000000000002",
+  "journal_hash": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+  "accounting_acceptance_hash": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+  "line_hashes": [
+    "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+    "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+  ],
+  "line_count": 2,
+  "total_debit_functional": "100.0000",
+  "total_credit_functional": "100.0000",
+  "verified_at": "2026-11-13T07:01:00Z",
+  "operation_id": "FINANCE.JOURNAL.VERIFY",
+  "verification_status": "VERIFIED",
+  "verification_hash": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+  "authorization_revision_hash": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+  "project_authorization": [{
+    "decision_ref": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "project_code": "VO00D260001", "project_role": "MEMBER", "project_status": "ACTIVE",
+    "source_version": 3,
+    "authorization_revision_hash": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+  }]
+}
