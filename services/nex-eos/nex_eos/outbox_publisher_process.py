@@ -40,10 +40,11 @@ from nex_eos.oa_outbox_transport import (
     RoutingEosOutboxTransport,
 )
 from nex_eos.outbox_publication import (
-    EosOutboxTransport,
     EosOutboxPublicationError,
+    EosOutboxTransport,
     SqlAlchemyEosOutboxPublisher,
 )
+from nex_eos.project_entitlement_events import PROJECT_ENTITLEMENT_EVENT_TYPE
 
 PROCESS_ID = "nex-eos-outbox-publisher"
 SERVICE_ID = "nex-eos"
@@ -102,12 +103,28 @@ class InstalledEosOutboxPublisherProcess:
 
     def readiness(self) -> dict[str, Any]:
         database = _database_readiness(self.sessions)
+        routing = (
+            self.transport.route_projection()
+            if isinstance(self.transport, RoutingEosOutboxTransport)
+            else None
+        )
+        entitlement_route = (
+            routing.get("routes", {}).get(PROJECT_ENTITLEMENT_EVENT_TYPE)
+            if routing is not None
+            else None
+        )
         checks = {
             "database_connected": database["connected"],
             "eos_migrations_current": database["migrations_current"],
             "outbox_tables_present": not database["missing_tables"],
             "outbox_publisher_available": self.publisher is not None,
             "signed_routed_transport_configured": self.transport is not None,
+            "project_entitlement_oa_route_configured": (
+                isinstance(entitlement_route, Mapping)
+                and entitlement_route.get("destination_service_id") == "nex-oa"
+                and entitlement_route.get("transport_type")
+                == "HttpOaProjectEntitlementTransport"
+            ),
             "heartbeat_available": self.heartbeat is not None,
         }
         ready = all(checks.values())
@@ -122,6 +139,7 @@ class InstalledEosOutboxPublisherProcess:
             "checks": checks,
             "database": database,
             "publication_path": "EOS_OUTBOX_ROUTED_TO_AE_OR_OA",
+            "routing": routing,
             "work_capability": "outbox_publishing",
             "content_included": False,
             "secret_included": False,

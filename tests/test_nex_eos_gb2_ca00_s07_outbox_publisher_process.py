@@ -80,6 +80,13 @@ class _LoopProcess:
 def _installed(*, sessions=None, publisher=None):
     engine = create_engine("sqlite+pysqlite:///:memory:")
     factory = sessions or sessionmaker(bind=engine, expire_on_commit=False)
+    transport = process.RoutingEosOutboxTransport(
+        ae_transport=object(),
+        oa_transport=process.HttpOaProjectEntitlementTransport(
+            base_url="http://oa.local",
+            service_token="signed-oa-token",
+        ),
+    )
     return process.InstalledEosOutboxPublisherProcess(
         profile="test",
         database_environment="NEX_EOS_TEST_DATABASE_URL",
@@ -87,7 +94,7 @@ def _installed(*, sessions=None, publisher=None):
         sessions=factory,
         heartbeat=_Heartbeat(),
         publisher=publisher or _Publisher(),
-        transport=object(),
+        transport=transport,
         worker_id="worker-1",
         poll_interval_seconds=1.0,
     )
@@ -251,6 +258,10 @@ def test_readiness_reports_exact_component_state(monkeypatch) -> None:
     report = installed.readiness()
     assert report["readiness_status"] == "READY"
     assert all(report["checks"].values())
+    assert report["routing"]["routes"]["PROJECT_ENTITLEMENT_SNAPSHOT"] == {
+        "destination_service_id": "nex-oa",
+        "transport_type": "HttpOaProjectEntitlementTransport",
+    }
     assert report["secret_included"] is False
     installed.publisher = None
     assert installed.readiness()["readiness_status"] == "NOT_READY"

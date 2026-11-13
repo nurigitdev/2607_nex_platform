@@ -7,8 +7,7 @@ from datetime import UTC, datetime
 from io import BytesIO
 from pathlib import Path
 from types import SimpleNamespace
-from urllib.error import HTTPError
-from urllib.error import URLError
+from urllib.error import HTTPError, URLError
 
 import psycopg
 import pytest
@@ -27,8 +26,8 @@ from nex_eos.outbox_publication import (
     SqlAlchemyEosOutboxPublisher,
 )
 from nex_eos.project_entitlement_events import (
-    EosProjectEntitlementEventError,
     PROJECT_ENTITLEMENT_EVENT_TYPE,
+    EosProjectEntitlementEventError,
     append_project_entitlement_snapshot,
 )
 from nex_eos.projects import (
@@ -37,14 +36,14 @@ from nex_eos.projects import (
     ProjectInput,
     SqlAlchemyEosProjectRepository,
 )
+from nex_oa import project_entitlement_sync
+from nex_oa.authorization import OaAuthorizationError
 from nex_oa.project_entitlement_sync import (
     OA_PROJECT_ENTITLEMENT_WRITE_SCOPE,
     InMemoryOaProjectEntitlementInbox,
     SqlAlchemyOaProjectEntitlementInbox,
     register_project_entitlement_sync_routes,
 )
-from nex_oa import project_entitlement_sync
-from nex_oa.authorization import OaAuthorizationError
 from nex_runtime import (
     DEFAULT_SERVICE_SCOPE,
     PERSISTENCE_MODE_POSTGRES,
@@ -368,6 +367,12 @@ def test_http_transport_and_router_validate_exact_oa_ack() -> None:
             )
 
     routed = RoutingEosOutboxTransport(ae_transport=Ae(), oa_transport=oa)
+    projection = routed.route_projection()
+    assert projection["routes"][PROJECT_ENTITLEMENT_EVENT_TYPE] == {
+        "destination_service_id": "nex-oa",
+        "transport_type": "HttpOaProjectEntitlementTransport",
+    }
+    assert projection["secret_included"] is False
     receipt = routed.publish(_event())
     assert receipt.event_id == EVENT_ID
     assert captured == {
@@ -484,7 +489,7 @@ def test_eos_snapshot_append_is_deterministic_and_rejects_changed_replay() -> No
         ("members", [{"subject_id": " bad", "project_role": "MEMBER"}]),
         ("members", [{"subject_id": "employee-1", "project_role": "ROOT"}]),
         ("correlation_id", " bad"),
-        ("occurred_at", datetime(2026, 1, 1)),
+        ("occurred_at", datetime(2026, 1, 1, tzinfo=UTC).replace(tzinfo=None)),
     ],
 )
 def test_eos_snapshot_append_rejects_malformed_boundary(field, value) -> None:
@@ -708,9 +713,10 @@ def test_actual_postgres_eos_to_oa_ack_replay_and_zero_residue() -> None:
         (eos_psycopg, ("nex_eos_test", "nex_eos_user"), eos_schema),
         (oa_psycopg, ("nex_oa_test", "nex_oa_user"), oa_schema),
     ):
-        with psycopg.connect(
-            url, autocommit=True
-        ) as connection, connection.cursor() as cursor:
+        with (
+            psycopg.connect(url, autocommit=True) as connection,
+            connection.cursor() as cursor,
+        ):
             cursor.execute("SELECT current_database(), current_user")
             assert cursor.fetchone() == expected
             cursor.execute(f'CREATE SCHEMA "{schema_name}"')
@@ -844,9 +850,10 @@ def test_actual_postgres_eos_to_oa_ack_replay_and_zero_residue() -> None:
         oa_engine.dispose()
     finally:
         for url, schema_name in ((eos_psycopg, eos_schema), (oa_psycopg, oa_schema)):
-            with psycopg.connect(
-                url, autocommit=True
-            ) as connection, connection.cursor() as cursor:
+            with (
+                psycopg.connect(url, autocommit=True) as connection,
+                connection.cursor() as cursor,
+            ):
                 cursor.execute(f'DROP SCHEMA IF EXISTS "{schema_name}" CASCADE')
                 cursor.execute("SELECT to_regnamespace(%s)", (schema_name,))
                 assert cursor.fetchone() == (None,)

@@ -177,12 +177,24 @@ def test_protected_profile_selects_product_executor_composition(monkeypatch) -> 
     engine = _sqlite_engine()
     product_profile = process.build_deterministic_component_executor_profile()
     observed = []
+    consumer = SimpleNamespace(
+        readiness=lambda: {
+            "schema_version": "ae.mybee_consumer_binding.v1",
+            "status": "PASS",
+            "consumer_id": "MYBEE.FINANCE.VOUCHER_CANDIDATE",
+        }
+    )
     monkeypatch.setattr(
         process,
         "build_product_runtime_executor_profile",
         lambda sessions, environ: (
             observed.append((sessions, environ)) or product_profile
         ),
+    )
+    monkeypatch.setattr(
+        process,
+        "build_installed_mybee_voucher_candidate_consumer",
+        lambda environ: consumer,
     )
     installed = process.build_installed_agent_runtime_process(
         "staging_live",
@@ -195,6 +207,7 @@ def test_protected_profile_selects_product_executor_composition(monkeypatch) -> 
         assert installed.profile == "staging_live"
         assert installed.database_environment == "NEX_AE_DATABASE_URL"
         assert installed.composition.executor_profile is product_profile
+        assert installed.mybee_product_consumer is consumer
         assert len(observed) == 1
     finally:
         installed.close()

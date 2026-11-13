@@ -11,9 +11,7 @@ from typing import Any
 import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_REPORT = Path(
-    "reports/quality/mybee-w40-ca02-s01-runtime-ownership-audit.json"
-)
+DEFAULT_REPORT = Path("reports/quality/mybee-w40-ca02-s01-runtime-ownership-audit.json")
 SCHEMA_VERSION = "mybee_w40_ca02_runtime_ownership_audit.v1"
 
 MYBEE_ROOT = "domains/mybee/mybee_ax"
@@ -21,15 +19,14 @@ MYBEE_README = "domains/mybee/README.md"
 MYBEE_PROJECT = "domains/mybee/pyproject.toml"
 ARTIFACT_CATALOG = "services/_shared/nex_runtime/deployment_artifacts.py"
 AE_ACTIVATORS = "services/nex-ae-api/nex_ae_api/domain_intent_products.py"
+AE_CONSUMER_BINDING = "services/nex-ae-api/nex_ae_api/mybee_product_consumer.py"
 AE_CAPABILITIES = "deployment/environments/ae-product-capability-registry.v1.json"
 AE_RUNTIME_CONTAINERFILE = "deployment/oci/canonical-platform-ae-runtime.Containerfile"
 AE_RUNTIME_BUILDER = "scripts/deployment/build_canonical_platform_ae_runtime_image.py"
 CANONICAL_COMPOSE = "deployment/compose/canonical-platform.override.yaml"
 EOS_DEPENDENCIES = "services/nex-eos/nex_eos/dependencies.py"
 EOS_OUTBOX_PROCESS = "services/nex-eos/nex_eos/outbox_publisher_process.py"
-MYBEE_CONSUMER = (
-    "domains/mybee/mybee_ax/integrations/nex_voucher_candidate_client.py"
-)
+MYBEE_CONSUMER = "domains/mybee/mybee_ax/integrations/nex_voucher_candidate_client.py"
 
 OWNERSHIP_DECISION = {
     "domain_library_owner": "mybee",
@@ -59,6 +56,7 @@ def audit_runtime_ownership(root: Path = ROOT) -> dict[str, Any]:
             MYBEE_CONSUMER,
         )
     }
+    texts[AE_CONSUMER_BINDING] = _read_optional_text(root, AE_CONSUMER_BINDING)
     capability_registry = _read_json(root, AE_CAPABILITIES, issues)
     compose = _read_yaml(root, CANONICAL_COMPOSE, issues)
 
@@ -68,9 +66,7 @@ def audit_runtime_ownership(root: Path = ROOT) -> dict[str, Any]:
 
     service_imports = _service_mybee_imports(root, issues)
     non_ae_imports = [
-        path
-        for path in service_imports
-        if not path.startswith("services/nex-ae-api/")
+        path for path in service_imports if not path.startswith("services/nex-ae-api/")
     ]
     if non_ae_imports:
         issues.append("a non-AE service imports the MyBee domain package")
@@ -99,10 +95,25 @@ def audit_runtime_ownership(root: Path = ROOT) -> dict[str, Any]:
         texts[ARTIFACT_CATALOG], "nex-ae-runtime", issues
     )
     ae_package_admitted = _ae_package_admitted(texts, ae_source_roots)
-    capability_admitted = _capability_admitted(capability_registry)
-    activator_admitted = any(
+    consumer_binding_present = all(
+        token in texts[AE_CONSUMER_BINDING]
+        for token in (
+            "InstalledMyBeeVoucherCandidateConsumer",
+            "NexVoucherCandidateClient",
+            "build_domain_intent_activator_registry",
+            'MYBEE_CONSUMER_ID = "MYBEE.FINANCE.VOUCHER_CANDIDATE"',
+        )
+    )
+    capability_admitted = _capability_admitted(capability_registry) and all(
+        token in texts[AE_CONSUMER_BINDING]
+        for token in ("GOLDEN_A_CAPABILITY_ID", "load_product_capability_registry")
+    )
+    activator_admitted = consumer_binding_present and all(
         token in texts[AE_ACTIVATORS]
-        for token in ("mybee_ax", "VoucherCandidate", "MYBEE")
+        for token in (
+            "GoldenAFinanceIntentActivator",
+            "GOLDEN_A_CAPABILITY_ID",
+        )
     )
 
     services = compose.get("services", {}) if isinstance(compose, Mapping) else {}
@@ -119,9 +130,7 @@ def audit_runtime_ownership(root: Path = ROOT) -> dict[str, Any]:
         issues.append("canonical accounting process topology is incomplete")
 
     eos_environment = _compose_environment(services, "nex-eos")
-    publisher_environment = _compose_environment(
-        services, "nex-eos-outbox-publisher"
-    )
+    publisher_environment = _compose_environment(services, "nex-eos-outbox-publisher")
     eos_oa_trust_configured = all(
         name in {**eos_environment, **publisher_environment}
         for name in ("NEX_OA_BASE_URL", "NEX_EOS_TO_OA_SERVICE_TOKEN_REF")
@@ -201,7 +210,7 @@ def audit_runtime_ownership(root: Path = ROOT) -> dict[str, Any]:
         "next_slice": (
             "W40-CA02-S02"
             if "MYBEE_AE_PACKAGE_NOT_ADMITTED" in integration_gaps
-            else "W40-CA02-S03"
+            else ("W40-CA02-S03" if integration_gaps else "W40-CA02-S04")
         ),
         "remote_provider_required": False,
         "database_migration_required": False,
@@ -216,6 +225,13 @@ def _read_text(root: Path, relative: str, issues: list[str]) -> str:
         return (root / relative).read_text(encoding="utf-8")
     except OSError:
         issues.append(f"required source is unavailable: {relative}")
+        return ""
+
+
+def _read_optional_text(root: Path, relative: str) -> str:
+    try:
+        return (root / relative).read_text(encoding="utf-8")
+    except OSError:
         return ""
 
 
@@ -323,16 +339,23 @@ def _ae_package_admitted(
             texts[AE_RUNTIME_BUILDER],
         )
     ).lower()
-    return (
-        "domains/mybee" in tokens
-        or "nex-mybee-ax" in tokens
-        or "mybee_ax" in tokens
-    )
+    return "domains/mybee" in tokens or "nex-mybee-ax" in tokens or "mybee_ax" in tokens
 
 
 def _capability_admitted(value: Any) -> bool:
-    serialized = json.dumps(value, sort_keys=True).upper()
-    return "MYBEE" in serialized or "VOUCHER_CANDIDATE" in serialized
+    if not isinstance(value, Mapping):
+        return False
+    registrations = value.get("registrations")
+    if not isinstance(registrations, list):
+        return False
+    return any(
+        isinstance(registration, Mapping)
+        and isinstance(registration.get("capability"), Mapping)
+        and registration["capability"].get("capability_id")
+        == "FINANCE.CREATE_VOUCHER_DRAFT"
+        and registration["capability"].get("executor_kind") == "LOCAL_SKILL"
+        for registration in registrations
+    )
 
 
 def _compose_environment(services: Any, service: str) -> dict[str, Any]:

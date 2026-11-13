@@ -1,17 +1,16 @@
 from __future__ import annotations
 
-import json
 import ast
+import json
 from pathlib import Path
 
 import pytest
-
 import run_mybee_w40_ca02_runtime_ownership_audit as audit
 
 ROOT = Path(__file__).resolve().parents[2]
 
 
-def test_current_repository_freezes_runtime_ownership_and_known_gaps() -> None:
+def test_current_repository_freezes_runtime_ownership_and_installed_binding() -> None:
     result = audit.audit_runtime_ownership(ROOT)
 
     assert result["status"] == "PASS", result
@@ -26,13 +25,12 @@ def test_current_repository_freezes_runtime_ownership_and_known_gaps() -> None:
     }
     assert all(result["checks"].values())
     assert result["current_composition"]["forbidden_mybee_runtime_entrypoints"] == []
-    assert result["current_composition"]["mybee_service_imports"] == []
-    assert set(result["integration_gaps"]) == {
-        "MYBEE_PRODUCT_CAPABILITY_NOT_ADMITTED",
-        "MYBEE_PRODUCT_ACTIVATOR_NOT_ADMITTED",
-    }
-    assert result["integration_readiness"] == "NOT_READY"
-    assert result["next_slice"] == "W40-CA02-S03"
+    assert result["current_composition"]["mybee_service_imports"] == [
+        "services/nex-ae-api/nex_ae_api/mybee_product_consumer.py"
+    ]
+    assert result["integration_gaps"] == []
+    assert result["integration_readiness"] == "READY"
+    assert result["next_slice"] == "W40-CA02-S04"
     assert result["remote_provider_required"] is False
     assert result["database_migration_required"] is False
     assert result["issues"] == []
@@ -76,10 +74,24 @@ def test_ae_import_and_package_admission_close_only_their_gaps(tmp_path: Path) -
 def test_complete_ae_admission_advances_to_consumer_integration(tmp_path: Path) -> None:
     _write_minimal_repository(tmp_path, package_admitted=True)
     (tmp_path / audit.AE_ACTIVATORS).write_text(
-        "VoucherCandidate = 'MYBEE'\n", encoding="utf-8"
+        "GoldenAFinanceIntentActivator\nGOLDEN_A_CAPABILITY_ID\n",
+        encoding="utf-8",
+    )
+    binding = tmp_path / audit.AE_CONSUMER_BINDING
+    binding.parent.mkdir(parents=True, exist_ok=True)
+    binding.write_text(
+        "InstalledMyBeeVoucherCandidateConsumer\n"
+        "NexVoucherCandidateClient\n"
+        "build_domain_intent_activator_registry\n"
+        'MYBEE_CONSUMER_ID = "MYBEE.FINANCE.VOUCHER_CANDIDATE"\n'
+        "GOLDEN_A_CAPABILITY_ID\n"
+        "load_product_capability_registry\n",
+        encoding="utf-8",
     )
     (tmp_path / audit.AE_CAPABILITIES).write_text(
-        '{"registrations": [{"capability_id": "MYBEE.VOUCHER_CANDIDATE"}]}\n',
+        '{"registrations": [{"capability": {'
+        '"capability_id": "FINANCE.CREATE_VOUCHER_DRAFT", '
+        '"executor_kind": "LOCAL_SKILL"}}]}\n',
         encoding="utf-8",
     )
 
@@ -88,7 +100,7 @@ def test_complete_ae_admission_advances_to_consumer_integration(tmp_path: Path) 
     assert result["status"] == "PASS"
     assert result["integration_readiness"] == "READY"
     assert result["integration_gaps"] == []
-    assert result["next_slice"] == "W40-CA02-S03"
+    assert result["next_slice"] == "W40-CA02-S04"
 
 
 @pytest.mark.parametrize(
@@ -176,9 +188,27 @@ def test_helper_fail_closed_branches() -> None:
     assert audit._compose_environment({"service": "wrong"}, "service") == {}
     assert audit._compose_environment({"service": {"environment": []}}, "service") == {}
     assert audit._imports_mybee(ast.parse("import json").body[0]) is False
-    assert audit._imports_mybee(ast.parse("from mybee_ax.sub import value").body[0]) is True
+    assert (
+        audit._imports_mybee(ast.parse("from mybee_ax.sub import value").body[0])
+        is True
+    )
     assert audit._imports_mybee(ast.parse("from . import value").body[0]) is False
-    assert audit._capability_admitted({"name": "voucher_candidate"}) is True
+    assert audit._capability_admitted({"name": "voucher_candidate"}) is False
+    assert (
+        audit._capability_admitted(
+            {
+                "registrations": [
+                    {
+                        "capability": {
+                            "capability_id": "FINANCE.CREATE_VOUCHER_DRAFT",
+                            "executor_kind": "LOCAL_SKILL",
+                        }
+                    }
+                ]
+            }
+        )
+        is True
+    )
     assert audit.summary_line({"status": "FAIL"}) == (
         "mybee_w40_ca02_runtime_ownership_audit=fail "
         "readiness=UNKNOWN gaps=0 next=blocked"
@@ -192,7 +222,9 @@ def test_cli_writes_machine_readable_evidence(
     monkeypatch.setattr(audit, "audit_runtime_ownership", lambda root: passing)
     report = tmp_path / "result.json"
 
-    assert audit.main(["--root", str(tmp_path), "--report", str(report), "--summary"]) == 0
+    assert (
+        audit.main(["--root", str(tmp_path), "--report", str(report), "--summary"]) == 0
+    )
     assert "runtime_ownership_audit=pass" in capsys.readouterr().out
     assert json.loads(report.read_text(encoding="utf-8"))["slice"] == "W40-CA02-S01"
 
@@ -216,7 +248,7 @@ def _write_minimal_repository(root: Path, *, package_admitted: bool = False) -> 
             "DeploymentArtifactDefinition(\n"
             '    "nex-ae-runtime", "nex-ae-api", "python-service",\n'
             '    "ae-runtime", "python-production",\n'
-            f'    ("services/nex-ae-api/nex_ae_api"{", \"domains/mybee\"" if package_admitted else ""},),\n'
+            f'    ("services/nex-ae-api/nex_ae_api"{', "domains/mybee"' if package_admitted else ""},),\n'
             ")\n"
         ),
         "services/nex-ae-api/nex_ae_api/domain_intent_products.py": "pass\n",

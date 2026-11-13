@@ -30,6 +30,23 @@ class RoutingEosOutboxTransport:
             return self._oa_transport.publish(event)
         return self._ae_transport.publish(event)
 
+    def route_projection(self) -> dict[str, Any]:
+        return {
+            "schema_version": "eos.outbox_route_projection.v1",
+            "routes": {
+                PROJECT_ENTITLEMENT_EVENT_TYPE: {
+                    "destination_service_id": "nex-oa",
+                    "transport_type": self._oa_transport.__class__.__name__,
+                },
+                "DEFAULT": {
+                    "destination_service_id": "nex-ae-api",
+                    "transport_type": self._ae_transport.__class__.__name__,
+                },
+            },
+            "content_included": False,
+            "secret_included": False,
+        }
+
 
 class HttpOaProjectEntitlementTransport:
     def __init__(
