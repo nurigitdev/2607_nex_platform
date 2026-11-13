@@ -179,6 +179,27 @@ transition audit    = PASS
 dependency audit    = PASS
 ```
 
+W50 Checkpoint Gate initially identified repository-baseline drift rather than
+allocation behavior defects. The checkpoint reconciliation updated:
+
+- the pinned NeX-EOS OpenAPI digest after S6-03 contract admission;
+- the NeX-EOS migration head from `2540` to the already-admitted `2541`;
+- the contract example index for the two S6-01 SourcePool examples.
+
+The affected baseline tests passed `32/32` before the canonical checkpoint was
+re-run:
+
+```text
+repository tests     = 21299 passed, 169 protected-smoke skips
+statement coverage   = 98.49% (threshold 95.00%)
+branch coverage      = 97.06% (threshold 94.00%)
+commands             = 5/5 passed
+contract validation  = PASS (263 schemas, 315 examples, 10 OpenAPI)
+transition audit     = PASS
+dependency audit     = PASS
+checkpoint duration  = 1904.486 seconds
+```
+
 ## Entry Decision
 
 ```text

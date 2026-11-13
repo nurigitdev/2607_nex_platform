@@ -6,6 +6,16 @@
       "schema": "schemas/common/platform_dependency_readiness.v1.schema.json"
     },
     {
+      "name": "eos_cost_source_pool",
+      "path": "examples/service/eos_cost_source_pool.v1.json",
+      "schema": "schemas/service/nex_eos/cost_source_pool.v1.schema.json"
+    },
+    {
+      "name": "eos_cost_source_pool_admit",
+      "path": "examples/service/eos_cost_source_pool_admit.v1.json",
+      "schema": "schemas/service/nex_eos/cost_source_pool_admit.v1.schema.json"
+    },
+    {
       "name": "eos_project_verification_request_valid",
       "path": "examples/service/eos_project_verification_request.valid.json",
       "schema": "schemas/service/nex_eos/project_verification_request.v1.schema.json"
