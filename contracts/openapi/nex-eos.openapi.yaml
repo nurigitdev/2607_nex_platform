@@ -1640,6 +1640,42 @@ paths:
         "404": {description: PostedJournal was not found in tenant and company scope.}
         "422": {description: Journal query identity is malformed.}
         "503": {description: Authorization or Journal persistence is unavailable.}
+  /internal/v2/finance/business-operations/{business_operation_id}/journal-status:
+    get:
+      operationId: FINANCE.JOURNAL.RECONCILE
+      tags: [Finance]
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes: [service:call]
+      x-nex-business-scope: finance:journal:reconcile
+      x-nex-side-effect-free: true
+      parameters:
+        - name: business_operation_id
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+        - name: X-NeX-Tenant-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+      responses:
+        "200":
+          description: Authoritative committed or not-committed Journal Posting state.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JournalReconciliation"
+        "202":
+          description: Commit state remains unknown and same-identity reconciliation is required.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JournalReconciliation"
+        "401": {description: Service claim is missing or invalid.}
+        "404": {description: BusinessOperation was not found in tenant scope.}
+        "409": {description: BusinessOperation is not a Journal Posting operation.}
+        "422": {description: Tenant or BusinessOperation identity is invalid.}
+        "503": {description: Persistence or committed Journal verification is unavailable.}
   /internal/v2/finance/journals/{journal_id}/verification:
     get:
       operationId: FINANCE.JOURNAL.VERIFY
@@ -2160,6 +2196,12 @@ components:
     JournalPostResult:
       type: object
       x-nex-canonical-json-schema: schemas/service/nex_eos/journal_post_result.v1.schema.json
+    JournalReconciliation:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_eos/journal_reconciliation.v1.schema.json
+    JournalPostedEvent:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_eos/journal_posted_event.v1.schema.json
     PostedJournal:
       type: object
       x-nex-canonical-json-schema: schemas/service/nex_eos/posted_journal.v1.schema.json

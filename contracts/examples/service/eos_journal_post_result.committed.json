@@ -10,6 +10,7 @@
   "commit_state": "COMMITTED",
   "result": {
     "business_result_ref": "eos.posted_journal:32000000-0000-4000-8000-000000000051",
+    "company_id": "32000000-0000-4000-8000-000000000001",
     "journal_id": "32000000-0000-4000-8000-000000000051",
     "journal_no": "VO00-2026-000001",
     "candidate_id": "32000000-0000-4000-8000-000000000010",
@@ -17,6 +18,8 @@
     "candidate_version": 3,
     "candidate_state": "POSTED",
     "accounting_acceptance_id": "32000000-0000-4000-8000-000000000050",
+    "accounting_period_id": "32000000-0000-4000-8000-000000000021",
+    "project_codes": ["VO00D260001"],
     "consumption_id": "32000000-0000-4000-8000-000000000053",
     "journal_hash": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
     "posted_at": "2026-11-12T02:01:00Z"

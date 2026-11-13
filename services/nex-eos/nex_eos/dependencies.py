@@ -65,6 +65,7 @@ from .document_signoff import (
 )
 from .fx_rates import EosFxRateService, SqlAlchemyEosFxRateRepository
 from .health import build_configuration_readiness_check
+from .journal_operations import EosJournalOperationService
 from .journal_posting import EosJournalPostingService
 from .journal_verification import EosJournalQueryService
 from .journals import SqlAlchemyEosJournalRepository
@@ -145,6 +146,7 @@ class EosDependencies:
     journals: SqlAlchemyEosJournalRepository | None
     journal_query_service: EosJournalQueryService | None
     journal_posting_service: EosJournalPostingService | None
+    journal_operation_service: EosJournalOperationService | None
     document_signoff_service: EosDocumentSignoffService | None
     scoped_approval_decision_router: EosScopedApprovalDecisionRouter | None
     fx_rate_service: EosFxRateService | None
@@ -457,6 +459,11 @@ def build_eos_dependencies(
         and journals is not None
         else None
     )
+    journal_operation_service = (
+        EosJournalOperationService(database_runtime.session_factory)
+        if database_runtime is not None
+        else None
+    )
     document_signoff_service = (
         EosDocumentSignoffService(
             session_factory=database_runtime.session_factory,
@@ -696,6 +703,7 @@ def build_eos_dependencies(
         journals=journals,
         journal_query_service=journal_query_service,
         journal_posting_service=journal_posting_service,
+        journal_operation_service=journal_operation_service,
         document_signoff_service=document_signoff_service,
         scoped_approval_decision_router=scoped_approval_decision_router,
         fx_rate_service=fx_rate_service,

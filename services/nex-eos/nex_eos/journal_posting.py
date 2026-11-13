@@ -401,6 +401,7 @@ class EosJournalPostingService:
             "business_result_ref": (
                 f"eos.posted_journal:{staged['header']['journal_id']}"
             ),
+            "company_id": command.company_id,
             "journal_id": staged["header"]["journal_id"],
             "journal_no": staged["header"]["journal_no"],
             "candidate_id": command.candidate_id,
@@ -408,6 +409,8 @@ class EosJournalPostingService:
             "candidate_version": command.expected_candidate_version + 1,
             "candidate_state": "POSTED",
             "accounting_acceptance_id": staged["acceptance"]["acceptance_id"],
+            "accounting_period_id": staged["header"]["period_id"],
+            "project_codes": sorted({line["project_code"] for line in staged["lines"]}),
             "consumption_id": consumed["consumption_id"],
             "journal_hash": staged["header"]["journal_hash"],
             "posted_at": posted_at.isoformat(),

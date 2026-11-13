@@ -234,6 +234,18 @@ from .fx_rates import (
     SqlAlchemyEosFxRateRepository,
     fx_policy_hash,
 )
+from .journal_operations import (
+    JOURNAL_RECONCILE_OPERATION,
+    JOURNAL_RECONCILIATION_SCHEMA,
+    EosJournalOperationError,
+    EosJournalOperationService,
+)
+from .journal_outbox_events import (
+    JOURNAL_POSTED_EVENT_SCHEMA,
+    EosJournalOutboxEventError,
+    admit_journal_posted_event,
+    build_journal_posted_event_payload,
+)
 from .journal_posting import (
     JOURNAL_POST_COMMAND_SCHEMA,
     JOURNAL_POST_EVENT_TYPE,
@@ -687,10 +699,13 @@ __all__ = (
     "FX_RATE_KINDS",
     "FX_ROUNDING_MODES",
     "JOURNAL_GET_OPERATION",
+    "JOURNAL_POSTED_EVENT_SCHEMA",
     "JOURNAL_POST_COMMAND_SCHEMA",
     "JOURNAL_POST_EVENT_TYPE",
     "JOURNAL_POST_OPERATION",
     "JOURNAL_POST_RESULT_SCHEMA",
+    "JOURNAL_RECONCILE_OPERATION",
+    "JOURNAL_RECONCILIATION_SCHEMA",
     "JOURNAL_VERIFICATION_SCHEMA",
     "JOURNAL_VERIFY_OPERATION",
     "MANDATORY_D12_CODES_HASH",
@@ -808,6 +823,9 @@ __all__ = (
     "EosGovernedProjectError",
     "EosGovernedProjectService",
     "EosJournalError",
+    "EosJournalOperationError",
+    "EosJournalOperationService",
+    "EosJournalOutboxEventError",
     "EosJournalPostingError",
     "EosJournalPostingService",
     "EosJournalQueryService",
@@ -920,6 +938,7 @@ __all__ = (
     "accounting_review_hash",
     "admit_accounting_review",
     "admit_document_signoff_context",
+    "admit_journal_posted_event",
     "admit_posted_journal",
     "append_project_lifecycle_event",
     "approved_document_consumption_hash",
@@ -928,6 +947,7 @@ __all__ = (
     "build_acceptance_hash",
     "build_eos_database_runtime",
     "build_journal_hash",
+    "build_journal_posted_event_payload",
     "build_line_hash",
     "create_eos_app",
     "deterministic_business_formal_work_item_id",

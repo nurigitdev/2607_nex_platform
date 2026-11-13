@@ -1280,6 +1280,11 @@
       "name": "eos_accounting_posting_admission_request_missing_proof",
       "path": "tests/negative/service/eos_accounting_posting_admission_request.missing_proof.json",
       "schema": "schemas/service/nex_eos/accounting_posting_admission_request.v1.schema.json"
+    },
+    {
+      "name": "eos_journal_reconciliation_unknown_with_journal",
+      "path": "tests/negative/service/eos_journal_reconciliation.unknown_with_journal.json",
+      "schema": "schemas/service/nex_eos/journal_reconciliation.v1.schema.json"
     }
   ]
 }

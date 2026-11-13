@@ -1549,6 +1549,21 @@
       "name": "eos_journal_verification_verified",
       "path": "examples/service/eos_journal_verification.verified.json",
       "schema": "schemas/service/nex_eos/journal_verification.v1.schema.json"
+    },
+    {
+      "name": "eos_journal_posted_event_v1",
+      "path": "examples/service/eos_journal_posted_event.v1.json",
+      "schema": "schemas/service/nex_eos/journal_posted_event.v1.schema.json"
+    },
+    {
+      "name": "eos_journal_reconciliation_committed",
+      "path": "examples/service/eos_journal_reconciliation.committed.json",
+      "schema": "schemas/service/nex_eos/journal_reconciliation.v1.schema.json"
+    },
+    {
+      "name": "eos_journal_reconciliation_unknown",
+      "path": "examples/service/eos_journal_reconciliation.unknown.json",
+      "schema": "schemas/service/nex_eos/journal_reconciliation.v1.schema.json"
     }
   ]
 }

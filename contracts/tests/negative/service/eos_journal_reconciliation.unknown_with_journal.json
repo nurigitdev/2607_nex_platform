@@ -1,0 +1,17 @@
+{
+  "schema_version": "eos_journal_reconciliation.v1",
+  "operation": "FINANCE.JOURNAL.RECONCILE",
+  "tenant_id": "VO00",
+  "business_operation_id": "32000000-0000-4000-8000-000000000052",
+  "posting_operation": "FINANCE.VOUCHER.APPROVE_AND_POST",
+  "idempotency_key": "w40-s4-04-atomic-posting",
+  "payload_hash": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "commit_state": "UNKNOWN_COMMIT_STATE",
+  "reconciliation_status": "RECONCILIATION_REQUIRED",
+  "verification_status": "NOT_RUN",
+  "retry_disposition": "DO_NOT_REPOST",
+  "new_idempotency_key_allowed": false,
+  "last_observed_at": "2026-11-12T02:01:00Z",
+  "journal": {},
+  "outbox": null
+}

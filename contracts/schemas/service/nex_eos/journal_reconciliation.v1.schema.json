@@ -1,0 +1,112 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_eos/journal_reconciliation.v1.schema.json",
+  "title": "EOS Journal Posting Reconciliation v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "operation", "tenant_id", "business_operation_id",
+    "posting_operation", "idempotency_key", "payload_hash", "commit_state",
+    "reconciliation_status", "verification_status", "retry_disposition",
+    "new_idempotency_key_allowed", "last_observed_at", "journal", "outbox"
+  ],
+  "properties": {
+    "schema_version": {"const": "eos_journal_reconciliation.v1"},
+    "operation": {"const": "FINANCE.JOURNAL.RECONCILE"},
+    "tenant_id": {"$ref": "#/$defs/scoped_id"},
+    "business_operation_id": {"type": "string", "format": "uuid"},
+    "posting_operation": {"const": "FINANCE.VOUCHER.APPROVE_AND_POST"},
+    "idempotency_key": {"$ref": "#/$defs/scoped_id"},
+    "payload_hash": {"$ref": "#/$defs/hash_ref"},
+    "commit_state": {"enum": ["COMMITTED", "NOT_COMMITTED", "UNKNOWN_COMMIT_STATE"]},
+    "reconciliation_status": {
+      "enum": [
+        "COMMITTED_CONFIRMED", "NOT_COMMITTED_CONFIRMED",
+        "RECONCILIATION_REQUIRED", "COMMITTED_VERIFICATION_FAILED"
+      ]
+    },
+    "verification_status": {"enum": ["VERIFIED", "FAILED", "NOT_RUN", "NOT_APPLICABLE"]},
+    "retry_disposition": {"enum": ["DO_NOT_REPOST", "RETRY_SAME_IDENTITY_ONLY"]},
+    "new_idempotency_key_allowed": {"const": false},
+    "last_observed_at": {"type": "string", "format": "date-time"},
+    "journal": {
+      "oneOf": [
+        {"type": "null"},
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "company_id", "journal_id", "journal_no", "journal_hash",
+            "candidate_id", "candidate_revision", "accounting_acceptance_id",
+            "accounting_acceptance_hash", "accounting_period_id", "project_codes",
+            "line_count", "total_debit_functional", "total_credit_functional",
+            "posted_at"
+          ],
+          "properties": {
+            "company_id": {"type": "string", "format": "uuid"},
+            "journal_id": {"type": "string", "format": "uuid"},
+            "journal_no": {"$ref": "#/$defs/scoped_id"},
+            "journal_hash": {"$ref": "#/$defs/hash_ref"},
+            "candidate_id": {"type": "string", "format": "uuid"},
+            "candidate_revision": {"type": "integer", "minimum": 1},
+            "accounting_acceptance_id": {"type": "string", "format": "uuid"},
+            "accounting_acceptance_hash": {"$ref": "#/$defs/hash_ref"},
+            "accounting_period_id": {"type": "string", "format": "uuid"},
+            "project_codes": {
+              "type": "array", "minItems": 1, "uniqueItems": true,
+              "items": {"type": "string", "pattern": "^[A-Z0-9]{4}[DMSOIG][0-9]{6}$"}
+            },
+            "line_count": {"type": "integer", "minimum": 2},
+            "total_debit_functional": {"$ref": "#/$defs/amount"},
+            "total_credit_functional": {"$ref": "#/$defs/amount"},
+            "posted_at": {"type": "string", "format": "date-time"}
+          }
+        }
+      ]
+    },
+    "outbox": {
+      "oneOf": [
+        {"type": "null"},
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "outbox_id", "event_id", "event_type", "event_payload_hash",
+            "delivery_state", "attempt_count", "projector_state"
+          ],
+          "properties": {
+            "outbox_id": {"type": "string", "format": "uuid"},
+            "event_id": {"type": "string", "format": "uuid"},
+            "event_type": {"const": "FINANCE.JOURNAL_POSTED.v1"},
+            "event_payload_hash": {"$ref": "#/$defs/hash_ref"},
+            "delivery_state": {"enum": ["PENDING", "PUBLISHED"]},
+            "attempt_count": {"type": "integer", "minimum": 0},
+            "projector_state": {"enum": ["STALE", "CURRENT"]}
+          }
+        }
+      ]
+    }
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"reconciliation_status": {"const": "COMMITTED_CONFIRMED"}}},
+      "then": {
+        "properties": {
+          "commit_state": {"const": "COMMITTED"},
+          "verification_status": {"const": "VERIFIED"},
+          "journal": {"type": "object"},
+          "outbox": {"type": "object"}
+        }
+      }
+    },
+    {
+      "if": {"properties": {"commit_state": {"enum": ["NOT_COMMITTED", "UNKNOWN_COMMIT_STATE"]}}},
+      "then": {"properties": {"journal": {"type": "null"}, "outbox": {"type": "null"}}}
+    }
+  ],
+  "$defs": {
+    "hash_ref": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "scoped_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:@/-]{0,255}$"},
+    "amount": {"type": "string", "pattern": "^[0-9]+(\\.[0-9]{1,4})?$"}
+  }
+}

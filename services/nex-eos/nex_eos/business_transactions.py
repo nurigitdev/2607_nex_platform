@@ -31,6 +31,8 @@ from sqlalchemy import (
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
 
+from .journal_outbox_events import build_journal_posted_event_payload
+
 EOS_EVENT_TYPES = frozenset(
     {
         "BUSINESS_TRANSACTION_COMMITTED",
@@ -606,6 +608,13 @@ def _event_payload(
     request: EosBusinessOperationRequest,
     result: Mapping[str, Any],
 ) -> dict[str, Any]:
+    if request.event_type == "FINANCE.JOURNAL_POSTED.v1":
+        return build_journal_posted_event_payload(
+            tenant_id=request.tenant_id,
+            business_operation_id=request.business_operation_id,
+            operation=request.operation,
+            result=result,
+        )
     payload: dict[str, Any] = {
         "schema_version": "1.0",
         "tenant_id": request.tenant_id,

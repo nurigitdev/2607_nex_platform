@@ -23,12 +23,14 @@
       "type": "object",
       "additionalProperties": false,
       "required": [
-        "business_result_ref", "journal_id", "journal_no", "candidate_id",
+        "business_result_ref", "company_id", "journal_id", "journal_no", "candidate_id",
         "candidate_revision", "candidate_version", "candidate_state",
-        "accounting_acceptance_id", "consumption_id", "journal_hash", "posted_at"
+        "accounting_acceptance_id", "accounting_period_id", "project_codes",
+        "consumption_id", "journal_hash", "posted_at"
       ],
       "properties": {
         "business_result_ref": {"type": "string"},
+        "company_id": {"type": "string", "format": "uuid"},
         "journal_id": {"type": "string", "format": "uuid"},
         "journal_no": {"$ref": "#/$defs/scoped_id"},
         "candidate_id": {"type": "string", "format": "uuid"},
@@ -36,6 +38,11 @@
         "candidate_version": {"type": "integer", "minimum": 2},
         "candidate_state": {"const": "POSTED"},
         "accounting_acceptance_id": {"type": "string", "format": "uuid"},
+        "accounting_period_id": {"type": "string", "format": "uuid"},
+        "project_codes": {
+          "type": "array", "minItems": 1, "uniqueItems": true,
+          "items": {"type": "string", "pattern": "^[A-Z0-9]{4}[DMSOIG][0-9]{6}$"}
+        },
         "consumption_id": {"type": "string", "format": "uuid"},
         "journal_hash": {"$ref": "#/$defs/hash_ref"},
         "posted_at": {"type": "string", "format": "date-time"}

@@ -22,6 +22,7 @@ from .candidate_validation import (
     EosCandidateValidationError,
     EosCandidateValidationService,
 )
+from .journal_operations import EosJournalOperationError, EosJournalOperationService
 from .journal_posting import EosJournalPostingError, EosJournalPostingService
 from .journal_verification import EosJournalQueryService
 from .journals import EosJournalError
@@ -79,6 +80,52 @@ def register_finance_v2_routes(app: FastAPI) -> None:
             result,
             status_code=(
                 201 if result["idempotency_disposition"] == "CREATED" else 200
+            ),
+        )
+
+    @app.get(
+        "/internal/v2/finance/business-operations/{business_operation_id}/journal-status",
+        response_model=None,
+        operation_id="FINANCE.JOURNAL.RECONCILE",
+    )
+    def reconcile_journal_posting(
+        business_operation_id: str,
+        request: Request,
+        tenant_id: str = Header(alias="X-NeX-Tenant-Id"),
+        authorization: str | None = Header(default=None),
+    ):
+        admitted = admit_service_token_from_request(
+            request,
+            authorization,
+            expected_audience="nex-eos",
+            required_scopes=(DEFAULT_SERVICE_SCOPE,),
+        )
+        if isinstance(admitted, JSONResponse):
+            return admitted
+        service: EosJournalOperationService | None = getattr(
+            request.app.state, "eos_journal_operation_service", None
+        )
+        if service is None:
+            return _journal_operation_problem(
+                request,
+                EosJournalOperationError(
+                    "EOS_JOURNAL_RECONCILIATION_UNAVAILABLE",
+                    "Journal Posting reconciliation is not configured",
+                    status_code=503,
+                    retryable=True,
+                ),
+            )
+        try:
+            result = service.reconcile(
+                tenant_id=tenant_id,
+                business_operation_id=business_operation_id,
+            )
+        except EosJournalOperationError as exc:
+            return _journal_operation_problem(request, exc)
+        return JSONResponse(
+            result,
+            status_code=(
+                202 if result["commit_state"] == "UNKNOWN_COMMIT_STATE" else 200
             ),
         )
 
@@ -598,4 +645,18 @@ def _journal_posting_problem(request: Request, exc: EosJournalPostingError):
         detail=exc.detail,
         retryable=exc.retryable,
         type_uri="https://nex-platform.local/problems/eos-journal-posting-failed",
+    )
+
+
+def _journal_operation_problem(request: Request, exc: EosJournalOperationError):
+    return problem_response(
+        request,
+        status_code=exc.status_code,
+        error_code=exc.error_code,
+        title="EOS Journal Posting reconciliation failed",
+        detail=exc.detail,
+        retryable=exc.retryable,
+        type_uri=(
+            "https://nex-platform.local/problems/eos-journal-reconciliation-failed"
+        ),
     )

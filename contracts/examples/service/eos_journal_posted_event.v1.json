@@ -1,0 +1,17 @@
+{
+  "schema_version": "eos_journal_posted_event.v1",
+  "tenant_id": "VO00",
+  "business_operation_id": "32000000-0000-4000-8000-000000000052",
+  "operation": "FINANCE.VOUCHER.APPROVE_AND_POST",
+  "company_id": "32000000-0000-4000-8000-000000000001",
+  "journal_id": "32000000-0000-4000-8000-000000000051",
+  "journal_no": "VO00-2026-000001",
+  "journal_hash": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+  "candidate_id": "32000000-0000-4000-8000-000000000010",
+  "candidate_revision": 1,
+  "accounting_acceptance_id": "32000000-0000-4000-8000-000000000050",
+  "accounting_period_id": "32000000-0000-4000-8000-000000000021",
+  "project_codes": ["VO00D260001"],
+  "commit_state": "COMMITTED",
+  "posted_at": "2026-11-12T02:01:00Z"
+}
