@@ -198,7 +198,11 @@ def audit_runtime_ownership(root: Path = ROOT) -> dict[str, Any]:
             "forbidden_mybee_runtime_entrypoints": forbidden_entrypoints,
         },
         "integration_gaps": integration_gaps,
-        "next_slice": "W40-CA02-S02" if integration_gaps else "W40-CA02-S03",
+        "next_slice": (
+            "W40-CA02-S02"
+            if "MYBEE_AE_PACKAGE_NOT_ADMITTED" in integration_gaps
+            else "W40-CA02-S03"
+        ),
         "remote_provider_required": False,
         "database_migration_required": False,
         "issues": issues,

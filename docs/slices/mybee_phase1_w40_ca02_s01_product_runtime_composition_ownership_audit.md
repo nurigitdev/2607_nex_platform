@@ -130,8 +130,9 @@ The report is intentionally ignored by Git and may be regenerated with:
 `W40-CA02-S02` may proceed with the ownership decision fixed above. It must:
 
 1. package the MyBee library into the existing AE product runtime artifact;
-2. extend the existing immutable capability and runtime-bundle admission
-   sources instead of creating a parallel registry;
+2. preserve the existing immutable capability and runtime-bundle admission
+   sources; a MyBee registration is added only with its real executable
+   consumer binding in S03, never as a placeholder Skill;
 3. preserve signed AE-to-EOS and EOS-to-OA trust resolution through OpenBao;
 4. keep MyBee free of a process entrypoint and private service imports; and
 5. introduce no migration unless a separately proven persistence gap exists.

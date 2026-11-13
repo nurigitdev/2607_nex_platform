@@ -61,7 +61,11 @@ DEFAULT_DEPLOYMENT_ARTIFACTS = (
         "python-service",
         "ae-runtime",
         "python-production",
-        ("services/_shared/nex_runtime", "services/nex-ae-api/nex_ae_api"),
+        (
+            "services/_shared/nex_runtime",
+            "services/nex-ae-api/nex_ae_api",
+            "domains/mybee/mybee_ax",
+        ),
     ),
     DeploymentArtifactDefinition(
         "nex-cx-runtime",

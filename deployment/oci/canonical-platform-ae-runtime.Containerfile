@@ -21,4 +21,4 @@ ENV NEX_AE_NSL_BUNDLE_MANIFEST=/app/deployment/product/locks/ae-product-nsl-runt
 
 USER 65532:65532
 RUN python -c "import os; from pathlib import Path; names=('NEX_AE_NSL_BUNDLE_MANIFEST','NEX_AE_NSL_WHEEL','NEX_AE_AGENT_WORKER_NSL_WHEEL_LOCK','NEX_AE_NSL_PLATFORM_LOCK','NEX_AE_NSL_SKILL_ROOT','NEX_AE_FINANCE_GOLDEN_A_AUTHORITY_PROFILE_PATH','NEX_AE_PRODUCT_CAPABILITY_REGISTRY_PATH'); assert all(Path(os.environ[name]).exists() for name in names)"
-RUN python -c "import nsl; from nex_ae_api.agent_runtime_process import build_source_check; assert nsl.__version__ == '0.2.1'; assert build_source_check()['status'] == 'PASS'"
+RUN python -c "import mybee_ax, nsl; from nex_ae_api.agent_runtime_process import build_source_check; from nex_ae_api.mybee_product_admission import require_mybee_product_package; assert nsl.__version__ == '0.2.1'; assert mybee_ax.PACKAGE_VERSION == '0.1.0'; assert require_mybee_product_package()['status'] == 'PASS'; assert build_source_check()['status'] == 'PASS'"

@@ -51,8 +51,9 @@ RUN python -c "import importlib.util; assert importlib.util.find_spec('nex_oa')"
 CMD ["python", "-m", "uvicorn", "nex_oa.main:app", "--host", "0.0.0.0", "--port", "8101"]
 
 FROM python-source AS ae-runtime
-ENV PYTHONPATH=/app/services/_shared:/app/services/nex-ae-api
-RUN python -c "import importlib.util; assert importlib.util.find_spec('nex_ae_api')"
+COPY --chown=65532:65532 domains/mybee/mybee_ax /app/domains/mybee/mybee_ax
+ENV PYTHONPATH=/app/services/_shared:/app/services/nex-ae-api:/app/domains/mybee
+RUN python -c "import importlib.util; assert importlib.util.find_spec('nex_ae_api'); assert importlib.util.find_spec('mybee_ax')"
 CMD ["python", "-m", "uvicorn", "nex_ae_api.main:app", "--host", "0.0.0.0", "--port", "8103"]
 
 FROM python-source AS cx-runtime

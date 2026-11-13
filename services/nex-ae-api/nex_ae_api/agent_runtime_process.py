@@ -36,6 +36,11 @@ from nex_ae_api.agent_runtime_worker import (
     restore_agent_runtime_worker_signal_handlers,
 )
 from nex_ae_api.nsl_backend_profiles import NSL_V01_PROCESS_ISOLATED_BACKEND
+from nex_ae_api.mybee_product_admission import (
+    mybee_product_admission_ready,
+    not_required_mybee_product_admission,
+    require_mybee_product_package,
+)
 from nex_ae_api.product_runtime_profile import (
     build_product_runtime_executor_profile,
 )
@@ -87,9 +92,13 @@ class InstalledAgentRuntimeProcess:
     engine: Engine
     sessions: sessionmaker[Session]
     composition: InstalledRuntimeComposition
+    mybee_product_admission: Mapping[str, Any] | None = None
 
     def readiness(self) -> dict[str, Any]:
         database = _database_readiness(self.sessions)
+        mybee_admission = (
+            self.mybee_product_admission or not_required_mybee_product_admission()
+        )
         worker = build_agent_runtime_worker_check(
             self.composition.worker_config,
             available_executor_kinds=(self.composition.executor_profile.executor_kinds),
@@ -120,6 +129,9 @@ class InstalledAgentRuntimeProcess:
             ),
             "package_readiness_satisfied": worker.get("in_process_package_status")
             in {"NOT_CONFIGURED", "PASS"},
+            "mybee_product_package_admitted": mybee_product_admission_ready(
+                mybee_admission
+            ),
         }
         ready = all(checks.values())
         return {
@@ -133,6 +145,7 @@ class InstalledAgentRuntimeProcess:
             "checks": checks,
             "database": database,
             "worker": worker,
+            "mybee_product_package": dict(mybee_admission),
             "executor_kinds": list(self.composition.executor_profile.executor_kinds),
             "backend_profiles": list(
                 self.composition.executor_profile.backend_profiles
@@ -230,6 +243,9 @@ def build_installed_agent_runtime_process(
             },
         )
         selected_executor_profile = executor_profile
+        mybee_admission = not_required_mybee_product_admission()
+        if selected in {"staging_live", "production"}:
+            mybee_admission = require_mybee_product_package()
         if selected_executor_profile is None:
             selected_executor_profile = (
                 build_product_runtime_executor_profile(sessions, env)
@@ -249,6 +265,7 @@ def build_installed_agent_runtime_process(
             engine=engine,
             sessions=sessions,
             composition=composition,
+            mybee_product_admission=mybee_admission,
         )
     except Exception as exc:
         if engine is not None:

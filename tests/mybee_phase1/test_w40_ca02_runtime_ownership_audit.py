@@ -28,12 +28,11 @@ def test_current_repository_freezes_runtime_ownership_and_known_gaps() -> None:
     assert result["current_composition"]["forbidden_mybee_runtime_entrypoints"] == []
     assert result["current_composition"]["mybee_service_imports"] == []
     assert set(result["integration_gaps"]) == {
-        "MYBEE_AE_PACKAGE_NOT_ADMITTED",
         "MYBEE_PRODUCT_CAPABILITY_NOT_ADMITTED",
         "MYBEE_PRODUCT_ACTIVATOR_NOT_ADMITTED",
     }
     assert result["integration_readiness"] == "NOT_READY"
-    assert result["next_slice"] == "W40-CA02-S02"
+    assert result["next_slice"] == "W40-CA02-S03"
     assert result["remote_provider_required"] is False
     assert result["database_migration_required"] is False
     assert result["issues"] == []
