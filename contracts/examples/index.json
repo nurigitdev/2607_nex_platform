@@ -1519,6 +1519,16 @@
       "name": "oa_project_entitlement_projection_valid",
       "path": "examples/service/oa_project_entitlement_projection.valid.json",
       "schema": "schemas/service/nex_oa/project_entitlement_projection.v1.schema.json"
+    },
+    {
+      "name": "eos_accounting_posting_admission_request_v1",
+      "path": "examples/service/eos_accounting_posting_admission_request.v1.json",
+      "schema": "schemas/service/nex_eos/accounting_posting_admission_request.v1.schema.json"
+    },
+    {
+      "name": "eos_accounting_posting_admission_v1",
+      "path": "examples/service/eos_accounting_posting_admission.v1.json",
+      "schema": "schemas/service/nex_eos/accounting_posting_admission.v1.schema.json"
     }
   ]
 }

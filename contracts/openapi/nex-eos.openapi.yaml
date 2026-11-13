@@ -1472,6 +1472,38 @@ paths:
         "409": {description: Candidate revision or authoritative accounting input rejected validation.}
         "422": {description: Validation request is malformed.}
         "503": {description: Authoritative validation dependency is unavailable.}
+  /internal/v2/finance/voucher-candidates/{candidate_id}/posting-admission:
+    post:
+      operationId: FINANCE.VOUCHER.APPROVE_AND_POST.ADMISSION
+      tags: [Finance]
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes: [service:call]
+      x-nex-business-scope: finance:journal:approve
+      x-nex-side-effect-free: true
+      parameters:
+        - name: candidate_id
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AccountingPostingAdmissionRequest"
+      responses:
+        "200":
+          description: Short-lived exact-proof and fresh-OA Posting admission receipt.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccountingPostingAdmission"
+        "401": {description: Service claim is missing or invalid.}
+        "403": {description: Human SoD or current OA/Project authority is denied.}
+        "409": {description: "Candidate, validation, proof, or OA freshness is stale."}
+        "422": {description: Exact ACCOUNTING_POSTING proof is missing or malformed.}
+        "503": {description: "OA, Project authorization, or EOS persistence is unavailable."}
   /internal/v2/finance/voucher-candidates/{candidate_id}/review:
     get:
       operationId: FINANCE.VOUCHER_CANDIDATE.REVIEW_GET
@@ -1994,6 +2026,12 @@ components:
     VoucherCandidateValidation:
       type: object
       x-nex-canonical-json-schema: schemas/service/nex_eos/voucher_candidate_validation.v1.schema.json
+    AccountingPostingAdmissionRequest:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_eos/accounting_posting_admission_request.v1.schema.json
+    AccountingPostingAdmission:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_eos/accounting_posting_admission.v1.schema.json
     VoucherCandidateReview:
       type: object
       x-nex-canonical-json-schema: schemas/service/nex_eos/voucher_candidate_review.v1.schema.json

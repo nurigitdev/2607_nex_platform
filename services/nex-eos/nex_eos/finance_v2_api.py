@@ -10,6 +10,10 @@ from nex_runtime import (
     problem_response,
 )
 
+from .accounting_posting_admission import (
+    EosAccountingPostingAdmissionError,
+    EosAccountingPostingAdmissionService,
+)
 from .candidate_review import (
     EosCandidateReviewError,
     SqlAlchemyEosCandidateReviewRepository,
@@ -235,6 +239,46 @@ def register_finance_v2_routes(app: FastAPI) -> None:
         except EosCandidateValidationError as exc:
             return _validation_problem(request, exc)
 
+    @app.post(
+        "/internal/v2/finance/voucher-candidates/{candidate_id}/posting-admission",
+        response_model=None,
+        operation_id="FINANCE.VOUCHER.APPROVE_AND_POST.ADMISSION",
+    )
+    def admit_voucher_candidate_posting(
+        candidate_id: str,
+        payload: dict[str, Any],
+        request: Request,
+        authorization: str | None = Header(default=None),
+    ):
+        admitted = admit_service_token_from_request(
+            request,
+            authorization,
+            expected_audience="nex-eos",
+            required_scopes=(DEFAULT_SERVICE_SCOPE,),
+            route_class="WRITE",
+        )
+        if isinstance(admitted, JSONResponse):
+            return admitted
+        service: EosAccountingPostingAdmissionService | None = getattr(
+            request.app.state,
+            "eos_accounting_posting_admission_service",
+            None,
+        )
+        if service is None:
+            return _posting_admission_problem(
+                request,
+                EosAccountingPostingAdmissionError(
+                    "EOS_ACCOUNTING_POSTING_ADMISSION_UNAVAILABLE",
+                    "Accounting Posting admission dependencies are not configured.",
+                    status_code=503,
+                    retryable=True,
+                ),
+            )
+        try:
+            return service.admit(candidate_id, payload)
+        except EosAccountingPostingAdmissionError as exc:
+            return _posting_admission_problem(request, exc)
+
     @app.get(
         "/internal/v2/finance/voucher-candidates/{candidate_id}/review",
         response_model=None,
@@ -373,5 +417,23 @@ def _review_problem(request: Request, exc: EosCandidateReviewError):
         retryable=exc.retryable,
         type_uri=(
             "https://nex-platform.local/problems/eos-voucher-candidate-review-failed"
+        ),
+    )
+
+
+def _posting_admission_problem(
+    request: Request,
+    exc: EosAccountingPostingAdmissionError,
+):
+    return problem_response(
+        request,
+        status_code=exc.status_code,
+        error_code=exc.error_code,
+        title="EOS accounting Posting admission failed",
+        detail=exc.detail,
+        retryable=exc.retryable,
+        type_uri=(
+            "https://nex-platform.local/problems/"
+            "eos-accounting-posting-admission-failed"
         ),
     )

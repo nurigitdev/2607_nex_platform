@@ -38,6 +38,14 @@ from .accounting_periods import (
     EosAccountingPeriodService,
     SqlAlchemyEosAccountingPeriodRepository,
 )
+from .accounting_posting_admission import (
+    ACCOUNTING_POSTING_ADMISSION_OPERATION,
+    ACCOUNTING_POSTING_ADMISSION_REQUEST_SCHEMA,
+    ACCOUNTING_POSTING_ADMISSION_SCHEMA,
+    DEFAULT_ACCOUNTING_POSTING_ADMISSION_TTL_SECONDS,
+    EosAccountingPostingAdmissionError,
+    EosAccountingPostingAdmissionService,
+)
 from .accounts import (
     EOS_ACCOUNT_CATEGORIES,
     EOS_ACCOUNT_STATUSES,
@@ -491,6 +499,9 @@ __all__ = (
     "ACCOUNTING_APPROVAL_REQUEST_SCOPE",
     "ACCOUNTING_APPROVAL_SCOPE",
     "ACCOUNTING_APPROVED_PENDING_POST",
+    "ACCOUNTING_POSTING_ADMISSION_OPERATION",
+    "ACCOUNTING_POSTING_ADMISSION_REQUEST_SCHEMA",
+    "ACCOUNTING_POSTING_ADMISSION_SCHEMA",
     "AE_ATTACHMENT_RESOLVE_PATH",
     "APPROVED_DOCUMENT_CONSUMPTION_STATES",
     "APPROVED_DOCUMENT_PROTECTED_OPERATION",
@@ -501,6 +512,7 @@ __all__ = (
     "D12_CATALOG_DIGEST",
     "D12_CATALOG_ID",
     "D12_CATALOG_VERSION",
+    "DEFAULT_ACCOUNTING_POSTING_ADMISSION_TTL_SECONDS",
     "DEFAULT_WC_BASE_URL",
     "DOCUMENT_SIGNOFF_APPROVAL_SCOPE",
     "EOS_ACCOUNTING_APPROVAL_EVIDENCE_TABLE",
@@ -709,6 +721,8 @@ __all__ = (
     "EosAccountingApprovalService",
     "EosAccountingPeriodError",
     "EosAccountingPeriodService",
+    "EosAccountingPostingAdmissionError",
+    "EosAccountingPostingAdmissionService",
     "EosApprovalInstanceError",
     "EosApprovalPolicyError",
     "EosApprovalTransitionError",

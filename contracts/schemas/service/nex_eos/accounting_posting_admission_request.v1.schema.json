@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_eos/accounting_posting_admission_request.v1.schema.json",
+  "title": "EOS Accounting Posting Admission Request v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "tenant_id",
+    "company_id",
+    "expected_candidate_version",
+    "expected_candidate_revision",
+    "expected_candidate_hash",
+    "accounting_approval_evidence_id",
+    "correlation_id"
+  ],
+  "properties": {
+    "schema_version": {"const": "eos_accounting_posting_admission_request.v1"},
+    "tenant_id": {"$ref": "#/$defs/scoped_id"},
+    "company_id": {"type": "string", "format": "uuid"},
+    "expected_candidate_version": {"type": "integer", "minimum": 1},
+    "expected_candidate_revision": {"type": "integer", "minimum": 1},
+    "expected_candidate_hash": {"$ref": "#/$defs/hash_ref"},
+    "accounting_approval_evidence_id": {"type": "string", "format": "uuid"},
+    "correlation_id": {"$ref": "#/$defs/scoped_id"}
+  },
+  "$defs": {
+    "hash_ref": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "scoped_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:@/-]{0,255}$"}
+  }
+}

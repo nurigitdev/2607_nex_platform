@@ -19,6 +19,7 @@ from .accounting_periods import (
     EosAccountingPeriodService,
     SqlAlchemyEosAccountingPeriodRepository,
 )
+from .accounting_posting_admission import EosAccountingPostingAdmissionService
 from .accounts import SqlAlchemyEosAccountRepository
 from .approval_instances import SqlAlchemyEosApprovalInstanceRepository
 from .approval_policies import SqlAlchemyEosApprovalPolicyRepository
@@ -136,6 +137,7 @@ class EosDependencies:
     coa_release_admin_service: EosCoaReleaseAdminService | None
     accounting_period_service: EosAccountingPeriodService | None
     accounting_approval_service: EosAccountingApprovalService | None
+    accounting_posting_admission_service: EosAccountingPostingAdmissionService | None
     document_signoff_service: EosDocumentSignoffService | None
     scoped_approval_decision_router: EosScopedApprovalDecisionRouter | None
     fx_rate_service: EosFxRateService | None
@@ -402,6 +404,20 @@ def build_eos_dependencies(
         and wc_token
         else None
     )
+    accounting_posting_admission_service = (
+        EosAccountingPostingAdmissionService(
+            session_factory=database_runtime.session_factory,
+            authorization_source=authorization_source,
+            project_authorizer=project_authorizer,
+            admission_ttl_seconds=int(
+                environ.get("NEX_EOS_ACCOUNTING_POSTING_ADMISSION_TTL_SECONDS", "30")
+            ),
+        )
+        if database_runtime is not None
+        and authorization_source is not None
+        and project_authorizer is not None
+        else None
+    )
     document_signoff_service = (
         EosDocumentSignoffService(
             session_factory=database_runtime.session_factory,
@@ -637,6 +653,7 @@ def build_eos_dependencies(
         coa_release_admin_service=coa_release_admin_service,
         accounting_period_service=accounting_period_service,
         accounting_approval_service=accounting_approval_service,
+        accounting_posting_admission_service=accounting_posting_admission_service,
         document_signoff_service=document_signoff_service,
         scoped_approval_decision_router=scoped_approval_decision_router,
         fx_rate_service=fx_rate_service,

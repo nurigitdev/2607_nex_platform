@@ -95,6 +95,9 @@ def create_eos_app(
     app.state.eos_coa_release_admin_service = dependencies.coa_release_admin_service
     app.state.eos_accounting_period_service = dependencies.accounting_period_service
     app.state.eos_accounting_approval_service = dependencies.accounting_approval_service
+    app.state.eos_accounting_posting_admission_service = (
+        dependencies.accounting_posting_admission_service
+    )
     app.state.eos_document_signoff_service = dependencies.document_signoff_service
     app.state.eos_scoped_approval_decision_router = (
         dependencies.scoped_approval_decision_router

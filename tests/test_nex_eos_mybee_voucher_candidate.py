@@ -17,6 +17,8 @@ from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 from fastapi.testclient import TestClient
 from nex_eos import (
+    EOS_ACCOUNTING_APPROVAL_EVIDENCE_TABLE,
+    EOS_APPROVAL_POLICY_STAGE_TABLE,
     EOS_APPROVAL_POLICY_TABLE,
     EOS_APPROVED_DOCUMENT_TABLE,
     EOS_BUSINESS_OPERATION_TABLE,
@@ -25,10 +27,13 @@ from nex_eos import (
     EOS_METADATA,
     EOS_OUTBOX_TABLE,
     EOS_SCOPED_APPROVAL_CASE_TABLE,
+    EOS_SCOPED_APPROVAL_DECISION_TABLE,
     EOS_VOUCHER_CANDIDATE_LINE_TABLE,
     EOS_VOUCHER_CANDIDATE_REVISION_TABLE,
     EOS_VOUCHER_CANDIDATE_TABLE,
     AccountInput,
+    EosAccountingPostingAdmissionError,
+    EosAccountingPostingAdmissionService,
     EosCandidateReviewError,
     EosCreateVoucherCandidateService,
     EosReviseVoucherCandidateService,
@@ -39,6 +44,7 @@ from nex_eos import (
     LegalEntityInput,
     NvtProjectInput,
     ProjectInput,
+    SqlAlchemyAccountingReviewContextRepository,
     SqlAlchemyEosAccountRepository,
     SqlAlchemyEosBusinessTransactionCoordinator,
     SqlAlchemyEosCandidateReviewRepository,
@@ -55,6 +61,7 @@ from nex_eos import (
 )
 from nex_eos import candidate_review as candidate_review_module
 from nex_eos.finance_v2_api import register_finance_v2_routes
+from nex_eos.project_authorization import EosProjectAuthorizationEvidence
 from nex_runtime import psycopg_database_url
 from psycopg import sql
 from run_migrations import load_migrations, run_service_migrations
@@ -90,6 +97,9 @@ DATABASE_URL = os.getenv("NEX_EOS_TEST_DATABASE_URL", "")
 POSTGRES_SMOKE = os.getenv("NEX_EOS_MYBEE_S3_01_POSTGRES_SMOKE") == "1"
 REVIEW_POSTGRES_SMOKE = os.getenv("NEX_EOS_MYBEE_S3_03_POSTGRES_SMOKE") == "1"
 REVISION_POSTGRES_SMOKE = os.getenv("NEX_EOS_MYBEE_W40_S4_00A_POSTGRES_SMOKE") == "1"
+POSTING_ADMISSION_POSTGRES_SMOKE = (
+    os.getenv("NEX_EOS_MYBEE_W40_S4_01_POSTGRES_SMOKE") == "1"
+)
 VALIDATION_HASH = "sha256:" + "9" * 64
 
 
@@ -2230,6 +2240,211 @@ def test_actual_postgres_candidate_review_state_machine_and_immutability() -> No
                 )
                 session.commit()
             session.rollback()
+        engine.dispose()
+        engine = None
+    finally:
+        if engine is not None:
+            engine.dispose()
+        with psycopg.connect(psycopg_url, autocommit=True) as connection:
+            connection.execute(
+                sql.SQL("DROP SCHEMA IF EXISTS {} CASCADE").format(
+                    sql.Identifier(schema_name)
+                )
+            )
+            assert connection.execute(
+                "SELECT to_regnamespace(%s)", (schema_name,)
+            ).fetchone() == (None,)
+
+
+@pytest.mark.skipif(
+    not DATABASE_URL or not POSTING_ADMISSION_POSTGRES_SMOKE,
+    reason="Protected W40-S4-01 EOS PostgreSQL smoke is disabled",
+)
+def test_actual_postgres_accounting_proof_and_fresh_oa_admission() -> None:
+    schema_name = f"mybee_w40s401_{uuid.uuid4().hex}"
+    psycopg_url = psycopg_database_url(DATABASE_URL)
+    with psycopg.connect(psycopg_url, autocommit=True) as connection:
+        assert connection.execute(
+            "SELECT current_database(), current_user"
+        ).fetchone() == ("nex_eos_test", "nex_eos_user")
+        connection.execute(
+            sql.SQL("CREATE SCHEMA {}").format(sql.Identifier(schema_name))
+        )
+    scoped_url = (
+        make_url(DATABASE_URL)
+        .update_query_dict({"options": f"-csearch_path={schema_name}"})
+        .render_as_string(hide_password=False)
+    )
+    engine = None
+    try:
+        migration = run_service_migrations(
+            "nex-eos", database_url=scoped_url, profile="test"
+        )
+        assert "2528_eos_accounting_approval_human" in migration.applied
+        assert "2535_eos_candidate_review_state" in migration.applied
+        engine = create_engine(scoped_url, pool_pre_ping=True)
+        _engine_value, sessions, candidates, command, _authorization = _runtime(
+            engine=engine
+        )
+        command.execute(_payload(), caller=CALLER)
+        case, review, validation = _candidate_review_fixture(sessions, candidates)
+        reviews = SqlAlchemyEosCandidateReviewRepository(sessions, clock=lambda: NOW)
+        context = SqlAlchemyAccountingReviewContextRepository(
+            sessions, clock=lambda: NOW
+        )
+        decision_id = "32000000-0000-4000-8000-000000000041"
+        evidence_id = "32000000-0000-4000-8000-000000000042"
+        with sessions.begin() as session:
+            session.execute(
+                EOS_APPROVAL_POLICY_STAGE_TABLE.insert().values(
+                    tenant_id=TENANT,
+                    approval_policy_id=POLICY_ID,
+                    stage_order=1,
+                    position_type="CEO",
+                    quorum_count=1,
+                    separation_policy="REQUESTER_EXCLUDED",
+                )
+            )
+            context.create_in_session(
+                session,
+                scoped_case=case,
+                review={
+                    **review,
+                    "validation_observed_at": review[
+                        "validation_observed_at"
+                    ].isoformat(),
+                },
+            )
+            reviews.submit_in_session(
+                session,
+                scoped_case=case,
+                review=review,
+                validation=validation,
+            )
+            session.execute(
+                update(EOS_SCOPED_APPROVAL_CASE_TABLE)
+                .where(
+                    EOS_SCOPED_APPROVAL_CASE_TABLE.c.tenant_id == TENANT,
+                    EOS_SCOPED_APPROVAL_CASE_TABLE.c.case_id == REVIEW_CASE_ID,
+                )
+                .values(
+                    state="APPROVED",
+                    active_stage_order=None,
+                    target_role_ref=None,
+                    version=2,
+                    decided_at=NOW,
+                    updated_at=NOW,
+                )
+            )
+            session.execute(
+                EOS_SCOPED_APPROVAL_DECISION_TABLE.insert().values(
+                    tenant_id=TENANT,
+                    case_id=REVIEW_CASE_ID,
+                    stage_order=1,
+                    wc_work_item_id="32000000-0000-4000-8000-000000000043",
+                    wc_decision_id=decision_id,
+                    wc_event_id="32000000-0000-4000-8000-000000000044",
+                    wc_outbox_id="32000000-0000-4000-8000-000000000045",
+                    decision="APPROVE",
+                    decision_version=1,
+                    decided_by="accountant-cfo",
+                    decision_comment="Approved for Posting",
+                    wc_oa_decision_ref="wc-oa:accountant-cfo",
+                    wc_authorization_revision_hash=PROOF_HASH,
+                    oa_decision_ref="oa-authz:accountant-cfo",
+                    authorization_revision_hash=POLICY_HASH,
+                    authorization_checked_at=NOW,
+                    decided_at=NOW,
+                    decision_hash=PAYLOAD_HASH,
+                    recorded_at=NOW,
+                )
+            )
+            session.execute(
+                EOS_ACCOUNTING_APPROVAL_EVIDENCE_TABLE.insert().values(
+                    tenant_id=TENANT,
+                    case_id=REVIEW_CASE_ID,
+                    evidence_id=evidence_id,
+                    company_id=COMPANY_ID,
+                    candidate_id=CANDIDATE_ID,
+                    candidate_revision=1,
+                    candidate_hash=review["candidate_hash"],
+                    document_envelope_hash=DOCUMENT_HASH,
+                    fx_rate_set_hash=PROOF_HASH,
+                    rule_release_hash=POLICY_HASH,
+                    accounting_period_id=review["accounting_period_id"],
+                    approver_subject_id="accountant-cfo",
+                    approval_policy_hash=POLICY_HASH,
+                    wc_final_decision_id=decision_id,
+                    oa_authorization_revision_hash=POLICY_HASH,
+                    decided_at=NOW,
+                    proof_hash=EVIDENCE_HASH,
+                    created_at=NOW,
+                )
+            )
+
+        class FreshOa:
+            active = True
+
+            def effective_authorization(self, *, tenant_id, subject_id):
+                return {
+                    "active": self.active,
+                    "tenant_id": tenant_id,
+                    "subject_id": subject_id,
+                    "roles": ["CEO"],
+                    "scopes": ["finance:journal:approve"],
+                    "company_ids": [COMPANY_ID],
+                    "revision_hash": "1" * 64,
+                    "decision_ref": "oa-authz:accountant-cfo-current",
+                }
+
+        class FreshProjectGate:
+            def authorize(self, **_kwargs):
+                return EosProjectAuthorizationEvidence(
+                    decision_ref=PROOF_HASH,
+                    project_code=PROJECT_CODE,
+                    project_role="ACCOUNTANT",
+                    project_status="ACTIVE",
+                    source_version=1,
+                    projection_event_hash=POLICY_HASH,
+                    authorization_revision_hash=PAYLOAD_HASH,
+                    decided_at=NOW.isoformat(),
+                )
+
+        fresh_oa = FreshOa()
+        service = EosAccountingPostingAdmissionService(
+            session_factory=sessions,
+            authorization_source=fresh_oa,
+            project_authorizer=FreshProjectGate(),
+            clock=lambda: NOW + timedelta(minutes=1),
+        )
+        request = {
+            "schema_version": "eos_accounting_posting_admission_request.v1",
+            "tenant_id": TENANT,
+            "company_id": COMPANY_ID,
+            "expected_candidate_version": 2,
+            "expected_candidate_revision": 1,
+            "expected_candidate_hash": review["candidate_hash"],
+            "accounting_approval_evidence_id": evidence_id,
+            "correlation_id": "correlation-w40-s4-01-postgres",
+        }
+        receipt = service.admit(CANDIDATE_ID, request)
+        with sessions.begin() as session:
+            assert service.require_current_in_session(session, receipt) == receipt
+        assert receipt["fresh_oa_revision_hash"] == "sha256:" + "1" * 64
+
+        fresh_oa.active = False
+        with pytest.raises(EosAccountingPostingAdmissionError) as revoked:
+            service.admit(CANDIDATE_ID, request)
+        assert revoked.value.status_code == 403
+        with psycopg.connect(psycopg_url, autocommit=True) as connection:
+            journal_tables = connection.execute(
+                "SELECT to_regclass(%s), to_regclass(%s)",
+                (
+                    f"{schema_name}.eos_journal_header",
+                    f"{schema_name}.eos_journal_line",
+                ),
+            ).fetchone()
+            assert journal_tables == (None, None)
         engine.dispose()
         engine = None
     finally:

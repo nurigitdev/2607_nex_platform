@@ -1275,6 +1275,11 @@
       "name": "oa_project_entitlement_projection_bad_hash",
       "path": "tests/negative/auth/oa_project_entitlement_projection.bad_hash.json",
       "schema": "schemas/service/nex_oa/project_entitlement_projection.v1.schema.json"
+    },
+    {
+      "name": "eos_accounting_posting_admission_request_missing_proof",
+      "path": "tests/negative/service/eos_accounting_posting_admission_request.missing_proof.json",
+      "schema": "schemas/service/nex_eos/accounting_posting_admission_request.v1.schema.json"
     }
   ]
 }
