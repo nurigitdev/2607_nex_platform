@@ -16,6 +16,7 @@ from sqlalchemy import text
 
 ROOT = Path(__file__).resolve().parents[2]
 for path in (
+    ROOT / "domains/mybee",
     ROOT / "services/nex-ae-api",
     ROOT / "services/_shared",
     ROOT / "scripts/db",

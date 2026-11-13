@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 import uuid
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from copy import deepcopy
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -506,7 +506,8 @@ def _effective_authorization(
     if (
         authorization.get("tenant_id") != request["tenant_id"]
         or authorization.get("subject_id") != request["subject_id"]
-        or not isinstance(scopes, list)
+        or isinstance(scopes, (str, bytes))
+        or not isinstance(scopes, Sequence)
         or any(not isinstance(item, str) or not item for item in scopes)
         or not isinstance(revision_hash, str)
         or re.fullmatch(r"(?:sha256:)?[0-9a-f]{64}", revision_hash) is None

@@ -5,9 +5,6 @@ from types import SimpleNamespace
 
 import pytest
 import yaml
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-
 from nex_ae_api import agent_runtime_process
 from nex_ae_api import mybee_product_admission as admission
 from nex_runtime.canonical_platform_trust import CANONICAL_PLATFORM_TRUST_GRANTS
@@ -16,8 +13,25 @@ from nex_runtime.deployment_oci import (
     build_default_oci_definitions,
     materialize_oci_build_context,
 )
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
 
 ROOT = Path(__file__).resolve().parents[2]
+CAPABILITY_REGISTRY = (
+    ROOT / "deployment/environments/ae-product-capability-registry.v1.json"
+)
+AUTHORITY_PROFILE = ROOT / "deployment/environments/finance-golden-a-vo00.v1.json"
+
+
+def _protected_environment() -> dict[str, str]:
+    return {
+        "NEX_AE_DATABASE_URL": "sqlite+pysqlite:///:memory:",
+        "NEX_AE_PRODUCT_CAPABILITY_REGISTRY_PATH": str(CAPABILITY_REGISTRY),
+        "NEX_AE_FINANCE_GOLDEN_A_AUTHORITY_PROFILE_PATH": str(AUTHORITY_PROFILE),
+        "NEX_EOS_BASE_URL": "https://eos.example",
+        "NEX_AE_TO_EOS_SERVICE_TOKEN": "signed-ae-to-eos-token",
+        "NEX_SERVICE_TOKEN_ROLLOUT_PROFILE": "SIGNED_ONLY",
+    }
 
 
 def test_mybee_product_package_is_admitted_from_the_ae_runtime_source() -> None:
@@ -124,7 +138,7 @@ def test_protected_agent_runtime_requires_mybee_admission(
 
     installed = agent_runtime_process.build_installed_agent_runtime_process(
         "staging_live",
-        environ={"NEX_AE_DATABASE_URL": "sqlite+pysqlite:///:memory:"},
+        environ=_protected_environment(),
         executor_profile=product_profile,
         engine_factory=lambda *_args, **_kwargs: engine,
         engine_checker=lambda _engine: True,

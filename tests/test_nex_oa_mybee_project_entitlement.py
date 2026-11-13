@@ -267,6 +267,35 @@ def test_project_decision_allows_exact_active_grant_and_closing_read() -> None:
     assert closing["allowed"] is True
 
 
+def test_project_decision_accepts_canonical_immutable_scope_sequence() -> None:
+    repository = InMemoryOaProjectGrantRepository()
+    repository.apply_grant(_grant())
+
+    class CanonicalAuthorization:
+        def effective_authorization(self, **_kwargs):
+            return {
+                "response_schema_version": "oa_authz_read_response.v1",
+                "service_id": "nex-oa",
+                "authorization": {
+                    "tenant_id": TENANT,
+                    "subject_id": SUBJECT,
+                    "scopes": ("finance:voucher-candidate:create",),
+                    "revision_hash": "c" * 64,
+                },
+            }
+
+    result = OaProjectAuthorizationDecisionService(
+        repository,
+        CanonicalAuthorization(),
+        clock=lambda: NOW,
+    ).decide(_decision())
+
+    assert result["allowed"] is True
+    assert result["applicable_global_scopes"] == [
+        "finance:voucher-candidate:create"
+    ]
+
+
 def test_missing_grant_denies_and_malformed_authorization_is_unavailable() -> None:
     repository = InMemoryOaProjectGrantRepository()
     service = OaProjectAuthorizationDecisionService(
@@ -295,6 +324,30 @@ def test_missing_grant_denies_and_malformed_authorization_is_unavailable() -> No
     with pytest.raises(OaAuthorizationError) as non_mapping_error:
         non_mapping.decide(_decision())
     assert non_mapping_error.value.status_code == 503
+
+
+@pytest.mark.parametrize("scopes", ("finance:voucher-candidate:create", {"scope"}, ("",)))
+def test_project_decision_rejects_noncanonical_scope_sequences(scopes) -> None:
+    class MalformedScopes:
+        def effective_authorization(self, **_kwargs):
+            return {
+                "authorization": {
+                    "tenant_id": TENANT,
+                    "subject_id": SUBJECT,
+                    "scopes": scopes,
+                    "revision_hash": "c" * 64,
+                }
+            }
+
+    service = OaProjectAuthorizationDecisionService(
+        InMemoryOaProjectGrantRepository(),
+        MalformedScopes(),
+        clock=lambda: NOW,
+    )
+
+    with pytest.raises(OaAuthorizationError) as error:
+        service.decide(_decision())
+    assert error.value.status_code == 503
 
 
 @pytest.mark.parametrize(
