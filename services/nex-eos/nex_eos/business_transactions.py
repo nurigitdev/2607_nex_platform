@@ -39,11 +39,15 @@ EOS_EVENT_TYPES = frozenset(
         "VOUCHER_DRAFT_CREATED",
         "VOUCHER_CANDIDATE_CREATED",
         "VOUCHER_CANDIDATE_REVISED",
+        "FINANCE.JOURNAL_POSTED.v1",
     }
 )
 
 _SCOPED_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$")
 _OPERATION = re.compile(r"^[A-Z][A-Z0-9_.]{0,127}$")
+_EVENT_TYPE = re.compile(
+    r"^(?:[A-Z][A-Z0-9_.]{0,127}|[A-Z][A-Z0-9_.]{0,123}v[0-9]{1,3})$"
+)
 
 EOS_METADATA = MetaData()
 EOS_BUSINESS_OPERATION_TABLE = Table(
@@ -506,7 +510,7 @@ def _normalize_request(
         payload_hash = validate_hash_ref(request.payload_hash)
     except ValueError as exc:
         raise _request_error("payload_hash must be a sha256 hash reference") from exc
-    event_type = _pattern_text("event_type", request.event_type, _OPERATION)
+    event_type = _pattern_text("event_type", request.event_type, _EVENT_TYPE)
     if event_type not in EOS_EVENT_TYPES:
         raise _request_error("event_type is not enabled for P8-S09")
     return EosBusinessOperationRequest(

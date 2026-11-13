@@ -1504,6 +1504,44 @@ paths:
         "409": {description: "Candidate, validation, proof, or OA freshness is stale."}
         "422": {description: Exact ACCOUNTING_POSTING proof is missing or malformed.}
         "503": {description: "OA, Project authorization, or EOS persistence is unavailable."}
+  /internal/v2/finance/voucher-candidates/{candidate_id}/posting:
+    post:
+      operationId: FINANCE.VOUCHER.APPROVE_AND_POST
+      tags: [Finance]
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes: [service:call]
+      x-nex-business-scope: finance:journal:approve
+      x-nex-side-effect-free: false
+      parameters:
+        - name: candidate_id
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/JournalPostCommand"
+      responses:
+        "201":
+          description: Candidate and all Posting records committed atomically.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JournalPostResult"
+        "200":
+          description: Exact idempotent replay of the committed Posting.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JournalPostResult"
+        "401": {description: Service claim is missing or invalid.}
+        "403": {description: Fresh OA or Project accounting authority is denied.}
+        "409": {description: "Candidate, proof, period, policy, FX, or idempotency state is stale."}
+        "422": {description: Posting command or payload hash is invalid.}
+        "503": {description: Authoritative dependency or atomic persistence is unavailable.}
   /internal/v2/finance/voucher-candidates/{candidate_id}/review:
     get:
       operationId: FINANCE.VOUCHER_CANDIDATE.REVIEW_GET
@@ -2116,6 +2154,12 @@ components:
     AccountingPostingAdmission:
       type: object
       x-nex-canonical-json-schema: schemas/service/nex_eos/accounting_posting_admission.v1.schema.json
+    JournalPostCommand:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_eos/journal_post_command.v1.schema.json
+    JournalPostResult:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_eos/journal_post_result.v1.schema.json
     PostedJournal:
       type: object
       x-nex-canonical-json-schema: schemas/service/nex_eos/posted_journal.v1.schema.json

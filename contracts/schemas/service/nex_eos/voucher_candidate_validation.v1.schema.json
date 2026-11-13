@@ -10,6 +10,7 @@
     "company_id", "preparer_subject_id", "accounting_period_id",
     "recognition_date", "transaction_currency", "functional_currency",
     "posting_rule_release_hash", "account_policy_set_hash", "fx_rate_set_hash",
+    "accounting_rule_profile_hash",
     "fx_evidence", "lines", "totals", "validation_hash", "observed_at"
   ],
   "properties": {
@@ -59,6 +60,7 @@
     "posting_rule_release_hash": {"$ref": "#/$defs/hash_ref"},
     "account_policy_set_hash": {"$ref": "#/$defs/hash_ref"},
     "fx_rate_set_hash": {"$ref": "#/$defs/hash_ref"},
+    "accounting_rule_profile_hash": {"$ref": "#/$defs/hash_ref"},
     "fx_evidence": {
       "type": "object",
       "additionalProperties": false,

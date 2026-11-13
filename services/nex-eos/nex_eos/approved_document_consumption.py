@@ -87,6 +87,25 @@ EOS_APPROVED_DOCUMENT_CONSUMPTION_TABLE = Table(
         ),
         name="fk_eos_doc_cons_operation",
     ),
+    ForeignKeyConstraint(
+        ("tenant_id", "candidate_revision_id"),
+        (
+            "eos_voucher_candidate_revision.tenant_id",
+            "eos_voucher_candidate_revision.revision_id",
+        ),
+        name="fk_eos_doc_cons_candidate_revision",
+    ),
+    ForeignKeyConstraint(
+        ("tenant_id", "company_id", "posted_journal_id"),
+        (
+            "eos_journal_header.tenant_id",
+            "eos_journal_header.company_id",
+            "eos_journal_header.journal_id",
+        ),
+        name="fk_eos_doc_cons_journal",
+        deferrable=True,
+        initially="DEFERRED",
+    ),
     CheckConstraint("consumed_amount > 0", name="ck_eos_doc_cons_amount"),
     CheckConstraint("state = 'COMMITTED'", name="ck_eos_doc_cons_state"),
 )
@@ -222,8 +241,7 @@ class EosApprovedDocumentConsumptionAdapter:
             session.execute(
                 select(EOS_APPROVED_DOCUMENT_TABLE)
                 .where(
-                    EOS_APPROVED_DOCUMENT_TABLE.c.tenant_id
-                    == semantics["tenant_id"],
+                    EOS_APPROVED_DOCUMENT_TABLE.c.tenant_id == semantics["tenant_id"],
                     EOS_APPROVED_DOCUMENT_TABLE.c.envelope_id
                     == semantics["envelope_id"],
                 )
@@ -317,9 +335,7 @@ class EosApprovedDocumentConsumptionAdapter:
     def _consumed_total(session: Session, semantics: Mapping[str, Any]) -> Decimal:
         total = session.execute(
             select(
-                func.sum(
-                    EOS_APPROVED_DOCUMENT_CONSUMPTION_TABLE.c.consumed_amount
-                )
+                func.sum(EOS_APPROVED_DOCUMENT_CONSUMPTION_TABLE.c.consumed_amount)
             ).where(
                 EOS_APPROVED_DOCUMENT_CONSUMPTION_TABLE.c.tenant_id
                 == semantics["tenant_id"],
@@ -388,9 +404,7 @@ def _consumption_semantics(
             "candidate_revision_id", value.candidate_revision_id
         ),
         "posted_journal_id": _uuid("posted_journal_id", value.posted_journal_id),
-        "consumed_amount": _positive_decimal(
-            "consumed_amount", value.consumed_amount
-        ),
+        "consumed_amount": _positive_decimal("consumed_amount", value.consumed_amount),
         "currency": _currency("currency", value.currency),
         "operation_id": _uuid("operation_id", value.operation_id),
         "reversed_journal_ref": (

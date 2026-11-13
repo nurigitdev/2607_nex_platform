@@ -15,7 +15,7 @@ from .legal_entities import EosLegalEntityError
 from .voucher_candidates import EosVoucherCandidateError
 
 VALIDATE_VOUCHER_CANDIDATE_OPERATION = "FINANCE.VOUCHER_CANDIDATE.VALIDATE"
-_ALLOWED_CANDIDATE_STATES = frozenset({"DRAFT"})
+_ALLOWED_CANDIDATE_STATES = frozenset({"DRAFT", "READY_FOR_REVIEW"})
 
 
 class EosCandidateValidationError(RuntimeError):
@@ -192,6 +192,7 @@ class EosCandidateValidationService:
             "posting_rule_release_hash": str(posting_rule["rule_hash"]),
             "account_policy_set_hash": account_policy_set_hash,
             "fx_rate_set_hash": fx_rate_set_hash,
+            "accounting_rule_profile_hash": functionalized.rule_profile_hash,
             "fx_evidence": fx_evidence,
             "lines": list(functionalized.lines),
             "totals": {

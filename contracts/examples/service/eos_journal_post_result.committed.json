@@ -1,0 +1,31 @@
+{
+  "schema_version": "eos_journal_post_result.v1",
+  "operation": "FINANCE.VOUCHER.APPROVE_AND_POST",
+  "idempotency_disposition": "CREATED",
+  "created": true,
+  "tenant_id": "VO00",
+  "business_operation_id": "32000000-0000-4000-8000-000000000052",
+  "idempotency_key": "w40-s4-03-atomic-posting",
+  "payload_hash": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "commit_state": "COMMITTED",
+  "result": {
+    "business_result_ref": "eos.posted_journal:32000000-0000-4000-8000-000000000051",
+    "journal_id": "32000000-0000-4000-8000-000000000051",
+    "journal_no": "VO00-2026-000001",
+    "candidate_id": "32000000-0000-4000-8000-000000000010",
+    "candidate_revision": 1,
+    "candidate_version": 3,
+    "candidate_state": "POSTED",
+    "accounting_acceptance_id": "32000000-0000-4000-8000-000000000050",
+    "consumption_id": "32000000-0000-4000-8000-000000000053",
+    "journal_hash": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "posted_at": "2026-11-12T02:01:00Z"
+  },
+  "outbox": {
+    "outbox_id": "32000000-0000-4000-8000-000000000054",
+    "event_id": "32000000-0000-4000-8000-000000000055",
+    "event_type": "FINANCE.JOURNAL_POSTED.v1",
+    "event_payload_hash": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+    "delivery_state": "PENDING"
+  }
+}

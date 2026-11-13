@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_eos/journal_post_result.v1.schema.json",
+  "title": "EOS Atomic Journal Post Result v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "operation", "idempotency_disposition", "created",
+    "tenant_id", "business_operation_id", "idempotency_key", "payload_hash",
+    "commit_state", "result", "outbox"
+  ],
+  "properties": {
+    "schema_version": {"const": "eos_journal_post_result.v1"},
+    "operation": {"const": "FINANCE.VOUCHER.APPROVE_AND_POST"},
+    "idempotency_disposition": {"enum": ["CREATED", "REPLAYED"]},
+    "created": {"type": "boolean"},
+    "tenant_id": {"$ref": "#/$defs/scoped_id"},
+    "business_operation_id": {"type": "string", "format": "uuid"},
+    "idempotency_key": {"$ref": "#/$defs/scoped_id"},
+    "payload_hash": {"$ref": "#/$defs/hash_ref"},
+    "commit_state": {"const": "COMMITTED"},
+    "result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "business_result_ref", "journal_id", "journal_no", "candidate_id",
+        "candidate_revision", "candidate_version", "candidate_state",
+        "accounting_acceptance_id", "consumption_id", "journal_hash", "posted_at"
+      ],
+      "properties": {
+        "business_result_ref": {"type": "string"},
+        "journal_id": {"type": "string", "format": "uuid"},
+        "journal_no": {"$ref": "#/$defs/scoped_id"},
+        "candidate_id": {"type": "string", "format": "uuid"},
+        "candidate_revision": {"type": "integer", "minimum": 1},
+        "candidate_version": {"type": "integer", "minimum": 2},
+        "candidate_state": {"const": "POSTED"},
+        "accounting_acceptance_id": {"type": "string", "format": "uuid"},
+        "consumption_id": {"type": "string", "format": "uuid"},
+        "journal_hash": {"$ref": "#/$defs/hash_ref"},
+        "posted_at": {"type": "string", "format": "date-time"}
+      }
+    },
+    "outbox": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "outbox_id", "event_id", "event_type", "event_payload_hash",
+        "delivery_state"
+      ],
+      "properties": {
+        "outbox_id": {"type": "string", "format": "uuid"},
+        "event_id": {"type": "string", "format": "uuid"},
+        "event_type": {"const": "FINANCE.JOURNAL_POSTED.v1"},
+        "event_payload_hash": {"$ref": "#/$defs/hash_ref"},
+        "delivery_state": {"const": "PENDING"}
+      }
+    }
+  },
+  "$defs": {
+    "hash_ref": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "scoped_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:@/-]{0,255}$"}
+  }
+}

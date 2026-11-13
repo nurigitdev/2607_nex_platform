@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import json
 import os
 import uuid
 from concurrent.futures import ThreadPoolExecutor
@@ -16,6 +17,7 @@ import yaml
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 from fastapi.testclient import TestClient
+from jsonschema import Draft202012Validator
 from nex_eos import (
     EOS_ACCOUNT_CATALOG_RELEASE_TABLE,
     EOS_ACCOUNTING_APPROVAL_ACCEPTANCE_TABLE,
@@ -23,13 +25,16 @@ from nex_eos import (
     EOS_ACCOUNTING_PERIOD_TABLE,
     EOS_APPROVAL_POLICY_STAGE_TABLE,
     EOS_APPROVAL_POLICY_TABLE,
+    EOS_APPROVED_DOCUMENT_CONSUMPTION_TABLE,
     EOS_APPROVED_DOCUMENT_TABLE,
     EOS_BUSINESS_OPERATION_TABLE,
     EOS_CANDIDATE_REVIEW_EVENT_TABLE,
     EOS_COMPANY_ACCOUNT_POLICY_TABLE,
     EOS_DOCUMENT_SIGNOFF_EVIDENCE_TABLE,
+    EOS_IDEMPOTENCY_TABLE,
     EOS_JOURNAL_HEADER_TABLE,
     EOS_JOURNAL_LINE_TABLE,
+    EOS_JOURNAL_SEQUENCE_TABLE,
     EOS_METADATA,
     EOS_OUTBOX_TABLE,
     EOS_POSTING_RULE_RELEASE_TABLE,
@@ -41,9 +46,13 @@ from nex_eos import (
     AccountInput,
     EosAccountingPostingAdmissionError,
     EosAccountingPostingAdmissionService,
+    EosBusinessOperationError,
     EosCandidateReviewError,
+    EosCandidateValidationService,
     EosCreateVoucherCandidateService,
     EosJournalError,
+    EosJournalPostingError,
+    EosJournalPostingService,
     EosReviseVoucherCandidateService,
     EosServiceCaller,
     EosVoucherAuthorizationClient,
@@ -53,9 +62,12 @@ from nex_eos import (
     NvtProjectInput,
     ProjectInput,
     SqlAlchemyAccountingReviewContextRepository,
+    SqlAlchemyEosAccountCatalogRepository,
+    SqlAlchemyEosAccountingPeriodRepository,
     SqlAlchemyEosAccountRepository,
     SqlAlchemyEosBusinessTransactionCoordinator,
     SqlAlchemyEosCandidateReviewRepository,
+    SqlAlchemyEosFxRateRepository,
     SqlAlchemyEosJournalRepository,
     SqlAlchemyEosLegalEntityRepository,
     SqlAlchemyEosProjectRepository,
@@ -65,13 +77,16 @@ from nex_eos import (
     build_journal_hash,
     build_line_hash,
     finance_v2_api,
+    journal_post_payload_hash,
     parse_create_voucher_candidate_command,
+    parse_journal_post_command,
     parse_revise_voucher_candidate_command,
     voucher_candidate_payload_hash,
     voucher_candidate_revision_payload_hash,
     voucher_candidates,
 )
 from nex_eos import candidate_review as candidate_review_module
+from nex_eos import journal_posting as journal_posting_module
 from nex_eos.finance_v2_api import register_finance_v2_routes
 from nex_eos.project_authorization import EosProjectAuthorizationEvidence
 from nex_runtime import psycopg_database_url
@@ -113,6 +128,7 @@ POSTING_ADMISSION_POSTGRES_SMOKE = (
     os.getenv("NEX_EOS_MYBEE_W40_S4_01_POSTGRES_SMOKE") == "1"
 )
 JOURNAL_POSTGRES_SMOKE = os.getenv("NEX_EOS_MYBEE_W40_S4_02_POSTGRES_SMOKE") == "1"
+ATOMIC_POSTGRES_SMOKE = os.getenv("NEX_EOS_MYBEE_W40_S4_03_POSTGRES_SMOKE") == "1"
 VALIDATION_HASH = "sha256:" + "9" * 64
 
 
@@ -825,8 +841,14 @@ def test_finance_v2_api_fail_closed_boundaries(monkeypatch) -> None:
                 "X-NeX-Tenant-Id": TENANT,
             },
         )
+        unavailable_posting = client.post(
+            f"/internal/v2/finance/voucher-candidates/{CANDIDATE_ID}/posting",
+            json={},
+            headers={"Authorization": "Bearer service-token"},
+        )
     assert unavailable_write.status_code == 503
     assert unavailable_read.status_code == 503
+    assert unavailable_posting.status_code == 503
 
     class DeniedService:
         def execute(self, _payload, *, caller):
@@ -2801,6 +2823,861 @@ def test_actual_postgres_accounting_proof_and_fresh_oa_admission() -> None:
                     sql.Identifier(schema_name)
                 )
             ).fetchone() == (0,)
+        engine.dispose()
+        engine = None
+    finally:
+        if engine is not None:
+            engine.dispose()
+        with psycopg.connect(psycopg_url, autocommit=True) as connection:
+            connection.execute(
+                sql.SQL("DROP SCHEMA IF EXISTS {} CASCADE").format(
+                    sql.Identifier(schema_name)
+                )
+            )
+            assert connection.execute(
+                "SELECT to_regnamespace(%s)", (schema_name,)
+            ).fetchone() == (None,)
+
+
+def _prepare_atomic_posting(sessions, candidates, *, fault_injector=None):
+    candidate = candidates.get(tenant_id=TENANT, candidate_id=CANDIDATE_ID)
+    assert candidate is not None
+    period_id = "32000000-0000-4000-8000-000000000021"
+    catalog_release_id = "32000000-0000-4000-8000-000000000046"
+    posting_rule_id = "32000000-0000-4000-8000-000000000047"
+    debit_policy_id = "32000000-0000-4000-8000-000000000048"
+    credit_policy_id = "32000000-0000-4000-8000-000000000049"
+    decision_id = "32000000-0000-4000-8000-000000000041"
+    evidence_id = "32000000-0000-4000-8000-000000000042"
+    posting_operation_id = "32000000-0000-4000-8000-000000000052"
+    with sessions.begin() as session:
+        session.execute(
+            EOS_ACCOUNTING_PERIOD_TABLE.insert().values(
+                tenant_id=TENANT,
+                company_id=COMPANY_ID,
+                period_id=period_id,
+                fiscal_year=2026,
+                period_no=11,
+                start_date=date(2026, 11, 1),
+                end_date=date(2026, 11, 30),
+                state="OPEN",
+                version=1,
+                close_proof_ref=None,
+                closed_at=None,
+                ledger_cutoff_watermark=None,
+                created_at=NOW,
+                updated_at=NOW,
+            )
+        )
+        session.execute(
+            EOS_ACCOUNT_CATALOG_RELEASE_TABLE.insert().values(
+                tenant_id=TENANT,
+                release_id=catalog_release_id,
+                source_reference="mybee.coa:w40-s4-03",
+                source_version="1",
+                source_hash=POLICY_HASH,
+                effective_from=date(2026, 1, 1),
+                published_by="accounting-controller",
+                approved_proof_ref=PROOF_HASH,
+                status="PUBLISHED",
+                created_at=NOW,
+            )
+        )
+        session.execute(
+            EOS_POSTING_RULE_RELEASE_TABLE.insert().values(
+                tenant_id=TENANT,
+                posting_rule_id=posting_rule_id,
+                company_id=COMPANY_ID,
+                catalog_release_id=catalog_release_id,
+                rule_code="W40_STANDARD",
+                rule_version=1,
+                rule_hash=POLICY_HASH,
+                effective_date=date(2026, 1, 1),
+                account_mapping_hash=PROOF_HASH,
+                approved_proof_ref=EVIDENCE_HASH,
+                status="PUBLISHED",
+                created_at=NOW,
+            )
+        )
+        for policy_id, account_id, statement_line in (
+            (debit_policy_id, DEBIT_ID, "EXPENSE.TRAVEL"),
+            (credit_policy_id, CREDIT_ID, "ASSET.CASH"),
+        ):
+            session.execute(
+                EOS_COMPANY_ACCOUNT_POLICY_TABLE.insert().values(
+                    tenant_id=TENANT,
+                    policy_id=policy_id,
+                    company_id=COMPANY_ID,
+                    account_id=account_id,
+                    catalog_release_id=catalog_release_id,
+                    posting_rule_id=posting_rule_id,
+                    parent_account_id=None,
+                    is_postable_leaf=True,
+                    is_monetary=True,
+                    statement_line_ref=statement_line,
+                    allowed_currencies=["KRW"],
+                    valid_from=date(2026, 1, 1),
+                    valid_until=None,
+                    rule_revision=1,
+                    approved_proof_ref=PROOF_HASH,
+                    state="APPROVED",
+                    created_at=NOW,
+                )
+            )
+
+    validation_service = EosCandidateValidationService(
+        candidates=candidates,
+        legal_entities=SqlAlchemyEosLegalEntityRepository(sessions),
+        periods=SqlAlchemyEosAccountingPeriodRepository(sessions),
+        account_catalog=SqlAlchemyEosAccountCatalogRepository(sessions),
+        fx_rates=SqlAlchemyEosFxRateRepository(sessions),
+    )
+    validation = validation_service.validate(
+        CANDIDATE_ID,
+        {
+            "schema_version": "eos_voucher_candidate_validate.v1",
+            "tenant_id": TENANT,
+            "expected_revision_no": 1,
+            "expected_candidate_hash": candidate["revision"]["candidate_hash"],
+            "as_of": NOW.isoformat(),
+        },
+    )
+    case, review, _ignored = _candidate_review_fixture(sessions, candidates)
+    review.update(
+        {
+            "validation_hash": validation["validation_hash"],
+            "validation_observed_at": datetime.fromisoformat(validation["observed_at"]),
+            "fx_rate_set_hash": validation["fx_rate_set_hash"],
+            "rule_release_hash": validation["posting_rule_release_hash"],
+            "accounting_period_id": validation["accounting_period_id"],
+        }
+    )
+    reviews = SqlAlchemyEosCandidateReviewRepository(sessions, clock=lambda: NOW)
+    context = SqlAlchemyAccountingReviewContextRepository(sessions, clock=lambda: NOW)
+    with sessions.begin() as session:
+        session.execute(
+            EOS_APPROVAL_POLICY_STAGE_TABLE.insert().values(
+                tenant_id=TENANT,
+                approval_policy_id=POLICY_ID,
+                stage_order=1,
+                position_type="CEO",
+                quorum_count=1,
+                separation_policy="REQUESTER_EXCLUDED",
+            )
+        )
+        context.create_in_session(
+            session,
+            scoped_case=case,
+            review={
+                **review,
+                "validation_observed_at": review["validation_observed_at"].isoformat(),
+            },
+        )
+        submitted = reviews.submit_in_session(
+            session,
+            scoped_case=case,
+            review=review,
+            validation=validation,
+        )
+        session.execute(
+            update(EOS_SCOPED_APPROVAL_CASE_TABLE)
+            .where(
+                EOS_SCOPED_APPROVAL_CASE_TABLE.c.tenant_id == TENANT,
+                EOS_SCOPED_APPROVAL_CASE_TABLE.c.case_id == REVIEW_CASE_ID,
+            )
+            .values(
+                state="APPROVED",
+                active_stage_order=None,
+                target_role_ref=None,
+                version=2,
+                decided_at=NOW,
+                updated_at=NOW,
+            )
+        )
+        session.execute(
+            EOS_SCOPED_APPROVAL_DECISION_TABLE.insert().values(
+                tenant_id=TENANT,
+                case_id=REVIEW_CASE_ID,
+                stage_order=1,
+                wc_work_item_id="32000000-0000-4000-8000-000000000043",
+                wc_decision_id=decision_id,
+                wc_event_id="32000000-0000-4000-8000-000000000044",
+                wc_outbox_id="32000000-0000-4000-8000-000000000045",
+                decision="APPROVE",
+                decision_version=1,
+                decided_by="accountant-cfo",
+                decision_comment="Approved for atomic Posting",
+                wc_oa_decision_ref="wc-oa:accountant-cfo",
+                wc_authorization_revision_hash=PROOF_HASH,
+                oa_decision_ref="oa-authz:accountant-cfo",
+                authorization_revision_hash=POLICY_HASH,
+                authorization_checked_at=NOW,
+                decided_at=NOW,
+                decision_hash=PAYLOAD_HASH,
+                recorded_at=NOW,
+            )
+        )
+        session.execute(
+            EOS_ACCOUNTING_APPROVAL_EVIDENCE_TABLE.insert().values(
+                tenant_id=TENANT,
+                case_id=REVIEW_CASE_ID,
+                evidence_id=evidence_id,
+                company_id=COMPANY_ID,
+                candidate_id=CANDIDATE_ID,
+                candidate_revision=1,
+                candidate_hash=review["candidate_hash"],
+                document_envelope_hash=DOCUMENT_HASH,
+                fx_rate_set_hash=validation["fx_rate_set_hash"],
+                rule_release_hash=validation["posting_rule_release_hash"],
+                accounting_period_id=period_id,
+                approver_subject_id="accountant-cfo",
+                approval_policy_hash=POLICY_HASH,
+                wc_final_decision_id=decision_id,
+                oa_authorization_revision_hash=POLICY_HASH,
+                decided_at=NOW,
+                proof_hash=EVIDENCE_HASH,
+                created_at=NOW,
+            )
+        )
+    assert submitted["to_state"] == "READY_FOR_REVIEW"
+
+    class FreshOa:
+        def effective_authorization(self, *, tenant_id, subject_id):
+            return {
+                "active": True,
+                "tenant_id": tenant_id,
+                "subject_id": subject_id,
+                "roles": ["CEO"],
+                "scopes": ["finance:journal:approve"],
+                "company_ids": [COMPANY_ID],
+                "revision_hash": "1" * 64,
+                "decision_ref": "oa-authz:accountant-cfo-current",
+            }
+
+    class FreshProjectGate:
+        def authorize(self, **_kwargs):
+            return EosProjectAuthorizationEvidence(
+                decision_ref=PROOF_HASH,
+                project_code=PROJECT_CODE,
+                project_role="ACCOUNTANT",
+                project_status="ACTIVE",
+                source_version=1,
+                projection_event_hash=POLICY_HASH,
+                authorization_revision_hash=PAYLOAD_HASH,
+                decided_at=NOW.isoformat(),
+            )
+
+    admission = EosAccountingPostingAdmissionService(
+        session_factory=sessions,
+        authorization_source=FreshOa(),
+        project_authorizer=FreshProjectGate(),
+        clock=lambda: NOW + timedelta(minutes=1),
+    )
+    service = EosJournalPostingService(
+        session_factory=sessions,
+        coordinator=SqlAlchemyEosBusinessTransactionCoordinator(
+            sessions,
+            id_factory=lambda: str(uuid.uuid4()),
+            clock=lambda: NOW + timedelta(minutes=1),
+        ),
+        validation_service=validation_service,
+        admission_service=admission,
+        journals=SqlAlchemyEosJournalRepository(sessions),
+        clock=lambda: NOW + timedelta(minutes=1),
+        fault_injector=fault_injector,
+    )
+    payload = {
+        "schema_version": "eos_journal_post_command.v1",
+        "tenant_id": TENANT,
+        "company_id": COMPANY_ID,
+        "business_operation_id": posting_operation_id,
+        "idempotency_key": "w40-s4-03-atomic-posting",
+        "payload_hash": "sha256:" + "0" * 64,
+        "expected_candidate_version": 2,
+        "expected_candidate_revision": 1,
+        "expected_candidate_hash": review["candidate_hash"],
+        "accounting_approval_evidence_id": evidence_id,
+        "correlation_id": "correlation-w40-s4-03",
+    }
+    payload["payload_hash"] = journal_post_payload_hash(
+        parse_journal_post_command(CANDIDATE_ID, payload)
+    )
+    return service, payload
+
+
+def test_atomic_posting_commits_once_and_replays_without_duplicate_rows() -> None:
+    _engine_value, sessions, candidates, command, _authorization = _runtime()
+    command.execute(_payload(), caller=CALLER)
+    service, payload = _prepare_atomic_posting(sessions, candidates)
+
+    created = service.execute(CANDIDATE_ID, payload)
+    replayed = service.execute(CANDIDATE_ID, payload)
+
+    assert created["idempotency_disposition"] == "CREATED"
+    assert replayed["idempotency_disposition"] == "REPLAYED"
+    assert replayed["result"] == created["result"]
+    assert created["result"]["candidate_state"] == "POSTED"
+    with sessions() as session:
+        state = session.execute(
+            select(
+                EOS_VOUCHER_CANDIDATE_TABLE.c.state,
+                EOS_VOUCHER_CANDIDATE_TABLE.c.version,
+            ).where(EOS_VOUCHER_CANDIDATE_TABLE.c.candidate_id == CANDIDATE_ID)
+        ).one()
+        assert state == ("POSTED", 3)
+        for table in (
+            EOS_JOURNAL_HEADER_TABLE,
+            EOS_JOURNAL_LINE_TABLE,
+            EOS_APPROVED_DOCUMENT_CONSUMPTION_TABLE,
+            EOS_JOURNAL_SEQUENCE_TABLE,
+            EOS_IDEMPOTENCY_TABLE,
+            EOS_OUTBOX_TABLE,
+        ):
+            expected = (
+                2
+                if table
+                in (EOS_JOURNAL_LINE_TABLE, EOS_IDEMPOTENCY_TABLE, EOS_OUTBOX_TABLE)
+                else 1
+            )
+            assert (
+                session.execute(select(func.count()).select_from(table)).scalar_one()
+                == expected
+            )
+        event = session.execute(
+            select(EOS_OUTBOX_TABLE.c.event_type).where(
+                EOS_OUTBOX_TABLE.c.business_operation_id
+                == payload["business_operation_id"]
+            )
+        ).scalar_one()
+        assert event == "FINANCE.JOURNAL_POSTED.v1"
+
+
+def test_atomic_posting_api_and_canonical_contracts(monkeypatch) -> None:
+    _admit_service_token(monkeypatch)
+    _engine_value, sessions, candidates, command, _authorization = _runtime()
+    command.execute(_payload(), caller=CALLER)
+    service, payload = _prepare_atomic_posting(sessions, candidates)
+    app = FastAPI()
+    register_finance_v2_routes(app)
+    app.state.eos_journal_posting_service = service
+    with TestClient(app) as client:
+        rejected = client.post(
+            f"/internal/v2/finance/voucher-candidates/{CANDIDATE_ID}/posting",
+            json={**payload, "payload_hash": PAYLOAD_HASH},
+            headers={"Authorization": "Bearer service-token"},
+        )
+        created = client.post(
+            f"/internal/v2/finance/voucher-candidates/{CANDIDATE_ID}/posting",
+            json=payload,
+            headers={"Authorization": "Bearer service-token"},
+        )
+        replayed = client.post(
+            f"/internal/v2/finance/voucher-candidates/{CANDIDATE_ID}/posting",
+            json=payload,
+            headers={"Authorization": "Bearer service-token"},
+        )
+    assert rejected.status_code == 422
+    assert created.status_code == 201
+    assert replayed.status_code == 200
+
+    contracts = Path(__file__).resolve().parents[1] / "contracts"
+    for schema_name, example_name in (
+        ("journal_post_command.v1", "eos_journal_post_command.v1"),
+        ("journal_post_result.v1", "eos_journal_post_result.committed"),
+    ):
+        schema = json.loads(
+            (
+                contracts / "schemas/service/nex_eos" / f"{schema_name}.schema.json"
+            ).read_text(encoding="utf-8")
+        )
+        example = json.loads(
+            (contracts / "examples/service" / f"{example_name}.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        Draft202012Validator(schema).validate(example)
+
+
+@pytest.mark.parametrize(
+    "fault_stage", ["JOURNAL_STAGED", "DOCUMENT_CONSUMED", "CANDIDATE_POSTED"]
+)
+def test_atomic_posting_rolls_back_every_record_on_mid_transaction_failure(
+    fault_stage: str,
+) -> None:
+    _engine_value, sessions, candidates, command, _authorization = _runtime()
+    command.execute(_payload(), caller=CALLER)
+
+    def fail(stage: str) -> None:
+        if stage == fault_stage:
+            raise EosBusinessOperationError(
+                "EOS_JOURNAL_POST_INJECTED_FAILURE",
+                f"Injected at {stage}",
+                status_code=503,
+                retryable=True,
+            )
+
+    service, payload = _prepare_atomic_posting(
+        sessions, candidates, fault_injector=fail
+    )
+    with pytest.raises(EosJournalPostingError) as failed:
+        service.execute(CANDIDATE_ID, payload)
+    assert failed.value.error_code == "EOS_JOURNAL_POST_INJECTED_FAILURE"
+    with sessions() as session:
+        assert (
+            session.execute(
+                select(EOS_VOUCHER_CANDIDATE_TABLE.c.state).where(
+                    EOS_VOUCHER_CANDIDATE_TABLE.c.candidate_id == CANDIDATE_ID
+                )
+            ).scalar_one()
+            == "READY_FOR_REVIEW"
+        )
+        for table in (
+            EOS_JOURNAL_HEADER_TABLE,
+            EOS_JOURNAL_LINE_TABLE,
+            EOS_APPROVED_DOCUMENT_CONSUMPTION_TABLE,
+            EOS_JOURNAL_SEQUENCE_TABLE,
+            EOS_IDEMPOTENCY_TABLE,
+            EOS_OUTBOX_TABLE,
+        ):
+            expected = 1 if table in (EOS_IDEMPOTENCY_TABLE, EOS_OUTBOX_TABLE) else 0
+            assert (
+                session.execute(select(func.count()).select_from(table)).scalar_one()
+                == expected
+            )
+
+
+def test_atomic_posting_rejects_invalid_hash_and_stale_validation() -> None:
+    with pytest.raises(EosJournalPostingError) as malformed:
+        parse_journal_post_command(CANDIDATE_ID, {})
+    assert malformed.value.status_code == 422
+
+    _engine_value, sessions, candidates, command, _authorization = _runtime()
+    command.execute(_payload(), caller=CALLER)
+    service, payload = _prepare_atomic_posting(sessions, candidates)
+    with pytest.raises(EosJournalPostingError) as mismatch:
+        service.execute(CANDIDATE_ID, {**payload, "payload_hash": PAYLOAD_HASH})
+    assert mismatch.value.error_code == "EOS_JOURNAL_POST_INVALID"
+
+
+@pytest.mark.parametrize(
+    ("candidate_id", "field", "value"),
+    (
+        (CANDIDATE_ID, "schema_version", "eos_journal_post_command.v0"),
+        ("not-a-uuid", None, None),
+        (CANDIDATE_ID, "company_id", "not-a-uuid"),
+        (CANDIDATE_ID, "idempotency_key", "contains a space"),
+        (CANDIDATE_ID, "payload_hash", "not-a-hash"),
+        (CANDIDATE_ID, "expected_candidate_version", 0),
+        (CANDIDATE_ID, "expected_candidate_revision", True),
+    ),
+)
+def test_atomic_posting_command_rejects_malformed_scalar_boundaries(
+    candidate_id: str,
+    field: str | None,
+    value: object,
+) -> None:
+    payload = {
+        "schema_version": "eos_journal_post_command.v1",
+        "tenant_id": TENANT,
+        "company_id": COMPANY_ID,
+        "business_operation_id": BUSINESS_OPERATION_ID,
+        "idempotency_key": "w40-s4-03-parser",
+        "payload_hash": PAYLOAD_HASH,
+        "expected_candidate_version": 2,
+        "expected_candidate_revision": 1,
+        "expected_candidate_hash": DOCUMENT_HASH,
+        "accounting_approval_evidence_id": EVIDENCE_ID,
+        "correlation_id": "correlation-w40-s4-03-parser",
+    }
+    if field is not None:
+        payload[field] = value
+    with pytest.raises(EosJournalPostingError) as rejected:
+        parse_journal_post_command(candidate_id, payload)
+    assert rejected.value.status_code == 422
+
+
+def test_atomic_posting_transaction_local_guards_fail_closed() -> None:
+    _engine_value, sessions, candidates, command_service, _authorization = _runtime()
+    command_service.execute(_payload(), caller=CALLER)
+    service, payload = _prepare_atomic_posting(sessions, candidates)
+    command = parse_journal_post_command(CANDIDATE_ID, payload)
+    validation = service._validation.validate(
+        CANDIDATE_ID,
+        {
+            "schema_version": "eos_voucher_candidate_validate.v1",
+            "tenant_id": TENANT,
+            "expected_revision_no": 1,
+            "expected_candidate_hash": command.expected_candidate_hash,
+            "as_of": (NOW + timedelta(minutes=1)).isoformat(),
+        },
+    )
+
+    def assert_error(code: str, action) -> None:
+        with pytest.raises(EosBusinessOperationError) as rejected:
+            action()
+        assert rejected.value.error_code == code
+
+    with sessions() as session:
+        assert_error(
+            "EOS_JOURNAL_POST_CANDIDATE_NOT_FOUND",
+            lambda: journal_posting_module._load_candidate(
+                session,
+                command=replace(command, candidate_id=str(uuid.uuid4())),
+            ),
+        )
+        assert_error(
+            "EOS_JOURNAL_POST_CANDIDATE_STALE",
+            lambda: journal_posting_module._load_candidate(
+                session,
+                command=replace(command, expected_candidate_revision=99),
+            ),
+        )
+        candidate, _revision, candidate_lines = journal_posting_module._load_candidate(
+            session, command=command
+        )
+        assert_error(
+            "EOS_JOURNAL_POST_PERIOD_NOT_OPEN",
+            lambda: journal_posting_module._lock_open_period(
+                session,
+                command=command,
+                validation={
+                    **validation,
+                    "accounting_period_id": str(uuid.uuid4()),
+                },
+            ),
+        )
+        assert_error(
+            "EOS_JOURNAL_POST_ACCOUNT_POLICY_STALE",
+            lambda: journal_posting_module._load_effective_policies(
+                session,
+                command=command,
+                candidate_lines=[
+                    {**candidate_lines[0], "account_id": str(uuid.uuid4())}
+                ],
+                recognition_date=candidate["recognition_date"],
+                validation=validation,
+            ),
+        )
+        assert_error(
+            "EOS_JOURNAL_POST_ACCOUNT_CURRENCY_DENIED",
+            lambda: journal_posting_module._load_effective_policies(
+                session,
+                command=command,
+                candidate_lines=candidate_lines,
+                recognition_date=candidate["recognition_date"],
+                validation={**validation, "transaction_currency": "USD"},
+            ),
+        )
+        assert_error(
+            "EOS_JOURNAL_POST_ACCOUNT_POLICY_STALE",
+            lambda: journal_posting_module._load_effective_policies(
+                session,
+                command=command,
+                candidate_lines=candidate_lines,
+                recognition_date=candidate["recognition_date"],
+                validation={**validation, "account_policy_set_hash": PAYLOAD_HASH},
+            ),
+        )
+        assert_error(
+            "EOS_JOURNAL_POST_DOCUMENT_NOT_FOUND",
+            lambda: journal_posting_module._load_document(
+                session,
+                command=command,
+                candidate={
+                    **candidate,
+                    "document_envelope_id": str(uuid.uuid4()),
+                },
+            ),
+        )
+        assert_error(
+            "EOS_JOURNAL_POST_ACCOUNTING_PROOF_STALE",
+            lambda: journal_posting_module._load_accounting_evidence(
+                session,
+                command=command,
+                receipt={"accounting_proof_hash": PAYLOAD_HASH},
+            ),
+        )
+        assert_error(
+            "EOS_JOURNAL_POST_FX_STALE",
+            lambda: journal_posting_module._load_fx_snapshot(
+                session,
+                command=command,
+                validation={
+                    **validation,
+                    "fx_evidence": {"snapshot_hash": PAYLOAD_HASH},
+                },
+            ),
+        )
+        period = journal_posting_module._lock_open_period(
+            session,
+            command=command,
+            validation=validation,
+        )
+        assert (
+            journal_posting_module._allocate_sequence(
+                session,
+                command=command,
+                period=period,
+                updated_at=NOW,
+            )
+            == 1
+        )
+        assert (
+            journal_posting_module._allocate_sequence(
+                session,
+                command=command,
+                period=period,
+                updated_at=NOW,
+            )
+            == 2
+        )
+
+
+def test_atomic_posting_validation_and_proof_binding_guards() -> None:
+    _engine_value, sessions, candidates, command_service, _authorization = _runtime()
+    command_service.execute(_payload(), caller=CALLER)
+    service, payload = _prepare_atomic_posting(sessions, candidates)
+    command = parse_journal_post_command(CANDIDATE_ID, payload)
+    validation = service._validation.validate(
+        CANDIDATE_ID,
+        {
+            "schema_version": "eos_voucher_candidate_validate.v1",
+            "tenant_id": TENANT,
+            "expected_revision_no": 1,
+            "expected_candidate_hash": command.expected_candidate_hash,
+            "as_of": (NOW + timedelta(minutes=1)).isoformat(),
+        },
+    )
+    receipt = service._admission.admit(
+        CANDIDATE_ID,
+        {
+            "schema_version": "eos_accounting_posting_admission_request.v1",
+            "tenant_id": TENANT,
+            "company_id": COMPANY_ID,
+            "expected_candidate_version": 2,
+            "expected_candidate_revision": 1,
+            "expected_candidate_hash": command.expected_candidate_hash,
+            "accounting_approval_evidence_id": (
+                command.accounting_approval_evidence_id
+            ),
+            "correlation_id": command.correlation_id,
+        },
+    )
+    with pytest.raises(EosJournalPostingError) as validation_stale:
+        journal_posting_module._require_validation_matches(
+            command,
+            {**validation, "candidate_version": 99},
+            receipt,
+        )
+    assert validation_stale.value.error_code == "EOS_JOURNAL_POST_STALE"
+    with pytest.raises(EosJournalPostingError) as proof_stale:
+        journal_posting_module._require_validation_matches(
+            command,
+            validation,
+            {**receipt, "validation_hash": PAYLOAD_HASH},
+        )
+    assert proof_stale.value.error_code == "EOS_JOURNAL_POST_STALE"
+
+
+@pytest.mark.parametrize(
+    ("raised", "expected_code"),
+    (
+        (
+            EosJournalError(
+                "EOS_JOURNAL_POST_STAGE_DENIED",
+                "Journal staging denied",
+                status_code=409,
+            ),
+            "EOS_JOURNAL_POST_STAGE_DENIED",
+        ),
+        (
+            SQLAlchemyError("database unavailable"),
+            "EOS_JOURNAL_POST_PERSISTENCE_UNAVAILABLE",
+        ),
+    ),
+)
+def test_atomic_posting_translates_transaction_local_failures(
+    raised: Exception,
+    expected_code: str,
+) -> None:
+    _engine_value, sessions, candidates, command_service, _authorization = _runtime()
+    command_service.execute(_payload(), caller=CALLER)
+    service, payload = _prepare_atomic_posting(sessions, candidates)
+
+    class BrokenJournals:
+        def stage_in_session(self, _session, **_staged):
+            raise raised
+
+    service._journals = BrokenJournals()
+    with pytest.raises(EosJournalPostingError) as failed:
+        service.execute(CANDIDATE_ID, payload)
+    assert failed.value.error_code == expected_code
+
+
+def test_atomic_posting_rejects_missing_transaction_and_naive_clock() -> None:
+    _engine_value, sessions, candidates, command_service, _authorization = _runtime()
+    command_service.execute(_payload(), caller=CALLER)
+    service, payload = _prepare_atomic_posting(sessions, candidates)
+
+    class MissingTransactionCoordinator:
+        def execute(self, _request, mutation):
+            return mutation(None)
+
+    service._coordinator = MissingTransactionCoordinator()
+    with pytest.raises(EosJournalPostingError) as missing_transaction:
+        service.execute(CANDIDATE_ID, payload)
+    assert (
+        missing_transaction.value.error_code == "EOS_JOURNAL_POST_TRANSACTION_REQUIRED"
+    )
+
+    service._clock = lambda: datetime(2026, 11, 12, 3, 0)  # noqa: DTZ001
+    with pytest.raises(EosJournalPostingError) as naive_clock:
+        service.execute(CANDIDATE_ID, payload)
+    assert naive_clock.value.error_code == "EOS_JOURNAL_POST_INVALID"
+
+
+def test_atomic_posting_replay_admission_errors_and_race_replay(monkeypatch) -> None:
+    _engine_value, sessions, candidates, command_service, _authorization = _runtime()
+    command_service.execute(_payload(), caller=CALLER)
+    service, payload = _prepare_atomic_posting(sessions, candidates)
+    command = parse_journal_post_command(CANDIDATE_ID, payload)
+    request = journal_posting_module.EosBusinessOperationRequest(
+        tenant_id=TENANT,
+        business_operation_id=command.business_operation_id,
+        idempotency_key=command.idempotency_key,
+        operation=journal_posting_module.JOURNAL_POST_OPERATION,
+        payload_hash=command.payload_hash,
+        event_type=journal_posting_module.JOURNAL_POST_EVENT_TYPE,
+    )
+
+    class BrokenSession:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def execute(self, _query):
+            raise SQLAlchemyError("replay lookup failed")
+
+    service._session_factory = BrokenSession
+    with pytest.raises(EosJournalPostingError) as unavailable:
+        service._existing_replay(request)
+    assert unavailable.value.status_code == 503
+
+    class ExistingResult:
+        def scalar_one_or_none(self):
+            return command.business_operation_id
+
+    class ExistingSession(BrokenSession):
+        def execute(self, _query):
+            return ExistingResult()
+
+    service._session_factory = ExistingSession
+    service._coordinator = SimpleNamespace(
+        execute=lambda _request, mutation: mutation(None)
+    )
+    with pytest.raises(EosJournalPostingError) as incomplete:
+        service._existing_replay(request)
+    assert incomplete.value.error_code == "EOS_JOURNAL_POST_REPLAY_INCOMPLETE"
+
+    replay = SimpleNamespace(
+        created=False,
+        to_public_projection=lambda: {
+            "created": False,
+            "tenant_id": TENANT,
+            "business_operation_id": command.business_operation_id,
+            "idempotency_key": command.idempotency_key,
+            "operation": journal_posting_module.JOURNAL_POST_OPERATION,
+            "payload_hash": command.payload_hash,
+            "commit_state": "COMMITTED",
+            "result": {"candidate_state": "POSTED"},
+            "outbox": {},
+        },
+    )
+    lookups = iter((None, replay))
+    monkeypatch.setattr(service, "_existing_replay", lambda _request: next(lookups))
+
+    class RacedValidation:
+        def validate(self, *_args, **_kwargs):
+            raise journal_posting_module.EosCandidateValidationError(
+                "EOS_CANDIDATE_STATE_INVALID",
+                "Candidate was committed concurrently",
+                status_code=409,
+            )
+
+    service._validation = RacedValidation()
+    raced = service.execute(CANDIDATE_ID, payload)
+    assert raced["idempotency_disposition"] == "REPLAYED"
+    assert raced["result"]["candidate_state"] == "POSTED"
+
+    monkeypatch.setattr(service, "_existing_replay", lambda _request: None)
+    with pytest.raises(EosJournalPostingError) as stale:
+        service.execute(CANDIDATE_ID, payload)
+    assert stale.value.error_code == "EOS_CANDIDATE_STATE_INVALID"
+
+
+@pytest.mark.skipif(
+    not DATABASE_URL or not ATOMIC_POSTGRES_SMOKE,
+    reason="Protected W40-S4-03 EOS PostgreSQL smoke is disabled",
+)
+def test_actual_postgres_atomic_posting_commits_and_replays() -> None:
+    schema_name = f"mybee_w40s403_{uuid.uuid4().hex}"
+    psycopg_url = psycopg_database_url(DATABASE_URL)
+    with psycopg.connect(psycopg_url, autocommit=True) as connection:
+        assert connection.execute(
+            "SELECT current_database(), current_user"
+        ).fetchone() == ("nex_eos_test", "nex_eos_user")
+        connection.execute(
+            sql.SQL("CREATE SCHEMA {}").format(sql.Identifier(schema_name))
+        )
+    scoped_url = (
+        make_url(DATABASE_URL)
+        .update_query_dict({"options": f"-csearch_path={schema_name}"})
+        .render_as_string(hide_password=False)
+    )
+    engine = None
+    try:
+        migration = run_service_migrations(
+            "nex-eos", database_url=scoped_url, profile="test"
+        )
+        assert "2540_eos_atomic_journal_posting" in migration.applied
+        engine = create_engine(scoped_url, pool_pre_ping=True)
+        _engine_value, sessions, candidates, command, _authorization = _runtime(
+            engine=engine
+        )
+        command.execute(_payload(), caller=CALLER)
+        service, payload = _prepare_atomic_posting(sessions, candidates)
+        created = service.execute(CANDIDATE_ID, payload)
+        replayed = service.execute(CANDIDATE_ID, payload)
+        assert created["idempotency_disposition"] == "CREATED"
+        assert replayed["idempotency_disposition"] == "REPLAYED"
+        with sessions() as session:
+            counts = {
+                table.name: session.execute(
+                    select(func.count()).select_from(table)
+                ).scalar_one()
+                for table in (
+                    EOS_JOURNAL_HEADER_TABLE,
+                    EOS_JOURNAL_LINE_TABLE,
+                    EOS_APPROVED_DOCUMENT_CONSUMPTION_TABLE,
+                    EOS_JOURNAL_SEQUENCE_TABLE,
+                )
+            }
+            assert counts == {
+                "eos_journal_header": 1,
+                "eos_journal_line": 2,
+                "eos_approved_document_consumption": 1,
+                "eos_journal_sequence": 1,
+            }
+            assert (
+                session.execute(
+                    select(EOS_VOUCHER_CANDIDATE_TABLE.c.state).where(
+                        EOS_VOUCHER_CANDIDATE_TABLE.c.candidate_id == CANDIDATE_ID
+                    )
+                ).scalar_one()
+                == "POSTED"
+            )
         engine.dispose()
         engine = None
     finally:

@@ -102,7 +102,7 @@ EOS_VOUCHER_CANDIDATE_TABLE = Table(
         name="fk_eos_candidate_operation",
     ),
     CheckConstraint(
-        "state IN ('DRAFT', 'READY_FOR_REVIEW', 'RETURNED_FOR_CORRECTION')",
+        "state IN ('DRAFT', 'READY_FOR_REVIEW', 'RETURNED_FOR_CORRECTION', 'POSTED')",
         name="ck_eos_candidate_s3_state",
     ),
     CheckConstraint(

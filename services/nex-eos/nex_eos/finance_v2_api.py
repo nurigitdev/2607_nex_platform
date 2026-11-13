@@ -22,6 +22,7 @@ from .candidate_validation import (
     EosCandidateValidationError,
     EosCandidateValidationService,
 )
+from .journal_posting import EosJournalPostingError, EosJournalPostingService
 from .journal_verification import EosJournalQueryService
 from .journals import EosJournalError
 from .voucher_candidate_commands import (
@@ -37,6 +38,50 @@ from .voucher_commands import EosServiceCaller
 
 
 def register_finance_v2_routes(app: FastAPI) -> None:
+    @app.post(
+        "/internal/v2/finance/voucher-candidates/{candidate_id}/posting",
+        response_model=None,
+        operation_id="FINANCE.VOUCHER.APPROVE_AND_POST",
+    )
+    def post_voucher_candidate(
+        candidate_id: str,
+        payload: dict[str, Any],
+        request: Request,
+        authorization: str | None = Header(default=None),
+    ):
+        admitted = admit_service_token_from_request(
+            request,
+            authorization,
+            expected_audience="nex-eos",
+            required_scopes=(DEFAULT_SERVICE_SCOPE,),
+            route_class="WRITE",
+        )
+        if isinstance(admitted, JSONResponse):
+            return admitted
+        service: EosJournalPostingService | None = getattr(
+            request.app.state, "eos_journal_posting_service", None
+        )
+        if service is None:
+            return _journal_posting_problem(
+                request,
+                EosJournalPostingError(
+                    "EOS_JOURNAL_POST_UNAVAILABLE",
+                    "Atomic Posting dependencies are not configured",
+                    status_code=503,
+                    retryable=True,
+                ),
+            )
+        try:
+            result = service.execute(candidate_id, payload)
+        except EosJournalPostingError as exc:
+            return _journal_posting_problem(request, exc)
+        return JSONResponse(
+            result,
+            status_code=(
+                201 if result["idempotency_disposition"] == "CREATED" else 200
+            ),
+        )
+
     @app.get(
         "/internal/v2/finance/journals/{journal_id}",
         response_model=None,
@@ -541,4 +586,16 @@ def _journal_problem(request: Request, exc: EosJournalError):
         detail=exc.detail,
         retryable=exc.retryable,
         type_uri="https://nex-platform.local/problems/eos-journal-query-failed",
+    )
+
+
+def _journal_posting_problem(request: Request, exc: EosJournalPostingError):
+    return problem_response(
+        request,
+        status_code=exc.status_code,
+        error_code=exc.error_code,
+        title="EOS atomic Journal Posting failed",
+        detail=exc.detail,
+        retryable=exc.retryable,
+        type_uri="https://nex-platform.local/problems/eos-journal-posting-failed",
     )

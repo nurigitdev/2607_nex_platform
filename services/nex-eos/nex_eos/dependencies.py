@@ -27,6 +27,7 @@ from .approval_transitions import (
     EosBusinessApprovalTransitionService,
     SqlAlchemyEosApprovalTransitionRepository,
 )
+from .approved_document_consumption import EosApprovedDocumentConsumptionAdapter
 from .approved_documents import (
     EosApprovedDocumentService,
     SqlAlchemyEosApprovedDocumentRepository,
@@ -64,6 +65,7 @@ from .document_signoff import (
 )
 from .fx_rates import EosFxRateService, SqlAlchemyEosFxRateRepository
 from .health import build_configuration_readiness_check
+from .journal_posting import EosJournalPostingService
 from .journal_verification import EosJournalQueryService
 from .journals import SqlAlchemyEosJournalRepository
 from .legal_entities import (
@@ -142,6 +144,7 @@ class EosDependencies:
     accounting_posting_admission_service: EosAccountingPostingAdmissionService | None
     journals: SqlAlchemyEosJournalRepository | None
     journal_query_service: EosJournalQueryService | None
+    journal_posting_service: EosJournalPostingService | None
     document_signoff_service: EosDocumentSignoffService | None
     scoped_approval_decision_router: EosScopedApprovalDecisionRouter | None
     fx_rate_service: EosFxRateService | None
@@ -438,6 +441,22 @@ def build_eos_dependencies(
         and project_authorizer is not None
         else None
     )
+    journal_posting_service = (
+        EosJournalPostingService(
+            session_factory=database_runtime.session_factory,
+            coordinator=business_transactions,
+            validation_service=candidate_validation_service,
+            admission_service=accounting_posting_admission_service,
+            journals=journals,
+            consumption=EosApprovedDocumentConsumptionAdapter(),
+        )
+        if database_runtime is not None
+        and business_transactions is not None
+        and candidate_validation_service is not None
+        and accounting_posting_admission_service is not None
+        and journals is not None
+        else None
+    )
     document_signoff_service = (
         EosDocumentSignoffService(
             session_factory=database_runtime.session_factory,
@@ -676,6 +695,7 @@ def build_eos_dependencies(
         accounting_posting_admission_service=accounting_posting_admission_service,
         journals=journals,
         journal_query_service=journal_query_service,
+        journal_posting_service=journal_posting_service,
         document_signoff_service=document_signoff_service,
         scoped_approval_decision_router=scoped_approval_decision_router,
         fx_rate_service=fx_rate_service,
