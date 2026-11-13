@@ -3,6 +3,7 @@ from __future__ import annotations
 import copy
 import os
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
@@ -22,6 +23,7 @@ from nex_eos import (
     EOS_CANDIDATE_REVIEW_EVENT_TABLE,
     EOS_DOCUMENT_SIGNOFF_EVIDENCE_TABLE,
     EOS_METADATA,
+    EOS_OUTBOX_TABLE,
     EOS_SCOPED_APPROVAL_CASE_TABLE,
     EOS_VOUCHER_CANDIDATE_LINE_TABLE,
     EOS_VOUCHER_CANDIDATE_REVISION_TABLE,
@@ -29,6 +31,7 @@ from nex_eos import (
     AccountInput,
     EosCandidateReviewError,
     EosCreateVoucherCandidateService,
+    EosReviseVoucherCandidateService,
     EosServiceCaller,
     EosVoucherAuthorizationClient,
     EosVoucherCandidateCommandError,
@@ -45,7 +48,9 @@ from nex_eos import (
     VoucherCandidateInput,
     finance_v2_api,
     parse_create_voucher_candidate_command,
+    parse_revise_voucher_candidate_command,
     voucher_candidate_payload_hash,
+    voucher_candidate_revision_payload_hash,
     voucher_candidates,
 )
 from nex_eos import candidate_review as candidate_review_module
@@ -53,7 +58,7 @@ from nex_eos.finance_v2_api import register_finance_v2_routes
 from nex_runtime import psycopg_database_url
 from psycopg import sql
 from run_migrations import load_migrations, run_service_migrations
-from sqlalchemy import create_engine, func, make_url, select, update
+from sqlalchemy import create_engine, delete, func, make_url, select, text, update
 from sqlalchemy.exc import DBAPIError, IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
@@ -84,6 +89,7 @@ EVIDENCE_HASH = "sha256:" + "f" * 64
 DATABASE_URL = os.getenv("NEX_EOS_TEST_DATABASE_URL", "")
 POSTGRES_SMOKE = os.getenv("NEX_EOS_MYBEE_S3_01_POSTGRES_SMOKE") == "1"
 REVIEW_POSTGRES_SMOKE = os.getenv("NEX_EOS_MYBEE_S3_03_POSTGRES_SMOKE") == "1"
+REVISION_POSTGRES_SMOKE = os.getenv("NEX_EOS_MYBEE_W40_S4_00A_POSTGRES_SMOKE") == "1"
 VALIDATION_HASH = "sha256:" + "9" * 64
 
 
@@ -157,14 +163,10 @@ def _seed(
                 PROOF_HASH if project_origin == "APPROVED_APPLICATION" else None
             ),
             project_owner_subject_id=(
-                "employee-owner"
-                if project_origin == "APPROVED_APPLICATION"
-                else None
+                "employee-owner" if project_origin == "APPROVED_APPLICATION" else None
             ),
             project_manager_subject_id=(
-                "employee-manager"
-                if project_origin == "APPROVED_APPLICATION"
-                else None
+                "employee-manager" if project_origin == "APPROVED_APPLICATION" else None
             ),
         )
     )
@@ -551,6 +553,106 @@ def _candidate_input() -> VoucherCandidateInput:
         lines=command.lines,
         created_business_operation_id=command.business_operation_id,
     )
+
+
+def _revision_payload(
+    *,
+    candidate_hash: str,
+    return_event_id: str,
+    amount: str = "12000.0000",
+    operation_id: str = "32000000-0000-4000-8000-000000000030",
+    idempotency_key: str = "w40-s4-00a-candidate-revision-2",
+):
+    payload = {
+        "schema_version": "eos_voucher_candidate_revise.v1",
+        "tenant_id": TENANT,
+        "business_operation_id": operation_id,
+        "idempotency_key": idempotency_key,
+        "payload_hash": "sha256:" + "0" * 64,
+        "actor_subject_id": "employee-1001",
+        "candidate_ref": {
+            "type": "eos.voucher_candidate",
+            "id": CANDIDATE_ID,
+            "expected_version": 3,
+            "expected_revision_no": 1,
+            "expected_hash": candidate_hash,
+        },
+        "return_event_ref": {
+            "type": "eos.candidate_review_event",
+            "id": return_event_id,
+        },
+        "replacement": {
+            "lines": [
+                {
+                    "line_no": 1,
+                    "account_ref": {"type": "eos.account", "id": DEBIT_ID},
+                    "debit_original": amount,
+                    "credit_original": "0.0000",
+                    "source_record_line_ref": "expense-line-1-corrected",
+                    "description": "Corrected travel expense",
+                    "evidence_hash": EVIDENCE_HASH,
+                },
+                {
+                    "line_no": 2,
+                    "account_ref": {"type": "eos.account", "id": CREDIT_ID},
+                    "debit_original": "0.0000",
+                    "credit_original": amount,
+                    "source_record_line_ref": "expense-line-2-corrected",
+                    "description": "Corrected cash offset",
+                    "evidence_hash": EVIDENCE_HASH,
+                },
+            ]
+        },
+        "trace": {
+            "trace_id": "trace-w40-s4-00a",
+            "correlation_id": "correlation-w40-s4-00a",
+            "causation_id": "causation-w40-s4-00a",
+        },
+    }
+    payload["payload_hash"] = voucher_candidate_revision_payload_hash(payload)
+    return payload
+
+
+def _returned_candidate_runtime():
+    engine, sessions, candidates, command, authorization = _runtime()
+    command.execute(_payload(), caller=CALLER)
+    case, review, validation = _candidate_review_fixture(sessions, candidates)
+    reviews = SqlAlchemyEosCandidateReviewRepository(sessions, clock=lambda: NOW)
+    with sessions.begin() as session:
+        reviews.submit_in_session(
+            session,
+            scoped_case=case,
+            review=review,
+            validation=validation,
+        )
+    with sessions.begin() as session:
+        returned = reviews.return_from_rejection_in_session(
+            session,
+            tenant_id=TENANT,
+            approval_case_id=REVIEW_CASE_ID,
+            review=review,
+            actor_subject_id="accountant-lead",
+            reason="Correct the expense amount and evidence.",
+            decided_at=NOW + timedelta(minutes=1),
+        )
+    assert returned is not None
+    service = EosReviseVoucherCandidateService(
+        coordinator=SqlAlchemyEosBusinessTransactionCoordinator(
+            sessions,
+            id_factory=lambda: str(uuid.uuid4()),
+            clock=lambda: NOW + timedelta(minutes=2),
+        ),
+        candidates=candidates,
+        reviews=reviews,
+        authorizer=EosVoucherAuthorizationClient(
+            authorization,
+            required_scope="finance:voucher-candidate:create",
+            clock=lambda: NOW + timedelta(minutes=2),
+        ),
+        id_factory=lambda: "32000000-0000-4000-8000-000000000031",
+        clock=lambda: NOW + timedelta(minutes=2),
+    )
+    return engine, sessions, candidates, reviews, service, review, returned
 
 
 def _admit_service_token(monkeypatch) -> None:
@@ -1293,6 +1395,446 @@ def test_candidate_review_rejection_requires_reason_and_is_exactly_once() -> Non
             )
             == 2
         )
+
+
+def test_candidate_revision_appends_immutable_revision_and_replays_exactly_once() -> (
+    None
+):
+    (
+        _engine_value,
+        sessions,
+        candidates,
+        _reviews,
+        service,
+        review,
+        returned,
+    ) = _returned_candidate_runtime()
+    payload = _revision_payload(
+        candidate_hash=review["candidate_hash"],
+        return_event_id=returned["event_id"],
+    )
+
+    parsed = parse_revise_voucher_candidate_command(payload)
+    assert parsed.expected_candidate_version == 3
+    assert parsed.expected_revision_no == 1
+    created = service.execute(CANDIDATE_ID, payload, caller=CALLER)
+    replayed = service.execute(CANDIDATE_ID, payload, caller=CALLER)
+
+    assert created["idempotency_disposition"] == "CREATED"
+    assert replayed["idempotency_disposition"] == "REPLAYED"
+    assert created["revision_ref"] == replayed["revision_ref"]
+    assert created["revision_ref"]["revision_no"] == 2
+    assert created["candidate_ref"] == {
+        "type": "eos.voucher_candidate",
+        "id": CANDIDATE_ID,
+        "state": "DRAFT",
+        "version": 4,
+    }
+    projected = candidates.get(tenant_id=TENANT, candidate_id=CANDIDATE_ID)
+    assert projected is not None
+    assert projected["current_revision_no"] == 2
+    assert projected["revision"]["candidate_hash"] != review["candidate_hash"]
+    assert projected["lines"][0]["debit_original"] == Decimal("12000.0000")
+    with sessions() as session:
+        revisions = (
+            session.execute(
+                select(EOS_VOUCHER_CANDIDATE_REVISION_TABLE)
+                .where(
+                    EOS_VOUCHER_CANDIDATE_REVISION_TABLE.c.tenant_id == TENANT,
+                    EOS_VOUCHER_CANDIDATE_REVISION_TABLE.c.candidate_id == CANDIDATE_ID,
+                )
+                .order_by(EOS_VOUCHER_CANDIDATE_REVISION_TABLE.c.revision_no)
+            )
+            .mappings()
+            .all()
+        )
+        assert [row["revision_no"] for row in revisions] == [1, 2]
+        assert revisions[0]["candidate_hash"] == review["candidate_hash"]
+        assert (
+            session.scalar(
+                select(func.count()).select_from(EOS_VOUCHER_CANDIDATE_LINE_TABLE)
+            )
+            == 4
+        )
+        event = (
+            session.execute(
+                select(EOS_OUTBOX_TABLE).where(
+                    EOS_OUTBOX_TABLE.c.event_type == "VOUCHER_CANDIDATE_REVISED"
+                )
+            )
+            .mappings()
+            .one()
+        )
+        assert event["business_operation_id"] == payload["business_operation_id"]
+
+
+def test_candidate_revision_rejects_noop_stale_return_and_changed_replay() -> None:
+    (
+        _engine_value,
+        _sessions,
+        _candidates,
+        _reviews,
+        service,
+        review,
+        returned,
+    ) = _returned_candidate_runtime()
+    no_change = _revision_payload(
+        candidate_hash=review["candidate_hash"],
+        return_event_id=returned["event_id"],
+    )
+    for index, line in enumerate(no_change["replacement"]["lines"], start=1):
+        line["source_record_line_ref"] = f"expense-line-{index}"
+        line["description"] = "Travel expense" if index == 1 else "Cash offset"
+        line["debit_original"] = "10000.0000" if index == 1 else "0.0000"
+        line["credit_original"] = "0.0000" if index == 1 else "10000.0000"
+    no_change["payload_hash"] = voucher_candidate_revision_payload_hash(no_change)
+    with pytest.raises(EosVoucherCandidateCommandError) as noop:
+        service.execute(CANDIDATE_ID, no_change, caller=CALLER)
+    assert noop.value.error_code == "EOS_VOUCHER_CANDIDATE_REVISION_NO_CHANGE"
+
+    stale_event = _revision_payload(
+        candidate_hash=review["candidate_hash"],
+        return_event_id=str(uuid.uuid4()),
+        operation_id="32000000-0000-4000-8000-000000000032",
+        idempotency_key="w40-s4-00a-stale-return",
+    )
+    with pytest.raises(EosVoucherCandidateCommandError) as stale:
+        service.execute(CANDIDATE_ID, stale_event, caller=CALLER)
+    assert stale.value.status_code == 409
+
+    payload = _revision_payload(
+        candidate_hash=review["candidate_hash"],
+        return_event_id=returned["event_id"],
+        operation_id="32000000-0000-4000-8000-000000000033",
+        idempotency_key="w40-s4-00a-changed-replay",
+    )
+    service.execute(CANDIDATE_ID, payload, caller=CALLER)
+    changed = copy.deepcopy(payload)
+    changed["replacement"]["lines"][0]["description"] = "Changed replay"
+    changed["payload_hash"] = voucher_candidate_revision_payload_hash(changed)
+    with pytest.raises(EosVoucherCandidateCommandError) as conflict:
+        service.execute(CANDIDATE_ID, changed, caller=CALLER)
+    assert conflict.value.status_code == 409
+
+
+@pytest.mark.parametrize(
+    "mutator",
+    (
+        lambda value: value.update(schema_version="unsupported"),
+        lambda value: value["candidate_ref"].update(type="eos.voucher_draft"),
+        lambda value: value["return_event_ref"].update(type="eos.review"),
+        lambda value: value["replacement"].update(lines="not-an-array"),
+        lambda value: value["replacement"].update(lines=[]),
+        lambda value: value["replacement"]["lines"][0].update(line_no=2),
+        lambda value: value["replacement"]["lines"][0]["account_ref"].update(
+            type="eos.project"
+        ),
+        lambda value: value["replacement"]["lines"][0].update(credit_original="1.0000"),
+        lambda value: value["candidate_ref"].update(id="not-a-uuid"),
+        lambda value: value.update(tenant_id="bad tenant"),
+        lambda value: value.update(idempotency_key=""),
+        lambda value: value.update(payload_hash="not-a-hash"),
+        lambda value: value["candidate_ref"].update(expected_version=True),
+        lambda value: value["replacement"]["lines"][0].update(debit_original="12000"),
+        lambda value: value.pop("return_event_ref"),
+    ),
+)
+def test_candidate_revision_parser_rejects_malformed_commands(mutator) -> None:
+    payload = _revision_payload(
+        candidate_hash="sha256:" + "a" * 64,
+        return_event_id="32000000-0000-4000-8000-000000000051",
+    )
+    mutator(payload)
+    with pytest.raises(EosVoucherCandidateCommandError) as invalid:
+        parse_revise_voucher_candidate_command(payload)
+    assert invalid.value.status_code == 422
+
+
+def test_candidate_revision_service_rejects_hash_authorization_and_missing_tx() -> None:
+    (
+        _engine_value,
+        _sessions,
+        _candidates,
+        _reviews,
+        service,
+        review,
+        returned,
+    ) = _returned_candidate_runtime()
+    payload = _revision_payload(
+        candidate_hash=review["candidate_hash"],
+        return_event_id=returned["event_id"],
+    )
+    changed_hash = copy.deepcopy(payload)
+    changed_hash["payload_hash"] = "sha256:" + "f" * 64
+    with pytest.raises(EosVoucherCandidateCommandError) as mismatch:
+        service.execute(CANDIDATE_ID, changed_hash, caller=CALLER)
+    assert mismatch.value.error_code == "EOS_VOUCHER_CANDIDATE_PAYLOAD_HASH_MISMATCH"
+
+    source = service._authorizer._source
+    source.active = False
+    with pytest.raises(EosVoucherCandidateCommandError) as denied:
+        service.execute(CANDIDATE_ID, payload, caller=CALLER)
+    assert denied.value.status_code == 403
+    source.active = True
+
+    class MissingTransactionCoordinator:
+        @staticmethod
+        def execute(_request, mutation):
+            mutation(None)
+
+    service._coordinator = MissingTransactionCoordinator()
+    with pytest.raises(EosVoucherCandidateCommandError) as transaction:
+        service.execute(CANDIDATE_ID, payload, caller=CALLER)
+    assert transaction.value.error_code == "EOS_VOUCHER_CANDIDATE_TRANSACTION_REQUIRED"
+
+
+def test_candidate_revision_api_and_openapi_contract(monkeypatch) -> None:
+    _admit_service_token(monkeypatch)
+    (
+        _engine_value,
+        _sessions,
+        _candidates,
+        _reviews,
+        service,
+        review,
+        returned,
+    ) = _returned_candidate_runtime()
+    payload = _revision_payload(
+        candidate_hash=review["candidate_hash"],
+        return_event_id=returned["event_id"],
+    )
+    app = FastAPI()
+    register_finance_v2_routes(app)
+    app.state.eos_voucher_candidate_revision_service = service
+    client = TestClient(app)
+
+    mismatch = client.post(
+        f"/internal/v2/finance/voucher-candidates/{uuid.uuid4()}/revisions",
+        json=payload,
+        headers={"Authorization": "Bearer service-token"},
+    )
+    assert mismatch.status_code == 422
+    response = client.post(
+        f"/internal/v2/finance/voucher-candidates/{CANDIDATE_ID}/revisions",
+        json=payload,
+        headers={"Authorization": "Bearer service-token"},
+    )
+    assert response.status_code == 201
+    del app.state.eos_voucher_candidate_revision_service
+    unavailable = client.post(
+        f"/internal/v2/finance/voucher-candidates/{CANDIDATE_ID}/revisions",
+        json=payload,
+        headers={"Authorization": "Bearer service-token"},
+    )
+    assert unavailable.status_code == 503
+
+    spec = yaml.safe_load(
+        Path("contracts/openapi/nex-eos.openapi.yaml").read_text(encoding="utf-8")
+    )
+    route = spec["paths"][
+        "/internal/v2/finance/voucher-candidates/{candidate_id}/revisions"
+    ]["post"]
+    assert route["operationId"] == "FINANCE.VOUCHER_CANDIDATE.REVISE"
+    assert route["x-nex-business-scope"] == "finance:voucher-candidate:create"
+
+
+@pytest.mark.skipif(
+    not DATABASE_URL or not REVISION_POSTGRES_SMOKE,
+    reason="Protected W40-S4-00A EOS PostgreSQL smoke is disabled",
+)
+def test_actual_postgres_candidate_revision_race_immutability_and_zero_residue() -> (
+    None
+):
+    schema_name = f"mybee_w40s400a_{uuid.uuid4().hex}"
+    psycopg_url = psycopg_database_url(DATABASE_URL)
+    with psycopg.connect(psycopg_url, autocommit=True) as connection:
+        assert connection.execute(
+            "SELECT current_database(), current_user"
+        ).fetchone() == ("nex_eos_test", "nex_eos_user")
+        connection.execute(
+            sql.SQL("CREATE SCHEMA {}").format(sql.Identifier(schema_name))
+        )
+    scoped_url = (
+        make_url(DATABASE_URL)
+        .update_query_dict({"options": f"-csearch_path={schema_name}"})
+        .render_as_string(hide_password=False)
+    )
+    engine = None
+    try:
+        migration = run_service_migrations(
+            "nex-eos", database_url=scoped_url, profile="test"
+        )
+        assert "2534_eos_voucher_candidate_v2" in migration.applied
+        assert "2535_eos_candidate_review_state" in migration.applied
+        engine = create_engine(scoped_url, pool_pre_ping=True)
+        (
+            _engine_value,
+            sessions,
+            candidates,
+            command,
+            authorization,
+        ) = _runtime(engine=engine)
+        command.execute(_payload(), caller=CALLER)
+        case, review, validation = _candidate_review_fixture(sessions, candidates)
+        reviews = SqlAlchemyEosCandidateReviewRepository(sessions, clock=lambda: NOW)
+        with sessions.begin() as session:
+            reviews.submit_in_session(
+                session,
+                scoped_case=case,
+                review=review,
+                validation=validation,
+            )
+        with sessions.begin() as session:
+            returned = reviews.return_from_rejection_in_session(
+                session,
+                tenant_id=TENANT,
+                approval_case_id=REVIEW_CASE_ID,
+                review=review,
+                actor_subject_id="accountant-lead",
+                reason="Correct the accounting proposal.",
+                decided_at=NOW + timedelta(minutes=1),
+            )
+        assert returned is not None
+
+        def revision_service(revision_id: str):
+            return EosReviseVoucherCandidateService(
+                coordinator=SqlAlchemyEosBusinessTransactionCoordinator(
+                    sessions,
+                    id_factory=lambda: str(uuid.uuid4()),
+                    clock=lambda: NOW + timedelta(minutes=2),
+                ),
+                candidates=candidates,
+                reviews=reviews,
+                authorizer=EosVoucherAuthorizationClient(
+                    authorization,
+                    required_scope="finance:voucher-candidate:create",
+                    clock=lambda: NOW + timedelta(minutes=2),
+                ),
+                id_factory=lambda: revision_id,
+                clock=lambda: NOW + timedelta(minutes=2),
+            )
+
+        attempts = (
+            (
+                revision_service("32000000-0000-4000-8000-000000000041"),
+                _revision_payload(
+                    candidate_hash=review["candidate_hash"],
+                    return_event_id=returned["event_id"],
+                    amount="12000.0000",
+                    operation_id="32000000-0000-4000-8000-000000000042",
+                    idempotency_key="w40-s4-00a-race-a",
+                ),
+            ),
+            (
+                revision_service("32000000-0000-4000-8000-000000000043"),
+                _revision_payload(
+                    candidate_hash=review["candidate_hash"],
+                    return_event_id=returned["event_id"],
+                    amount="13000.0000",
+                    operation_id="32000000-0000-4000-8000-000000000044",
+                    idempotency_key="w40-s4-00a-race-b",
+                ),
+            ),
+        )
+
+        def execute_attempt(item):
+            service, payload = item
+            try:
+                return "CREATED", service.execute(CANDIDATE_ID, payload, caller=CALLER)
+            except EosVoucherCandidateCommandError as exc:
+                return "CONFLICT", exc.error_code
+
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            outcomes = list(executor.map(execute_attempt, attempts))
+        assert sorted(outcome[0] for outcome in outcomes) == ["CONFLICT", "CREATED"]
+        assert (
+            next(outcome[1] for outcome in outcomes if outcome[0] == "CONFLICT")
+            == "EOS_VOUCHER_CANDIDATE_REVISION_STALE"
+        )
+        winner_index = next(
+            index for index, outcome in enumerate(outcomes) if outcome[0] == "CREATED"
+        )
+        winner_service, winner_payload = attempts[winner_index]
+        replay = winner_service.execute(CANDIDATE_ID, winner_payload, caller=CALLER)
+        assert replay["idempotency_disposition"] == "REPLAYED"
+
+        with sessions() as session:
+            revisions = (
+                session.execute(
+                    select(EOS_VOUCHER_CANDIDATE_REVISION_TABLE)
+                    .where(
+                        EOS_VOUCHER_CANDIDATE_REVISION_TABLE.c.tenant_id == TENANT,
+                        EOS_VOUCHER_CANDIDATE_REVISION_TABLE.c.candidate_id
+                        == CANDIDATE_ID,
+                    )
+                    .order_by(EOS_VOUCHER_CANDIDATE_REVISION_TABLE.c.revision_no)
+                )
+                .mappings()
+                .all()
+            )
+            assert [item["revision_no"] for item in revisions] == [1, 2]
+            assert revisions[0]["candidate_hash"] == review["candidate_hash"]
+            assert (
+                session.scalar(
+                    select(func.count())
+                    .select_from(EOS_OUTBOX_TABLE)
+                    .where(EOS_OUTBOX_TABLE.c.event_type == "VOUCHER_CANDIDATE_REVISED")
+                )
+                == 1
+            )
+            assert session.execute(
+                text(
+                    "SELECT to_regclass('eos_journal_header'), "
+                    "to_regclass('eos_journal_line')"
+                )
+            ).one() == (None, None)
+            with pytest.raises(DBAPIError):
+                session.execute(
+                    update(EOS_VOUCHER_CANDIDATE_REVISION_TABLE)
+                    .where(EOS_VOUCHER_CANDIDATE_REVISION_TABLE.c.tenant_id == TENANT)
+                    .values(created_by="tampered")
+                )
+                session.commit()
+            session.rollback()
+            with pytest.raises(DBAPIError):
+                session.execute(
+                    delete(EOS_VOUCHER_CANDIDATE_REVISION_TABLE).where(
+                        EOS_VOUCHER_CANDIDATE_REVISION_TABLE.c.tenant_id == TENANT
+                    )
+                )
+                session.commit()
+            session.rollback()
+            with pytest.raises(DBAPIError):
+                session.execute(
+                    update(EOS_VOUCHER_CANDIDATE_LINE_TABLE)
+                    .where(EOS_VOUCHER_CANDIDATE_LINE_TABLE.c.tenant_id == TENANT)
+                    .values(description="tampered")
+                )
+                session.commit()
+            session.rollback()
+            with pytest.raises(DBAPIError):
+                session.execute(
+                    delete(EOS_VOUCHER_CANDIDATE_LINE_TABLE).where(
+                        EOS_VOUCHER_CANDIDATE_LINE_TABLE.c.tenant_id == TENANT
+                    )
+                )
+                session.commit()
+            session.rollback()
+
+        engine.dispose()
+        engine = None
+    finally:
+        if engine is not None:
+            engine.dispose()
+        with psycopg.connect(psycopg_url, autocommit=True) as connection:
+            connection.execute(
+                sql.SQL("DROP SCHEMA IF EXISTS {} CASCADE").format(
+                    sql.Identifier(schema_name)
+                )
+            )
+            assert connection.execute(
+                "SELECT to_regnamespace(%s)", (schema_name,)
+            ).fetchone() == (None,)
 
 
 @pytest.mark.parametrize(

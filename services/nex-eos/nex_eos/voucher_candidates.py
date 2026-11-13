@@ -24,6 +24,7 @@ from sqlalchemy import (
     UniqueConstraint,
     Uuid,
     select,
+    update,
 )
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
@@ -242,6 +243,18 @@ class VoucherCandidateInput:
     created_business_operation_id: str
 
 
+@dataclass(frozen=True)
+class VoucherCandidateRevisionInput:
+    tenant_id: str
+    candidate_id: str
+    revision_id: str
+    expected_candidate_version: int
+    expected_revision_no: int
+    expected_candidate_hash: str
+    actor_subject_id: str
+    lines: Sequence[VoucherCandidateLineInput]
+
+
 class SqlAlchemyEosVoucherCandidateRepository:
     def __init__(
         self,
@@ -400,6 +413,228 @@ class SqlAlchemyEosVoucherCandidateRepository:
         except SQLAlchemyError as exc:
             raise _persistence_error() from exc
         return _projection(candidate, revision, lines)
+
+    def append_revision(self, value: VoucherCandidateRevisionInput) -> dict[str, Any]:
+        try:
+            with build_unit_of_work(self._session_factory) as transaction:
+                return self.append_revision_in_session(transaction.db, value)
+        except EosVoucherCandidateError:
+            raise
+        except IntegrityError as exc:
+            raise EosVoucherCandidateError(
+                "EOS_VOUCHER_CANDIDATE_REVISION_CONFLICT",
+                "VoucherCandidate revision identity already exists.",
+                status_code=409,
+            ) from exc
+        except SQLAlchemyError as exc:
+            raise _persistence_error() from exc
+
+    def append_revision_in_session(
+        self,
+        session: Session,
+        value: VoucherCandidateRevisionInput,
+    ) -> dict[str, Any]:
+        if not isinstance(value, VoucherCandidateRevisionInput):
+            raise _invalid("value must be VoucherCandidateRevisionInput.")
+        tenant_id = _scoped_id("tenant_id", value.tenant_id, 128)
+        candidate_id = _uuid("candidate_id", value.candidate_id)
+        revision_id = _uuid("revision_id", value.revision_id)
+        expected_version = _positive_int(
+            "expected_candidate_version", value.expected_candidate_version
+        )
+        expected_revision_no = _positive_int(
+            "expected_revision_no", value.expected_revision_no
+        )
+        expected_candidate_hash = _hash_ref(
+            "expected_candidate_hash", value.expected_candidate_hash
+        )
+        actor_subject_id = _scoped_id("actor_subject_id", value.actor_subject_id, 128)
+        lines = _lines(value.lines)
+
+        candidate = (
+            session.execute(
+                select(EOS_VOUCHER_CANDIDATE_TABLE)
+                .where(
+                    EOS_VOUCHER_CANDIDATE_TABLE.c.tenant_id == tenant_id,
+                    EOS_VOUCHER_CANDIDATE_TABLE.c.candidate_id == candidate_id,
+                )
+                .with_for_update()
+            )
+            .mappings()
+            .one_or_none()
+        )
+        if candidate is None:
+            raise EosVoucherCandidateError(
+                "EOS_VOUCHER_CANDIDATE_NOT_FOUND",
+                "VoucherCandidate was not found in tenant scope.",
+                status_code=404,
+            )
+        if (
+            candidate["state"] != "RETURNED_FOR_CORRECTION"
+            or int(candidate["version"]) != expected_version
+            or int(candidate["current_revision_no"]) != expected_revision_no
+        ):
+            raise EosVoucherCandidateError(
+                "EOS_VOUCHER_CANDIDATE_REVISION_STALE",
+                "VoucherCandidate state, version, or current revision changed.",
+                status_code=409,
+            )
+
+        current_revision = (
+            session.execute(
+                select(EOS_VOUCHER_CANDIDATE_REVISION_TABLE).where(
+                    EOS_VOUCHER_CANDIDATE_REVISION_TABLE.c.tenant_id == tenant_id,
+                    EOS_VOUCHER_CANDIDATE_REVISION_TABLE.c.candidate_id == candidate_id,
+                    EOS_VOUCHER_CANDIDATE_REVISION_TABLE.c.revision_no
+                    == expected_revision_no,
+                )
+            )
+            .mappings()
+            .one()
+        )
+        if current_revision["candidate_hash"] != expected_candidate_hash:
+            raise EosVoucherCandidateError(
+                "EOS_VOUCHER_CANDIDATE_REVISION_STALE",
+                "VoucherCandidate hash changed before correction.",
+                status_code=409,
+            )
+
+        document = (
+            session.execute(
+                select(EOS_APPROVED_DOCUMENT_TABLE).where(
+                    EOS_APPROVED_DOCUMENT_TABLE.c.tenant_id == tenant_id,
+                    EOS_APPROVED_DOCUMENT_TABLE.c.envelope_id
+                    == candidate["document_envelope_id"],
+                )
+            )
+            .mappings()
+            .one_or_none()
+        )
+        if document is None:
+            raise _invalid("Approved document envelope was not found.")
+        semantics = {
+            "tenant_id": tenant_id,
+            "candidate_id": candidate_id,
+            "revision_id": revision_id,
+            "company_id": str(candidate["company_id"]),
+            "project_id": str(candidate["project_id"]),
+            "project_code": str(candidate["project_code"]),
+            "document_envelope_id": str(candidate["document_envelope_id"]),
+            "approved_document_id": str(document["approved_document_id"]),
+            "document_revision": int(document["document_revision"]),
+            "approved_document_hash": str(current_revision["approved_document_hash"]),
+            "attachment_manifest_hash": str(
+                current_revision["attachment_manifest_hash"]
+            ),
+            "preparer_subject_id": str(candidate["preparer_subject_id"]),
+            "source_kind": str(candidate["source_kind"]),
+            "source_record_ref": str(candidate["source_record_ref"]),
+            "business_work_code": str(candidate["business_work_code"]),
+            "transaction_currency": str(candidate["transaction_currency"]),
+            "recognition_date": _date(
+                "recognition_date", candidate["recognition_date"]
+            ),
+            "lines": lines,
+            "created_business_operation_id": str(
+                candidate["created_business_operation_id"]
+            ),
+        }
+        now = _aware_datetime("clock", self._clock())
+        admitted_document = self._require_document(
+            session, semantics=semantics, now=now
+        )
+        project = self._require_project(session, semantics=semantics)
+        self._require_accounts(session, semantics=semantics)
+        source_evidence_hash = _hash_ref(
+            "source_evidence_hash", admitted_document["business_proof_hash"]
+        )
+        candidate_hash = semantic_sha256_hash_ref(
+            _hashable_candidate_semantics(
+                semantics,
+                source_evidence_hash=source_evidence_hash,
+                approved_document_payload_hash=_hash_ref(
+                    "approved_document_payload_hash",
+                    admitted_document["payload_hash"],
+                ),
+            )
+        )
+        if candidate_hash == expected_candidate_hash:
+            raise EosVoucherCandidateError(
+                "EOS_VOUCHER_CANDIDATE_REVISION_NO_CHANGE",
+                "Corrected VoucherCandidate revision must change its semantics.",
+                status_code=409,
+            )
+
+        revision_no = expected_revision_no + 1
+        revision = {
+            "tenant_id": tenant_id,
+            "candidate_id": candidate_id,
+            "revision_no": revision_no,
+            "revision_id": revision_id,
+            "candidate_hash": candidate_hash,
+            "source_evidence_hash": source_evidence_hash,
+            "approved_document_hash": semantics["approved_document_hash"],
+            "attachment_manifest_hash": semantics["attachment_manifest_hash"],
+            "fx_rate_set_hash": None,
+            "posting_rule_release_hash": None,
+            "account_policy_release_hash": None,
+            "journal_payload_hash": None,
+            "created_by": actor_subject_id,
+            "created_at": now,
+        }
+        line_records = [
+            {
+                "tenant_id": tenant_id,
+                "candidate_id": candidate_id,
+                "revision_no": revision_no,
+                "line_no": line["line_no"],
+                "account_id": line["account_id"],
+                "project_id": str(candidate["project_id"]),
+                "project_code": str(project["project_code"]),
+                "debit_original": line["debit_original"],
+                "credit_original": line["credit_original"],
+                "original_currency": str(candidate["transaction_currency"]),
+                "source_record_line_ref": line["source_record_line_ref"],
+                "description": line["description"],
+                "evidence_hash": line["evidence_hash"],
+            }
+            for line in lines
+        ]
+        session.execute(
+            EOS_VOUCHER_CANDIDATE_REVISION_TABLE.insert().values(**revision)
+        )
+        session.execute(EOS_VOUCHER_CANDIDATE_LINE_TABLE.insert(), line_records)
+        advanced = session.execute(
+            update(EOS_VOUCHER_CANDIDATE_TABLE)
+            .where(
+                EOS_VOUCHER_CANDIDATE_TABLE.c.tenant_id == tenant_id,
+                EOS_VOUCHER_CANDIDATE_TABLE.c.candidate_id == candidate_id,
+                EOS_VOUCHER_CANDIDATE_TABLE.c.state == "RETURNED_FOR_CORRECTION",
+                EOS_VOUCHER_CANDIDATE_TABLE.c.version == expected_version,
+                EOS_VOUCHER_CANDIDATE_TABLE.c.current_revision_no
+                == expected_revision_no,
+            )
+            .values(
+                state="DRAFT",
+                current_revision_no=revision_no,
+                version=expected_version + 1,
+                updated_at=now,
+            )
+        )
+        if advanced.rowcount != 1:
+            raise EosVoucherCandidateError(
+                "EOS_VOUCHER_CANDIDATE_REVISION_STALE",
+                "VoucherCandidate changed during correction.",
+                status_code=409,
+            )
+        projected_candidate = {
+            **dict(candidate),
+            "state": "DRAFT",
+            "current_revision_no": revision_no,
+            "version": expected_version + 1,
+            "updated_at": now,
+        }
+        return _projection(projected_candidate, revision, line_records)
 
     @staticmethod
     def _require_document(

@@ -98,6 +98,7 @@ from .scoped_approvals import (
 )
 from .voucher_access import EosVoucherAccessService
 from .voucher_candidate_commands import EosCreateVoucherCandidateService
+from .voucher_candidate_revision_commands import EosReviseVoucherCandidateService
 from .voucher_candidates import (
     EOS_VOUCHER_CANDIDATE_CREATE_SCOPE,
     SqlAlchemyEosVoucherCandidateRepository,
@@ -120,7 +121,9 @@ class EosDependencies:
     project_application_approval_service: EosProjectApplicationApprovalService | None
     project_memberships: SqlAlchemyEosProjectMembershipRepository | None
     project_operations: EosGovernedProjectService | None
-    project_entitlement_reconciliation: EosProjectEntitlementReconciliationService | None
+    project_entitlement_reconciliation: (
+        EosProjectEntitlementReconciliationService | None
+    )
     project_business_service: EosProjectBusinessService | None
     project_work_assignment_service: EosProjectWorkAssignmentService | None
     legal_entities: SqlAlchemyEosLegalEntityRepository | None
@@ -150,6 +153,7 @@ class EosDependencies:
     voucher_verification_query: SqlAlchemyEosVoucherVerificationQuery | None
     voucher_candidates: SqlAlchemyEosVoucherCandidateRepository | None
     voucher_candidate_command_service: EosCreateVoucherCandidateService | None
+    voucher_candidate_revision_service: EosReviseVoucherCandidateService | None
     candidate_validation_service: EosCandidateValidationService | None
     candidate_review_repository: SqlAlchemyEosCandidateReviewRepository | None
 
@@ -578,6 +582,23 @@ def build_eos_dependencies(
         and authorization_source is not None
         else None
     )
+    voucher_candidate_revision_service = (
+        EosReviseVoucherCandidateService(
+            coordinator=business_transactions,
+            candidates=voucher_candidates,
+            reviews=candidate_review_repository,
+            authorizer=EosVoucherAuthorizationClient(
+                authorization_source,
+                required_scope=EOS_VOUCHER_CANDIDATE_CREATE_SCOPE,
+                project_authorizer=project_authorizer,
+            ),
+        )
+        if business_transactions is not None
+        and voucher_candidates is not None
+        and candidate_review_repository is not None
+        and authorization_source is not None
+        else None
+    )
     business_operation_query = (
         SqlAlchemyEosBusinessOperationQuery(database_runtime.session_factory)
         if database_runtime is not None
@@ -633,6 +654,7 @@ def build_eos_dependencies(
         voucher_verification_query=voucher_verification_query,
         voucher_candidates=voucher_candidates,
         voucher_candidate_command_service=voucher_candidate_command_service,
+        voucher_candidate_revision_service=voucher_candidate_revision_service,
         candidate_validation_service=candidate_validation_service,
         candidate_review_repository=candidate_review_repository,
     )

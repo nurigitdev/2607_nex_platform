@@ -22,6 +22,7 @@ from .voucher_candidate_commands import (
     EosCreateVoucherCandidateService,
     EosVoucherCandidateCommandError,
 )
+from .voucher_candidate_revision_commands import EosReviseVoucherCandidateService
 from .voucher_candidates import (
     EosVoucherCandidateError,
     SqlAlchemyEosVoucherCandidateRepository,
@@ -62,6 +63,58 @@ def register_finance_v2_routes(app: FastAPI) -> None:
             )
         try:
             result = service.execute(
+                payload,
+                caller=EosServiceCaller(
+                    subject=admitted.subject,
+                    audience=admitted.audience,
+                    scopes=admitted.scopes,
+                ),
+            )
+        except EosVoucherCandidateCommandError as exc:
+            return _problem(request, exc)
+        return JSONResponse(
+            result,
+            status_code=201 if result["idempotency_disposition"] == "CREATED" else 200,
+        )
+
+    @app.post(
+        "/internal/v2/finance/voucher-candidates/{candidate_id}/revisions",
+        response_model=None,
+        operation_id="FINANCE.VOUCHER_CANDIDATE.REVISE",
+    )
+    def revise_voucher_candidate(
+        candidate_id: str,
+        payload: dict[str, Any],
+        request: Request,
+        authorization: str | None = Header(default=None),
+    ):
+        admitted = admit_service_token_from_request(
+            request,
+            authorization,
+            expected_audience="nex-eos",
+            required_scopes=(DEFAULT_SERVICE_SCOPE,),
+            route_class="WRITE",
+        )
+        if isinstance(admitted, JSONResponse):
+            return admitted
+        service: EosReviseVoucherCandidateService | None = getattr(
+            request.app.state,
+            "eos_voucher_candidate_revision_service",
+            None,
+        )
+        if service is None:
+            return _problem(
+                request,
+                EosVoucherCandidateCommandError(
+                    "EOS_VOUCHER_CANDIDATE_REVISION_UNAVAILABLE",
+                    "VoucherCandidate revision dependencies are not configured.",
+                    status_code=503,
+                    retryable=True,
+                ),
+            )
+        try:
+            result = service.execute(
+                candidate_id,
                 payload,
                 caller=EosServiceCaller(
                     subject=admitted.subject,

@@ -1403,6 +1403,44 @@ paths:
         "404": {description: Candidate was not found in tenant scope.}
         "422": {description: Candidate or tenant identity is invalid.}
         "503": {description: EOS query persistence is unavailable.}
+  /internal/v2/finance/voucher-candidates/{candidate_id}/revisions:
+    post:
+      operationId: FINANCE.VOUCHER_CANDIDATE.REVISE
+      tags: [Finance]
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes: [service:call]
+      x-nex-business-scope: finance:voucher-candidate:create
+      parameters:
+        - name: candidate_id
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReviseVoucherCandidateCommand"
+      responses:
+        "200":
+          description: Idempotent replay of an existing corrected revision.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReviseVoucherCandidateResult"
+        "201":
+          description: Corrected immutable revision appended and Candidate returned to DRAFT.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReviseVoucherCandidateResult"
+        "401": {description: Service claim is missing or invalid.}
+        "403": {description: Fresh OA Project and candidate-create authority is denied.}
+        "404": {description: Candidate was not found in tenant scope.}
+        "409": {description: "Candidate state, revision, return event, or idempotency semantics conflict."}
+        "422": {description: "Revision command, payload hash, or replacement lines are invalid."}
+        "503": {description: OA authorization or EOS persistence is unavailable.}
   /internal/v2/finance/voucher-candidates/{candidate_id}/validation:
     post:
       operationId: FINANCE.VOUCHER_CANDIDATE.VALIDATE
@@ -1944,6 +1982,12 @@ components:
     CreateVoucherCandidateResult:
       type: object
       x-nex-canonical-json-schema: schemas/service/nex_eos/voucher_candidate_create_result.v2.schema.json
+    ReviseVoucherCandidateCommand:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_eos/voucher_candidate_revise.v1.schema.json
+    ReviseVoucherCandidateResult:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_eos/voucher_candidate_revise_result.v1.schema.json
     ValidateVoucherCandidateRequest:
       type: object
       x-nex-canonical-json-schema: schemas/service/nex_eos/voucher_candidate_validate.v1.schema.json

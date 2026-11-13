@@ -15,7 +15,7 @@ from .legal_entities import EosLegalEntityError
 from .voucher_candidates import EosVoucherCandidateError
 
 VALIDATE_VOUCHER_CANDIDATE_OPERATION = "FINANCE.VOUCHER_CANDIDATE.VALIDATE"
-_ALLOWED_CANDIDATE_STATES = frozenset({"DRAFT", "RETURNED_FOR_CORRECTION"})
+_ALLOWED_CANDIDATE_STATES = frozenset({"DRAFT"})
 
 
 class EosCandidateValidationError(RuntimeError):

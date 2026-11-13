@@ -1,0 +1,21 @@
+{
+  "schema_version": "eos_voucher_candidate_revise.v1",
+  "tenant_id": "VO00",
+  "business_operation_id": "41000000-0000-4000-8000-000000000001",
+  "idempotency_key": "VO00/candidate/travel-2026-0001/revise/2",
+  "payload_hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "actor_subject_id": "employee-1001",
+  "candidate_ref": {
+    "type": "eos.voucher_candidate",
+    "id": "41000000-0000-4000-8000-000000000002",
+    "expected_version": 3,
+    "expected_revision_no": 1,
+    "expected_hash": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+  },
+  "replacement": {"lines": []},
+  "trace": {
+    "trace_id": "trace-w40-s4-00a",
+    "correlation_id": "correlation-w40-s4-00a",
+    "causation_id": "causation-w40-s4-00a"
+  }
+}

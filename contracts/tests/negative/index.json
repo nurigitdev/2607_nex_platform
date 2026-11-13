@@ -1232,6 +1232,11 @@
       "schema": "schemas/service/nex_eos/voucher_candidate_create.v2.schema.json"
     },
     {
+      "name": "eos_voucher_candidate_revise_missing_return_event",
+      "path": "tests/negative/service/eos_voucher_candidate_revise.missing_return_event.json",
+      "schema": "schemas/service/nex_eos/voucher_candidate_revise.v1.schema.json"
+    },
+    {
       "name": "eos_voucher_candidate_validate_missing_hash",
       "path": "tests/negative/service/eos_voucher_candidate_validate.missing_hash.json",
       "schema": "schemas/service/nex_eos/voucher_candidate_validate.v1.schema.json"

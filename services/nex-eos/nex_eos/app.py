@@ -116,6 +116,9 @@ def create_eos_app(
     app.state.eos_voucher_candidate_command_service = (
         dependencies.voucher_candidate_command_service
     )
+    app.state.eos_voucher_candidate_revision_service = (
+        dependencies.voucher_candidate_revision_service
+    )
     app.state.eos_candidate_validation_service = (
         dependencies.candidate_validation_service
     )

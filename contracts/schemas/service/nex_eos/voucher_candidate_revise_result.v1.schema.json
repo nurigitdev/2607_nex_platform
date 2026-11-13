@@ -1,0 +1,69 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_eos/voucher_candidate_revise_result.v1.schema.json",
+  "title": "EOS VoucherCandidate Revise Result v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "tenant_id", "business_operation_id", "idempotency_key",
+    "payload_hash", "commit_state", "idempotency_disposition", "candidate_ref",
+    "previous_revision_no", "revision_ref", "project_ref", "return_event_ref",
+    "committed_at", "outbox_event_ref"
+  ],
+  "properties": {
+    "schema_version": {"const": "eos_voucher_candidate_revise_result.v1"},
+    "tenant_id": {"type": "string", "minLength": 1},
+    "business_operation_id": {"type": "string", "format": "uuid"},
+    "idempotency_key": {"type": "string", "minLength": 1},
+    "payload_hash": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "commit_state": {"const": "COMMITTED"},
+    "idempotency_disposition": {"enum": ["CREATED", "REPLAYED"]},
+    "candidate_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "id", "state", "version"],
+      "properties": {
+        "type": {"const": "eos.voucher_candidate"},
+        "id": {"type": "string", "format": "uuid"},
+        "state": {"const": "DRAFT"},
+        "version": {"type": "integer", "minimum": 2}
+      }
+    },
+    "previous_revision_no": {"type": "integer", "minimum": 1},
+    "revision_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "id", "revision_no", "hash"],
+      "properties": {
+        "type": {"const": "eos.voucher_candidate_revision"},
+        "id": {"type": "string", "format": "uuid"},
+        "revision_no": {"type": "integer", "minimum": 2},
+        "hash": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}
+      }
+    },
+    "project_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "id", "code"],
+      "properties": {
+        "type": {"const": "eos.project"},
+        "id": {"type": "string", "format": "uuid"},
+        "code": {"type": "string", "pattern": "^[A-Z0-9]{4}[DMSOIG][0-9]{6}$"}
+      }
+    },
+    "return_event_ref": {"$ref": "#/$defs/entity_ref"},
+    "committed_at": {"type": "string", "format": "date-time"},
+    "outbox_event_ref": {"$ref": "#/$defs/entity_ref"}
+  },
+  "$defs": {
+    "entity_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "id"],
+      "properties": {
+        "type": {"type": "string", "minLength": 1},
+        "id": {"type": "string", "format": "uuid"}
+      }
+    }
+  }
+}

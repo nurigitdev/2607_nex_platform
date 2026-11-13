@@ -19,6 +19,7 @@ MyBee office-work AX Service Phase-1 program.
 12. `NeX_MyBee_W30_CA02_Project_Application_Code_Lifecycle_and_PA_Contract_Closure_v1.0.md`
 13. `NeX_MyBee_W40_CA01_Project_Membership_and_OA_Project_Code_Entitlement_Contract_Closure_v1.0.md`
 14. `NeX_MyBee_W40_CA02_Accounting_Product_Runtime_Integration_Checkpoint_v1.0.md`
+15. `NeX_MyBee_W40_S4_00A_Pre_Posting_VoucherCandidate_Revision_and_Journal_Boundary_Hardening_v1.0.md`
 
 The Markdown Slice Plan and its Execution Matrix JSON are one planning set.
 The JSON is machine-readable traceability input, not runtime configuration or
@@ -50,6 +51,14 @@ service trust, actual PostgreSQL authority, durable outbox/inbox workers, and
 the installed MyBee-to-EOS consumer path before W40 `S4-01` begins. A separate
 final accounting product acceptance remains mandatory after Posting and
 allocation are implemented.
+
+W40-S4-00A is the final narrow pre-Posting amendment before W40 `S4-01`.
+It fixes `VoucherCandidate` as the sole pre-Posting voucher authority, rejects
+duplicate `journal_inbox` tables, requires returned corrections to append a
+new immutable Candidate revision, and reserves `eos_journal_header/line`
+exclusively for insert-only PostedJournal truth. It also supersedes obsolete
+W40 references to migration number 2523, which is already occupied by the FX
+market-rate adoption migration.
 
 Runtime implementation evidence for the W30-CA02 Project foundation is
 recorded in

@@ -439,6 +439,15 @@ from .voucher_candidate_commands import (
     parse_create_voucher_candidate_command,
     voucher_candidate_payload_hash,
 )
+from .voucher_candidate_revision_commands import (
+    EOS_REVISE_VOUCHER_CANDIDATE_OPERATION,
+    EOS_REVISE_VOUCHER_CANDIDATE_RESULT_SCHEMA,
+    EOS_REVISE_VOUCHER_CANDIDATE_SCHEMA,
+    EosReviseVoucherCandidateService,
+    ParsedVoucherCandidateRevisionCommand,
+    parse_revise_voucher_candidate_command,
+    voucher_candidate_revision_payload_hash,
+)
 from .voucher_candidates import (
     EOS_CREATE_VOUCHER_CANDIDATE_OPERATION,
     EOS_VOUCHER_CANDIDATE_CREATE_SCOPE,
@@ -450,6 +459,7 @@ from .voucher_candidates import (
     SqlAlchemyEosVoucherCandidateRepository,
     VoucherCandidateInput,
     VoucherCandidateLineInput,
+    VoucherCandidateRevisionInput,
 )
 from .voucher_commands import (
     EOS_CREATE_VOUCHER_OPERATION,
@@ -584,6 +594,9 @@ __all__ = (
     "EOS_PROJECT_WORK_ASSIGNMENT_TABLE",
     "EOS_PROJECT_WORK_CODE_ENTRY_TABLE",
     "EOS_PROJECT_WORK_CODE_SET_TABLE",
+    "EOS_REVISE_VOUCHER_CANDIDATE_OPERATION",
+    "EOS_REVISE_VOUCHER_CANDIDATE_RESULT_SCHEMA",
+    "EOS_REVISE_VOUCHER_CANDIDATE_SCHEMA",
     "EOS_SCOPED_APPROVAL_BINDING_TABLE",
     "EOS_SCOPED_APPROVAL_CASE_TABLE",
     "EOS_SCOPED_APPROVAL_DECISION_TABLE",
@@ -756,6 +769,7 @@ __all__ = (
     "EosProjectWorkCodeError",
     "EosReportingMapError",
     "EosReportingMapService",
+    "EosReviseVoucherCandidateService",
     "EosScopedApprovalDecisionRouter",
     "EosScopedApprovalError",
     "EosScopedApprovalService",
@@ -784,6 +798,7 @@ __all__ = (
     "ObjectRefResolver",
     "OrgUnitInput",
     "ParsedVoucherCandidateCreateCommand",
+    "ParsedVoucherCandidateRevisionCommand",
     "ParsedVoucherDraftCommand",
     "PinnedCoaPublicationAdmission",
     "PositionAssignmentInput",
@@ -833,6 +848,7 @@ __all__ = (
     "VoucherAttachmentInput",
     "VoucherCandidateInput",
     "VoucherCandidateLineInput",
+    "VoucherCandidateRevisionInput",
     "VoucherDraftInput",
     "VoucherLineInput",
     "WcApprovalWorkItemClient",
@@ -855,6 +871,7 @@ __all__ = (
     "load_eos_settings",
     "parse_create_voucher_candidate_command",
     "parse_create_voucher_draft_command",
+    "parse_revise_voucher_candidate_command",
     "project_application_approval_work_item",
     "project_lifecycle_event_payload",
     "project_membership_add_many_payload_hash",
@@ -865,5 +882,6 @@ __all__ = (
     "scoped_approval_payload_hash",
     "scoped_approval_work_item",
     "voucher_candidate_payload_hash",
+    "voucher_candidate_revision_payload_hash",
     "voucher_payload_hash",
 )

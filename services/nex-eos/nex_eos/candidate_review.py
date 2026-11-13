@@ -150,7 +150,7 @@ class SqlAlchemyEosCandidateReviewRepository:
             scoped_case=scoped_case,
             review=review,
         )
-        if candidate["state"] not in {"DRAFT", "RETURNED_FOR_CORRECTION"}:
+        if candidate["state"] != "DRAFT":
             raise _conflict("VoucherCandidate is not eligible for review submission.")
         created_at = _aware_datetime("clock", self._clock())
         record = _event_record(
@@ -205,6 +205,32 @@ class SqlAlchemyEosCandidateReviewRepository:
                 "Accounting review no longer matches the submitted Candidate."
             )
         return {"candidate": candidate, "submitted_event": submitted}
+
+    def require_return_event_in_session(
+        self,
+        session: Session,
+        *,
+        tenant_id: str,
+        candidate_id: str,
+        candidate_revision: int,
+        event_id: str,
+    ) -> dict[str, Any]:
+        event = self._event_by_id(
+            session,
+            tenant_id=tenant_id,
+            event_id=event_id,
+        )
+        if (
+            event is None
+            or event["candidate_id"] != candidate_id
+            or int(event["candidate_revision"]) != candidate_revision
+            or event["transition_kind"] not in {"RETURN", "INVALIDATE"}
+            or event["to_state"] != "RETURNED_FOR_CORRECTION"
+        ):
+            raise _conflict(
+                "Candidate correction requires the exact immutable return event."
+            )
+        return _event_projection(event)
 
     def return_from_rejection_in_session(
         self,

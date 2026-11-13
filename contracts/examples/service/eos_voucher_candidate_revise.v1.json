@@ -1,0 +1,46 @@
+{
+  "schema_version": "eos_voucher_candidate_revise.v1",
+  "tenant_id": "VO00",
+  "business_operation_id": "41000000-0000-4000-8000-000000000001",
+  "idempotency_key": "VO00/candidate/travel-2026-0001/revise/2",
+  "payload_hash": "sha256:beac8f19f56d6b2c5c1eeeee892380965d0d815e7a93351a0ee957588eeda2c1",
+  "actor_subject_id": "employee-1001",
+  "candidate_ref": {
+    "type": "eos.voucher_candidate",
+    "id": "41000000-0000-4000-8000-000000000002",
+    "expected_version": 3,
+    "expected_revision_no": 1,
+    "expected_hash": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+  },
+  "return_event_ref": {
+    "type": "eos.candidate_review_event",
+    "id": "41000000-0000-4000-8000-000000000003"
+  },
+  "replacement": {
+    "lines": [
+      {
+        "line_no": 1,
+        "account_ref": {"type": "eos.account", "id": "41000000-0000-4000-8000-000000000004"},
+        "debit_original": "12000.0000",
+        "credit_original": "0.0000",
+        "source_record_line_ref": "expense-line-1-corrected",
+        "description": "Corrected travel expense",
+        "evidence_hash": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+      },
+      {
+        "line_no": 2,
+        "account_ref": {"type": "eos.account", "id": "41000000-0000-4000-8000-000000000005"},
+        "debit_original": "0.0000",
+        "credit_original": "12000.0000",
+        "source_record_line_ref": "expense-line-2-corrected",
+        "description": "Corrected cash offset",
+        "evidence_hash": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+      }
+    ]
+  },
+  "trace": {
+    "trace_id": "trace-w40-s4-00a",
+    "correlation_id": "correlation-w40-s4-00a",
+    "causation_id": "causation-w40-s4-00a"
+  }
+}
