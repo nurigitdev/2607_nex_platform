@@ -12,6 +12,7 @@ from .accounting_period_api import register_accounting_period_routes
 from .allocation_plan_api import register_allocation_plan_routes
 from .approval_decision_api import register_approval_decision_routes
 from .approved_document_api import register_approved_document_routes
+from .budget_api import register_budget_routes
 from .coa_api import register_coa_routes
 from .coa_release_admin_api import register_coa_release_admin_routes
 from .config import EosSettings, load_eos_settings
@@ -38,7 +39,7 @@ from .wa_project_verification import (
 )
 
 SERVICE_SPEC = SERVICE_SPECS["nex-eos"]
-CONTRACT_CATALOG_VERSION = "mybee-w30-s3-02"
+CONTRACT_CATALOG_VERSION = "mybee-w50-s7-01"
 
 
 def create_eos_app(
@@ -111,6 +112,10 @@ def create_eos_app(
     app.state.eos_allocation_reconciliation_service = (
         dependencies.allocation_reconciliation_service
     )
+    app.state.eos_budget_service = dependencies.budget_service
+    app.state.eos_project_budget_binding_service = (
+        dependencies.project_budget_binding_service
+    )
     app.state.eos_document_signoff_service = dependencies.document_signoff_service
     app.state.eos_scoped_approval_decision_router = (
         dependencies.scoped_approval_decision_router
@@ -144,6 +149,7 @@ def create_eos_app(
     register_cost_source_pool_routes(app)
     register_allocation_plan_routes(app)
     register_cost_allocation_routes(app)
+    register_budget_routes(app)
     register_approval_decision_routes(app)
     register_approved_document_routes(app)
     register_scoped_approval_routes(app)

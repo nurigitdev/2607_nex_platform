@@ -22,7 +22,7 @@
     },
     "nex-eos": {
       "path": "contracts/openapi/nex-eos.openapi.yaml",
-      "sha256": "sha256:79a790d1158387a98f8263dde1778a8665581e378899e01ae70f0dd0c0d7466f"
+      "sha256": "sha256:8adaf5fda561beb4a0c3077d9cfb8fe8b6c2691e1d40aded00d1785ce42e2cf3"
     },
     "nex-wa": {
       "path": "contracts/openapi/nex-wa.openapi.yaml",

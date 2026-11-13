@@ -41,6 +41,7 @@ from .approver_resolution import EosApproverResolutionService
 from .attachment_resolution import HttpAeVoucherAttachmentResolver
 from .attachments import SqlAlchemyEosAttachmentRepository
 from .authorization import EosVoucherAuthorizationClient, HttpOaAuthorizationSource
+from .budgets import EosBudgetService, SqlAlchemyEosBudgetRepository
 from .business_formal_wc import (
     DEFAULT_WC_BASE_URL,
     EosBusinessFormalWcAdapter,
@@ -95,6 +96,10 @@ from .project_authorization import (
     EosProjectAuthorizationGate,
     HttpOaProjectAuthorizationDecisionSource,
     SqlAlchemyEosProjectAuthorizationContextSource,
+)
+from .project_budget_bindings import (
+    EosProjectBudgetBindingService,
+    SqlAlchemyEosProjectBudgetBindingRepository,
 )
 from .project_entitlement_reconciliation import (
     EosProjectEntitlementReconciliationService,
@@ -162,6 +167,8 @@ class EosDependencies:
     allocation_plan_service: EosAllocationPlanService | None
     cost_allocation_service: EosCostAllocationService | None
     allocation_reconciliation_service: EosAllocationReconciliationService | None
+    budget_service: EosBudgetService | None
+    project_budget_binding_service: EosProjectBudgetBindingService | None
     document_signoff_service: EosDocumentSignoffService | None
     scoped_approval_decision_router: EosScopedApprovalDecisionRouter | None
     fx_rate_service: EosFxRateService | None
@@ -512,6 +519,30 @@ def build_eos_dependencies(
         if database_runtime is not None
         else None
     )
+    budget_service = (
+        EosBudgetService(
+            repository=SqlAlchemyEosBudgetRepository(database_runtime.session_factory),
+            coordinator=business_transactions,
+            authorization_source=authorization_source,
+        )
+        if database_runtime is not None
+        and business_transactions is not None
+        and authorization_source is not None
+        else None
+    )
+    project_budget_binding_service = (
+        EosProjectBudgetBindingService(
+            repository=SqlAlchemyEosProjectBudgetBindingRepository(
+                database_runtime.session_factory
+            ),
+            coordinator=business_transactions,
+            authorization_source=authorization_source,
+        )
+        if database_runtime is not None
+        and business_transactions is not None
+        and authorization_source is not None
+        else None
+    )
     document_signoff_service = (
         EosDocumentSignoffService(
             session_factory=database_runtime.session_factory,
@@ -756,6 +787,8 @@ def build_eos_dependencies(
         allocation_plan_service=allocation_plan_service,
         cost_allocation_service=cost_allocation_service,
         allocation_reconciliation_service=allocation_reconciliation_service,
+        budget_service=budget_service,
+        project_budget_binding_service=project_budget_binding_service,
         document_signoff_service=document_signoff_service,
         scoped_approval_decision_router=scoped_approval_decision_router,
         fx_rate_service=fx_rate_service,

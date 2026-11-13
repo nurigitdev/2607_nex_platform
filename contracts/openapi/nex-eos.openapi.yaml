@@ -1798,6 +1798,129 @@ paths:
         "404": {description: Allocation plan revision was not found.}
         "422": {description: Query identity is malformed.}
         "503": {description: Allocation plan persistence is unavailable.}
+  /internal/v2/finance/budgets:
+    post:
+      operationId: FINANCE.BUDGET.COMMIT
+      tags: [Finance]
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes: [service:call]
+      x-nex-business-scope: finance:budget:approve
+      x-nex-side-effect-free: false
+      parameters:
+        - name: X-NeX-Tenant-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+        - name: X-NeX-Company-Id
+          in: header
+          required: true
+          schema: {type: string, format: uuid}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {type: object, additionalProperties: true}
+      responses:
+        "201": {description: Approved immutable Budget revision committed.}
+        "200": {description: Exact idempotent replay of a Budget commit.}
+        "401": {description: Service claim is missing or invalid.}
+        "403": {description: Fresh Budget approval authority is denied.}
+        "404": {description: "Approval, LegalEntity, or Account was not found."}
+        "409": {description: "Approval binding, revision, currency, or immutable semantics conflict."}
+        "422": {description: Canonical Budget command is malformed.}
+        "503": {description: OA authorization or EOS persistence is unavailable.}
+  /internal/v2/finance/budgets/{budget_id}/versions/{budget_version}:
+    get:
+      operationId: FINANCE.BUDGET.GET
+      tags: [Finance]
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes: [service:call]
+      x-nex-business-scope: finance:budget:read
+      x-nex-side-effect-free: true
+      parameters:
+        - name: budget_id
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+        - name: budget_version
+          in: path
+          required: true
+          schema: {type: integer, minimum: 1}
+        - name: X-NeX-Tenant-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+        - name: X-NeX-Company-Id
+          in: header
+          required: true
+          schema: {type: string, format: uuid}
+      responses:
+        "200": {description: Exact immutable Budget revision.}
+        "401": {description: Service claim is missing or invalid.}
+        "404": {description: Budget revision was not found.}
+        "422": {description: Budget query identity is malformed.}
+        "503": {description: Budget persistence is unavailable.}
+  /internal/v2/finance/project-budget-bindings:
+    post:
+      operationId: PROJECT.BUDGET_BINDING.COMMIT
+      tags: [Finance, Project]
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes: [service:call]
+      x-nex-business-scope: finance:budget:bind
+      x-nex-side-effect-free: false
+      parameters:
+        - name: X-NeX-Tenant-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+        - name: X-NeX-Company-Id
+          in: header
+          required: true
+          schema: {type: string, format: uuid}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {type: object, additionalProperties: true}
+      responses:
+        "201": {description: Approved Project-to-Budget binding committed without changing Budget authority.}
+        "200": {description: Exact idempotent replay of the binding commit.}
+        "401": {description: Service claim is missing or invalid.}
+        "403": {description: Fresh Project Budget binding authority is denied.}
+        "404": {description: "Approval, Project, Budget, or WorkCodeSet was not found."}
+        "409": {description: "Binding revision, Project scope, or allocation capacity conflicts."}
+        "422": {description: Canonical Project Budget binding command is malformed.}
+        "503": {description: OA authorization or EOS persistence is unavailable.}
+  /internal/v2/projects/{project_id}/budget-bindings:
+    get:
+      operationId: PROJECT.BUDGET_BINDING.LIST
+      tags: [Project, Finance]
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes: [service:call]
+      x-nex-business-scope: project:budget:read
+      x-nex-side-effect-free: true
+      parameters:
+        - name: project_id
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+        - name: X-NeX-Tenant-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+        - name: X-NeX-Company-Id
+          in: header
+          required: true
+          schema: {type: string, format: uuid}
+      responses:
+        "200": {description: Read-only D12 Project Budget binding revisions.}
+        "401": {description: Service claim is missing or invalid.}
+        "422": {description: Project binding query identity is malformed.}
+        "503": {description: Project Budget binding persistence is unavailable.}
   /internal/v2/finance/cost-allocation-batches:
     post:
       operationId: FINANCE.COST_ALLOCATION.RUN
