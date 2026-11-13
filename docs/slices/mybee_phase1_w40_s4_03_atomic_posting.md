@@ -143,6 +143,38 @@ dependency audit    = PASS
 
 The final branch result is above the S4-02 baseline of 94.92%.
 
+## Repository Checkpoint Gate
+
+The first Checkpoint run completed the full test body and found seven baseline
+consistency failures. They all derived from two expected S4-03 promotions:
+
+- the pinned NeX-EOS OpenAPI digest still described the pre-S4-03 contract;
+- the MyBee source manifest still declared migration `2538` as the EOS head.
+
+The reconciliation updated only these canonical pins:
+
+```text
+domains/mybee/compatibility/platform.lock.json
+docs/mybee_phase1/baselines/source_manifest.json
+```
+
+Frozen authority, master baseline, NSL identity, and all other service pins
+remain unchanged. Focused compatibility and architecture regression passed
+`17/17` before the complete Checkpoint was repeated.
+
+Final Checkpoint evidence:
+
+```text
+report              = reports/quality/mybee-w40-s4-03-checkpoint.coverage.json
+tests               = 21137 passed, 165 protected-smoke skips
+statement coverage  = 98.49% (threshold 95.00%)
+branch coverage     = 97.06% (threshold 94.00%)
+commands            = 5/5 passed
+contract validation = PASS
+transition audit    = PASS
+dependency audit    = PASS
+```
+
 ## Entry Decision
 
 ```text
