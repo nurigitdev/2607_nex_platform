@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_eos/cost_source_pool_admit.v1.schema.json",
+  "title": "EOS Cost SourcePool Admission v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "source_kind", "allocation_mode"],
+  "properties": {
+    "schema_version": {"const": "eos_cost_source_pool_admit.v1"},
+    "source_kind": {
+      "enum": [
+        "PAYROLL", "PURCHASE", "SERVICE", "SHARED_EXPENSE",
+        "REVENUE", "FX_GAIN_LOSS", "OTHER"
+      ]
+    },
+    "allocation_mode": {"enum": ["DIRECT", "MANAGEMENT_ALLOCATION"]}
+  }
+}

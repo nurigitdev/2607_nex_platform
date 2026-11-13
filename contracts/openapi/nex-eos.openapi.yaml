@@ -1640,6 +1640,89 @@ paths:
         "404": {description: PostedJournal was not found in tenant and company scope.}
         "422": {description: Journal query identity is malformed.}
         "503": {description: Authorization or Journal persistence is unavailable.}
+  /internal/v2/finance/journals/{journal_id}/lines/{journal_line_no}/cost-source-pool:
+    post:
+      operationId: FINANCE.COST_SOURCE_POOL.ADMIT
+      tags: [Finance]
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes: [service:call]
+      x-nex-business-scope: finance:cost-allocation:write
+      x-nex-side-effect-free: false
+      parameters:
+        - name: journal_id
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+        - name: journal_line_no
+          in: path
+          required: true
+          schema: {type: integer, minimum: 1}
+        - name: X-NeX-Tenant-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+        - name: X-NeX-Company-Id
+          in: header
+          required: true
+          schema: {type: string, format: uuid}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CostSourcePoolAdmission"
+      responses:
+        "201":
+          description: Eligible POSTED Journal component admitted once.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CostSourcePool"
+        "200":
+          description: Exact replay of an existing SourcePool admission.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CostSourcePool"
+        "401": {description: Service claim is missing or invalid.}
+        "404": {description: Journal line or effective binding was not found.}
+        "409": {description: "Source is ineligible, unverified, or conflicts with an existing pool."}
+        "422": {description: Admission identity or classification is malformed.}
+        "503": {description: Journal reconciliation or SourcePool persistence is unavailable.}
+  /internal/v2/finance/cost-source-pools/{pool_id}:
+    get:
+      operationId: FINANCE.COST_SOURCE_POOL.GET
+      tags: [Finance]
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes: [service:call]
+      x-nex-business-scope: finance:cost-allocation:read
+      x-nex-side-effect-free: true
+      parameters:
+        - name: pool_id
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+        - name: X-NeX-Tenant-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+        - name: X-NeX-Company-Id
+          in: header
+          required: true
+          schema: {type: string, format: uuid}
+      responses:
+        "200":
+          description: Exact immutable SourcePool projection.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CostSourcePool"
+        "401": {description: Service claim is missing or invalid.}
+        "404": {description: SourcePool was not found in tenant and company scope.}
+        "422": {description: Query identity is malformed.}
+        "503": {description: SourcePool persistence is unavailable.}
   /internal/v2/finance/business-operations/{business_operation_id}/journal-status:
     get:
       operationId: FINANCE.JOURNAL.RECONCILE
@@ -2199,6 +2282,12 @@ components:
     JournalReconciliation:
       type: object
       x-nex-canonical-json-schema: schemas/service/nex_eos/journal_reconciliation.v1.schema.json
+    CostSourcePoolAdmission:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_eos/cost_source_pool_admit.v1.schema.json
+    CostSourcePool:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_eos/cost_source_pool.v1.schema.json
     JournalPostedEvent:
       type: object
       x-nex-canonical-json-schema: schemas/service/nex_eos/journal_posted_event.v1.schema.json
