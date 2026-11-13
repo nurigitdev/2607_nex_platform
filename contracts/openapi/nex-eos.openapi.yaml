@@ -1723,6 +1723,81 @@ paths:
         "404": {description: SourcePool was not found in tenant and company scope.}
         "422": {description: Query identity is malformed.}
         "503": {description: SourcePool persistence is unavailable.}
+  /internal/v2/finance/cost-allocation-plans/releases:
+    post:
+      operationId: FINANCE.COST_ALLOCATION_PLAN.RELEASE
+      tags: [Finance]
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes: [service:call]
+      x-nex-business-scope: finance:cost-allocation-plan:approve
+      x-nex-side-effect-free: false
+      parameters:
+        - name: X-NeX-Tenant-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+        - name: X-NeX-Company-Id
+          in: header
+          required: true
+          schema: {type: string, format: uuid}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CostAllocationPlanRelease"
+      responses:
+        "201":
+          description: Immutable allocation plan revision released after exact approval and fresh OA admission.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CostAllocationPlan"
+        "200": {description: Exact replay of an existing immutable plan revision.}
+        "401": {description: Service claim is missing or invalid.}
+        "403": {description: Current human plan authority is denied.}
+        "404": {description: "Approval, company, Project, or basis authority was not found."}
+        "409": {description: "Approval binding, revision, scope, or evidence conflicts."}
+        "422": {description: Release payload is malformed.}
+        "503": {description: OA authorization or allocation plan persistence is unavailable.}
+  /internal/v2/finance/cost-allocation-plans/{plan_id}/revisions/{plan_revision}:
+    get:
+      operationId: FINANCE.COST_ALLOCATION_PLAN.GET
+      tags: [Finance]
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes: [service:call]
+      x-nex-business-scope: finance:cost-allocation:read
+      x-nex-side-effect-free: true
+      parameters:
+        - name: plan_id
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+        - name: plan_revision
+          in: path
+          required: true
+          schema: {type: integer, minimum: 1}
+        - name: X-NeX-Tenant-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+        - name: X-NeX-Company-Id
+          in: header
+          required: true
+          schema: {type: string, format: uuid}
+      responses:
+        "200":
+          description: Exact immutable allocation plan revision.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CostAllocationPlan"
+        "401": {description: Service claim is missing or invalid.}
+        "404": {description: Allocation plan revision was not found.}
+        "422": {description: Query identity is malformed.}
+        "503": {description: Allocation plan persistence is unavailable.}
   /internal/v2/finance/business-operations/{business_operation_id}/journal-status:
     get:
       operationId: FINANCE.JOURNAL.RECONCILE
@@ -2288,6 +2363,12 @@ components:
     CostSourcePool:
       type: object
       x-nex-canonical-json-schema: schemas/service/nex_eos/cost_source_pool.v1.schema.json
+    CostAllocationPlanRelease:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_eos/cost_allocation_plan_release.v1.schema.json
+    CostAllocationPlan:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_eos/cost_allocation_plan.v1.schema.json
     JournalPostedEvent:
       type: object
       x-nex-canonical-json-schema: schemas/service/nex_eos/journal_posted_event.v1.schema.json

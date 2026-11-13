@@ -9,6 +9,7 @@ from nex_runtime import SERVICE_SPECS, build_service_app
 from .account_api import register_account_routes
 from .account_policy_api import register_account_policy_routes
 from .accounting_period_api import register_accounting_period_routes
+from .allocation_plan_api import register_allocation_plan_routes
 from .approval_decision_api import register_approval_decision_routes
 from .approved_document_api import register_approved_document_routes
 from .coa_api import register_coa_routes
@@ -104,6 +105,7 @@ def create_eos_app(
     app.state.eos_journal_posting_service = dependencies.journal_posting_service
     app.state.eos_journal_operation_service = dependencies.journal_operation_service
     app.state.eos_cost_source_pool_service = dependencies.cost_source_pool_service
+    app.state.eos_allocation_plan_service = dependencies.allocation_plan_service
     app.state.eos_document_signoff_service = dependencies.document_signoff_service
     app.state.eos_scoped_approval_decision_router = (
         dependencies.scoped_approval_decision_router
@@ -135,6 +137,7 @@ def create_eos_app(
     register_voucher_command_routes(app)
     register_finance_v2_routes(app)
     register_cost_source_pool_routes(app)
+    register_allocation_plan_routes(app)
     register_approval_decision_routes(app)
     register_approved_document_routes(app)
     register_scoped_approval_routes(app)

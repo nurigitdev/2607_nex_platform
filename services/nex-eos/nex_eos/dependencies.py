@@ -21,6 +21,10 @@ from .accounting_periods import (
 )
 from .accounting_posting_admission import EosAccountingPostingAdmissionService
 from .accounts import SqlAlchemyEosAccountRepository
+from .allocation_plans import (
+    EosAllocationPlanService,
+    SqlAlchemyEosAllocationPlanRepository,
+)
 from .approval_instances import SqlAlchemyEosApprovalInstanceRepository
 from .approval_policies import SqlAlchemyEosApprovalPolicyRepository
 from .approval_transitions import (
@@ -153,6 +157,7 @@ class EosDependencies:
     journal_posting_service: EosJournalPostingService | None
     journal_operation_service: EosJournalOperationService | None
     cost_source_pool_service: EosCostSourcePoolService | None
+    allocation_plan_service: EosAllocationPlanService | None
     document_signoff_service: EosDocumentSignoffService | None
     scoped_approval_decision_router: EosScopedApprovalDecisionRouter | None
     fx_rate_service: EosFxRateService | None
@@ -472,14 +477,22 @@ def build_eos_dependencies(
     )
     cost_source_pool_service = (
         EosCostSourcePoolService(
-            source=SqlAlchemyEosCostSourceFactsSource(
-                database_runtime.session_factory
-            ),
+            source=SqlAlchemyEosCostSourceFactsSource(database_runtime.session_factory),
             repository=SqlAlchemyEosCostSourcePoolRepository(
                 database_runtime.session_factory
             ),
         )
         if database_runtime is not None
+        else None
+    )
+    allocation_plan_service = (
+        EosAllocationPlanService(
+            repository=SqlAlchemyEosAllocationPlanRepository(
+                database_runtime.session_factory
+            ),
+            authorization_source=authorization_source,
+        )
+        if database_runtime is not None and authorization_source is not None
         else None
     )
     document_signoff_service = (
@@ -723,6 +736,7 @@ def build_eos_dependencies(
         journal_posting_service=journal_posting_service,
         journal_operation_service=journal_operation_service,
         cost_source_pool_service=cost_source_pool_service,
+        allocation_plan_service=allocation_plan_service,
         document_signoff_service=document_signoff_service,
         scoped_approval_decision_router=scoped_approval_decision_router,
         fx_rate_service=fx_rate_service,
