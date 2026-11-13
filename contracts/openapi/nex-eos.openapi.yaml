@@ -1798,6 +1798,82 @@ paths:
         "404": {description: Allocation plan revision was not found.}
         "422": {description: Query identity is malformed.}
         "503": {description: Allocation plan persistence is unavailable.}
+  /internal/v2/finance/cost-allocation-batches:
+    post:
+      operationId: FINANCE.COST_ALLOCATION.RUN
+      tags: [Finance]
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes: [service:call]
+      x-nex-business-scope: finance:allocation:execute
+      x-nex-side-effect-free: false
+      parameters:
+        - name: X-NeX-Tenant-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+        - name: X-NeX-Company-Id
+          in: header
+          required: true
+          schema: {type: string, format: uuid}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CostAllocationRun"
+      responses:
+        "201":
+          description: Deterministic allocation batch committed atomically.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CostAllocationBatch"
+        "200":
+          description: Exact replay of the committed allocation batch.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CostAllocationBatch"
+        "401": {description: Service claim is missing or invalid.}
+        "404": {description: "Period, approved plan, or SourcePool was not found."}
+        "409": {description: "Allocation identity, state, or source semantics conflict."}
+        "422": {description: Command or E=D+A+U conservation is invalid.}
+        "503": {description: Allocation transaction persistence is unavailable.}
+  /internal/v2/finance/cost-allocation-batches/{batch_id}/verification:
+    get:
+      operationId: FINANCE.COST_ALLOCATION.VERIFY
+      tags: [Finance]
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes: [service:call]
+      x-nex-business-scope: finance:allocation:verify
+      x-nex-side-effect-free: true
+      parameters:
+        - name: batch_id
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+        - name: X-NeX-Tenant-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+        - name: X-NeX-Company-Id
+          in: header
+          required: true
+          schema: {type: string, format: uuid}
+      responses:
+        "200":
+          description: Persisted allocation lineage and conservation verification.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CostAllocationReconciliation"
+        "401": {description: Service claim is missing or invalid.}
+        "404": {description: Cost Allocation batch or BusinessOperation was not found.}
+        "409": {description: BusinessOperation is not a Cost Allocation RUN.}
+        "422": {description: Verification identity is malformed.}
+        "503": {description: Allocation reconciliation persistence is unavailable.}
   /internal/v2/finance/business-operations/{business_operation_id}/journal-status:
     get:
       operationId: FINANCE.JOURNAL.RECONCILE
@@ -2369,6 +2445,18 @@ components:
     CostAllocationPlan:
       type: object
       x-nex-canonical-json-schema: schemas/service/nex_eos/cost_allocation_plan.v1.schema.json
+    CostAllocationRun:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_eos/cost_allocation_run.v1.schema.json
+    CostAllocationBatch:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_eos/cost_allocation_batch.v1.schema.json
+    CostAllocationReconciliation:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_eos/cost_allocation_reconciliation.v1.schema.json
+    CostAllocationCommittedEvent:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_eos/cost_allocation_committed_event.v1.schema.json
     JournalPostedEvent:
       type: object
       x-nex-canonical-json-schema: schemas/service/nex_eos/journal_posted_event.v1.schema.json

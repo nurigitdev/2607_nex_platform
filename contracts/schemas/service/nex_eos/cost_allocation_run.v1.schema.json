@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_eos/cost_allocation_run.v1.schema.json",
+  "title": "EOS Cost Allocation Run v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "business_operation_id", "idempotency_key", "payload_hash",
+    "batch_id", "plan_id", "plan_revision", "period_id", "functional_currency",
+    "currency_scale", "sources"
+  ],
+  "properties": {
+    "schema_version": {"const": "eos_cost_allocation_run.v1"},
+    "business_operation_id": {"type": "string", "format": "uuid"},
+    "idempotency_key": {"type": "string", "minLength": 1, "maxLength": 128},
+    "payload_hash": {"$ref": "#/$defs/hash_ref"},
+    "batch_id": {"type": "string", "format": "uuid"},
+    "plan_id": {"type": "string", "format": "uuid"},
+    "plan_revision": {"type": "integer", "minimum": 1},
+    "period_id": {"type": "string", "format": "uuid"},
+    "functional_currency": {"type": "string", "pattern": "^[A-Z]{3}$"},
+    "currency_scale": {"const": 4},
+    "sources": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["pool_id", "unallocated_amount_functional"],
+        "properties": {
+          "pool_id": {"type": "string", "format": "uuid"},
+          "unallocated_amount_functional": {"$ref": "#/$defs/amount"}
+        }
+      }
+    }
+  },
+  "$defs": {
+    "hash_ref": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "amount": {"type": "string", "pattern": "^-?[0-9]+\\.[0-9]{4}$"}
+  }
+}

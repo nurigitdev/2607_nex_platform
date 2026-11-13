@@ -25,6 +25,7 @@ from .allocation_plans import (
     EosAllocationPlanService,
     SqlAlchemyEosAllocationPlanRepository,
 )
+from .allocation_reconciliation import EosAllocationReconciliationService
 from .approval_instances import SqlAlchemyEosApprovalInstanceRepository
 from .approval_policies import SqlAlchemyEosApprovalPolicyRepository
 from .approval_transitions import (
@@ -62,6 +63,7 @@ from .coa_release_admin import (
     SqlAlchemyEosCoaReleaseAdminRepository,
 )
 from .config import EosSettings
+from .cost_allocations import EosCostAllocationService
 from .cost_source_pools import (
     EosCostSourcePoolService,
     SqlAlchemyEosCostSourceFactsSource,
@@ -158,6 +160,8 @@ class EosDependencies:
     journal_operation_service: EosJournalOperationService | None
     cost_source_pool_service: EosCostSourcePoolService | None
     allocation_plan_service: EosAllocationPlanService | None
+    cost_allocation_service: EosCostAllocationService | None
+    allocation_reconciliation_service: EosAllocationReconciliationService | None
     document_signoff_service: EosDocumentSignoffService | None
     scoped_approval_decision_router: EosScopedApprovalDecisionRouter | None
     fx_rate_service: EosFxRateService | None
@@ -495,6 +499,19 @@ def build_eos_dependencies(
         if database_runtime is not None and authorization_source is not None
         else None
     )
+    cost_allocation_service = (
+        EosCostAllocationService(
+            session_factory=database_runtime.session_factory,
+            coordinator=business_transactions,
+        )
+        if database_runtime is not None and business_transactions is not None
+        else None
+    )
+    allocation_reconciliation_service = (
+        EosAllocationReconciliationService(database_runtime.session_factory)
+        if database_runtime is not None
+        else None
+    )
     document_signoff_service = (
         EosDocumentSignoffService(
             session_factory=database_runtime.session_factory,
@@ -737,6 +754,8 @@ def build_eos_dependencies(
         journal_operation_service=journal_operation_service,
         cost_source_pool_service=cost_source_pool_service,
         allocation_plan_service=allocation_plan_service,
+        cost_allocation_service=cost_allocation_service,
+        allocation_reconciliation_service=allocation_reconciliation_service,
         document_signoff_service=document_signoff_service,
         scoped_approval_decision_router=scoped_approval_decision_router,
         fx_rate_service=fx_rate_service,

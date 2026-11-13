@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_eos/cost_allocation_reconciliation.v1.schema.json",
+  "title": "EOS Cost Allocation Reconciliation v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "operation", "tenant_id", "business_operation_id",
+    "commit_state", "reconciliation_status", "verification_status",
+    "retry_disposition", "batch", "conservation", "reversed_pool_ids", "outbox"
+  ],
+  "properties": {
+    "schema_version": {"const": "eos_cost_allocation_reconciliation.v1"},
+    "operation": {"const": "FINANCE.COST_ALLOCATION.VERIFY"},
+    "tenant_id": {"type": "string"},
+    "business_operation_id": {"type": "string", "format": "uuid"},
+    "commit_state": {"enum": ["PENDING", "NOT_COMMITTED", "COMMITTED"]},
+    "reconciliation_status": {
+      "enum": [
+        "RECONCILIATION_REQUIRED", "NOT_COMMITTED_CONFIRMED", "COMMITTED_CONFIRMED"
+      ]
+    },
+    "verification_status": {
+      "enum": ["NOT_APPLICABLE", "VERIFIED", "FAILED", "ADJUSTMENT_REQUIRED"]
+    },
+    "retry_disposition": {
+      "enum": ["RECONCILE_SAME_IDENTITY", "MAY_RETRY_SAME_IDENTITY", "DO_NOT_RERUN"]
+    },
+    "batch": {
+      "type": ["object", "null"]
+    },
+    "conservation": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "pool_id", "source_hash", "eligible_amount_functional",
+          "direct_amount_functional", "allocated_amount_functional",
+          "unallocated_amount_functional"
+        ],
+        "properties": {
+          "pool_id": {"type": "string", "format": "uuid"},
+          "source_hash": {"$ref": "#/$defs/hash_ref"},
+          "eligible_amount_functional": {"$ref": "#/$defs/amount"},
+          "direct_amount_functional": {"$ref": "#/$defs/amount"},
+          "allocated_amount_functional": {"$ref": "#/$defs/amount"},
+          "unallocated_amount_functional": {"$ref": "#/$defs/amount"}
+        }
+      }
+    },
+    "reversed_pool_ids": {
+      "type": "array", "items": {"type": "string", "format": "uuid"}
+    },
+    "outbox": {"type": ["object", "null"]}
+  },
+  "$defs": {
+    "hash_ref": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "amount": {"type": "string", "pattern": "^-?[0-9]+\\.[0-9]{4}$"}
+  }
+}

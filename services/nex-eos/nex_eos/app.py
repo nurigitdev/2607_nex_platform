@@ -15,6 +15,7 @@ from .approved_document_api import register_approved_document_routes
 from .coa_api import register_coa_routes
 from .coa_release_admin_api import register_coa_release_admin_routes
 from .config import EosSettings, load_eos_settings
+from .cost_allocation_api import register_cost_allocation_routes
 from .cost_source_pool_api import register_cost_source_pool_routes
 from .dependencies import build_eos_dependencies
 from .finance_v2_api import register_finance_v2_routes
@@ -106,6 +107,10 @@ def create_eos_app(
     app.state.eos_journal_operation_service = dependencies.journal_operation_service
     app.state.eos_cost_source_pool_service = dependencies.cost_source_pool_service
     app.state.eos_allocation_plan_service = dependencies.allocation_plan_service
+    app.state.eos_cost_allocation_service = dependencies.cost_allocation_service
+    app.state.eos_allocation_reconciliation_service = (
+        dependencies.allocation_reconciliation_service
+    )
     app.state.eos_document_signoff_service = dependencies.document_signoff_service
     app.state.eos_scoped_approval_decision_router = (
         dependencies.scoped_approval_decision_router
@@ -138,6 +143,7 @@ def create_eos_app(
     register_finance_v2_routes(app)
     register_cost_source_pool_routes(app)
     register_allocation_plan_routes(app)
+    register_cost_allocation_routes(app)
     register_approval_decision_routes(app)
     register_approved_document_routes(app)
     register_scoped_approval_routes(app)

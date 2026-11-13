@@ -31,6 +31,7 @@ from sqlalchemy import (
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
 
+from .allocation_outbox_events import build_allocation_committed_event_payload
 from .journal_outbox_events import build_journal_posted_event_payload
 
 EOS_EVENT_TYPES = frozenset(
@@ -42,6 +43,7 @@ EOS_EVENT_TYPES = frozenset(
         "VOUCHER_CANDIDATE_CREATED",
         "VOUCHER_CANDIDATE_REVISED",
         "FINANCE.JOURNAL_POSTED.v1",
+        "FINANCE.COST_ALLOCATION_COMMITTED.v1",
     }
 )
 
@@ -610,6 +612,13 @@ def _event_payload(
 ) -> dict[str, Any]:
     if request.event_type == "FINANCE.JOURNAL_POSTED.v1":
         return build_journal_posted_event_payload(
+            tenant_id=request.tenant_id,
+            business_operation_id=request.business_operation_id,
+            operation=request.operation,
+            result=result,
+        )
+    if request.event_type == "FINANCE.COST_ALLOCATION_COMMITTED.v1":
+        return build_allocation_committed_event_payload(
             tenant_id=request.tenant_id,
             business_operation_id=request.business_operation_id,
             operation=request.operation,
