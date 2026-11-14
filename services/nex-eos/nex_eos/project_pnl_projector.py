@@ -18,6 +18,10 @@ from .cost_allocations import (
     EOS_COST_ALLOCATION_LINE_TABLE,
 )
 from .cost_source_pools import EOS_COST_SOURCE_POOL_TABLE
+from .material_commitments import (
+    EOS_MATERIAL_ATTRIBUTION_TABLE,
+    EOS_MATERIAL_COMMITMENT_TABLE,
+)
 from .payroll_labor_bridge import (
     EOS_LABOR_EFFORT_SNAPSHOT_TABLE,
     EOS_PAYROLL_POST_EVIDENCE_TABLE,
@@ -135,11 +139,38 @@ class ProjectPnlLaborAdjustmentFact:
 
 
 @dataclass(frozen=True)
+class ProjectPnlMaterialCommitmentFact:
+    commitment_id: str
+    line_no: int
+    period_id: str
+    account_id: str
+    material_ref: str
+    attribution_kind: str
+    project_id: str | None
+    project_code: str | None
+    work_code: str | None
+    acquired_quantity: Decimal
+    acquisition_amount_functional: Decimal
+    assigned_quantity: Decimal
+    assigned_amount_functional: Decimal
+    unassigned_quantity: Decimal
+    unassigned_amount_functional: Decimal
+    attributed_quantity: Decimal
+    attributed_amount_functional: Decimal
+    functional_currency: str
+    reconciliation_state: str
+    commitment_hash: str
+    line_hash: str
+    acquired_at: datetime
+
+
+@dataclass(frozen=True)
 class ProjectPnlSourceSnapshot:
     pools: tuple[ProjectPnlSourcePoolFact, ...]
     allocations: tuple[ProjectPnlAllocationFact, ...]
     payroll_allocations: tuple[ProjectPnlPayrollAllocationFact, ...] = ()
     labor_adjustments: tuple[ProjectPnlLaborAdjustmentFact, ...] = ()
+    material_commitments: tuple[ProjectPnlMaterialCommitmentFact, ...] = ()
 
 
 class ProjectPnlProjectionSource(Protocol):
@@ -172,6 +203,9 @@ class SqlAlchemyEosProjectPnlProjectionSource:
                 labor_adjustments = self._load_labor_adjustments(
                     session, request=request, as_of=as_of
                 )
+                material_commitments = self._load_material_commitments(
+                    session, request=request, as_of=as_of
+                )
         except EosProjectPnlProjectorError:
             raise
         except SQLAlchemyError as exc:
@@ -186,6 +220,7 @@ class SqlAlchemyEosProjectPnlProjectionSource:
             tuple(allocations),
             tuple(payroll_allocations),
             tuple(labor_adjustments),
+            tuple(material_commitments),
         )
 
     @staticmethod
@@ -321,6 +356,33 @@ class SqlAlchemyEosProjectPnlProjectionSource:
         ).mappings()
         return [_labor_adjustment_fact(row) for row in rows]
 
+    @staticmethod
+    def _load_material_commitments(
+        session: Session,
+        *,
+        request: ProjectPnlRebuildRequest,
+        as_of: datetime,
+    ) -> list[ProjectPnlMaterialCommitmentFact]:
+        commitment = EOS_MATERIAL_COMMITMENT_TABLE
+        attribution = EOS_MATERIAL_ATTRIBUTION_TABLE
+        rows = session.execute(
+            select(commitment, attribution)
+            .join(
+                attribution,
+                (attribution.c.tenant_id == commitment.c.tenant_id)
+                & (attribution.c.company_id == commitment.c.company_id)
+                & (attribution.c.commitment_id == commitment.c.commitment_id),
+            )
+            .where(
+                commitment.c.tenant_id == request.tenant_id,
+                commitment.c.company_id == request.company_id,
+                commitment.c.period_id == request.period_id,
+                commitment.c.acquired_at <= as_of,
+            )
+            .order_by(commitment.c.commitment_id, attribution.c.line_no)
+        ).mappings()
+        return [_material_commitment_fact(row) for row in rows]
+
 
 class EosProjectPnlProjector:
     def __init__(
@@ -413,6 +475,7 @@ def build_direct_allocation_projection(
         item for item in snapshot.pools if item.pool_id in relevant_pool_ids
     )
     _validate_pool_snapshot(request, relevant_pools, allocations_by_pool)
+    relevant_material = _validate_and_select_material_commitments(request, snapshot)
 
     components: list[ProjectPnlComponentDraft] = []
     pending = False
@@ -475,6 +538,13 @@ def build_direct_allocation_projection(
                 partial = True
         if pool.pool_state == "ON_HOLD":
             blocked = True
+
+    for material in relevant_material:
+        if material.reconciliation_state == "BLOCKED":
+            blocked = True
+        elif material.reconciliation_state == "PENDING":
+            pending = True
+        components.append(_material_commitment_component(material))
 
     components.sort(key=_component_sort_key)
     reconciliation_status = (
@@ -541,12 +611,93 @@ def build_direct_allocation_projection(
             else None
         ),
         labor_effort_watermark_at=as_of if relevant_payroll_links else None,
+        material_commitment_watermark=(
+            _material_commitment_watermark(request, relevant_material)
+            if relevant_material
+            else None
+        ),
+        material_commitment_watermark_at=as_of if relevant_material else None,
         reconciliation_status=reconciliation_status,
         freshness_status=freshness_status,
         staleness_seconds=staleness_seconds,
         data_classification="CONFIDENTIAL_FINANCIAL",
     )
     return draft, tuple(components)
+
+
+def _validate_and_select_material_commitments(
+    request: ProjectPnlRebuildRequest,
+    snapshot: ProjectPnlSourceSnapshot,
+) -> tuple[ProjectPnlMaterialCommitmentFact, ...]:
+    by_commitment: dict[str, list[ProjectPnlMaterialCommitmentFact]] = defaultdict(list)
+    identities: set[tuple[str, int]] = set()
+    for item in snapshot.material_commitments:
+        identity = (item.commitment_id, item.line_no)
+        if identity in identities:
+            raise _source_drift(
+                "Material commitment snapshot contains duplicate attribution identities"
+            )
+        identities.add(identity)
+        by_commitment[item.commitment_id].append(item)
+
+    selected: list[ProjectPnlMaterialCommitmentFact] = []
+    for rows in by_commitment.values():
+        first = rows[0]
+        if any(
+            item.commitment_hash != first.commitment_hash
+            or item.acquisition_amount_functional
+            != first.acquisition_amount_functional
+            or item.acquired_quantity != first.acquired_quantity
+            for item in rows[1:]
+        ):
+            raise _source_drift("Material commitment header facts are inconsistent")
+        attributed_amount = _money(
+            sum((item.attributed_amount_functional for item in rows), Decimal())
+        )
+        attributed_quantity = _money(
+            sum((item.attributed_quantity for item in rows), Decimal())
+        )
+        if (
+            attributed_amount != first.acquisition_amount_functional
+            or attributed_quantity != first.acquired_quantity
+            or _money(first.assigned_amount_functional + first.unassigned_amount_functional)
+            != first.acquisition_amount_functional
+            or _money(first.assigned_quantity + first.unassigned_quantity)
+            != first.acquired_quantity
+        ):
+            raise _source_drift(
+                "Material commitment attribution does not conserve acquisition value"
+            )
+        for item in rows:
+            if item.attribution_kind != "PROJECT" or item.project_id != request.project_id:
+                continue
+            if item.project_code != request.project_code:
+                raise _source_drift(
+                    "Material commitment Project Code differs from requested authority"
+                )
+            if item.functional_currency != request.functional_currency:
+                raise _blocked(
+                    "Material commitment currency differs from projection currency"
+                )
+            selected.append(item)
+    return tuple(sorted(selected, key=lambda item: (item.commitment_id, item.line_no)))
+
+
+def _material_commitment_component(
+    item: ProjectPnlMaterialCommitmentFact,
+) -> ProjectPnlComponentDraft:
+    return ProjectPnlComponentDraft(
+        classification="MATERIAL_COMMITTED",
+        source_kind="MATERIAL",
+        functional_amount=item.attributed_amount_functional,
+        source_ref=(
+            f"eos.material-commitment:{item.commitment_id}:line:{item.line_no}"
+        ),
+        source_hash=item.line_hash,
+        account_id=item.account_id,
+        work_code=item.work_code,
+        data_classification="CONFIDENTIAL_FINANCIAL",
+    )
 
 
 def _payroll_links_for_pool(
@@ -1035,6 +1186,33 @@ def _labor_effort_watermark(
     )
 
 
+def _material_commitment_watermark(
+    request: ProjectPnlRebuildRequest,
+    rows: Sequence[ProjectPnlMaterialCommitmentFact],
+) -> str:
+    return semantic_sha256_hash_ref(
+        {
+            "domain": "EOS-PROJECT-PNL-MATERIAL-COMMITMENT-WATERMARK-V1",
+            "tenant_id": request.tenant_id,
+            "company_id": request.company_id,
+            "project_id": request.project_id,
+            "period_id": request.period_id,
+            "as_of": request.as_of.astimezone(UTC).isoformat(),
+            "attributions": [
+                {
+                    "commitment_id": item.commitment_id,
+                    "line_no": item.line_no,
+                    "commitment_hash": item.commitment_hash,
+                    "line_hash": item.line_hash,
+                    "amount": _amount_text(item.attributed_amount_functional),
+                    "reconciliation_state": item.reconciliation_state,
+                }
+                for item in rows
+            ],
+        }
+    )
+
+
 def _component_sort_key(value: ProjectPnlComponentDraft) -> tuple[str, str, str]:
     return value.classification, value.source_ref, value.source_hash
 
@@ -1123,6 +1301,37 @@ def _labor_adjustment_fact(
         adjustment_kind=str(row["adjustment_kind"]),
         adjustment_hash=str(row["adjustment_hash"]),
         created_at=_stored_time("created_at", row["created_at"]),
+    )
+
+
+def _material_commitment_fact(
+    row: Mapping[str, Any],
+) -> ProjectPnlMaterialCommitmentFact:
+    return ProjectPnlMaterialCommitmentFact(
+        commitment_id=str(row["commitment_id"]),
+        line_no=int(row["line_no"]),
+        period_id=str(row["period_id"]),
+        account_id=str(row["account_id"]),
+        material_ref=str(row["material_ref"]),
+        attribution_kind=str(row["attribution_kind"]),
+        project_id=(str(row["project_id"]) if row["project_id"] is not None else None),
+        project_code=(
+            str(row["project_code"]) if row["project_code"] is not None else None
+        ),
+        work_code=str(row["work_code"]) if row["work_code"] is not None else None,
+        acquired_quantity=_money(row["acquired_quantity"]),
+        acquisition_amount_functional=_money(row["acquisition_amount_functional"]),
+        assigned_quantity=_money(row["assigned_quantity"]),
+        assigned_amount_functional=_money(row["assigned_amount_functional"]),
+        unassigned_quantity=_money(row["unassigned_quantity"]),
+        unassigned_amount_functional=_money(row["unassigned_amount_functional"]),
+        attributed_quantity=_money(row["attributed_quantity"]),
+        attributed_amount_functional=_money(row["attributed_amount_functional"]),
+        functional_currency=str(row["functional_currency"]),
+        reconciliation_state=str(row["reconciliation_state"]),
+        commitment_hash=str(row["commitment_hash"]),
+        line_hash=str(row["line_hash"]),
+        acquired_at=_stored_time("acquired_at", row["acquired_at"]),
     )
 
 

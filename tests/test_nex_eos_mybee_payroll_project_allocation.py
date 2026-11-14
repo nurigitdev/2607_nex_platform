@@ -1475,7 +1475,7 @@ def test_projector_low_level_persistence_guards_and_naive_time_normalization():
 
 def test_migration_head_and_runtime_exports_are_current():
     migrations = load_migrations("nex-eos")
-    assert migrations[-1].version == "2545_eos_payroll_project_allocation"
+    assert migrations[-1].version == "2546_eos_material_commitment"
     assert Path(
-        "database/nex-eos/migrations/2545_eos_payroll_project_allocation.sql"
+        "database/nex-eos/migrations/2546_eos_material_commitment.sql"
     ).is_file()

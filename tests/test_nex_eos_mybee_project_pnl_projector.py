@@ -13,11 +13,14 @@ from nex_eos import (
     EOS_COST_ALLOCATION_LINE_TABLE,
     EOS_COST_SOURCE_POOL_TABLE,
     EOS_LABOR_EFFORT_SNAPSHOT_TABLE,
+    EOS_MATERIAL_ATTRIBUTION_TABLE,
+    EOS_MATERIAL_COMMITMENT_TABLE,
     EOS_PAYROLL_POST_EVIDENCE_TABLE,
     EOS_PAYROLL_PROJECT_ALLOCATION_TABLE,
     EosProjectPnlProjector,
     EosProjectPnlProjectorError,
     ProjectPnlAllocationFact,
+    ProjectPnlMaterialCommitmentFact,
     ProjectPnlRebuildRequest,
     ProjectPnlSourcePoolFact,
     ProjectPnlSourceSnapshot,
@@ -55,6 +58,41 @@ def _request(**overrides) -> ProjectPnlRebuildRequest:
         stale_after_seconds=120,
     )
     return replace(value, **overrides)
+
+
+def _material_fact(
+    line_no: int,
+    *,
+    kind: str = "PROJECT",
+    quantity: str = "80",
+    amount: str = "800",
+    state: str = "VERIFIED",
+) -> ProjectPnlMaterialCommitmentFact:
+    is_project = kind == "PROJECT"
+    return ProjectPnlMaterialCommitmentFact(
+        commitment_id="76000000-0000-4000-8000-000000000099",
+        line_no=line_no,
+        period_id=PERIOD_ID,
+        account_id=ACCOUNT_ID,
+        material_ref="material:STEEL-001",
+        attribution_kind=kind,
+        project_id=PROJECT_ID if is_project else None,
+        project_code=PROJECT_CODE if is_project else None,
+        work_code="FL0004011" if is_project else None,
+        acquired_quantity=Decimal("100.0000"),
+        acquisition_amount_functional=Decimal("1000.0000"),
+        assigned_quantity=Decimal("80.0000"),
+        assigned_amount_functional=Decimal("800.0000"),
+        unassigned_quantity=Decimal("20.0000"),
+        unassigned_amount_functional=Decimal("200.0000"),
+        attributed_quantity=Decimal(quantity),
+        attributed_amount_functional=Decimal(amount),
+        functional_currency="KRW",
+        reconciliation_state=state,
+        commitment_hash=HASH_A,
+        line_hash=HASH_A if line_no == 1 else HASH_B,
+        acquired_at=NOW,
+    )
 
 
 def _pool(
@@ -482,6 +520,8 @@ def test_sql_source_and_projector_persist_exact_rebuild() -> None:
     EOS_LABOR_EFFORT_SNAPSHOT_TABLE.create(runtime.engine)
     EOS_PAYROLL_PROJECT_ALLOCATION_TABLE.create(runtime.engine)
     EOS_COST_ALLOCATION_ADJUSTMENT_TABLE.create(runtime.engine)
+    EOS_MATERIAL_COMMITMENT_TABLE.create(runtime.engine)
+    EOS_MATERIAL_ATTRIBUTION_TABLE.create(runtime.engine)
     shared = _pool(
         20,
         allocation_mode="MANAGEMENT_ALLOCATION",
@@ -627,3 +667,81 @@ def test_builder_composes_sql_source_and_sink() -> None:
 def test_runtime_wires_projector_only_with_database_runtime() -> None:
     app = create_eos_app(environ={"NEX_PROFILE": "test"})
     assert app.state.eos_project_pnl_projector is None
+
+
+@pytest.mark.parametrize(
+    ("state", "expected"),
+    [("PENDING", "PENDING"), ("BLOCKED", "BLOCKED")],
+)
+def test_material_commitment_controls_projection_reconciliation(state, expected):
+    project = _material_fact(1, state=state)
+    unassigned = _material_fact(
+        2, kind="UNASSIGNED", quantity="20", amount="200", state=state
+    )
+    draft, components = build_direct_allocation_projection(
+        _request(),
+        ProjectPnlSourceSnapshot(
+            pools=(), allocations=(), material_commitments=(project, unassigned)
+        ),
+    )
+    assert draft.reconciliation_status == expected
+    assert draft.material_commitment_watermark is not None
+    assert components[0].classification == "MATERIAL_COMMITTED"
+
+
+@pytest.mark.parametrize(
+    ("facts", "message"),
+    [
+        (
+            (_material_fact(1), _material_fact(1)),
+            "duplicate attribution identities",
+        ),
+        (
+            (
+                _material_fact(1),
+                replace(
+                    _material_fact(
+                        2, kind="UNASSIGNED", quantity="20", amount="200"
+                    ),
+                    commitment_hash=HASH_B,
+                ),
+            ),
+            "header facts are inconsistent",
+        ),
+        (
+            (
+                _material_fact(1, quantity="79", amount="800"),
+                _material_fact(
+                    2, kind="UNASSIGNED", quantity="20", amount="200"
+                ),
+            ),
+            "does not conserve",
+        ),
+        (
+            (
+                replace(_material_fact(1), project_code="W601D260009"),
+                _material_fact(
+                    2, kind="UNASSIGNED", quantity="20", amount="200"
+                ),
+            ),
+            "differs from requested authority",
+        ),
+        (
+            (
+                replace(_material_fact(1), functional_currency="USD"),
+                _material_fact(
+                    2, kind="UNASSIGNED", quantity="20", amount="200"
+                ),
+            ),
+            "currency differs",
+        ),
+    ],
+)
+def test_material_commitment_snapshot_drift_fails_closed(facts, message):
+    with pytest.raises(EosProjectPnlProjectorError, match=message):
+        build_direct_allocation_projection(
+            _request(),
+            ProjectPnlSourceSnapshot(
+                pools=(), allocations=(), material_commitments=facts
+            ),
+        )

@@ -163,6 +163,7 @@ def _seed(
     project_status: str = "ACTIVE",
     document_state: str = "ACTIVE",
     allowed_project_codes: tuple[str, ...] = (PROJECT_CODE,),
+    debit_category: str = "EXPENSE",
 ) -> None:
     SqlAlchemyEosLegalEntityRepository(sessions).create_legal_entity(
         LegalEntityInput(
@@ -216,7 +217,7 @@ def _seed(
             DEBIT_ID,
             "TRAVEL",
             "Travel",
-            "EXPENSE",
+            debit_category,
             "GENERAL",
             date(2026, 1, 1),
         )
@@ -2839,7 +2840,13 @@ def test_actual_postgres_accounting_proof_and_fresh_oa_admission() -> None:
             ).fetchone() == (None,)
 
 
-def _prepare_atomic_posting(sessions, candidates, *, fault_injector=None):
+def _prepare_atomic_posting(
+    sessions,
+    candidates,
+    *,
+    fault_injector=None,
+    debit_is_monetary: bool = True,
+):
     candidate = candidates.get(tenant_id=TENANT, candidate_id=CANDIDATE_ID)
     assert candidate is not None
     period_id = "32000000-0000-4000-8000-000000000021"
@@ -2899,9 +2906,14 @@ def _prepare_atomic_posting(sessions, candidates, *, fault_injector=None):
                 created_at=NOW,
             )
         )
-        for policy_id, account_id, statement_line in (
-            (debit_policy_id, DEBIT_ID, "EXPENSE.TRAVEL"),
-            (credit_policy_id, CREDIT_ID, "ASSET.CASH"),
+        for policy_id, account_id, statement_line, is_monetary in (
+            (
+                debit_policy_id,
+                DEBIT_ID,
+                "ASSET.INVENTORY" if not debit_is_monetary else "EXPENSE.TRAVEL",
+                debit_is_monetary,
+            ),
+            (credit_policy_id, CREDIT_ID, "ASSET.CASH", True),
         ):
             session.execute(
                 EOS_COMPANY_ACCOUNT_POLICY_TABLE.insert().values(
@@ -2913,7 +2925,7 @@ def _prepare_atomic_posting(sessions, candidates, *, fault_injector=None):
                     posting_rule_id=posting_rule_id,
                     parent_account_id=None,
                     is_postable_leaf=True,
-                    is_monetary=True,
+                    is_monetary=is_monetary,
                     statement_line_ref=statement_line,
                     allowed_currencies=["KRW"],
                     valid_from=date(2026, 1, 1),

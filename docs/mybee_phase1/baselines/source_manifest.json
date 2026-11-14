@@ -42,9 +42,9 @@
       "sha256": "sha256:362b083e52cafefef1825d4e4930d8df238fb96f044cb821121af9c664da9b0a"
     },
     "nex-eos": {
-      "version": 2545,
-      "path": "database/nex-eos/migrations/2545_eos_payroll_project_allocation.sql",
-      "sha256": "sha256:4ed481683be2a907d05ab2c261e4e977fae7cb466395f794edf415e2fd51088d"
+      "version": 2546,
+      "path": "database/nex-eos/migrations/2546_eos_material_commitment.sql",
+      "sha256": "sha256:254d0ffd66ea82c71f8aa2b77ce9c2e136abadb5438866329ba141da7ce73176"
     },
     "nex-mo": {
       "version": 1470,
