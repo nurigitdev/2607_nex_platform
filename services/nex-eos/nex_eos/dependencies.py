@@ -90,6 +90,10 @@ from .payroll_labor_bridge import (
     EosPayrollLaborBridgeService,
     SqlAlchemyEosPayrollLaborBridgeRepository,
 )
+from .payroll_project_allocations import (
+    EosPayrollProjectAllocationService,
+    SqlAlchemyEosPayrollProjectAllocationRepository,
+)
 from .persistence import EosDatabaseRuntime, build_eos_database_runtime
 from .project_application_approvals import EosProjectApplicationApprovalService
 from .project_applications import (
@@ -181,6 +185,7 @@ class EosDependencies:
     project_pnl_repository: SqlAlchemyEosProjectPnlRepository | None
     project_pnl_projector: EosProjectPnlProjector | None
     payroll_labor_bridge_service: EosPayrollLaborBridgeService | None
+    payroll_project_allocation_service: EosPayrollProjectAllocationService | None
     document_signoff_service: EosDocumentSignoffService | None
     scoped_approval_decision_router: EosScopedApprovalDecisionRouter | None
     fx_rate_service: EosFxRateService | None
@@ -574,6 +579,19 @@ def build_eos_dependencies(
         if database_runtime is not None
         else None
     )
+    payroll_project_allocation_service = (
+        EosPayrollProjectAllocationService(
+            repository=SqlAlchemyEosPayrollProjectAllocationRepository(
+                database_runtime.session_factory
+            ),
+            cost_allocation_service=cost_allocation_service,
+            coordinator=business_transactions,
+        )
+        if database_runtime is not None
+        and cost_allocation_service is not None
+        and business_transactions is not None
+        else None
+    )
     document_signoff_service = (
         EosDocumentSignoffService(
             session_factory=database_runtime.session_factory,
@@ -823,6 +841,7 @@ def build_eos_dependencies(
         project_pnl_repository=project_pnl_repository,
         project_pnl_projector=project_pnl_projector,
         payroll_labor_bridge_service=payroll_labor_bridge_service,
+        payroll_project_allocation_service=payroll_project_allocation_service,
         document_signoff_service=document_signoff_service,
         scoped_approval_decision_router=scoped_approval_decision_router,
         fx_rate_service=fx_rate_service,

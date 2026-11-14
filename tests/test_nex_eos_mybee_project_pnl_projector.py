@@ -8,9 +8,13 @@ from decimal import Decimal
 import pytest
 import test_nex_eos_mybee_project_pnl as persistence_fixture
 from nex_eos import (
+    EOS_COST_ALLOCATION_ADJUSTMENT_TABLE,
     EOS_COST_ALLOCATION_BATCH_TABLE,
     EOS_COST_ALLOCATION_LINE_TABLE,
     EOS_COST_SOURCE_POOL_TABLE,
+    EOS_LABOR_EFFORT_SNAPSHOT_TABLE,
+    EOS_PAYROLL_POST_EVIDENCE_TABLE,
+    EOS_PAYROLL_PROJECT_ALLOCATION_TABLE,
     EosProjectPnlProjector,
     EosProjectPnlProjectorError,
     ProjectPnlAllocationFact,
@@ -474,6 +478,10 @@ def test_sql_source_and_projector_persist_exact_rebuild() -> None:
     EOS_COST_SOURCE_POOL_TABLE.create(runtime.engine)
     EOS_COST_ALLOCATION_BATCH_TABLE.create(runtime.engine)
     EOS_COST_ALLOCATION_LINE_TABLE.create(runtime.engine)
+    EOS_PAYROLL_POST_EVIDENCE_TABLE.create(runtime.engine)
+    EOS_LABOR_EFFORT_SNAPSHOT_TABLE.create(runtime.engine)
+    EOS_PAYROLL_PROJECT_ALLOCATION_TABLE.create(runtime.engine)
+    EOS_COST_ALLOCATION_ADJUSTMENT_TABLE.create(runtime.engine)
     shared = _pool(
         20,
         allocation_mode="MANAGEMENT_ALLOCATION",
