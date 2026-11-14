@@ -108,6 +108,10 @@ from .project_entitlement_reconciliation import (
 from .project_memberships import SqlAlchemyEosProjectMembershipRepository
 from .project_operations import EosGovernedProjectService
 from .project_pnl import SqlAlchemyEosProjectPnlRepository
+from .project_pnl_projector import (
+    EosProjectPnlProjector,
+    build_eos_project_pnl_projector,
+)
 from .project_work_assignments import EosProjectWorkAssignmentService
 from .project_work_codes import EosProjectBusinessService
 from .projects import SqlAlchemyEosProjectRepository
@@ -171,6 +175,7 @@ class EosDependencies:
     budget_service: EosBudgetService | None
     project_budget_binding_service: EosProjectBudgetBindingService | None
     project_pnl_repository: SqlAlchemyEosProjectPnlRepository | None
+    project_pnl_projector: EosProjectPnlProjector | None
     document_signoff_service: EosDocumentSignoffService | None
     scoped_approval_decision_router: EosScopedApprovalDecisionRouter | None
     fx_rate_service: EosFxRateService | None
@@ -550,6 +555,13 @@ def build_eos_dependencies(
         if database_runtime is not None
         else None
     )
+    project_pnl_projector = (
+        build_eos_project_pnl_projector(
+            database_runtime.session_factory, project_pnl_repository
+        )
+        if database_runtime is not None and project_pnl_repository is not None
+        else None
+    )
     document_signoff_service = (
         EosDocumentSignoffService(
             session_factory=database_runtime.session_factory,
@@ -797,6 +809,7 @@ def build_eos_dependencies(
         budget_service=budget_service,
         project_budget_binding_service=project_budget_binding_service,
         project_pnl_repository=project_pnl_repository,
+        project_pnl_projector=project_pnl_projector,
         document_signoff_service=document_signoff_service,
         scoped_approval_decision_router=scoped_approval_decision_router,
         fx_rate_service=fx_rate_service,

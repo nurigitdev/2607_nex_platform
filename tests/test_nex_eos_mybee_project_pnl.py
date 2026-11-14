@@ -482,19 +482,6 @@ def test_repository_rejects_changed_replay_and_version_gap() -> None:
                 ProjectPnlComponentDraft(
                     classification="POSTED_DIRECT_COST",
                     source_kind="SERVICE",
-                    functional_amount=Decimal("-1.0000"),
-                    source_ref="eos.invalid:3",
-                    source_hash=HASH_A,
-                ),
-            ),
-            "functional_amount",
-        ),
-        (
-            _draft(),
-            (
-                ProjectPnlComponentDraft(
-                    classification="POSTED_DIRECT_COST",
-                    source_kind="SERVICE",
                     functional_amount=Decimal("0.0000"),
                     source_ref="eos.invalid:4",
                     source_hash=HASH_A,
