@@ -86,6 +86,10 @@ from .legal_entities import (
     SqlAlchemyEosLegalEntityRepository,
 )
 from .organization import SqlAlchemyEosOrganizationRepository
+from .payroll_labor_bridge import (
+    EosPayrollLaborBridgeService,
+    SqlAlchemyEosPayrollLaborBridgeRepository,
+)
 from .persistence import EosDatabaseRuntime, build_eos_database_runtime
 from .project_application_approvals import EosProjectApplicationApprovalService
 from .project_applications import (
@@ -176,6 +180,7 @@ class EosDependencies:
     project_budget_binding_service: EosProjectBudgetBindingService | None
     project_pnl_repository: SqlAlchemyEosProjectPnlRepository | None
     project_pnl_projector: EosProjectPnlProjector | None
+    payroll_labor_bridge_service: EosPayrollLaborBridgeService | None
     document_signoff_service: EosDocumentSignoffService | None
     scoped_approval_decision_router: EosScopedApprovalDecisionRouter | None
     fx_rate_service: EosFxRateService | None
@@ -562,6 +567,13 @@ def build_eos_dependencies(
         if database_runtime is not None and project_pnl_repository is not None
         else None
     )
+    payroll_labor_bridge_service = (
+        EosPayrollLaborBridgeService(
+            SqlAlchemyEosPayrollLaborBridgeRepository(database_runtime.session_factory)
+        )
+        if database_runtime is not None
+        else None
+    )
     document_signoff_service = (
         EosDocumentSignoffService(
             session_factory=database_runtime.session_factory,
@@ -810,6 +822,7 @@ def build_eos_dependencies(
         project_budget_binding_service=project_budget_binding_service,
         project_pnl_repository=project_pnl_repository,
         project_pnl_projector=project_pnl_projector,
+        payroll_labor_bridge_service=payroll_labor_bridge_service,
         document_signoff_service=document_signoff_service,
         scoped_approval_decision_router=scoped_approval_decision_router,
         fx_rate_service=fx_rate_service,
