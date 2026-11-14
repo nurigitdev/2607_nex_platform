@@ -21,7 +21,8 @@ MyBee office-work AX Service Phase-1 program.
 14. `NeX_MyBee_W40_CA02_Accounting_Product_Runtime_Integration_Checkpoint_v1.0.md`
 15. `NeX_MyBee_W40_S4_00A_Pre_Posting_VoucherCandidate_Revision_and_Journal_Boundary_Hardening_v1.0.md`
 16. `NeX_MyBee_W50_CA01_W40_to_W50_Allocation_Entry_Reconciliation_v1.0.md`
-17. `NeX_MyBee_Post_Wave_UIUX_Compatibility_Performance_Backlog_v1.0.md`
+17. `NeX_MyBee_W60_CA01_Project_PnL_Projection_and_Management_Allocation_Entry_Reconciliation_v1.0.md`
+18. `NeX_MyBee_Post_Wave_UIUX_Compatibility_Performance_Backlog_v1.0.md`
 
 The Markdown Slice Plan and its Execution Matrix JSON are one planning set.
 The JSON is machine-readable traceability input, not runtime configuration or
@@ -71,6 +72,23 @@ defines the `E = D + A + U` conservation boundary, and replaces occupied
 historical W50 migration reservations with `2541` and `2542`. It takes
 precedence only for these W50 entry semantics, migration reservations, Slice
 ordering, and acceptance gates.
+
+W60-CA01 is the source-backed Project P&L entry amendment after W50 closure.
+It maps the business-facing management allocation entry to the existing
+`CostSourcePool -> AllocationPlan -> AllocationBatch/Line -> Adjustment`
+authorities and rejects a duplicate management-journal ledger. It defines the
+privacy-preserving PayrollPostingEvidence/LaborEffortSnapshot bridge, freezes
+approved actual Man-Day as the preferred payroll basis, separates
+company/organization payroll expense from liability/net-pay components, and
+labels plan-based fallback or residual labor explicitly. It recognizes
+raw-material cost at admitted consumption rather than purchase, but requires
+purchase-time Project material commitment and explicit unassigned-inventory
+visibility. It separates BOM forecast, purchased/attributed inventory, and
+consumed actual cost; reserves BOM as governed planning evidence; and requires
+a rebuildable watermark-aware P&L projection with explicit confirmed,
+committed, unassigned, provisional, unallocated, pending, and stale
+classifications. It takes precedence for these W60 entry semantics and the
+corrected S7-02/S7-03 boundary; NVT rollup remains S7-04/W84.
 
 The Post-Wave UI/UX backlog records non-blocking TestClient compatibility and
 frontend bundle-performance findings from the post-S7-01 Repository Full Gate.
