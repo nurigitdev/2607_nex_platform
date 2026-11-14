@@ -21,6 +21,7 @@ MyBee office-work AX Service Phase-1 program.
 14. `NeX_MyBee_W40_CA02_Accounting_Product_Runtime_Integration_Checkpoint_v1.0.md`
 15. `NeX_MyBee_W40_S4_00A_Pre_Posting_VoucherCandidate_Revision_and_Journal_Boundary_Hardening_v1.0.md`
 16. `NeX_MyBee_W50_CA01_W40_to_W50_Allocation_Entry_Reconciliation_v1.0.md`
+17. `NeX_MyBee_Post_Wave_UIUX_Compatibility_Performance_Backlog_v1.0.md`
 
 The Markdown Slice Plan and its Execution Matrix JSON are one planning set.
 The JSON is machine-readable traceability input, not runtime configuration or
@@ -70,6 +71,13 @@ defines the `E = D + A + U` conservation boundary, and replaces occupied
 historical W50 migration reservations with `2541` and `2542`. It takes
 precedence only for these W50 entry semantics, migration reservations, Slice
 ordering, and acceptance gates.
+
+The Post-Wave UI/UX backlog records non-blocking TestClient compatibility and
+frontend bundle-performance findings from the post-S7-01 Repository Full Gate.
+It does not change the active accounting Wave or authorize immediate UI work.
+Its entry condition is completion of the currently planned functional Waves,
+after which the items require a separate corrective Slice and a new clean Full
+Gate baseline.
 
 Runtime implementation evidence for the W30-CA02 Project foundation is
 recorded in
