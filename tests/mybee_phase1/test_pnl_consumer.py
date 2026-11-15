@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import copy
+import importlib
 import json
+import sys
 from io import BytesIO
+from pathlib import Path
 from urllib.error import HTTPError, URLError
 
 import pytest
-import test_nex_eos_mybee_project_pnl as fixture
 from mybee_ax.integrations import nex_pnl_client as consumer_module
 from mybee_ax.integrations.nex_pnl_client import (
     PROJECT_PNL_GET_OPERATION,
@@ -16,6 +18,9 @@ from mybee_ax.integrations.nex_pnl_client import (
     admit_project_pnl_projection,
     build_project_pnl_request,
 )
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+fixture = importlib.import_module("test_nex_eos_mybee_project_pnl")
 
 SUBJECT = "employee-pnl-reader"
 CORRELATION = "mybee-pnl-query-1"

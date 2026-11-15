@@ -2,12 +2,20 @@ from __future__ import annotations
 
 import os
 import uuid
+from collections.abc import Mapping, Sequence
+from concurrent.futures import ThreadPoolExecutor
+from dataclasses import replace
 from datetime import date, timedelta
 from decimal import Decimal
+from json import dumps
+from math import ceil
+from pathlib import Path
+from time import perf_counter
 
 import psycopg
 import pytest
 import test_nex_eos_mybee_cost_pool as source_fixture
+from mybee_ax.integrations.nex_pnl_client import admit_project_pnl_projection
 from nex_eos import (
     EOS_COST_ALLOCATION_ADJUSTMENT_TABLE,
     EOS_COST_ALLOCATION_PLAN_LINE_TABLE,
@@ -18,7 +26,9 @@ from nex_eos import (
     EosCostSourcePoolService,
     EosPayrollLaborBridgeService,
     EosPayrollProjectAllocationService,
+    EosProjectPnlPrivacyGuard,
     EosProjectPnlProjector,
+    EosProjectPnlQueryService,
     LaborEffortLineInput,
     LaborEffortSnapshotInput,
     PayrollPostingEvidenceInput,
@@ -30,19 +40,65 @@ from nex_eos import (
     SqlAlchemyEosCostSourcePoolRepository,
     SqlAlchemyEosPayrollLaborBridgeRepository,
     SqlAlchemyEosPayrollProjectAllocationRepository,
+    SqlAlchemyEosPnlPrivacyRepository,
     SqlAlchemyEosProjectPnlProjectionSource,
     SqlAlchemyEosProjectPnlRepository,
 )
+from nex_eos.project_authorization import EosProjectAuthorizationEvidence
 from nex_runtime import psycopg_database_url
 from nex_runtime.semantic_hashes import semantic_sha256_hash_ref
 from psycopg import sql
 from run_migrations import run_service_migrations
-from sqlalchemy import create_engine, func, make_url, select, update
+from sqlalchemy import create_engine, func, make_url, select, text, update
 from sqlalchemy.exc import DBAPIError
+from sqlalchemy.orm import sessionmaker
 
 DATABASE_URL = os.getenv("NEX_EOS_TEST_DATABASE_URL", "")
 POSTGRES_SMOKE = os.getenv("NEX_EOS_MYBEE_S7_02C_POSTGRES_SMOKE") == "1"
 PLAN_ID = "76500000-0000-4000-8000-000000000021"
+PERFORMANCE_REPORT = os.getenv("NEX_MYBEE_W60_PERFORMANCE_REPORT", "")
+_REBUILD_SAMPLES = 20
+_READ_SAMPLES = 50
+_READ_CONCURRENCY = 50
+_REBUILD_P95_BUDGET_MS = 30_000.0
+_READ_P95_BUDGET_MS = 2_000.0
+
+
+class _PnlAuthorizer:
+    def __init__(self, *, project_code: str, now) -> None:
+        self._evidence = EosProjectAuthorizationEvidence(
+            decision_ref="oa-decision:w60-s7-03a",
+            project_code=project_code,
+            project_role="OWNER",
+            project_status="ACTIVE",
+            source_version=1,
+            projection_event_hash="sha256:" + "1" * 64,
+            authorization_revision_hash="sha256:" + "2" * 64,
+            decided_at=now.isoformat(),
+        )
+
+    def authorize(self, **kwargs):
+        assert kwargs["action"] == "project:pnl:read"
+        return self._evidence
+
+
+def _nearest_rank(values: Sequence[float], percentile: float) -> float:
+    ordered = sorted(values)
+    return ordered[max(0, ceil(len(ordered) * percentile) - 1)]
+
+
+def _plan_indexes(value: object) -> set[str]:
+    indexes: set[str] = set()
+    if isinstance(value, Mapping):
+        index_name = value.get("Index Name")
+        if isinstance(index_name, str):
+            indexes.add(index_name)
+        for child in value.values():
+            indexes.update(_plan_indexes(child))
+    elif isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
+        for child in value:
+            indexes.update(_plan_indexes(child))
+    return indexes
 
 
 def _insert_plan(sessions, *, posting, snapshot: dict, revision: int) -> None:
@@ -116,6 +172,29 @@ def _insert_plan(sessions, *, posting, snapshot: dict, revision: int) -> None:
                 ),
             )
         )
+
+
+def test_w60_performance_helpers_and_budgets_are_stable() -> None:
+    assert _nearest_rank([8.0, 2.0, 4.0, 6.0], 0.95) == 8.0
+    assert _plan_indexes(
+        [
+            {
+                "Plan": {
+                    "Node Type": "Limit",
+                    "Plans": [
+                        {
+                            "Node Type": "Index Scan",
+                            "Index Name": "ix_eos_project_pnl_lookup",
+                        }
+                    ],
+                }
+            }
+        ]
+    ) == {"ix_eos_project_pnl_lookup"}
+    assert _REBUILD_SAMPLES >= 20
+    assert _READ_SAMPLES == _READ_CONCURRENCY == 50
+    assert _REBUILD_P95_BUDGET_MS == 30_000.0
+    assert _READ_P95_BUDGET_MS == 2_000.0
 
 
 @pytest.mark.skipif(
@@ -310,7 +389,18 @@ def test_actual_postgres_labor_adjustment_residual_and_pnl_rebuild() -> None:
             as_of=posting.NOW + timedelta(minutes=10),
             evaluated_at=posting.NOW + timedelta(minutes=10),
         )
-        projection = projector.rebuild(projection_request)
+        rebuild_latencies_ms: list[float] = []
+        projection = None
+        for projection_version in range(1, _REBUILD_SAMPLES + 1):
+            started = perf_counter()
+            projection = projector.rebuild(
+                replace(
+                    projection_request,
+                    projection_version=projection_version,
+                )
+            )
+            rebuild_latencies_ms.append((perf_counter() - started) * 1000.0)
+        assert projection is not None
         assert (
             projection["posted_allocated_cost"]
             == source_pool["eligible_amount_functional"]
@@ -319,6 +409,119 @@ def test_actual_postgres_labor_adjustment_residual_and_pnl_rebuild() -> None:
         assert projection["reconciliation_status"] == "VERIFIED"
         assert projection["payroll_evidence_watermark"].startswith("sha256:")
         assert projection["labor_effort_watermark"].startswith("sha256:")
+        rebuild_p95_ms = _nearest_rank(rebuild_latencies_ms, 0.95)
+        assert rebuild_p95_ms <= _REBUILD_P95_BUDGET_MS
+
+        engine.dispose()
+        engine = create_engine(scoped_url, pool_pre_ping=True)
+        sessions = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
+        restarted_projector = EosProjectPnlProjector(
+            source=SqlAlchemyEosProjectPnlProjectionSource(sessions),
+            sink=SqlAlchemyEosProjectPnlRepository(sessions),
+        )
+        replay = restarted_projector.rebuild(
+            replace(
+                projection_request,
+                projection_version=_REBUILD_SAMPLES,
+            )
+        )
+        assert replay == projection
+
+        query_service = EosProjectPnlQueryService(
+            repository=SqlAlchemyEosProjectPnlRepository(sessions),
+            project_authorizer=_PnlAuthorizer(
+                project_code=posting.PROJECT_CODE,
+                now=posting.NOW,
+            ),
+            privacy_guard=EosProjectPnlPrivacyGuard(
+                SqlAlchemyEosPnlPrivacyRepository(sessions)
+            ),
+        )
+        query = {
+            "tenant_id": posting.TENANT,
+            "company_id": posting.COMPANY_ID,
+            "project_id": posting.PROJECT_ID,
+            "period_id": source_pool["period_id"],
+            "requester_subject_id": "w60-pnl-reader",
+        }
+        protected = query_service.get(
+            **query,
+            correlation_id="w60-s7-03a-prime",
+        )
+        assert protected == projection
+        admitted = admit_project_pnl_projection(
+            protected,
+            tenant_id=posting.TENANT,
+            company_id=posting.COMPANY_ID,
+            project_id=posting.PROJECT_ID,
+            project_code=posting.PROJECT_CODE,
+            period_id=source_pool["period_id"],
+        )
+        assert (
+            admitted["posted_allocated_cost"]
+            == (source_pool["eligible_amount_functional"])
+        )
+
+        def protected_read(sample: int) -> tuple[float, str]:
+            started = perf_counter()
+            result = query_service.get(
+                **query,
+                correlation_id=f"w60-s7-03a-read-{sample}",
+            )
+            return (perf_counter() - started) * 1000.0, result["projection_hash"]
+
+        with ThreadPoolExecutor(max_workers=_READ_CONCURRENCY) as executor:
+            reads = tuple(executor.map(protected_read, range(_READ_SAMPLES)))
+        read_latencies_ms = [latency for latency, _hash in reads]
+        assert {projection_hash for _latency, projection_hash in reads} == {
+            projection["projection_hash"]
+        }
+        read_p95_ms = _nearest_rank(read_latencies_ms, 0.95)
+        assert read_p95_ms <= _READ_P95_BUDGET_MS
+
+        with sessions.begin() as session:
+            session.execute(text("SET LOCAL enable_seqscan = off"))
+            plan = session.execute(
+                text(
+                    "EXPLAIN (FORMAT JSON) "
+                    "SELECT projection_id FROM eos_project_pnl_projection "
+                    "WHERE tenant_id = :tenant_id "
+                    "AND company_id = :company_id "
+                    "AND project_id = :project_id "
+                    "AND period_id = :period_id "
+                    "ORDER BY projection_version DESC LIMIT 1"
+                ),
+                {
+                    "tenant_id": posting.TENANT,
+                    "company_id": posting.COMPANY_ID,
+                    "project_id": posting.PROJECT_ID,
+                    "period_id": source_pool["period_id"],
+                },
+            ).scalar_one()
+        plan_indexes = _plan_indexes(plan)
+        assert "ix_eos_project_pnl_lookup" in plan_indexes
+
+        performance = {
+            "schema_version": "mybee.w60_s7_03a_performance.v1",
+            "status": "PASS",
+            "rebuild_samples": _REBUILD_SAMPLES,
+            "rebuild_p95_ms": round(rebuild_p95_ms, 3),
+            "rebuild_p95_budget_ms": _REBUILD_P95_BUDGET_MS,
+            "read_samples": _READ_SAMPLES,
+            "read_concurrency": _READ_CONCURRENCY,
+            "read_p95_ms": round(read_p95_ms, 3),
+            "read_p95_budget_ms": _READ_P95_BUDGET_MS,
+            "projection_index_names": sorted(plan_indexes),
+            "restart_rebuild_exact_replay": True,
+            "actual_population_evidence": True,
+        }
+        if PERFORMANCE_REPORT:
+            report_path = Path(PERFORMANCE_REPORT)
+            report_path.parent.mkdir(parents=True, exist_ok=True)
+            report_path.write_text(
+                dumps(performance, indent=2, sort_keys=True) + "\n",
+                encoding="utf-8",
+            )
 
         with sessions() as session:
             counts = (
