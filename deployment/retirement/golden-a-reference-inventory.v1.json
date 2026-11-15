@@ -26,7 +26,7 @@
   ],
   "classification_counts": {
     "GENERALIZE": 23,
-    "HISTORY": 50,
+    "HISTORY": 51,
     "REMOVE_ACTIVE": 17,
     "REPLAY_ONLY": 120
   },
@@ -228,6 +228,11 @@
     },
     {
       "path": "docs/slices/mybee_phase1_w70_cp_m1_e2e_fx_01a2.md",
+      "classification": "HISTORY",
+      "reason": "Frozen design or Slice evidence remains immutable history."
+    },
+    {
+      "path": "docs/slices/mybee_phase1_w70_cp_m1_e2e_fx_01a4.md",
       "classification": "HISTORY",
       "reason": "Frozen design or Slice evidence remains immutable history."
     },
@@ -1082,5 +1087,5 @@
       "reason": "Artifact remains only for regression, audit, or historical replay."
     }
   ],
-  "inventory_hash": "sha256:2f23a18b588cc6d410e97931c4d28a2d7d8a5ae9a4d78e792030f9c58df34680"
+  "inventory_hash": "sha256:b81791f8deb8b666f8d29ca1f135fcad7f925420d0b88f00a05562c467c3cb58"
 }

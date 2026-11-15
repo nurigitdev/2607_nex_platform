@@ -213,6 +213,15 @@ execution, deterministic plan IDs, and JobQueue dedup key. No migration or
 parallel runtime queue was added. The next boundary is
 `CP-M1-E2E-FX-01A.4`.
 
+`CP-M1-E2E-FX-01A.4` evidence is recorded in
+[`mybee_phase1_w70_cp_m1_e2e_fx_01a4.md`](../../slices/mybee_phase1_w70_cp_m1_e2e_fx_01a4.md).
+It admits a generic verified multi-Skill catalog, exact capability-to-Skill
+selection, and MyBee-owned D04/D12 operation adapters. The immutable admission
+lock is reconstructed from the signed NSP and Product Capability Registry in
+regression, while generic runtime code remains free of MyBee capability IDs.
+No migration or remote provider was added. The next boundary is
+`CP-M1-E2E-FX-01A.5`.
+
 The Post-Wave UI/UX backlog records non-blocking TestClient compatibility and
 frontend bundle-performance findings from the post-S7-01 Repository Full Gate.
 It does not change the active accounting Wave or authorize immediate UI work.

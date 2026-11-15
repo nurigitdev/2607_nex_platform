@@ -8,6 +8,7 @@ import json
 import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from dataclasses import field as dataclass_field
 from datetime import date
 from pathlib import Path
 from typing import Any
@@ -98,12 +99,30 @@ class AdmittedM1SignedSkillRelease:
     registry_hash: str
     skills: tuple[AdmittedM1Skill, ...]
     fl_bindings: tuple[AdmittedM1FlBinding, ...]
+    verified_skills: tuple[Any, ...] = dataclass_field(
+        repr=False, compare=False, default=()
+    )
 
     def skill_for_capability(self, capability_id: str) -> AdmittedM1Skill:
         for skill in self.skills:
             if skill.capability_id == capability_id:
                 return skill
         raise M1SkillAdmissionError("M1_CAPABILITY_NOT_ADMITTED", capability_id)
+
+    def verified_skill_for_capability(self, capability_id: str) -> Any:
+        admitted = self.skill_for_capability(capability_id)
+        matches = tuple(
+            item
+            for item in self.verified_skills
+            if str(item.skill.skill_id) == admitted.skill_id
+            and str(item.skill.skill_version) == admitted.skill_version
+            and str(item.skill.semantic_hash) == admitted.semantic_hash
+        )
+        if len(matches) != 1:
+            raise M1SkillAdmissionError(
+                "M1_VERIFIED_SKILL_IDENTITY_INVALID", capability_id
+            )
+        return matches[0]
 
 
 def load_m1_signed_skill_release(
@@ -214,6 +233,7 @@ def load_m1_signed_skill_release(
         registry_hash=str(registry["registry_hash"]),
         skills=skills,
         fl_bindings=fl_bindings,
+        verified_skills=tuple(verified.skills),
     )
 
 

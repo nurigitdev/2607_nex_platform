@@ -34,11 +34,11 @@
   ],
   "inventory_ref": {
     "path": "deployment/retirement/golden-a-reference-inventory.v1.json",
-    "sha256": "sha256:840c0ff571c7007cc32cc2cc42812d4afeec65a0652c9c15e5a1765562e625ca"
+    "sha256": "sha256:c12736498e5d38813a27a8642e8619efb138400a083899a7d5d24195eb370e1d"
   },
   "rollback_receipt_ref": {
     "path": "deployment/retirement/golden-a-rollback-receipt.v1.json",
     "sha256": "sha256:94326deafc88e0d8d7613c8078de9847fb078ecf578fc77496e0eee7445d44bd"
   },
-  "projection_hash": "sha256:2ffdc8f9d9c546621c01ce5d2f4d2632c23f46133fab7390d860ec7ac60ebeea"
+  "projection_hash": "sha256:c9b28e03c62a372b5d269432f4121ac69b250e357c48478552a3b4554965f75d"
 }
