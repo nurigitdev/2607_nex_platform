@@ -8,8 +8,8 @@ from typing import Final
 CANONICAL_OPERATION_PATTERN: Final = re.compile(
     r"^[A-Z][A-Z0-9_]*\.[A-Z][A-Z0-9_]*\.[A-Z][A-Z0-9_]*$"
 )
-LEGACY_OPERATION_PATTERN: Final = re.compile(r"^[A-Z][A-Z0-9_.]*$")
-OPERATION_ALIAS_REGISTRY_VERSION: Final = "mybee-w40-ca01-s06.v1"
+LEGACY_OPERATION_PATTERN: Final = re.compile(r"^[A-Za-z][A-Za-z0-9_.]*$")
+OPERATION_ALIAS_REGISTRY_VERSION: Final = "mybee-w70-s8-01a.v1"
 
 P8_CANONICAL_OPERATIONS: Final = frozenset(
     {
@@ -57,6 +57,39 @@ P8_OPERATION_ALIASES: Final = MappingProxyType(
     }
 )
 
+W70_CANONICAL_OPERATIONS: Final = frozenset(
+    {
+        "FINANCE.COST_ALLOCATION.RUN",
+        "FINANCE.COST_ALLOCATION.VERIFY",
+        "FINANCE.COST_ALLOCATION_PLAN.RELEASE",
+        "FINANCE.FX_RATE.HISTORY",
+        "FINANCE.FX_RATE.IMPORT",
+        "FINANCE.FX_RATE.RESOLVE",
+        "FINANCE.PROJECT_PNL.GET",
+        "FINANCE.VOUCHER.APPROVE_AND_POST",
+        "FINANCE.VOUCHER_CANDIDATE.CREATE_V2",
+        "FINANCE.VOUCHER_CANDIDATE.GET_V2",
+        "FINANCE.VOUCHER_CANDIDATE.VALIDATE",
+        "FINANCE.VOUCHER_POSTING.ADMIT",
+    }
+)
+
+W70_OPERATION_ALIASES: Final = MappingProxyType(
+    {
+        "FINANCE.VOUCHER.APPROVE_AND_POST.ADMISSION": (
+            "FINANCE.VOUCHER_POSTING.ADMIT"
+        ),
+        "createEosVoucherDraft": "FINANCE.VOUCHER_DRAFT.CREATE",
+    }
+)
+
+PLATFORM_CANONICAL_OPERATIONS: Final = frozenset(
+    P8_CANONICAL_OPERATIONS | W70_CANONICAL_OPERATIONS
+)
+PLATFORM_OPERATION_ALIASES: Final = MappingProxyType(
+    {**P8_OPERATION_ALIASES, **W70_OPERATION_ALIASES}
+)
+
 
 class OperationNameError(ValueError):
     pass
@@ -82,8 +115,8 @@ class CanonicalOperationRegistry:
     def __init__(
         self,
         *,
-        canonical_operations=frozenset(P8_CANONICAL_OPERATIONS),
-        aliases=P8_OPERATION_ALIASES,
+        canonical_operations=PLATFORM_CANONICAL_OPERATIONS,
+        aliases=PLATFORM_OPERATION_ALIASES,
         version: str = OPERATION_ALIAS_REGISTRY_VERSION,
     ) -> None:
         canonical = frozenset(canonical_operations)

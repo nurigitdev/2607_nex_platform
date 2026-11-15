@@ -104,6 +104,13 @@ and separates the S8-01 foundation Gate from the W70 M1 public E2E Gate. It
 takes precedence for these W70 entry semantics while preserving all W60 GL,
 authorization, Project entitlement, and payroll-privacy invariants.
 
+`W70-S8-01A` implementation evidence is recorded in
+[`mybee_phase1_w70_s8_01a_tool_inventory.md`](../../slices/mybee_phase1_w70_s8_01a_tool_inventory.md).
+It closes the canonical Tool inventory, operation identity, compatibility
+alias, READ/WRITE, approval, OA action, and activation-state boundary without
+activating a new Skill or changing persistence. The next W70 Slice is
+`W70-S8-01B` canonical Schema/OpenAPI Tool contract admission.
+
 The Post-Wave UI/UX backlog records non-blocking TestClient compatibility and
 frontend bundle-performance findings from the post-S7-01 Repository Full Gate.
 It does not change the active accounting Wave or authorize immediate UI work.

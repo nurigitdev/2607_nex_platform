@@ -1,0 +1,141 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/mybee/tool-inventory.v1.json",
+  "title": "NeX MyBee W70 canonical Tool inventory",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "inventory_id",
+    "inventory_version",
+    "revision",
+    "status",
+    "owner",
+    "alias_registry",
+    "tools",
+    "release_attestation"
+  ],
+  "properties": {
+    "schema_version": {"const": "nex.mybee.tool-inventory.v1"},
+    "inventory_id": {"const": "mybee.phase1.w70.canonical-tools"},
+    "inventory_version": {"const": "1.0.0"},
+    "revision": {"const": 1},
+    "status": {"const": "SOURCE_ADMITTED_RUNTIME_UNCHANGED"},
+    "owner": {
+      "const": {
+        "domain_policy": "nex-mybee-ax",
+        "operation_registry": "nex-runtime",
+        "business_state": "nex-eos",
+        "runtime_execution": "nex-ae-api",
+        "authorization": "nex-oa",
+        "approval_workflow": "nex-wc"
+      }
+    },
+    "alias_registry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["registry_version", "aliases"],
+      "properties": {
+        "registry_version": {"const": "mybee-w70-s8-01a.v1"},
+        "aliases": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["requested_operation", "canonical_operation"],
+            "properties": {
+              "requested_operation": {
+                "type": "string",
+                "pattern": "^[A-Za-z][A-Za-z0-9_.]*$",
+                "maxLength": 128
+              },
+              "canonical_operation": {"$ref": "#/$defs/canonical_operation"}
+            }
+          }
+        }
+      }
+    },
+    "tools": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 64,
+      "items": {"$ref": "#/$defs/tool"}
+    },
+    "release_attestation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["profile", "authority", "evidence_ref", "content_digest"],
+      "properties": {
+        "profile": {"const": "SOURCE_AUTHORITY_CONTENT_DIGEST_V1"},
+        "authority": {"const": "NEX_MYBEE_W70_S8_01A"},
+        "evidence_ref": {
+          "const": "docs/slices/mybee_phase1_w70_s8_01a_tool_inventory.md"
+        },
+        "content_digest": {"$ref": "#/$defs/hash_ref"}
+      }
+    }
+  },
+  "$defs": {
+    "canonical_operation": {
+      "type": "string",
+      "pattern": "^[A-Z][A-Z0-9_]*\\.[A-Z][A-Z0-9_]*\\.[A-Z][A-Z0-9_]*$",
+      "maxLength": 128
+    },
+    "hash_ref": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "tool": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "canonical_operation_id",
+        "provider_operation_id",
+        "domain_pack",
+        "owner_service",
+        "invocation_semantics",
+        "approval_requirement",
+        "activation_state",
+        "service_scope",
+        "oa_action",
+        "side_effect_free",
+        "compatibility_aliases"
+      ],
+      "properties": {
+        "canonical_operation_id": {"$ref": "#/$defs/canonical_operation"},
+        "provider_operation_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9_.]*$",
+          "maxLength": 128
+        },
+        "domain_pack": {"enum": ["D04_ACCOUNTING", "D12_PROJECT"]},
+        "owner_service": {"const": "nex-eos"},
+        "invocation_semantics": {"enum": ["READ", "GOVERNED_WRITE"]},
+        "approval_requirement": {
+          "enum": ["NONE", "NSL_WRITE", "BUSINESS_FORMAL", "ACCOUNTING_POSTING"]
+        },
+        "activation_state": {
+          "enum": ["CANDIDATE", "ACTIVE_COMPATIBILITY", "DEFERRED"]
+        },
+        "service_scope": {"const": "service:call"},
+        "oa_action": {
+          "type": "string",
+          "pattern": "^(?:[a-z][a-z0-9-]*(?::[a-z][a-z0-9-]*)+|NONE_SERVICE_TRUST_ONLY)$",
+          "maxLength": 128
+        },
+        "side_effect_free": {"type": "boolean"},
+        "compatibility_aliases": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Za-z][A-Za-z0-9_.]*$",
+            "maxLength": 128
+          }
+        }
+      }
+    }
+  }
+}

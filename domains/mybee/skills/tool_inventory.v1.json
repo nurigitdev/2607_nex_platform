@@ -1,0 +1,279 @@
+{
+  "schema_version": "nex.mybee.tool-inventory.v1",
+  "inventory_id": "mybee.phase1.w70.canonical-tools",
+  "inventory_version": "1.0.0",
+  "revision": 1,
+  "status": "SOURCE_ADMITTED_RUNTIME_UNCHANGED",
+  "owner": {
+    "domain_policy": "nex-mybee-ax",
+    "operation_registry": "nex-runtime",
+    "business_state": "nex-eos",
+    "runtime_execution": "nex-ae-api",
+    "authorization": "nex-oa",
+    "approval_workflow": "nex-wc"
+  },
+  "alias_registry": {
+    "registry_version": "mybee-w70-s8-01a.v1",
+    "aliases": [
+      {
+        "requested_operation": "FINANCE.CREATE_VOUCHER_DRAFT",
+        "canonical_operation": "FINANCE.VOUCHER_DRAFT.CREATE"
+      },
+      {
+        "requested_operation": "FINANCE.VOUCHER.APPROVE_AND_POST.ADMISSION",
+        "canonical_operation": "FINANCE.VOUCHER_POSTING.ADMIT"
+      },
+      {
+        "requested_operation": "createEosVoucherDraft",
+        "canonical_operation": "FINANCE.VOUCHER_DRAFT.CREATE"
+      }
+    ]
+  },
+  "tools": [
+    {
+      "canonical_operation_id": "FINANCE.COST_ALLOCATION.RUN",
+      "provider_operation_id": "FINANCE.COST_ALLOCATION.RUN",
+      "domain_pack": "D04_ACCOUNTING",
+      "owner_service": "nex-eos",
+      "invocation_semantics": "GOVERNED_WRITE",
+      "approval_requirement": "NONE",
+      "activation_state": "CANDIDATE",
+      "service_scope": "service:call",
+      "oa_action": "finance:allocation:execute",
+      "side_effect_free": false,
+      "compatibility_aliases": []
+    },
+    {
+      "canonical_operation_id": "FINANCE.COST_ALLOCATION.VERIFY",
+      "provider_operation_id": "FINANCE.COST_ALLOCATION.VERIFY",
+      "domain_pack": "D04_ACCOUNTING",
+      "owner_service": "nex-eos",
+      "invocation_semantics": "READ",
+      "approval_requirement": "NONE",
+      "activation_state": "CANDIDATE",
+      "service_scope": "service:call",
+      "oa_action": "finance:allocation:verify",
+      "side_effect_free": true,
+      "compatibility_aliases": []
+    },
+    {
+      "canonical_operation_id": "FINANCE.COST_ALLOCATION_PLAN.RELEASE",
+      "provider_operation_id": "FINANCE.COST_ALLOCATION_PLAN.RELEASE",
+      "domain_pack": "D04_ACCOUNTING",
+      "owner_service": "nex-eos",
+      "invocation_semantics": "GOVERNED_WRITE",
+      "approval_requirement": "BUSINESS_FORMAL",
+      "activation_state": "CANDIDATE",
+      "service_scope": "service:call",
+      "oa_action": "finance:cost-allocation-plan:approve",
+      "side_effect_free": false,
+      "compatibility_aliases": []
+    },
+    {
+      "canonical_operation_id": "FINANCE.FX_RATE.HISTORY",
+      "provider_operation_id": "FINANCE.FX_RATE.HISTORY",
+      "domain_pack": "D04_ACCOUNTING",
+      "owner_service": "nex-eos",
+      "invocation_semantics": "READ",
+      "approval_requirement": "NONE",
+      "activation_state": "CANDIDATE",
+      "service_scope": "service:call",
+      "oa_action": "finance:fx:read",
+      "side_effect_free": true,
+      "compatibility_aliases": []
+    },
+    {
+      "canonical_operation_id": "FINANCE.FX_RATE.IMPORT",
+      "provider_operation_id": "FINANCE.FX_RATE.IMPORT",
+      "domain_pack": "D04_ACCOUNTING",
+      "owner_service": "nex-eos",
+      "invocation_semantics": "GOVERNED_WRITE",
+      "approval_requirement": "NONE",
+      "activation_state": "CANDIDATE",
+      "service_scope": "service:call",
+      "oa_action": "finance:fx:publish",
+      "side_effect_free": false,
+      "compatibility_aliases": []
+    },
+    {
+      "canonical_operation_id": "FINANCE.FX_RATE.RESOLVE",
+      "provider_operation_id": "FINANCE.FX_RATE.RESOLVE",
+      "domain_pack": "D04_ACCOUNTING",
+      "owner_service": "nex-eos",
+      "invocation_semantics": "READ",
+      "approval_requirement": "NONE",
+      "activation_state": "CANDIDATE",
+      "service_scope": "service:call",
+      "oa_action": "finance:fx:read",
+      "side_effect_free": true,
+      "compatibility_aliases": []
+    },
+    {
+      "canonical_operation_id": "FINANCE.PROJECT_PNL.GET",
+      "provider_operation_id": "FINANCE.PROJECT_PNL.GET",
+      "domain_pack": "D04_ACCOUNTING",
+      "owner_service": "nex-eos",
+      "invocation_semantics": "READ",
+      "approval_requirement": "NONE",
+      "activation_state": "CANDIDATE",
+      "service_scope": "service:call",
+      "oa_action": "project:pnl:read",
+      "side_effect_free": true,
+      "compatibility_aliases": []
+    },
+    {
+      "canonical_operation_id": "FINANCE.VOUCHER.APPROVE_AND_POST",
+      "provider_operation_id": "FINANCE.VOUCHER.APPROVE_AND_POST",
+      "domain_pack": "D04_ACCOUNTING",
+      "owner_service": "nex-eos",
+      "invocation_semantics": "GOVERNED_WRITE",
+      "approval_requirement": "ACCOUNTING_POSTING",
+      "activation_state": "CANDIDATE",
+      "service_scope": "service:call",
+      "oa_action": "finance:journal:approve",
+      "side_effect_free": false,
+      "compatibility_aliases": []
+    },
+    {
+      "canonical_operation_id": "FINANCE.VOUCHER_CANDIDATE.CREATE_V2",
+      "provider_operation_id": "FINANCE.VOUCHER_CANDIDATE.CREATE_V2",
+      "domain_pack": "D04_ACCOUNTING",
+      "owner_service": "nex-eos",
+      "invocation_semantics": "GOVERNED_WRITE",
+      "approval_requirement": "NONE",
+      "activation_state": "CANDIDATE",
+      "service_scope": "service:call",
+      "oa_action": "finance:voucher-candidate:create",
+      "side_effect_free": false,
+      "compatibility_aliases": []
+    },
+    {
+      "canonical_operation_id": "FINANCE.VOUCHER_CANDIDATE.GET_V2",
+      "provider_operation_id": "FINANCE.VOUCHER_CANDIDATE.GET_V2",
+      "domain_pack": "D04_ACCOUNTING",
+      "owner_service": "nex-eos",
+      "invocation_semantics": "READ",
+      "approval_requirement": "NONE",
+      "activation_state": "DEFERRED",
+      "service_scope": "service:call",
+      "oa_action": "NONE_SERVICE_TRUST_ONLY",
+      "side_effect_free": true,
+      "compatibility_aliases": []
+    },
+    {
+      "canonical_operation_id": "FINANCE.VOUCHER_CANDIDATE.VALIDATE",
+      "provider_operation_id": "FINANCE.VOUCHER_CANDIDATE.VALIDATE",
+      "domain_pack": "D04_ACCOUNTING",
+      "owner_service": "nex-eos",
+      "invocation_semantics": "READ",
+      "approval_requirement": "NONE",
+      "activation_state": "CANDIDATE",
+      "service_scope": "service:call",
+      "oa_action": "NONE_SERVICE_TRUST_ONLY",
+      "side_effect_free": true,
+      "compatibility_aliases": []
+    },
+    {
+      "canonical_operation_id": "FINANCE.VOUCHER_DRAFT.CREATE",
+      "provider_operation_id": "createEosVoucherDraft",
+      "domain_pack": "D04_ACCOUNTING",
+      "owner_service": "nex-eos",
+      "invocation_semantics": "GOVERNED_WRITE",
+      "approval_requirement": "NSL_WRITE",
+      "activation_state": "ACTIVE_COMPATIBILITY",
+      "service_scope": "service:call",
+      "oa_action": "finance:voucher-draft:create",
+      "side_effect_free": false,
+      "compatibility_aliases": [
+        "FINANCE.CREATE_VOUCHER_DRAFT",
+        "createEosVoucherDraft"
+      ]
+    },
+    {
+      "canonical_operation_id": "FINANCE.VOUCHER_POSTING.ADMIT",
+      "provider_operation_id": "FINANCE.VOUCHER.APPROVE_AND_POST.ADMISSION",
+      "domain_pack": "D04_ACCOUNTING",
+      "owner_service": "nex-eos",
+      "invocation_semantics": "READ",
+      "approval_requirement": "ACCOUNTING_POSTING",
+      "activation_state": "CANDIDATE",
+      "service_scope": "service:call",
+      "oa_action": "finance:journal:approve",
+      "side_effect_free": true,
+      "compatibility_aliases": [
+        "FINANCE.VOUCHER.APPROVE_AND_POST.ADMISSION"
+      ]
+    },
+    {
+      "canonical_operation_id": "PROJECT.BUSINESS_READINESS.GET",
+      "provider_operation_id": "PROJECT.BUSINESS_READINESS.GET",
+      "domain_pack": "D12_PROJECT",
+      "owner_service": "nex-eos",
+      "invocation_semantics": "READ",
+      "approval_requirement": "NONE",
+      "activation_state": "CANDIDATE",
+      "service_scope": "service:call",
+      "oa_action": "project:work-code:read",
+      "side_effect_free": true,
+      "compatibility_aliases": []
+    },
+    {
+      "canonical_operation_id": "PROJECT.WORK_ASSIGNMENT.ASSIGN",
+      "provider_operation_id": "PROJECT.WORK_ASSIGNMENT.ASSIGN",
+      "domain_pack": "D12_PROJECT",
+      "owner_service": "nex-eos",
+      "invocation_semantics": "GOVERNED_WRITE",
+      "approval_requirement": "BUSINESS_FORMAL",
+      "activation_state": "CANDIDATE",
+      "service_scope": "service:call",
+      "oa_action": "project:work-assignment:manage",
+      "side_effect_free": false,
+      "compatibility_aliases": []
+    },
+    {
+      "canonical_operation_id": "PROJECT.WORK_ASSIGNMENT.LIST",
+      "provider_operation_id": "PROJECT.WORK_ASSIGNMENT.LIST",
+      "domain_pack": "D12_PROJECT",
+      "owner_service": "nex-eos",
+      "invocation_semantics": "READ",
+      "approval_requirement": "NONE",
+      "activation_state": "CANDIDATE",
+      "service_scope": "service:call",
+      "oa_action": "project:work-assignment:read",
+      "side_effect_free": true,
+      "compatibility_aliases": []
+    },
+    {
+      "canonical_operation_id": "PROJECT.WORK_CODE_SET.APPROVE",
+      "provider_operation_id": "PROJECT.WORK_CODE_SET.APPROVE",
+      "domain_pack": "D12_PROJECT",
+      "owner_service": "nex-eos",
+      "invocation_semantics": "GOVERNED_WRITE",
+      "approval_requirement": "BUSINESS_FORMAL",
+      "activation_state": "CANDIDATE",
+      "service_scope": "service:call",
+      "oa_action": "project:work-code:approve",
+      "side_effect_free": false,
+      "compatibility_aliases": []
+    },
+    {
+      "canonical_operation_id": "PROJECT.WORK_CODE_SET.GET",
+      "provider_operation_id": "PROJECT.WORK_CODE_SET.GET",
+      "domain_pack": "D12_PROJECT",
+      "owner_service": "nex-eos",
+      "invocation_semantics": "READ",
+      "approval_requirement": "NONE",
+      "activation_state": "CANDIDATE",
+      "service_scope": "service:call",
+      "oa_action": "project:work-code:read",
+      "side_effect_free": true,
+      "compatibility_aliases": []
+    }
+  ],
+  "release_attestation": {
+    "profile": "SOURCE_AUTHORITY_CONTENT_DIGEST_V1",
+    "authority": "NEX_MYBEE_W70_S8_01A",
+    "evidence_ref": "docs/slices/mybee_phase1_w70_s8_01a_tool_inventory.md",
+    "content_digest": "sha256:ee010195add45d474551866c65112ec7417b386d53faef4bef79445f6a23d151"
+  }
+}

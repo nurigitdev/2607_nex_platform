@@ -78,3 +78,12 @@ The revisioned D12 source catalog lives at
 content-digest pinned. EOS S1-05 now owns its approval, current revision, and
 BusinessReady read APIs; NSL Tool authoring remains a later provider-owned
 boundary.
+
+W70-S8-01A adds the source-admitted canonical Tool identity inventory at
+`skills/tool_inventory.v1.json`. It reuses the shared `nex_runtime` operation
+registry and records 18 D04/D12 provider operations, READ/WRITE semantics,
+approval requirements, OA actions, activation states, and compatibility
+aliases. The inventory does not activate a new capability or Skill. Golden A
+remains `ACTIVE_COMPATIBILITY`; all new W70 Tools remain `CANDIDATE` or
+`DEFERRED` until their later contract, artifact, registry, and protected
+Gates pass.
