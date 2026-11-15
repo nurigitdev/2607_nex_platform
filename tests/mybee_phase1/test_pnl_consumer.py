@@ -158,6 +158,27 @@ def test_component_contract_drift_fails_closed(mutation) -> None:
     assert caught.value.error_code == "MYBEE_PNL_CONTRACT_DRIFT"
 
 
+@pytest.mark.parametrize(
+    ("source_ref", "data_classification"),
+    [
+        ("employee:employee-1001", "PAYROLL_SENSITIVE"),
+        ("eos.payroll-allocation:aggregate", "INTERNAL_FINANCIAL"),
+        ("eos.payroll-allocation:subject:employee-1001", "PAYROLL_SENSITIVE"),
+        ("eos.private-payroll:aggregate", "PAYROLL_SENSITIVE"),
+    ],
+)
+def test_payroll_component_requires_aggregate_only_source_contract(
+    source_ref, data_classification
+) -> None:
+    value = copy.deepcopy(_projection())
+    value["components"][2]["source_ref"] = source_ref
+    value["components"][2]["data_classification"] = data_classification
+    with pytest.raises(ProjectPnlConsumerError) as caught:
+        _admit(value)
+    assert caught.value.error_code == "MYBEE_PNL_CONTRACT_DRIFT"
+    assert "payroll aggregate" in caught.value.detail
+
+
 def test_duplicate_component_hash_and_future_watermark_fail_closed() -> None:
     duplicate = copy.deepcopy(_projection())
     duplicate["components"][1]["component_hash"] = duplicate["components"][0][

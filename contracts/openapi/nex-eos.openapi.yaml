@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: NeX Enterprise Operations System API
-  version: 2.1.0-p8-s105-mybee-w60-s7-02f
+  version: 2.1.0-p8-s105-mybee-w60-s7-03
   description: >-
     NeX-EOS service shell and canonical Voucher Draft command contract. The
     P8-S18 path is contract-first and becomes executable in P8-S19.
@@ -1869,8 +1869,10 @@ paths:
       security:
         - serviceBearer: []
       x-nex-required-scopes: [service:call]
-      x-nex-business-scope: finance:report:read
+      x-nex-business-scope: project:pnl:read
       x-nex-side-effect-free: true
+      x-nex-query-shape: PROJECT_PERIOD_LATEST_NO_FILTERS
+      x-nex-payroll-privacy-policy: project-pnl-privacy.v1
       parameters:
         - name: project_id
           in: path
@@ -1883,6 +1885,9 @@ paths:
         - name: projection_version
           in: query
           required: false
+          description: >-
+            Immutable version selector. Payroll-sensitive projections deny this
+            selector to prevent historical subtraction attacks.
           schema: {type: integer, minimum: 1}
         - name: X-NeX-Tenant-Id
           in: header
@@ -1911,7 +1916,11 @@ paths:
               schema:
                 $ref: "#/components/schemas/ProjectPnlProjection"
         "401": {description: Service claim is missing or invalid.}
-        "403": {description: Fresh OA Project report authority is denied.}
+        "403":
+          description: >-
+            Fresh OA Project P&L authority is denied, the payroll cell is below
+            its admitted population floor, or the difference-attack guard blocks
+            a changed payroll fingerprint.
         "404": {description: Projection is absent from the authorized scope.}
         "422": {description: Query identity or projection version is malformed.}
         "503": {description: OA Project decision or EOS persistence is unavailable.}

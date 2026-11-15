@@ -1473,9 +1473,11 @@ def test_projector_low_level_persistence_guards_and_naive_time_normalization():
     assert normalized.tzinfo == UTC
 
 
-def test_migration_head_and_runtime_exports_are_current():
+def test_payroll_migration_remains_in_runtime_inventory():
     migrations = load_migrations("nex-eos")
-    assert migrations[-1].version == "2547_eos_material_consumption"
+    assert "2545_eos_payroll_project_allocation" in {
+        migration.version for migration in migrations
+    }
     assert Path(
-        "database/nex-eos/migrations/2547_eos_material_consumption.sql"
+        "database/nex-eos/migrations/2545_eos_payroll_project_allocation.sql"
     ).is_file()

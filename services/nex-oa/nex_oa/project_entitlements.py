@@ -59,6 +59,7 @@ _ACTION_ROLES = {
         {"OWNER", "MANAGER", "MEMBER"}
     ),
     "finance:report:read": PROJECT_ROLES,
+    "project:pnl:read": PROJECT_ROLES,
 }
 _CLOSING_ACTIONS = frozenset(
     {
@@ -66,6 +67,7 @@ _CLOSING_ACTIONS = frozenset(
         "project:work-assignment:read",
         "finance:voucher-draft:read",
         "finance:report:read",
+        "project:pnl:read",
     }
 )
 

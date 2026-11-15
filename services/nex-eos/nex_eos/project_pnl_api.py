@@ -14,6 +14,7 @@ _NO_STORE_HEADERS = {
     "Cache-Control": "no-store, max-age=0",
     "Pragma": "no-cache",
 }
+_ALLOWED_QUERY_FIELDS = frozenset({"projection_version"})
 
 
 def register_project_pnl_routes(app: FastAPI) -> None:
@@ -42,6 +43,16 @@ def register_project_pnl_routes(app: FastAPI) -> None:
         if isinstance(admitted, JSONResponse):
             admitted.headers.update(_NO_STORE_HEADERS)
             return admitted
+        unknown_query_fields = set(request.query_params) - _ALLOWED_QUERY_FIELDS
+        if unknown_query_fields:
+            return _problem(
+                request,
+                EosProjectPnlQueryError(
+                    "PROJECT_PNL_QUERY_SHAPE_DENIED",
+                    "Project P&L supports only the canonical period query shape",
+                    status_code=400,
+                ),
+            )
         service = _service(request)
         if isinstance(service, JSONResponse):
             return service

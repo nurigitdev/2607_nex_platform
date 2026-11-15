@@ -9,7 +9,13 @@ import pytest
 import test_nex_eos_mybee_project_pnl as fixture
 import test_nex_eos_mybee_project_pnl_pg as pg_fixture
 from mybee_ax.integrations.nex_pnl_client import admit_project_pnl_projection
-from nex_eos import EosProjectPnlQueryService, SqlAlchemyEosProjectPnlRepository
+from nex_eos import (
+    EosProjectPnlPrivacyGuard,
+    EosProjectPnlQueryService,
+    InMemoryPnlPrivacyRepository,
+    PnlPrivacyPopulationFact,
+    SqlAlchemyEosProjectPnlRepository,
+)
 from nex_runtime import psycopg_database_url
 from psycopg import sql
 from run_migrations import run_service_migrations
@@ -22,7 +28,16 @@ POSTGRES_SMOKE = os.getenv("NEX_EOS_MYBEE_S7_02F_POSTGRES_SMOKE") == "1"
 
 class Authorizer:
     def authorize(self, **_kwargs):
-        return SimpleNamespace(project_code="W601D260001")
+        return SimpleNamespace(
+            decision_ref="oa-decision:s7-02f",
+            project_code="W601D260001",
+            project_role="MANAGER",
+            project_status="ACTIVE",
+            source_version=1,
+            projection_event_hash="sha256:" + "1" * 64,
+            authorization_revision_hash="sha256:" + "2" * 64,
+            decided_at="2026-11-15T00:00:00+00:00",
+        )
 
 
 @pytest.mark.skipif(
@@ -58,6 +73,20 @@ def test_actual_postgres_authorized_query_and_mybee_consumer_zero_residue() -> N
         service = EosProjectPnlQueryService(
             repository=repository,
             project_authorizer=Authorizer(),
+            privacy_guard=EosProjectPnlPrivacyGuard(
+                InMemoryPnlPrivacyRepository(
+                    facts=(
+                        PnlPrivacyPopulationFact(
+                            snapshot_id=str(uuid.uuid4()),
+                            line_no=1,
+                            population_count=5,
+                            minimum_population=3,
+                            ordinary_view_suppressed=False,
+                            line_hash="sha256:" + "3" * 64,
+                        ),
+                    )
+                )
+            ),
         )
         queried = service.get(
             tenant_id=fixture.TENANT,

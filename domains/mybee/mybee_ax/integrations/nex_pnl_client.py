@@ -119,6 +119,14 @@ _DATA_CLASSES = frozenset(
 )
 _RECONCILIATION = frozenset({"VERIFIED", "PENDING", "BLOCKED", "PARTIAL"})
 _FRESHNESS = frozenset({"CURRENT", "STALE", "UNKNOWN"})
+_PAYROLL_AGGREGATE_SOURCE_PREFIXES = (
+    "eos.payroll-allocation:",
+    "eos.cost-allocation-adjustment:",
+    "eos.cost-pool:",
+    "eos.allocation:payroll:",
+    "eos.pool:payroll:",
+    "eos.work-assignment:",
+)
 
 
 class ProjectPnlConsumerError(RuntimeError):
@@ -402,16 +410,27 @@ def _admit_component(value: object, *, expected_line: int) -> Mapping[str, Any]:
         or component["confirmed"] is not expected_confirmed
     ):
         raise _drift("Project P&L classification semantics drifted")
-    _choice("source_kind", component["source_kind"], _SOURCE_KINDS)
+    source_kind = _choice("source_kind", component["source_kind"], _SOURCE_KINDS)
     if component["account_id"] is not None:
         _response_uuid("account_id", component["account_id"])
     if component["work_code"] is not None:
         _text("work_code", component["work_code"], 32)
     if _amount("functional_amount", component["functional_amount"]) == 0:
         raise _drift("Project P&L component amount must not be zero")
-    _text("source_ref", component["source_ref"], 256)
+    source_ref = _text("source_ref", component["source_ref"], 256)
     _hash_ref("source_hash", component["source_hash"])
-    _choice("data_classification", component["data_classification"], _DATA_CLASSES)
+    data_classification = _choice(
+        "data_classification", component["data_classification"], _DATA_CLASSES
+    )
+    if source_kind == "PAYROLL" and (
+        data_classification != "PAYROLL_SENSITIVE"
+        or not source_ref.startswith(_PAYROLL_AGGREGATE_SOURCE_PREFIXES)
+        or any(
+            forbidden in source_ref.lower()
+            for forbidden in ("employee", "salary", "subject", "person", "worker")
+        )
+    ):
+        raise _drift("Project P&L payroll aggregate boundary drifted")
     _hash_ref("component_hash", component["component_hash"])
     return MappingProxyType(component)
 

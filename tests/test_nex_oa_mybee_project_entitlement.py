@@ -266,6 +266,13 @@ def test_project_decision_allows_exact_active_grant_and_closing_read() -> None:
     ).decide(_decision(action="finance:report:read"))
     assert closing["allowed"] is True
 
+    pnl_closing = OaProjectAuthorizationDecisionService(
+        closing_repository,
+        AuthorizationSource(["project:pnl:read"]),
+        clock=lambda: NOW,
+    ).decide(_decision(action="project:pnl:read"))
+    assert pnl_closing["allowed"] is True
+
 
 def test_project_decision_accepts_canonical_immutable_scope_sequence() -> None:
     repository = InMemoryOaProjectGrantRepository()
@@ -632,6 +639,12 @@ def test_actual_postgres_project_grant_restart_decision_and_zero_residue() -> No
             restarted, AuthorizationSource(), clock=lambda: NOW
         ).decide(_decision())
         assert decision["allowed"] is True
+        pnl_decision = OaProjectAuthorizationDecisionService(
+            restarted,
+            AuthorizationSource(["project:pnl:read"]),
+            clock=lambda: NOW,
+        ).decide(_decision(action="project:pnl:read"))
+        assert pnl_decision["allowed"] is True
         with factory() as session:
             assert session.execute(
                 text("SELECT count(*) FROM oa_project_grant")

@@ -40,7 +40,7 @@ from .wa_project_verification import (
 )
 
 SERVICE_SPEC = SERVICE_SPECS["nex-eos"]
-CONTRACT_CATALOG_VERSION = "mybee-w60-s7-02f"
+CONTRACT_CATALOG_VERSION = "mybee-w60-s7-03"
 
 
 def create_eos_app(
@@ -119,6 +119,7 @@ def create_eos_app(
     )
     app.state.eos_project_pnl_repository = dependencies.project_pnl_repository
     app.state.eos_project_pnl_projector = dependencies.project_pnl_projector
+    app.state.eos_pnl_privacy_repository = dependencies.pnl_privacy_repository
     app.state.eos_project_pnl_query_service = dependencies.project_pnl_query_service
     app.state.eos_payroll_labor_bridge_service = (
         dependencies.payroll_labor_bridge_service

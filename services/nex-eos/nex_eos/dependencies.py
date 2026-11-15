@@ -103,6 +103,10 @@ from .payroll_project_allocations import (
     SqlAlchemyEosPayrollProjectAllocationRepository,
 )
 from .persistence import EosDatabaseRuntime, build_eos_database_runtime
+from .pnl_privacy import (
+    EosProjectPnlPrivacyGuard,
+    SqlAlchemyEosPnlPrivacyRepository,
+)
 from .project_application_approvals import EosProjectApplicationApprovalService
 from .project_applications import (
     EosProjectApplicationService,
@@ -193,6 +197,7 @@ class EosDependencies:
     project_budget_binding_service: EosProjectBudgetBindingService | None
     project_pnl_repository: SqlAlchemyEosProjectPnlRepository | None
     project_pnl_projector: EosProjectPnlProjector | None
+    pnl_privacy_repository: SqlAlchemyEosPnlPrivacyRepository | None
     project_pnl_query_service: EosProjectPnlQueryService | None
     payroll_labor_bridge_service: EosPayrollLaborBridgeService | None
     payroll_project_allocation_service: EosPayrollProjectAllocationService | None
@@ -584,12 +589,20 @@ def build_eos_dependencies(
         if database_runtime is not None and project_pnl_repository is not None
         else None
     )
+    pnl_privacy_repository = (
+        SqlAlchemyEosPnlPrivacyRepository(database_runtime.session_factory)
+        if database_runtime is not None
+        else None
+    )
     project_pnl_query_service = (
         EosProjectPnlQueryService(
             repository=project_pnl_repository,
             project_authorizer=project_authorizer,
+            privacy_guard=EosProjectPnlPrivacyGuard(pnl_privacy_repository),
         )
-        if project_pnl_repository is not None and project_authorizer is not None
+        if project_pnl_repository is not None
+        and project_authorizer is not None
+        and pnl_privacy_repository is not None
         else None
     )
     payroll_labor_bridge_service = (
@@ -878,6 +891,7 @@ def build_eos_dependencies(
         project_budget_binding_service=project_budget_binding_service,
         project_pnl_repository=project_pnl_repository,
         project_pnl_projector=project_pnl_projector,
+        pnl_privacy_repository=pnl_privacy_repository,
         project_pnl_query_service=project_pnl_query_service,
         payroll_labor_bridge_service=payroll_labor_bridge_service,
         payroll_project_allocation_service=payroll_project_allocation_service,

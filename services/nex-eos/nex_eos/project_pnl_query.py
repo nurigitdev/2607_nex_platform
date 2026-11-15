@@ -4,6 +4,7 @@ import re
 import uuid
 from typing import Any
 
+from .pnl_privacy import EosPnlPrivacyError, EosProjectPnlPrivacyGuard
 from .project_authorization import (
     EosProjectAuthorizationError,
     EosProjectAuthorizationGate,
@@ -13,7 +14,7 @@ from .project_pnl import (
     SqlAlchemyEosProjectPnlRepository,
 )
 
-PROJECT_PNL_READ_ACTION = "finance:report:read"
+PROJECT_PNL_READ_ACTION = "project:pnl:read"
 
 _SCOPED_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:@/-]{0,255}$")
 
@@ -42,9 +43,11 @@ class EosProjectPnlQueryService:
         *,
         repository: SqlAlchemyEosProjectPnlRepository,
         project_authorizer: EosProjectAuthorizationGate,
+        privacy_guard: EosProjectPnlPrivacyGuard,
     ) -> None:
         self._repository = repository
         self._project_authorizer = project_authorizer
+        self._privacy_guard = privacy_guard
 
     def get(
         self,
@@ -115,7 +118,20 @@ class EosProjectPnlQueryService:
                 status_code=503,
                 retryable=True,
             )
-        return projection
+        try:
+            return self._privacy_guard.protect(
+                projection,
+                subject_id=requester_subject_id,
+                authorization=evidence,
+                historical_version_requested=projection_version is not None,
+            )
+        except EosPnlPrivacyError as exc:
+            raise EosProjectPnlQueryError(
+                exc.error_code,
+                exc.detail,
+                status_code=exc.status_code,
+                retryable=exc.retryable,
+            ) from exc
 
 
 def _scoped_id(name: str, value: Any, *, limit: int) -> str:

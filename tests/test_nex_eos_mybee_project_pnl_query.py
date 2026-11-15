@@ -12,8 +12,11 @@ from fastapi.testclient import TestClient
 from nex_eos import (
     PROJECT_PNL_READ_ACTION,
     EosProjectPnlPersistenceError,
+    EosProjectPnlPrivacyGuard,
     EosProjectPnlQueryError,
     EosProjectPnlQueryService,
+    InMemoryPnlPrivacyRepository,
+    PnlPrivacyPopulationFact,
     project_pnl_api,
 )
 from nex_eos.project_authorization import EosProjectAuthorizationError
@@ -33,13 +36,35 @@ class Authorizer:
         self.calls.append(kwargs)
         if self.failure is not None:
             raise self.failure
-        return SimpleNamespace(project_code=self.project_code)
+        return SimpleNamespace(
+            decision_ref="oa-decision:s7-03",
+            project_code=self.project_code,
+            project_role="MANAGER",
+            project_status="ACTIVE",
+            source_version=1,
+            projection_event_hash="sha256:" + "1" * 64,
+            authorization_revision_hash="sha256:" + "2" * 64,
+            decided_at="2026-11-15T00:00:00+00:00",
+        )
 
 
 def _query_service(runtime, *, authorizer=None):
+    privacy_repository = InMemoryPnlPrivacyRepository(
+        facts=(
+            PnlPrivacyPopulationFact(
+                snapshot_id="10000000-0000-0000-0000-000000000001",
+                line_no=1,
+                population_count=5,
+                minimum_population=3,
+                ordinary_view_suppressed=False,
+                line_hash="sha256:" + "3" * 64,
+            ),
+        )
+    )
     return EosProjectPnlQueryService(
         repository=runtime.repository,
         project_authorizer=authorizer or Authorizer(),
+        privacy_guard=EosProjectPnlPrivacyGuard(privacy_repository),
     )
 
 
@@ -56,14 +81,17 @@ def _get(service, **overrides):
     return service.get(**values)
 
 
-def test_query_service_returns_latest_and_version_specific_projection() -> None:
+def test_query_service_returns_latest_and_denies_payroll_history() -> None:
     runtime = fixture._runtime()
     first = runtime.repository.append(fixture._draft(), fixture._components())
     authorizer = Authorizer()
     service = _query_service(runtime, authorizer=authorizer)
 
     assert _get(service) == first
-    assert _get(service, projection_version=1) == first
+    with pytest.raises(EosProjectPnlQueryError) as historical:
+        _get(service, projection_version=1)
+    assert historical.value.error_code == "PAYROLL_PRIVACY_DENIED"
+    assert historical.value.status_code == 403
     assert authorizer.calls == [
         {
             "tenant_id": fixture.TENANT,
@@ -149,6 +177,7 @@ def test_query_maps_repository_failure() -> None:
     service = EosProjectPnlQueryService(
         repository=repository,
         project_authorizer=Authorizer(),
+        privacy_guard=EosProjectPnlPrivacyGuard(InMemoryPnlPrivacyRepository()),
     )
     with pytest.raises(EosProjectPnlQueryError, match="offline") as caught:
         _get(service)
@@ -194,6 +223,19 @@ def test_api_route_returns_no_store_projection_and_forwards_scope(monkeypatch) -
         }
     ]
 
+    denied_shape = client.get(
+        f"/internal/v2/finance/projects/{fixture.PROJECT_ID}/pnl/{fixture.PERIOD_ID}",
+        params={"work_code": "FL0012044"},
+        headers={
+            "X-NeX-Tenant-Id": fixture.TENANT,
+            "X-NeX-Company-Id": fixture.COMPANY_ID,
+            "X-NeX-Subject-Id": SUBJECT,
+            "X-NeX-Correlation-Id": CORRELATION,
+        },
+    )
+    assert denied_shape.status_code == 400
+    assert denied_shape.json()["error_code"] == "PROJECT_PNL_QUERY_SHAPE_DENIED"
+
 
 def test_api_route_covers_admission_domain_error_and_unavailable(monkeypatch) -> None:
     app = FastAPI()
@@ -238,6 +280,9 @@ def test_api_route_covers_admission_domain_error_and_unavailable(monkeypatch) ->
     assert rejected.status_code == 401
     assert rejected.headers["cache-control"] == "no-store, max-age=0"
     assert rejected.headers["pragma"] == "no-cache"
+    assert client.get(
+        path, params={"work_code": "FL0012044"}, headers=headers
+    ).status_code == 401
 
 
 def test_openapi_and_runtime_catalog_publish_project_pnl_read_boundary() -> None:
@@ -249,6 +294,8 @@ def test_openapi_and_runtime_catalog_publish_project_pnl_read_boundary() -> None
     ]["get"]
     assert operation["operationId"] == "FINANCE.PROJECT_PNL.GET"
     assert operation["x-nex-business-scope"] == PROJECT_PNL_READ_ACTION
+    assert operation["x-nex-query-shape"] == "PROJECT_PERIOD_LATEST_NO_FILTERS"
+    assert operation["x-nex-payroll-privacy-policy"] == "project-pnl-privacy.v1"
     assert operation["x-nex-side-effect-free"] is True
     assert spec["components"]["schemas"]["ProjectPnlProjection"][
         "x-nex-canonical-json-schema"
