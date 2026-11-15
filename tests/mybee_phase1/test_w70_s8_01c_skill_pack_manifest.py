@@ -187,7 +187,7 @@ def test_w70_candidate_skill_pack_trust_and_contract_blockers_are_explicit() -> 
     }
 
 
-def test_w70_candidate_packs_do_not_change_deployed_capabilities_or_add_nsl_source() -> (
+def test_w70_candidate_packs_preserve_deployed_capabilities_and_limit_nsl_sources() -> (
     None
 ):
     registry = _json(
@@ -198,7 +198,13 @@ def test_w70_candidate_packs_do_not_change_deployed_capabilities_or_add_nsl_sour
     assert [
         item["capability"]["capability_id"] for item in registry["registrations"]
     ] == ["FINANCE.CREATE_VOUCHER_DRAFT"]
-    assert not list(DEFAULT_SKILL_PACK_ROOT.glob("d*/*.ns"))
+    assert {
+        path.relative_to(DEFAULT_SKILL_PACK_ROOT).as_posix()
+        for path in DEFAULT_SKILL_PACK_ROOT.glob("d*/*.ns")
+    } == {
+        "d04_accounting/journal_posting.v1.ns",
+        "d12_project/work_code_context.v1.ns",
+    }
 
 
 @pytest.mark.parametrize(

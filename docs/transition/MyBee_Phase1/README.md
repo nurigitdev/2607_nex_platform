@@ -145,6 +145,19 @@ and proves unsigned candidate packs remain non-selectable. It does not sign or
 activate a product Skill; that boundary remains owned by `CP-M1-MB8-01`. The
 next W70 Slice is `CP-M1-S8-02` checkpoint-only controlled Journal execution.
 
+`CP-M1-S8-02` implementation evidence is recorded in
+[`mybee_phase1_cp_m1_s8_02_journal_controlled_write_checkpoint.md`](../../slices/mybee_phase1_cp_m1_s8_02_journal_controlled_write_checkpoint.md).
+It closes the checkpoint-only EOS Journal execution, strong verification, and
+typed UNKNOWN/reconciliation boundary without activating a product Skill.
+
+`CP-M1-MB8-01` implementation evidence is recorded in
+[`mybee_phase1_cp_m1_mb8_01_signed_skill_pa_orchestration.md`](../../slices/mybee_phase1_cp_m1_mb8_01_signed_skill_pa_orchestration.md).
+It admits an Ed25519-signed minimal D04/D12 NSP, binds `FL0004009` and
+`FL0012005`, and emits a deterministic ACTIVE Project Agent context-to-WRITE
+plan. The original 18-candidate packs and canonical Compose registry remain
+unpromoted. The next W70 boundary is `CP-M1-E2E-FX-01` protected public M1
+acceptance.
+
 The Post-Wave UI/UX backlog records non-blocking TestClient compatibility and
 frontend bundle-performance findings from the post-S7-01 Repository Full Gate.
 It does not change the active accounting Wave or authorize immediate UI work.

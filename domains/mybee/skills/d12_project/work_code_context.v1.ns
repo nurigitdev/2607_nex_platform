@@ -1,0 +1,45 @@
+language NSL "0.2";
+
+skill MYBEE.D12.PROJECT_WORK_CODE_CONTEXT {
+    version "1.0.0";
+    risk READ_ONLY;
+
+    requires {
+        tool PROJECT.WORK_CODE_SET.GET version "1.0.0";
+    }
+
+    limits {
+        tool_calls 1;
+        loop_iterations 1;
+        emitted_rows 1;
+        collection_size 100;
+    }
+
+    input {
+        tenant_id: String classification INTERNAL;
+        requester_subject_id: String classification INTERNAL;
+        project_id: String classification INTERNAL;
+        effective_on: String classification INTERNAL;
+    }
+
+    output {
+        project_id: String classification INTERNAL;
+        revision: Int classification INTERNAL;
+        state: String classification INTERNAL;
+        work_set_hash: String classification INTERNAL;
+    }
+
+    let work_set = read PROJECT.WORK_CODE_SET.GET(
+        tenant_id: tenant_id,
+        requester_subject_id: requester_subject_id,
+        project_id: project_id,
+        effective_on: effective_on
+    );
+
+    emit {
+        project_id: work_set.project_id;
+        revision: work_set.revision;
+        state: work_set.state;
+        work_set_hash: work_set.work_set_hash;
+    }
+}
