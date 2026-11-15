@@ -520,6 +520,11 @@ from .project_pnl import (
     SqlAlchemyEosProjectPnlRepository,
     build_project_pnl_records,
 )
+from .project_pnl_query import (
+    PROJECT_PNL_READ_ACTION,
+    EosProjectPnlQueryError,
+    EosProjectPnlQueryService,
+)
 from .material_commitments import (
     EOS_MATERIAL_ATTRIBUTION_TABLE,
     EOS_MATERIAL_COMMITMENT_TABLE,
@@ -973,6 +978,7 @@ __all__ = (
     "PROJECT_PNL_DATA_CLASSIFICATIONS",
     "PROJECT_PNL_FRESHNESS_STATUSES",
     "PROJECT_PNL_PROJECTION_SCHEMA",
+    "PROJECT_PNL_READ_ACTION",
     "PROJECT_PNL_REBUILD_SCHEMA",
     "PROJECT_PNL_RECONCILIATION_STATUSES",
     "PROJECT_PNL_ROLLUP_CLASSES",
@@ -1108,6 +1114,8 @@ __all__ = (
     "EosProjectPnlPersistenceError",
     "EosProjectPnlProjector",
     "EosProjectPnlProjectorError",
+    "EosProjectPnlQueryError",
+    "EosProjectPnlQueryService",
     "EosProjectWorkAssignmentError",
     "EosProjectWorkAssignmentService",
     "EosProjectWorkCodeError",

@@ -29,6 +29,7 @@ from .project_business_api import register_project_business_routes
 from .project_entitlement_reconciliation_api import (
     register_project_entitlement_reconciliation_routes,
 )
+from .project_pnl_api import register_project_pnl_routes
 from .project_work_assignment_api import register_project_work_assignment_routes
 from .reporting_map_api import register_reporting_map_routes
 from .scoped_approval_api import register_scoped_approval_routes
@@ -39,7 +40,7 @@ from .wa_project_verification import (
 )
 
 SERVICE_SPEC = SERVICE_SPECS["nex-eos"]
-CONTRACT_CATALOG_VERSION = "mybee-w60-s7-02e"
+CONTRACT_CATALOG_VERSION = "mybee-w60-s7-02f"
 
 
 def create_eos_app(
@@ -118,6 +119,7 @@ def create_eos_app(
     )
     app.state.eos_project_pnl_repository = dependencies.project_pnl_repository
     app.state.eos_project_pnl_projector = dependencies.project_pnl_projector
+    app.state.eos_project_pnl_query_service = dependencies.project_pnl_query_service
     app.state.eos_payroll_labor_bridge_service = (
         dependencies.payroll_labor_bridge_service
     )
@@ -164,6 +166,7 @@ def create_eos_app(
     register_allocation_plan_routes(app)
     register_cost_allocation_routes(app)
     register_budget_routes(app)
+    register_project_pnl_routes(app)
     register_approval_decision_routes(app)
     register_approved_document_routes(app)
     register_scoped_approval_routes(app)

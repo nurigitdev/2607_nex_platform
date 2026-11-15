@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: NeX Enterprise Operations System API
-  version: 2.1.0-p8-s105-mybee-w30-s00a
+  version: 2.1.0-p8-s105-mybee-w60-s7-02f
   description: >-
     NeX-EOS service shell and canonical Voucher Draft command contract. The
     P8-S18 path is contract-first and becomes executable in P8-S19.
@@ -1862,6 +1862,59 @@ paths:
         "404": {description: Budget revision was not found.}
         "422": {description: Budget query identity is malformed.}
         "503": {description: Budget persistence is unavailable.}
+  /internal/v2/finance/projects/{project_id}/pnl/{period_id}:
+    get:
+      operationId: FINANCE.PROJECT_PNL.GET
+      tags: [Finance, Project]
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes: [service:call]
+      x-nex-business-scope: finance:report:read
+      x-nex-side-effect-free: true
+      parameters:
+        - name: project_id
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+        - name: period_id
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+        - name: projection_version
+          in: query
+          required: false
+          schema: {type: integer, minimum: 1}
+        - name: X-NeX-Tenant-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+        - name: X-NeX-Company-Id
+          in: header
+          required: true
+          schema: {type: string, format: uuid}
+        - name: X-NeX-Subject-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+        - name: X-NeX-Correlation-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+      responses:
+        "200":
+          description: Latest or version-specific immutable Project P&L projection.
+          headers:
+            Cache-Control:
+              schema: {type: string, const: "no-store, max-age=0"}
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectPnlProjection"
+        "401": {description: Service claim is missing or invalid.}
+        "403": {description: Fresh OA Project report authority is denied.}
+        "404": {description: Projection is absent from the authorized scope.}
+        "422": {description: Query identity or projection version is malformed.}
+        "503": {description: OA Project decision or EOS persistence is unavailable.}
   /internal/v2/finance/project-budget-bindings:
     post:
       operationId: PROJECT.BUDGET_BINDING.COMMIT
@@ -2589,6 +2642,9 @@ components:
     JournalVerification:
       type: object
       x-nex-canonical-json-schema: schemas/service/nex_eos/journal_verification.v1.schema.json
+    ProjectPnlProjection:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_eos/project_pnl_projection.v1.schema.json
     VoucherCandidateReview:
       type: object
       x-nex-canonical-json-schema: schemas/service/nex_eos/voucher_candidate_review.v1.schema.json
