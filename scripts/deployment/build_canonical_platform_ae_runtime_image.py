@@ -39,6 +39,8 @@ DEFAULT_WHEEL = (
 )
 DEFAULT_NSL_SOURCE = Path("/home/tprover/2608_nsl")
 DEFAULT_REPORT = ROOT / "reports/deployment/canonical-platform-ae-runtime-image.json"
+M1_ADMISSION_LOCK = ROOT / "deployment/locks/ae-mybee-m1-runtime-admission.v1.json"
+M1_ACTIVATION_LOCK = ROOT / "deployment/locks/ae-mybee-m1-runtime-activation.v1.json"
 
 
 class CanonicalPlatformAeImageBuildError(RuntimeError):
@@ -203,6 +205,7 @@ def _stage_context(
     (context / "skill").mkdir()
     (context / "config").mkdir()
     (context / "locks").mkdir()
+    (context / "repository").mkdir()
     shutil.copy2(
         ROOT / "deployment/oci/canonical-platform-ae-runtime.Containerfile",
         context / "Containerfile",
@@ -242,6 +245,39 @@ def _stage_context(
         manifest_path,
         context / "locks/ae-product-nsl-runtime-bundle.v1.json",
     )
+    for relative in (
+        "deployment/locks/ae-mybee-m1-runtime-admission.v1.json",
+        "deployment/locks/ae-mybee-m1-runtime-activation.v1.json",
+        "deployment/locks/ae-mybee-m1-signed-skill-checkpoint.v1.json",
+        "deployment/locks/nsl-v0.2.1-wheel.json",
+        "deployment/locks/python-production.lock",
+        "deployment/environments/ae-product-capability-registry.mybee-m1.v1.json",
+        "deployment/retirement/golden-a-rollback-receipt.v1.json",
+        "deployment/retirement/golden-a-selection-freeze.v1.json",
+        "domains/mybee/skills/m1_checkpoint/context.json",
+        "domains/mybee/skills/m1_checkpoint/mybee-m1-d04-d12.v1.nsp",
+        "domains/mybee/skills/m1_checkpoint/mybee-m1-release-public-key.v1.json",
+        "domains/mybee/skills/m1_checkpoint/tool_catalog.v1.json",
+        "domains/mybee/skills/d04_accounting/journal_posting.v1.ns",
+        "domains/mybee/skills/d04_accounting/manifest.v1.json",
+        "domains/mybee/skills/d04_accounting/tool_bindings.v1.json",
+        "domains/mybee/skills/d12_project/work_code_context.v1.ns",
+        "domains/mybee/skills/d12_project/manifest.v1.json",
+        "domains/mybee/skills/d12_project/tool_bindings.v1.json",
+        "domains/mybee/skills/tool_inventory.v1.json",
+        "contracts/admissions/nex_eos/w70_tool_contract_admission.v1.json",
+        "contracts/openapi/nex-eos.openapi.yaml",
+        "domains/mybee/catalog/work_codes/catalog.v1.json",
+        "domains/mybee/catalog/work_codes/schema.json",
+    ):
+        source = ROOT / relative
+        target = context / "repository" / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, target)
+    shutil.copytree(
+        ROOT / "contracts/schemas/service/nex_eos",
+        context / "repository/contracts/schemas/service/nex_eos",
+    )
 
 
 def _record(
@@ -253,6 +289,8 @@ def _record(
     image: Mapping[str, Any] | None,
     source_base: Mapping[str, Any] | None,
 ) -> dict[str, Any]:
+    admission = json.loads(M1_ADMISSION_LOCK.read_text(encoding="utf-8"))
+    activation = json.loads(M1_ACTIVATION_LOCK.read_text(encoding="utf-8"))
     payload = {
         "schema_version": "canonical_platform_ae_runtime_image.v1",
         "slice": "GB2-CA00-S18A",
@@ -260,6 +298,21 @@ def _record(
         "base_image": base_image,
         "output_image": output_image,
         "bundle": dict(readiness),
+        "bundle_role": "BOUNDED_ROLLBACK_UNTIL_CP_M1_GA_RET_02",
+        "active_runtime_profile": activation["runtime_profile"],
+        "verified_product_release": {
+            "activation_state": activation["activation_state"],
+            "activation_hash": activation["content_hash"],
+            "admission_hash": admission["content_hash"],
+            "release_id": admission["release_id"],
+            "release_hash": admission["release_hash"],
+            "package_hash": admission["package_hash"],
+            "skill_catalog_hash": admission["skill_catalog_hash"],
+            "runtime_selectable_capabilities": admission[
+                "runtime_selectable_capabilities"
+            ],
+            "bounded_rollback": activation["bounded_rollback"],
+        },
         "source_base": None if source_base is None else dict(source_base),
         "image": None if image is None else dict(image),
         "registry_push_performed": False,

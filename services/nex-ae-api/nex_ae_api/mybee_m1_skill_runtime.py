@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from pathlib import Path
 
 from mybee_ax.integrations import (
     M1_D04_CAPABILITY_ID,
@@ -35,6 +36,10 @@ from nex_ae_api.product_skill_catalog import (
 )
 
 MYBEE_M1_BACKEND_PROFILE = "NSL_V02_IN_PROCESS"
+ROOT = Path(__file__).resolve().parents[3]
+DEFAULT_M1_RELEASE_LOCK = (
+    ROOT / "deployment/locks/ae-mybee-m1-signed-skill-checkpoint.v1.json"
+)
 
 
 def build_mybee_m1_operation_adapter_registry() -> ProductOperationAdapterRegistry:
@@ -66,7 +71,7 @@ def build_mybee_m1_operation_adapter_registry() -> ProductOperationAdapterRegist
 def build_mybee_m1_verified_skill_catalog(
     environ: Mapping[str, str],
 ) -> VerifiedProductSkillCatalog:
-    release = load_m1_signed_skill_release()
+    release = load_mybee_m1_signed_release(environ)
     capabilities = load_product_capability_registry(environ)
     return VerifiedProductSkillCatalog(
         release=release,
@@ -80,7 +85,7 @@ def build_mybee_m1_runtime_admission(
 ) -> dict[str, object]:
     capabilities = load_product_capability_registry(environ)
     operations = build_mybee_m1_operation_adapter_registry()
-    release = load_m1_signed_skill_release()
+    release = load_mybee_m1_signed_release(environ)
     catalog = VerifiedProductSkillCatalog(
         release=release,
         capability_registry=capabilities,
@@ -109,6 +114,14 @@ def build_mybee_m1_runtime_admission(
     }
     admission["content_hash"] = semantic_sha256_hash_ref(admission)
     return admission
+
+
+def load_mybee_m1_signed_release(environ: Mapping[str, str]):
+    lock = Path(
+        str(environ.get("NEX_AE_M1_SIGNED_SKILL_LOCK") or DEFAULT_M1_RELEASE_LOCK)
+    )
+    repository_root = Path(str(environ.get("NEX_AE_M1_REPOSITORY_ROOT") or ROOT))
+    return load_m1_signed_skill_release(lock, repository_root=repository_root)
 
 
 def _build_d12_adapters(

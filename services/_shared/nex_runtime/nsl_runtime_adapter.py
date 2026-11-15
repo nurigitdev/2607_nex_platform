@@ -17,6 +17,57 @@ class NslRuntimeAdapterError(RuntimeError):
     pass
 
 
+def load_installed_nsl_tool_catalog(path: Path) -> Any:
+    """Load an admitted Tool catalog behind the shared NSL adapter boundary."""
+
+    from nsl.cli_config import load_tool_catalog
+
+    return load_tool_catalog(path)
+
+
+def execute_installed_nsl_read(
+    *,
+    skill: Any,
+    tool_catalog: Any,
+    principal_document: Mapping[str, Any],
+    execution_id: str,
+    inputs: Mapping[str, Any],
+    runtime_context: Mapping[str, Any],
+    business_operation_id: str,
+    handlers: Mapping[str, Callable[[Mapping[str, Any]], Any]],
+) -> Mapping[str, Any]:
+    """Execute one admitted READ Skill without leaking private NSL modules."""
+
+    from nsl.audit import InMemoryAuditSink, InMemorySnapshotStore
+    from nsl.cli_config import load_principal_document
+    from nsl.cli_runtime import build_execution_request
+    from nsl.core import BusinessOperationId
+    from nsl.runtime import RuntimeEngine
+    from nsl.tools import MockToolExecutor
+
+    principal = load_principal_document(dict(principal_document))
+    request = build_execution_request(
+        principal,
+        _identity(execution_id),
+        inputs=dict(inputs),
+        runtime_context=dict(runtime_context),
+        business_operation_id=BusinessOperationId(_identity(business_operation_id)),
+    )
+    result = asyncio.run(
+        RuntimeEngine(tool_catalog).execute(
+            skill,
+            request,
+            MockToolExecutor(tool_catalog, handlers),
+            InMemoryAuditSink(),
+            InMemorySnapshotStore(),
+        )
+    )
+    data = result.to_data()
+    if not isinstance(data, Mapping):
+        raise NslRuntimeAdapterError("Installed NSL READ result is invalid.")
+    return dict(data)
+
+
 def decode_nsl_document(value: Mapping[str, Any]) -> Any:
     """Keep installed NSL representation decoding behind the runtime adapter."""
 

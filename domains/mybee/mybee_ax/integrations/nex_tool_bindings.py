@@ -22,6 +22,8 @@ from nsl.security import RuntimeEnvironment
 
 from ..domain.work_codes import load_work_code_catalog
 from .nex_skill_packs import SkillPackBinding, load_skill_pack_manifests
+from .nex_tool_contracts import load_tool_contract_catalog
+from .nex_tool_inventory import load_tool_inventory
 
 M1_SIGNED_SKILL_SCHEMA_VERSION = "nex.mybee.m1-signed-skill-checkpoint.v1"
 M1_PA_PLAN_SCHEMA_VERSION = "nex.mybee.pa-nsl-invocation-plan.v1"
@@ -91,6 +93,7 @@ class AdmittedM1SignedSkillRelease:
     release_id: str
     release_version: int
     checkpoint_id: str
+    admitted_at: str
     content_hash: str
     package_ref: str
     package_hash: str
@@ -199,7 +202,10 @@ def load_m1_signed_skill_release(
     _verify_candidate_bindings(skills, repository_root=repository_root)
 
     fl_bindings = _admit_fl_bindings(lock.get("fl_bindings"), skills)
-    if load_work_code_catalog().get(M1_D12_WORK_CODE_ID).code_id != M1_D12_WORK_CODE_ID:
+    work_codes = load_work_code_catalog(
+        repository_root / "domains/mybee/catalog/work_codes/catalog.v1.json"
+    )
+    if work_codes.get(M1_D12_WORK_CODE_ID).code_id != M1_D12_WORK_CODE_ID:
         _fail("M1_D12_WORK_CODE_INVALID", M1_D12_WORK_CODE_ID)
 
     registry = _mapping(
@@ -225,6 +231,7 @@ def load_m1_signed_skill_release(
         release_id=_text(lock.get("release_id"), "release_id"),
         release_version=_positive_int(lock.get("release_version"), "release_version"),
         checkpoint_id=M1_CHECKPOINT_ID,
+        admitted_at=_text(lock.get("admitted_at"), "admitted_at"),
         content_hash=str(lock["content_hash"]),
         package_ref=str(package["path"]),
         package_hash=str(package["package_hash"]),
@@ -442,10 +449,23 @@ def _admit_skill(
 def _verify_candidate_bindings(
     skills: Sequence[AdmittedM1Skill], *, repository_root: Path
 ) -> None:
+    inventory = load_tool_inventory(
+        repository_root / "domains/mybee/skills/tool_inventory.v1.json"
+    )
+    contracts = load_tool_contract_catalog(
+        repository_root
+        / "contracts/admissions/nex_eos/w70_tool_contract_admission.v1.json",
+        openapi_path=repository_root / "contracts/openapi/nex-eos.openapi.yaml",
+        inventory=inventory,
+    )
     candidates = {
         binding.canonical_operation_id: binding
         for manifest in load_skill_pack_manifests(
-            repository_root / "domains/mybee/skills"
+            repository_root / "domains/mybee/skills",
+            inventory=inventory,
+            contracts=contracts,
+            wheel_lock_path=repository_root
+            / "deployment/locks/nsl-v0.2.1-wheel.json",
         )
         for binding in manifest.bindings
     }

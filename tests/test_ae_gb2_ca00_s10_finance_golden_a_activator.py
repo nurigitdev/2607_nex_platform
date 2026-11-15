@@ -208,7 +208,8 @@ def test_generic_attachment_has_no_demo_fixture_dependency() -> None:
     compose = (ROOT / "deployment/compose/canonical-platform.override.yaml").read_text(
         encoding="utf-8"
     )
-    assert FINANCE_GOLDEN_A_PROFILE_PATH_ENV in compose
+    assert "NEX_AE_PRODUCT_RUNTIME_PROFILE: VERIFIED_PRODUCT_RELEASE" in compose
+    assert FINANCE_GOLDEN_A_PROFILE_PATH_ENV not in compose
     assert "NEX_AE_DEMO_GOLDEN_A_ADMISSION_ENABLED" not in compose
 
 

@@ -13,9 +13,13 @@ def test_demo_ae_runtime_containerfile_admits_every_embedded_asset_path() -> Non
         ROOT / "deployment/oci/canonical-platform-ae-runtime.Containerfile"
     ).read_text(encoding="utf-8")
 
+    assert "NEX_AE_PRODUCT_RUNTIME_PROFILE=VERIFIED_PRODUCT_RELEASE" in source
     assert (
-        "NEX_AE_NSL_PLATFORM_LOCK=/app/deployment/product/locks/python-production.lock"
+        "NEX_AE_NSL_PLATFORM_LOCK=/app/deployment/product/repository/"
+        "deployment/locks/python-production.lock"
     ) in source
+    assert "ae-mybee-m1-runtime-activation.v1.json" in source
+    assert "mybee-m1-d04-d12.v1.nsp" in source
     assert (
         "install -d -o 65532 -g 65532 -m 0700 /var/lib/nex-platform/ae-runtime/nsl"
     ) in source
@@ -40,6 +44,27 @@ def test_demo_ae_runtime_image_dry_run_requires_locked_bundle() -> None:
 
     assert result["status"] == "READY"
     assert result["bundle"]["status"] == "PASS"
+    assert result["bundle_role"] == "BOUNDED_ROLLBACK_UNTIL_CP_M1_GA_RET_02"
+    assert result["active_runtime_profile"] == "VERIFIED_PRODUCT_RELEASE"
+    assert result["verified_product_release"] == {
+        "activation_state": "ACTIVE_WITH_BOUNDED_ROLLBACK",
+        "activation_hash": "sha256:6a1aa2a44eaf25e52afa33ed09ad0ea69f351ea8a309e5614b6f6162c096f3af",
+        "admission_hash": "sha256:3b561a8bd71f2702dd1020c096e0936efd49818200e3a8248dcb842395dd280d",
+        "release_id": "nex-mybee-m1-d04-d12-checkpoint",
+        "release_hash": "sha256:0034adc847aedc5d4fe99a446f7b60dfaef5db218ebbed96ba0f96bf32feecf4",
+        "package_hash": "sha256:96888a02ee4924b6ac1f46bf7031627afc4d4a53d04bc77e13acd1940ea25348",
+        "skill_catalog_hash": "sha256:1c15866db200efb8db4807869f48c49737fe4c18f1d3ef657bed7a456721801d",
+        "runtime_selectable_capabilities": [
+            "FINANCE.VOUCHER.APPROVE_AND_POST",
+            "PROJECT.WORK_CODE_SET.GET",
+        ],
+        "bounded_rollback": {
+            "profile": "GOLDEN_A_ROLLBACK",
+            "receipt_ref": "deployment/retirement/golden-a-rollback-receipt.v1.json",
+            "receipt_sha256": "sha256:94326deafc88e0d8d7613c8078de9847fb078ecf578fc77496e0eee7445d44bd",
+            "retirement_boundary": "CP-M1-GA-RET-02",
+        },
+    }
     assert result["source_base"] is None
     assert result["image"] is None
     assert result["secret_included"] is False

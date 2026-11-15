@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import sys
 from pathlib import Path
@@ -16,22 +15,22 @@ for source_root in (
 ):
     sys.path.insert(0, str(source_root))
 
-from build_mybee_w70_golden_a_retirement import (  # noqa: E402
+from build_mybee_w70_golden_a_retirement import (
     INVENTORY_PATH,
     PROJECTION_PATH,
     ROLLBACK_PATH,
     build_retirement_artifacts,
     render_json,
 )
-from nex_ae_api.domain_intent_products import (  # noqa: E402
+from nex_ae_api.domain_intent_products import (
     build_domain_intent_activator_registry,
 )
-from nex_ae_api.golden_a_planning import GOLDEN_A_CAPABILITY_ID  # noqa: E402
-from nex_ae_api.product_capabilities import (  # noqa: E402
+from nex_ae_api.golden_a_planning import GOLDEN_A_CAPABILITY_ID
+from nex_ae_api.product_capabilities import (
     PRODUCT_CAPABILITY_REGISTRY_PATH_ENV,
     load_product_capability_registry,
 )
-from nex_ae_api.product_capability_retirements import (  # noqa: E402
+from nex_ae_api.product_capability_retirements import (
     PRODUCT_CAPABILITY_RETIREMENT_PATH_ENV,
     load_product_capability_retirement_projection,
 )
@@ -125,7 +124,7 @@ def run_gate(root: Path = ROOT) -> dict[str, Any]:
         ),
         "canonical_compose_requires_retirement": (
             PRODUCT_CAPABILITY_RETIREMENT_PATH_ENV in compose
-            and "/app/deployment/product/config/golden-a-selection-freeze.v1.json"
+            and "/app/deployment/product/repository/deployment/retirement/golden-a-selection-freeze.v1.json"
             in compose
         ),
         "canonical_image_requires_retirement": (
@@ -150,7 +149,7 @@ def run_gate(root: Path = ROOT) -> dict[str, Any]:
 def _json(path: Path) -> dict[str, Any]:
     value = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(value, dict):
-        raise RuntimeError(f"expected object: {path}")
+        raise TypeError(f"expected object: {path}")
     return value
 
 

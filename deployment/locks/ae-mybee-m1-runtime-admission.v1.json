@@ -37,6 +37,9 @@
     "schema_version": "ae.verified_product_skill_catalog.v1",
     "release_id": "nex-mybee-m1-d04-d12-checkpoint",
     "release_hash": "sha256:0034adc847aedc5d4fe99a446f7b60dfaef5db218ebbed96ba0f96bf32feecf4",
+    "package_hash": "sha256:96888a02ee4924b6ac1f46bf7031627afc4d4a53d04bc77e13acd1940ea25348",
+    "signing_key_id": "release:nex-mybee-m1-checkpoint-2026-11",
+    "admitted_at": "2026-11-15T00:00:00Z",
     "selections": [
       {
         "capability_id": "FINANCE.VOUCHER.APPROVE_AND_POST",
@@ -79,7 +82,7 @@
       }
     ]
   },
-  "skill_catalog_hash": "sha256:a1967fe41b1097a09395ce1cbeb2956acf9aeec721e3291cfe3c85257a226304",
+  "skill_catalog_hash": "sha256:1c15866db200efb8db4807869f48c49737fe4c18f1d3ef657bed7a456721801d",
   "backend_profiles": [
     "NSL_V02_IN_PROCESS"
   ],
@@ -89,5 +92,5 @@
   ],
   "remote_provider_required": false,
   "database_migration_required": false,
-  "content_hash": "sha256:c4f841ae867dd7d39acdab3018a3b78b2b7f668f892ae9bdd1123e00ff4e6799"
+  "content_hash": "sha256:3b561a8bd71f2702dd1020c096e0936efd49818200e3a8248dcb842395dd280d"
 }

@@ -26,9 +26,9 @@
   ],
   "classification_counts": {
     "GENERALIZE": 23,
-    "HISTORY": 51,
+    "HISTORY": 52,
     "REMOVE_ACTIVE": 17,
-    "REPLAY_ONLY": 120
+    "REPLAY_ONLY": 122
   },
   "entries": [
     {
@@ -105,6 +105,11 @@
       "path": "deployment/environments/finance-golden-a-vo00.v1.json",
       "classification": "REMOVE_ACTIVE",
       "reason": "Active Golden A binding is removed after the replacement Gate."
+    },
+    {
+      "path": "deployment/locks/ae-mybee-m1-runtime-activation.v1.json",
+      "classification": "REPLAY_ONLY",
+      "reason": "Artifact remains only for regression, audit, or historical replay."
     },
     {
       "path": "deployment/locks/ae-product-nsl-runtime-bundle.v1.json",
@@ -233,6 +238,11 @@
     },
     {
       "path": "docs/slices/mybee_phase1_w70_cp_m1_e2e_fx_01a4.md",
+      "classification": "HISTORY",
+      "reason": "Frozen design or Slice evidence remains immutable history."
+    },
+    {
+      "path": "docs/slices/mybee_phase1_w70_cp_m1_e2e_fx_01a5.md",
       "classification": "HISTORY",
       "reason": "Frozen design or Slice evidence remains immutable history."
     },
@@ -707,6 +717,11 @@
       "reason": "Artifact remains only for regression, audit, or historical replay."
     },
     {
+      "path": "tests/test_ae_mybee_w70_cp_m1_e2e_fx_01a5_installed_runtime.py",
+      "classification": "REPLAY_ONLY",
+      "reason": "Artifact remains only for regression, audit, or historical replay."
+    },
+    {
       "path": "tests/test_ae_p65_s2_intent_candidate_generation.py",
       "classification": "REPLAY_ONLY",
       "reason": "Artifact remains only for regression, audit, or historical replay."
@@ -1087,5 +1102,5 @@
       "reason": "Artifact remains only for regression, audit, or historical replay."
     }
   ],
-  "inventory_hash": "sha256:b81791f8deb8b666f8d29ca1f135fcad7f925420d0b88f00a05562c467c3cb58"
+  "inventory_hash": "sha256:3d5649bb81a690de5670961144f0f1c95e791b004a5abef5f7f2802c06b014b4"
 }

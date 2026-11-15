@@ -222,6 +222,15 @@ regression, while generic runtime code remains free of MyBee capability IDs.
 No migration or remote provider was added. The next boundary is
 `CP-M1-E2E-FX-01A.5`.
 
+`CP-M1-E2E-FX-01A.5` evidence is recorded in
+[`mybee_phase1_w70_cp_m1_e2e_fx_01a5.md`](../../slices/mybee_phase1_w70_cp_m1_e2e_fx_01a5.md).
+It promotes the exact signed M1 D12/D04 release into the canonical AE Agent
+Runtime OCI/Compose composition, keeps private NSL imports behind the shared
+runtime adapter, and verifies the actual `nex_ae_test` artifact persistence and
+replay boundary with zero residue. Golden A is retained only as bounded
+rollback until `CP-M1-GA-RET-02`; it is not an active selector. No migration or
+remote provider was added. The next boundary is `CP-M1-GA-RET-02`.
+
 The Post-Wave UI/UX backlog records non-blocking TestClient compatibility and
 frontend bundle-performance findings from the post-S7-01 Repository Full Gate.
 It does not change the active accounting Wave or authorize immediate UI work.

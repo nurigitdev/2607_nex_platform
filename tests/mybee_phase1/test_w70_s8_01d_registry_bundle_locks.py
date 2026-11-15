@@ -153,7 +153,7 @@ def test_w70_candidate_admissions_match_skill_packs_and_inventory() -> None:
             assert admitted.compatibility_aliases == identity.compatibility_aliases
 
 
-def test_w70_deployed_runtime_still_points_to_v1_active_registry() -> None:
+def test_w70_deployed_runtime_points_to_verified_m1_registry_with_rollback() -> None:
     compose = (ROOT / "deployment/compose/canonical-platform.override.yaml").read_text(
         encoding="utf-8"
     )
@@ -161,11 +161,15 @@ def test_w70_deployed_runtime_still_points_to_v1_active_registry() -> None:
         ROOT / "deployment/oci/canonical-platform-ae-runtime.Containerfile"
     ).read_text(encoding="utf-8")
 
-    expected = "/app/deployment/product/config/ae-product-capability-registry.v1.json"
+    expected = (
+        "/app/deployment/product/repository/deployment/environments/"
+        "ae-product-capability-registry.mybee-m1.v1.json"
+    )
     assert expected in compose
     assert expected in containerfile
-    assert "ae-product-capability-registry.v2.json" not in compose
-    assert "ae-product-capability-registry.v2.json" not in containerfile
+    assert "NEX_AE_PRODUCT_RUNTIME_PROFILE: VERIFIED_PRODUCT_RELEASE" in compose
+    assert "NEX_AE_PRODUCT_RUNTIME_PROFILE=VERIFIED_PRODUCT_RELEASE" in containerfile
+    assert "golden-a-rollback-receipt.v1.json" in containerfile
 
     with pytest.raises(ProductCapabilityRegistryError) as raised:
         load_product_capability_registry(

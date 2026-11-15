@@ -213,6 +213,9 @@ class VerifiedProductSkillCatalog:
         )
         self.release_id = str(release.release_id)
         self.release_hash = str(release.content_hash)
+        self.package_hash = str(release.package_hash)
+        self.signing_key_id = str(release.signing_key_id)
+        self.admitted_at = str(release.admitted_at)
         self.catalog_hash = semantic_sha256_hash_ref(self.to_projection())
 
     @property
@@ -240,6 +243,9 @@ class VerifiedProductSkillCatalog:
             "schema_version": "ae.verified_product_skill_catalog.v1",
             "release_id": self.release_id,
             "release_hash": self.release_hash,
+            "package_hash": self.package_hash,
+            "signing_key_id": self.signing_key_id,
+            "admitted_at": self.admitted_at,
             "selections": [item.to_projection() for item in self._selections],
         }
 

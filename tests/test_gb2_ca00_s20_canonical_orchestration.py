@@ -13,7 +13,6 @@ import run_canonical_platform_golden_journey as golden
 import run_canonical_platform_installed_acceptance as installed
 import run_canonical_platform_trust_admission as trust
 
-
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -939,6 +938,29 @@ def test_s20_image_builder_stages_product_runtime_bundle(
         "deployment/environments/ae-product-capability-registry.v1.json": "{}\n",
         "deployment/locks/nsl-v0.2.1-wheel.json": "{}\n",
         "deployment/locks/python-production.lock": "lock\n",
+        "deployment/locks/ae-mybee-m1-runtime-admission.v1.json": "{}\n",
+        "deployment/locks/ae-mybee-m1-runtime-activation.v1.json": "{}\n",
+        "deployment/locks/ae-mybee-m1-signed-skill-checkpoint.v1.json": "{}\n",
+        "deployment/environments/ae-product-capability-registry.mybee-m1.v1.json": "{}\n",
+        "deployment/retirement/golden-a-reference-inventory.v1.json": "{}\n",
+        "deployment/retirement/golden-a-rollback-receipt.v1.json": "{}\n",
+        "deployment/retirement/golden-a-selection-freeze.v1.json": "{}\n",
+        "domains/mybee/skills/m1_checkpoint/context.json": "{}\n",
+        "domains/mybee/skills/m1_checkpoint/mybee-m1-d04-d12.v1.nsp": "nsp\n",
+        "domains/mybee/skills/m1_checkpoint/mybee-m1-release-public-key.v1.json": "{}\n",
+        "domains/mybee/skills/m1_checkpoint/tool_catalog.v1.json": "{}\n",
+        "domains/mybee/skills/d04_accounting/journal_posting.v1.ns": "skill\n",
+        "domains/mybee/skills/d04_accounting/manifest.v1.json": "{}\n",
+        "domains/mybee/skills/d04_accounting/tool_bindings.v1.json": "{}\n",
+        "domains/mybee/skills/d12_project/work_code_context.v1.ns": "skill\n",
+        "domains/mybee/skills/d12_project/manifest.v1.json": "{}\n",
+        "domains/mybee/skills/d12_project/tool_bindings.v1.json": "{}\n",
+        "domains/mybee/skills/tool_inventory.v1.json": "{}\n",
+        "contracts/admissions/nex_eos/w70_tool_contract_admission.v1.json": "{}\n",
+        "contracts/openapi/nex-eos.openapi.yaml": "openapi: 3.1.0\n",
+        "contracts/schemas/service/nex_eos/sample.v1.schema.json": "{}\n",
+        "domains/mybee/catalog/work_codes/catalog.v1.json": "{}\n",
+        "domains/mybee/catalog/work_codes/schema.json": "{}\n",
     }
     for relative, content in files.items():
         path = source_root / relative
@@ -963,6 +985,14 @@ def test_s20_image_builder_stages_product_runtime_bundle(
     assert (context / "skill/nested/skill.ns").read_text(encoding="utf-8") == "skill"
     assert (context / "config/finance-golden-a-vo00.v1.json").is_file()
     assert (context / "locks/ae-product-nsl-runtime-bundle.v1.json").is_file()
+    assert (
+        context
+        / "repository/deployment/locks/ae-mybee-m1-runtime-activation.v1.json"
+    ).is_file()
+    assert (
+        context
+        / "repository/domains/mybee/skills/m1_checkpoint/mybee-m1-d04-d12.v1.nsp"
+    ).is_file()
 
 
 def test_s20_installed_cleanup_lookup_and_loopback_helpers(
