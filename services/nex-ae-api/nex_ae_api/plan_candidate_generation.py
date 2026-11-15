@@ -187,6 +187,7 @@ class LivePlanCandidateService:
         default_factory=PlanCalibrationRegistry,
         repr=False,
     )
+    prompt_binding_key: str = AE_PLAN_BUILDER_BINDING
 
     def generate_and_bind(
         self,
@@ -222,6 +223,7 @@ class LivePlanCandidateService:
         input_context_hash = semantic_sha256_hash_ref(generation_input)
         prompt_snapshot = _resolve_prompt_snapshot(
             self.prompt_store,
+            binding_key=self.prompt_binding_key,
             user_prompt=canonical_json(generation_input),
             request_id=selected_request_id,
             trace_id=selected_trace_id,
@@ -770,12 +772,7 @@ def _candidate_delegation(value: object) -> dict[str, Any]:
 def _require_project_scope(
     agent_context: Mapping[str, Any], project_scope_ref: str
 ) -> None:
-    project = agent_context.get("project_ref")
-    if (
-        not isinstance(project, Mapping)
-        or project.get("resource_type") != "PROJECT"
-        or project.get("resource_id") != project_scope_ref
-    ):
+    if project_scope_ref not in _trusted_project_scope_refs(agent_context):
         raise _schema_error(
             "PLAN delegation project must match the trusted AgentContext project."
         )
@@ -881,12 +878,10 @@ def _agent_context_projection(
             if isinstance(item, Mapping) and item.get("entity_type")
         }
     )
-    project = value.get("project_ref")
-    project_scope_ref = None
-    if isinstance(project, Mapping) and project.get("resource_type") == "PROJECT":
-        project_scope_ref = _bounded_text(
-            project.get("resource_id"), "project_scope_ref", 160
-        )
+    project_scopes = _trusted_project_scope_refs(value)
+    if len(project_scopes) > 1:
+        raise _request_error("AgentContext Project delegation scope is ambiguous.")
+    project_scope_ref = next(iter(project_scopes), None)
     return {
         "tenant_id": tenant_id,
         "context_hash": context_hash,
@@ -935,9 +930,29 @@ def _capability_catalog(snapshot: Mapping[str, Any]) -> list[dict[str, Any]]:
     return [records[key] for key in sorted(records)]
 
 
+def _trusted_project_scope_refs(value: Mapping[str, Any]) -> set[str]:
+    refs: set[str] = set()
+    project = value.get("project_ref")
+    if isinstance(project, Mapping) and project.get("resource_type") == "PROJECT":
+        refs.add(_bounded_text(project.get("resource_id"), "project_scope_ref", 160))
+    entities = value.get("resolved_entities")
+    if isinstance(entities, list):
+        for item in entities:
+            resource = item.get("resource_ref") if isinstance(item, Mapping) else None
+            if (
+                isinstance(resource, Mapping)
+                and resource.get("resource_type") == "PROJECT"
+            ):
+                refs.add(
+                    _bounded_text(resource.get("resource_id"), "project_scope_ref", 160)
+                )
+    return refs
+
+
 def _resolve_prompt_snapshot(
     store: Any,
     *,
+    binding_key: str,
     user_prompt: str,
     request_id: str,
     trace_id: str,
@@ -945,7 +960,7 @@ def _resolve_prompt_snapshot(
     try:
         rendered = render_prompt_from_binding(
             store,
-            binding_key=AE_PLAN_BUILDER_BINDING,
+            binding_key=binding_key,
             variables={},
             request_id=request_id,
             trace_id=trace_id,
@@ -966,7 +981,7 @@ def _resolve_prompt_snapshot(
             "The captured PLAN prompt version is not active.",
         )
     if (
-        event.get("binding_key") != AE_PLAN_BUILDER_BINDING
+        event.get("binding_key") != binding_key
         or event.get("purpose") != "plan_builder"
         or version.get("purpose") != "plan_builder"
         or version.get("role") != "system"

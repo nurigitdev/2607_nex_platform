@@ -42,6 +42,10 @@ from nex_ae_api.plan_candidate_generation import (
     LivePlanCandidateService,
     bind_plan_candidate,
 )
+from nex_ae_api.plan_candidate_profiles import (
+    ProfileAwarePlanCandidateService,
+    build_m1_plan_candidate_profile_registry,
+)
 from nex_ae_api.plan_validation import (
     SqlAlchemyPlanValidationRepository,
     validate_agent_plan,
@@ -1057,7 +1061,10 @@ def attach_semantic_candidate_admission(
         admission=admission,
         intent_stage=LiveIntentCandidateService(client, prompt_store, calibrations),
         context_stage=LiveContextCandidateService(client, prompt_store, calibrations),
-        plan_stage=LivePlanCandidateService(client, prompt_store, calibrations),
+        plan_stage=ProfileAwarePlanCandidateService(
+            LivePlanCandidateService(client, prompt_store, calibrations),
+            build_m1_plan_candidate_profile_registry(product_capabilities),
+        ),
         evidence=SqlAlchemySemanticCandidateEvidenceRepository(session_factory),
         candidate_storage=candidate_storage,
         work_intents=SqlAlchemyWorkIntentRepository(session_factory),
@@ -1071,6 +1078,7 @@ def attach_semantic_candidate_admission(
             resolved_environ,
             product_capability_registry=registered_product_capabilities,
             retirement_projection=product_capability_retirements,
+            session_factory=session_factory,
         ),
         product_capability_registry=product_capabilities,
         product_capability_retirements=product_capability_retirements,

@@ -196,6 +196,14 @@ It freezes the pre-change installed composition, authoritative data-origin
 matrix, and Golden/Demo residue baseline without adding a database migration.
 The next boundary is `CP-M1-E2E-FX-01A.2`.
 
+`CP-M1-E2E-FX-01A.2` evidence is recorded in
+[`mybee_phase1_w70_cp_m1_e2e_fx_01a2.md`](../../slices/mybee_phase1_w70_cp_m1_e2e_fx_01a2.md).
+It closes the registry-selected IA delegation planning profile and requires
+EOS active Project resolution, fresh OA Project entitlement, and one active AE
+Project Agent before a Project UUID can enter `DELEGATE_WORK`. IA remains
+Project-neutral and no database migration was added. The next boundary is
+`CP-M1-E2E-FX-01A.3`.
+
 The Post-Wave UI/UX backlog records non-blocking TestClient compatibility and
 frontend bundle-performance findings from the post-S7-01 Repository Full Gate.
 It does not change the active accounting Wave or authorize immediate UI work.
