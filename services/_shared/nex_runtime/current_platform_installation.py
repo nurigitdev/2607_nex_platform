@@ -220,15 +220,13 @@ def _product_ae_image_contract_not_overridden(service: Mapping[str, Any]) -> boo
         return False
     return (
         "NEX_AE_FINANCE_GOLDEN_A_AUTHORITY_PROFILE_PATH" not in environment
+        and "NEX_AE_PRODUCT_CAPABILITY_RETIREMENT_PATH" not in environment
+        and "NEX_AE_NSL_BUNDLE_MANIFEST" not in environment
+        and "NEX_AE_NSL_SKILL_ROOT" not in environment
         and environment.get("NEX_AE_PRODUCT_CAPABILITY_REGISTRY_PATH")
         == (
             "/app/deployment/product/repository/deployment/environments/"
-            "ae-product-capability-registry.mybee-m1.v1.json"
-        )
-        and environment.get("NEX_AE_PRODUCT_CAPABILITY_RETIREMENT_PATH")
-        == (
-            "/app/deployment/product/repository/deployment/retirement/"
-            "golden-a-selection-freeze.v1.json"
+            "ae-product-capability-registry.mybee-m1.v2.json"
         )
     )
 

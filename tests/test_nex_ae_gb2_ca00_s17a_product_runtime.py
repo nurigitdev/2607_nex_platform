@@ -157,65 +157,32 @@ def test_product_business_binding_uses_registry_and_authority_not_fixture() -> N
         handlers["PROJECT.GET_PROJECT"]({"project_code": "DRIFT"})
 
 
-def test_product_profile_builds_local_skill_registry_without_demo_inputs(
+def test_product_profile_defaults_to_generalized_verified_release(
     monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
 ) -> None:
-    backend = SimpleNamespace(
-        backend_profile="NSL_V02_IN_PROCESS",
-        execute=lambda **_values: {},
-    )
-    dependencies = LocalSkillExecutorDependencies(
-        artifact_gateway=SimpleNamespace(resolve_verified=lambda **_values: {}),
-        binding_repository=SimpleNamespace(bind_request=lambda **_values: {}),
-        request_builder=lambda **_values: {},
-        backend=backend,
-        result_mapper=lambda value: value,
-    )
-    runtime = SimpleNamespace(
-        dependencies=dependencies,
-        initial=lambda *_args: None,
-        resume=lambda *_args: None,
-        backend_profile=backend.backend_profile,
-        package_readiness={"status": "PASS"},
-    )
-    observed: dict[str, object] = {}
-
-    def fake_runtime(sessions, config, *, environ):
-        observed.update(sessions=sessions, config=config, environ=environ)
-        return runtime
-
-    monkeypatch.setattr(profile, "ProductControlledSkillRuntime", fake_runtime)
-    environment = {
-        "NEX_AE_NSL_BUNDLE_MANIFEST": str(BUNDLE),
-        "NEX_AE_NSL_WHEEL": str(WHEEL),
-        "NEX_AE_NSL_PLATFORM_LOCK": str(
-            ROOT / "deployment/locks/python-production.lock"
+    expected = SimpleNamespace(package_readiness={"status": "PASS"})
+    observed = {}
+    monkeypatch.setattr(
+        profile,
+        "_build_verified_product_release_profile",
+        lambda sessions, environ: (
+            observed.update(sessions=sessions, environ=environ) or expected
         ),
-        "NEX_AE_NSL_SKILL_ROOT": str(SKILL),
-        "NEX_AE_NSL_STATE_ROOT": str(tmp_path / "state"),
-        "NEX_AE_PRODUCT_CAPABILITY_REGISTRY_PATH": str(REGISTRY),
-        "NEX_OA_BASE_URL": "https://oa.example",
-        "NEX_EOS_BASE_URL": "https://eos.example",
-        "NEX_AE_TO_OA_SERVICE_TOKEN": "oa-token",
-        "NEX_AE_TO_EOS_SERVICE_TOKEN": "eos-token",
-    }
-    result = profile.build_product_runtime_executor_profile(
-        SimpleNamespace(), environment
     )
+    sessions = SimpleNamespace()
+    environment = {}
 
-    assert "LOCAL_SKILL" in result.executor_kinds
-    assert result.backend_profiles == ("NSL_V02_IN_PROCESS",)
-    assert result.package_readiness == {"status": "PASS"}
-    assert observed["environ"] is environment
-    config = observed["config"]
-    assert config.state_root == tmp_path / "state"
-    assert not any(name.startswith("NEX_AE_DEMO_") for name in environment)
+    result = profile.build_product_runtime_executor_profile(sessions, environment)
+
+    assert result is expected
+    assert observed == {"sessions": sessions, "environ": environment}
 
 
-def test_product_runtime_config_requires_authoritative_service_inputs() -> None:
-    with pytest.raises(ValueError, match="NEX_OA_BASE_URL"):
-        profile.load_product_controlled_skill_config({})
+def test_historical_golden_runtime_profile_is_not_admitted() -> None:
+    with pytest.raises(ValueError, match="not admitted"):
+        profile.build_product_runtime_executor_profile(
+            SimpleNamespace(), {"NEX_AE_PRODUCT_RUNTIME_PROFILE": "GOLDEN_A_ROLLBACK"}
+        )
 
 
 def test_product_runtime_deployment_audit_passes_and_detects_residue(
@@ -247,8 +214,7 @@ def test_product_runtime_deployment_audit_passes_and_detects_residue(
         *CANONICAL_DEPLOYMENT_ENTRYPOINTS,
         *LEGACY_DEPLOYMENT_WRAPPERS,
         *PRODUCT_RUNTIME_PATHS,
-        "deployment/locks/ae-product-nsl-runtime-bundle.v1.json",
-        "deployment/environments/ae-product-capability-registry.v1.json",
+        "deployment/environments/ae-product-capability-registry.mybee-m1.v2.json",
     ):
         target = tmp_path / relative
         target.parent.mkdir(parents=True, exist_ok=True)

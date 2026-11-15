@@ -109,11 +109,7 @@ def test_product_ae_image_contract_cannot_be_overridden_by_compose() -> None:
             "environment": {
                 "NEX_AE_PRODUCT_CAPABILITY_REGISTRY_PATH": (
                     "/app/deployment/product/repository/deployment/environments/"
-                    "ae-product-capability-registry.mybee-m1.v1.json"
-                ),
-                "NEX_AE_PRODUCT_CAPABILITY_RETIREMENT_PATH": (
-                    "/app/deployment/product/repository/deployment/retirement/"
-                    "golden-a-selection-freeze.v1.json"
+                    "ae-product-capability-registry.mybee-m1.v2.json"
                 ),
             }
         }

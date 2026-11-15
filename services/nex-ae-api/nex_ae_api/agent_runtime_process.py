@@ -40,12 +40,6 @@ from nex_ae_api.mybee_product_admission import (
     not_required_mybee_product_admission,
     require_mybee_product_package,
 )
-from nex_ae_api.mybee_product_consumer import (
-    InstalledMyBeeVoucherCandidateConsumer,
-    build_installed_mybee_voucher_candidate_consumer,
-    mybee_consumer_binding_ready,
-    not_required_mybee_consumer_binding,
-)
 from nex_ae_api.nsl_backend_profiles import NSL_V01_PROCESS_ISOLATED_BACKEND
 from nex_ae_api.product_runtime_profile import (
     build_product_runtime_executor_profile,
@@ -99,17 +93,11 @@ class InstalledAgentRuntimeProcess:
     sessions: sessionmaker[Session]
     composition: InstalledRuntimeComposition
     mybee_product_admission: Mapping[str, Any] | None = None
-    mybee_product_consumer: InstalledMyBeeVoucherCandidateConsumer | None = None
 
     def readiness(self) -> dict[str, Any]:
         database = _database_readiness(self.sessions)
         mybee_admission = (
             self.mybee_product_admission or not_required_mybee_product_admission()
-        )
-        mybee_consumer = (
-            self.mybee_product_consumer.readiness()
-            if self.mybee_product_consumer is not None
-            else not_required_mybee_consumer_binding()
         )
         worker = build_agent_runtime_worker_check(
             self.composition.worker_config,
@@ -144,9 +132,6 @@ class InstalledAgentRuntimeProcess:
             "mybee_product_package_admitted": mybee_product_admission_ready(
                 mybee_admission
             ),
-            "mybee_product_consumer_bound": mybee_consumer_binding_ready(
-                mybee_consumer
-            ),
         }
         ready = all(checks.values())
         return {
@@ -161,7 +146,6 @@ class InstalledAgentRuntimeProcess:
             "database": database,
             "worker": worker,
             "mybee_product_package": dict(mybee_admission),
-            "mybee_product_consumer": dict(mybee_consumer),
             "executor_kinds": list(self.composition.executor_profile.executor_kinds),
             "backend_profiles": list(
                 self.composition.executor_profile.backend_profiles
@@ -260,10 +244,8 @@ def build_installed_agent_runtime_process(
         )
         selected_executor_profile = executor_profile
         mybee_admission = not_required_mybee_product_admission()
-        mybee_consumer = None
         if selected in {"staging_live", "production"}:
             mybee_admission = require_mybee_product_package()
-            mybee_consumer = build_installed_mybee_voucher_candidate_consumer(env)
         if selected_executor_profile is None:
             selected_executor_profile = (
                 build_product_runtime_executor_profile(sessions, env)
@@ -284,7 +266,6 @@ def build_installed_agent_runtime_process(
             sessions=sessions,
             composition=composition,
             mybee_product_admission=mybee_admission,
-            mybee_product_consumer=mybee_consumer,
         )
     except Exception as exc:
         if engine is not None:

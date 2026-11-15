@@ -231,6 +231,15 @@ replay boundary with zero residue. Golden A is retained only as bounded
 rollback until `CP-M1-GA-RET-02`; it is not an active selector. No migration or
 remote provider was added. The next boundary is `CP-M1-GA-RET-02`.
 
+`CP-M1-GA-RET-02` evidence is recorded in
+`docs/slices/mybee_phase1_w70_cp_m1_ga_ret_02.md`. The canonical MyBee M1
+registry, runtime admission, activation, prompt, Compose, and OCI inputs now
+select only the generalized D04/D12 release. Golden A scenario assets remain
+hash-pinned offline history and are absent from the active import graph and
+image. The bounded Golden rollback is replaced by the last admitted
+generalized M1 release. No migration or remote provider was required. The next
+boundary returns to `CP-M1-E2E-FX-01`.
+
 The Post-Wave UI/UX backlog records non-blocking TestClient compatibility and
 frontend bundle-performance findings from the post-S7-01 Repository Full Gate.
 It does not change the active accounting Wave or authorize immediate UI work.

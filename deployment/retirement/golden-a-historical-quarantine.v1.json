@@ -1,0 +1,93 @@
+{
+  "schema_version": "mybee.w70.golden_a_historical_quarantine.v1",
+  "quarantine_id": "mybee-w70-golden-a-historical-quarantine",
+  "quarantine_version": 1,
+  "effective_at": "2026-11-16T00:00:00Z",
+  "active_selection": {
+    "registry_ref": "deployment/environments/ae-product-capability-registry.mybee-m1.v2.json",
+    "registry_hash": "sha256:1be6be5bdacbbb3c44af466c9b210f9c9054a05ff99e9e724b9bfc412870d152",
+    "admission_ref": "deployment/locks/ae-mybee-m1-runtime-admission.v2.json",
+    "admission_hash": "sha256:912229dfc42e881e28418af9289c1a58b99677cb4e46b7975677725d2b98edc4",
+    "activation_ref": "deployment/locks/ae-mybee-m1-runtime-activation.v2.json",
+    "activation_hash": "sha256:54b7d13968adc430101095bb03581bdb453537a348babad9e690d2037fcfbe29",
+    "rollback_ref": "deployment/locks/ae-mybee-m1-generalized-rollback.v1.json",
+    "rollback_hash": "sha256:b36035145001b0a21ba927aa5b56061ef777ee42570c29ae4c0fd9457800a87e",
+    "runtime_selectable_capabilities": [
+      "FINANCE.VOUCHER.APPROVE_AND_POST",
+      "PROJECT.WORK_CODE_SET.GET"
+    ]
+  },
+  "historical_assets": [
+    {
+      "path": "deployment/environments/ae-product-capability-registry.v1.json",
+      "sha256": "sha256:cb43b573d2e9284b79b10502a68b9a7f9fed2939b0a88db5c745b4c5396ec126"
+    },
+    {
+      "path": "deployment/environments/ae-product-capability-registry.mybee-m1.v1.json",
+      "sha256": "sha256:6ec6ce1b5d153799fed3dd36b5e213e33f1a2228dda1c407d08f81e4d236dfb1"
+    },
+    {
+      "path": "deployment/environments/finance-golden-a-vo00.v1.json",
+      "sha256": "sha256:eb09eb09b589bbab5f61dc0c82555df2859efad7140566c248648fc20b43442f"
+    },
+    {
+      "path": "deployment/locks/ae-product-nsl-runtime-bundle.v1.json",
+      "sha256": "sha256:f5f7ab97aaa5abc3642a734b153313b5af6c695790c4974a9d3b2ed8f897e27c"
+    },
+    {
+      "path": "deployment/locks/ae-mybee-m1-runtime-admission.v1.json",
+      "sha256": "sha256:d3d5cf47a44a347e5c52dcf19f93829a8f0e2ab4410419a032d8b078fab4d447"
+    },
+    {
+      "path": "deployment/locks/ae-mybee-m1-runtime-activation.v1.json",
+      "sha256": "sha256:c19002e67b7901367e0bbc41ba06c59b6ffbd572b14b4b0f32f70944f34776ec"
+    },
+    {
+      "path": "deployment/retirement/golden-a-reference-inventory.v1.json",
+      "sha256": "sha256:a57115e8420c29930ca6655be83bc11b1a9fb06f4c93e374bb397b3bb21d14b6"
+    },
+    {
+      "path": "deployment/retirement/golden-a-rollback-receipt.v1.json",
+      "sha256": "sha256:94326deafc88e0d8d7613c8078de9847fb078ecf578fc77496e0eee7445d44bd"
+    },
+    {
+      "path": "deployment/retirement/golden-a-selection-freeze.v1.json",
+      "sha256": "sha256:1d5cbbace4803ba936b7acc6b822b758f962c3f368d95239fda5203340de2fb6"
+    },
+    {
+      "path": "services/nex-ae-api/nex_ae_api/domain_intent_products.py",
+      "sha256": "sha256:37a664063cff75052919d32cd4e93676d85e802ee94b722d20612d20cf4f2e47"
+    },
+    {
+      "path": "services/nex-ae-api/nex_ae_api/finance_golden_a_activation.py",
+      "sha256": "sha256:0ea473c3e1deb43470ebc3337661496d388130225957f90f315b546638aa95a0"
+    },
+    {
+      "path": "services/nex-ae-api/nex_ae_api/golden_a_planning.py",
+      "sha256": "sha256:6c1d70e6f0103ceaa8cc88f6cec2cd54fd6a35ad567b068de7d59c9ff5c51253"
+    },
+    {
+      "path": "services/nex-ae-api/nex_ae_api/mybee_product_consumer.py",
+      "sha256": "sha256:760694c2f7fefd86f3301bb99feba7169e9268fa89dca2dba0b388b0a8a53afe"
+    },
+    {
+      "path": "services/nex-ae-api/nex_ae_api/product_controlled_skill.py",
+      "sha256": "sha256:839b6c41ad530ebe9c40f7efc946f2d34fc9ee0b0ce8309b6ccabac35486c5ba"
+    }
+  ],
+  "historical_policy": {
+    "new_selection": "DENY",
+    "active_runtime_import": "DENY",
+    "canonical_image_packaging": "DENY",
+    "execution": "OFFLINE_REPLAY_ONLY",
+    "database_cleanup": "DENY"
+  },
+  "deprecated_api_aliases_retained": [
+    "FINANCE.VOUCHER_DRAFT.CREATE",
+    "FINANCE.VOUCHER_DRAFT_CREATE",
+    "createEosVoucherDraft"
+  ],
+  "database_migration_required": false,
+  "remote_provider_required": false,
+  "content_hash": "sha256:2d42b7f5778d93fa77b7fe238be89ecc14b08334d4258166b15d0ded7097585e"
+}

@@ -48,7 +48,7 @@ def _environment() -> dict[str, str]:
         "NEX_AE_PRODUCT_RUNTIME_PROFILE": VERIFIED_PRODUCT_RELEASE_PROFILE,
         "NEX_AE_PRODUCT_CAPABILITY_REGISTRY_PATH": str(
             ROOT
-            / "deployment/environments/ae-product-capability-registry.mybee-m1.v1.json"
+            / "deployment/environments/ae-product-capability-registry.mybee-m1.v2.json"
         ),
         "NEX_OA_BASE_URL": "https://oa.example",
         "NEX_EOS_BASE_URL": "https://eos.example",
@@ -84,12 +84,12 @@ def test_verified_product_release_profile_is_fail_closed_and_ready(
         "catalog_hash": "sha256:1c15866db200efb8db4807869f48c49737fe4c18f1d3ef657bed7a456721801d",
         "capabilities": tuple(sorted((M1_D04_CAPABILITY_ID, M1_D12_CAPABILITY_ID))),
         "runtime_profile": VERIFIED_PRODUCT_RELEASE_PROFILE,
-        "admission_hash": "sha256:3b561a8bd71f2702dd1020c096e0936efd49818200e3a8248dcb842395dd280d",
-        "activation_hash": "sha256:6a1aa2a44eaf25e52afa33ed09ad0ea69f351ea8a309e5614b6f6162c096f3af",
+        "admission_hash": "sha256:912229dfc42e881e28418af9289c1a58b99677cb4e46b7975677725d2b98edc4",
+        "activation_hash": "sha256:54b7d13968adc430101095bb03581bdb453537a348babad9e690d2037fcfbe29",
     }
 
     drifted = json.loads(
-        (ROOT / "deployment/locks/ae-mybee-m1-runtime-activation.v1.json").read_text(
+        (ROOT / "deployment/locks/ae-mybee-m1-runtime-activation.v2.json").read_text(
             encoding="utf-8"
         )
     )
@@ -659,19 +659,19 @@ def test_journal_authority_rejects_input_and_scope_drift(
 
 def test_activation_lock_and_runtime_config_fail_closed(tmp_path: Path) -> None:
     admission = json.loads(
-        (ROOT / "deployment/locks/ae-mybee-m1-runtime-admission.v1.json").read_text(
+        (ROOT / "deployment/locks/ae-mybee-m1-runtime-admission.v2.json").read_text(
             encoding="utf-8"
         )
     )
     activation = json.loads(
-        (ROOT / "deployment/locks/ae-mybee-m1-runtime-activation.v1.json").read_text(
+        (ROOT / "deployment/locks/ae-mybee-m1-runtime-activation.v2.json").read_text(
             encoding="utf-8"
         )
     )
     cases = (
         ("schema_version", "wrong", "schema"),
         ("activation_state", "INACTIVE", "not active"),
-        ("runtime_profile", "GOLDEN_A_ROLLBACK", "profile has drifted"),
+        ("runtime_profile", "UNSUPPORTED", "profile has drifted"),
         ("runtime_admission_hash", HASH, "admission hash"),
     )
     for key, value, message in cases:
@@ -683,21 +683,21 @@ def test_activation_lock_and_runtime_config_fail_closed(tmp_path: Path) -> None:
             )
 
     drifted = deepcopy(activation)
-    drifted["bounded_rollback"] = []
+    drifted["rollback_target"] = []
     with pytest.raises(TypeError, match="receipt is required"):
         runtime_profile._verify_activation_lock(
             drifted, admission=admission, repository_root=ROOT
         )
 
     drifted = deepcopy(activation)
-    drifted["bounded_rollback"]["receipt_ref"] = ""
+    drifted["rollback_target"]["receipt_ref"] = ""
     with pytest.raises(ValueError, match="reference is invalid"):
         runtime_profile._verify_activation_lock(
             drifted, admission=admission, repository_root=ROOT
         )
 
     drifted = deepcopy(activation)
-    drifted["bounded_rollback"]["receipt_ref"] = "missing.json"
+    drifted["rollback_target"]["receipt_ref"] = "missing.json"
     with pytest.raises(ValueError, match="receipt has drifted"):
         runtime_profile._verify_activation_lock(
             drifted, admission=admission, repository_root=tmp_path
@@ -706,7 +706,7 @@ def test_activation_lock_and_runtime_config_fail_closed(tmp_path: Path) -> None:
     receipt = tmp_path / "receipt.json"
     receipt.write_text("{}", encoding="utf-8")
     drifted = deepcopy(activation)
-    drifted["bounded_rollback"]["receipt_ref"] = "receipt.json"
+    drifted["rollback_target"]["receipt_ref"] = "receipt.json"
     with pytest.raises(ValueError, match="receipt has drifted"):
         runtime_profile._verify_activation_lock(
             drifted, admission=admission, repository_root=tmp_path
@@ -806,29 +806,26 @@ def test_canonical_oci_and_compose_select_same_verified_release() -> None:
     ).read_text(encoding="utf-8")
     for expected in (
         "VERIFIED_PRODUCT_RELEASE",
-        "ae-mybee-m1-runtime-admission.v1.json",
-        "ae-mybee-m1-runtime-activation.v1.json",
-        "ae-product-capability-registry.mybee-m1.v1.json",
+        "ae-mybee-m1-runtime-admission.v2.json",
+        "ae-mybee-m1-runtime-activation.v2.json",
+        "ae-product-capability-registry.mybee-m1.v2.json",
         "mybee-m1-d04-d12.v1.nsp",
         "tool_catalog.v1.json",
     ):
         assert expected in containerfile
     for expected in (
         "VERIFIED_PRODUCT_RELEASE",
-        "ae-mybee-m1-runtime-admission.v1.json",
-        "ae-mybee-m1-runtime-activation.v1.json",
-        "ae-product-capability-registry.mybee-m1.v1.json",
+        "ae-mybee-m1-runtime-admission.v2.json",
+        "ae-mybee-m1-runtime-activation.v2.json",
+        "ae-product-capability-registry.mybee-m1.v2.json",
         "tool_catalog.v1.json",
     ):
         assert expected in compose
     assert compose.count(
         "/app/deployment/product/repository/deployment/environments/"
-        "ae-product-capability-registry.mybee-m1.v1.json"
+        "ae-product-capability-registry.mybee-m1.v2.json"
     ) == 2
-    assert (
-        "/app/deployment/product/repository/deployment/retirement/"
-        "golden-a-selection-freeze.v1.json"
-    ) in compose
+    assert "golden-a-selection-freeze.v1.json" not in compose
     assert "/app/deployment/environments/ae-product-capability-registry" not in compose
     assert "/app/deployment/product/config/golden-a-selection-freeze" not in compose
 

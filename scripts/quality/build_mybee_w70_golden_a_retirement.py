@@ -98,6 +98,14 @@ def render_json(value: Mapping[str, Any]) -> bytes:
 
 
 def build_retirement_artifacts(root: Path) -> dict[Path, dict[str, Any]]:
+    frozen = {}
+    for relative in (INVENTORY_PATH, ROLLBACK_PATH, PROJECTION_PATH):
+        path = root / relative
+        if not path.is_file():
+            break
+        frozen[relative] = _json_object(path)
+    if len(frozen) == 3:
+        return frozen
     inventory = _build_inventory(root)
     inventory_bytes = render_json(inventory)
     rollback = _build_rollback_receipt(root)

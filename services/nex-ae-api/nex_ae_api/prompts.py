@@ -141,6 +141,28 @@ _MYBEE_M1_PROJECT_DELEGATION_INTENT_CANDIDATE_V8_CONTENT = (
     "FX rates, Journal lines, Skill versions, or controlled-WRITE authority."
 )
 
+_MYBEE_M1_PROJECT_DELEGATION_INTENT_CANDIDATE_V9_CONTENT = (
+    _P65_INTENT_CANDIDATE_V1_CONTENT
+    + " For a request to add several employees to one Project, use the "
+    "canonical intent_label PROJECT.MEMBERSHIP.ADD_MANY and GENERAL_ANSWER. "
+    "Emit the exact Project code as one QUERY_TERM selector. Emit employee "
+    "numbers as scalar parameter candidates employee_id_1, employee_id_2, "
+    "and so on; an explicit name hint may use the matching employee_name_1, "
+    "employee_name_2 name. Treat employee numbers and name hints as opaque "
+    "lookup candidates; OA alone decides existence, activity, and identity. "
+    "For NVT Project operations, use only PROJECT.NVT_PROJECT.CREATE, "
+    "PROJECT.NVT_PROJECT.GET, PROJECT.NVT_PROJECT.LIST, or "
+    "PROJECT.NVT_PROJECT.UPDATE. Require clarification when an operation's "
+    "required Project code or name is absent or ambiguous."
+    + " For a request to create, approve, register, or post a voucher or journal "
+    "against an explicit approved Project Code, use the canonical intent_label "
+    "FINANCE.VOUCHER.APPROVE_AND_POST. Preserve the Project Code as exactly one "
+    "QUERY_TERM selector. This label only selects the Project delegation "
+    "profile; EOS, OA, WC, and the active Project Agent remain authoritative. "
+    "Never emit Project UUIDs, entitlement decisions, approval proof, accounts, "
+    "FX rates, Journal lines, Skill versions, or controlled-WRITE authority."
+)
+
 _P65_CONTEXT_CANDIDATE_V1_CONTENT = (
     "You generate an untrusted context candidate set, never an "
     "authoritative context or access decision. Return exactly one JSON "
@@ -207,6 +229,27 @@ AE_HISTORICAL_PROMPT_SEEDS = [
             "slice": "P6.5-S2",
             "candidate_schema": "p65.intent_candidate.v1",
             "authority": "untrusted_candidate_only",
+        },
+    ),
+    PromptSeed(
+        service_id="nex-ae-api",
+        purpose="intent_resolution",
+        name="p65_default_intent_candidate_system",
+        owner_domain="agent-experience",
+        binding_key=AE_INTENT_RESOLUTION_BINDING,
+        version="v8",
+        role="system",
+        segment_order=0,
+        content=_MYBEE_M1_PROJECT_DELEGATION_INTENT_CANDIDATE_V8_CONTENT,
+        model_capability="generation",
+        metadata={
+            "phase": "MyBee-W70",
+            "slice": "CP-M1-GA-RET-01",
+            "candidate_schema": "p65.intent_candidate.v1",
+            "authority": "untrusted_candidate_only",
+            "status": "REPLAY_ONLY",
+            "golden_a": "voucher_draft",
+            "mybee_m1_project_delegation": "FINANCE.VOUCHER.APPROVE_AND_POST",
         },
     ),
     PromptSeed(
@@ -401,23 +444,22 @@ AE_PROMPT_SEEDS = [
         name="p65_default_intent_candidate_system",
         owner_domain="agent-experience",
         binding_key=AE_INTENT_RESOLUTION_BINDING,
-        version="v8",
+        version="v9",
         role="system",
         segment_order=0,
-        content=_MYBEE_M1_PROJECT_DELEGATION_INTENT_CANDIDATE_V8_CONTENT,
+        content=_MYBEE_M1_PROJECT_DELEGATION_INTENT_CANDIDATE_V9_CONTENT,
         model_capability="generation",
         metadata={
-            "phase": "P8",
-            "slice": "P8-S112",
+            "phase": "MyBee-W70",
+            "slice": "CP-M1-GA-RET-02",
             "candidate_schema": "p65.intent_candidate.v1",
             "authority": "untrusted_candidate_only",
-            "golden_a": "voucher_draft",
             "project_membership_batch": "indexed_scalar_candidates",
             "nvt_project_operations": "create_get_list_update",
             "employee_authority": "oa_only",
             "nvt_fallback_rule": "non_nvt_only",
-            "golden_a_parameter_mapping": "exact",
             "mybee_m1_project_delegation": "FINANCE.VOUCHER.APPROVE_AND_POST",
+            "historical_scenario_dependency": False,
         },
     ),
     PromptSeed(
@@ -587,8 +629,8 @@ def _activate_current_intent_candidate_prompt(store: Any) -> None:
         new_prompt_template_version_id=target["prompt_template_version_id"],
         expected_prompt_template_version_id=current["prompt_template_version_id"],
         changed_by="nex-ae-api-bootstrap",
-        reason="P8-DEMO-S11 Golden A parameter mapping hardening",
-        correlation_id="p8-demo-s11-intent-prompt-v7",
+        reason="W70 generalized MyBee M1 project delegation activation",
+        correlation_id="w70-ga-ret-02-intent-prompt-v9",
     )
 
 

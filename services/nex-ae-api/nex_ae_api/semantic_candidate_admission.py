@@ -25,9 +25,6 @@ from nex_ae_api.context_candidate_generation import (
     context_candidate_hints,
 )
 from nex_ae_api.domain_intent_activators import DomainIntentActivatorRegistry
-from nex_ae_api.domain_intent_products import (
-    build_domain_intent_activator_registry,
-)
 from nex_ae_api.executable_plans import (
     SqlAlchemyExecutablePlanRepository,
     compile_executable_plan,
@@ -1039,19 +1036,10 @@ def attach_semantic_candidate_admission(
         )
     client = build_default_ae_mo_generation_client(environ)
     calibrations = SemanticCalibrationRegistry.from_environment(environ)
-    registered_product_capabilities = load_product_capability_registry(
-        resolved_environ
-    )
-    product_capability_retirements = (
-        load_product_capability_retirement_projection(
-            resolved_environ,
-            required=(
-                str(
-                    resolved_environ.get("NEX_DEPLOYMENT_BOUNDARY") or ""
-                ).strip()
-                == "CANONICAL_PLATFORM"
-            ),
-        )
+    registered_product_capabilities = load_product_capability_registry(resolved_environ)
+    product_capability_retirements = load_product_capability_retirement_projection(
+        resolved_environ,
+        required=False,
     )
     product_capabilities = product_capability_retirements.selectable_registry(
         registered_product_capabilities
@@ -1074,12 +1062,7 @@ def attach_semantic_candidate_admission(
         validations=SqlAlchemyPlanValidationRepository(session_factory),
         executable_plans=SqlAlchemyExecutablePlanRepository(session_factory),
         executions=SqlAlchemyAgentExecutionRepository(session_factory),
-        domain_intent_activator_registry=build_domain_intent_activator_registry(
-            resolved_environ,
-            product_capability_registry=registered_product_capabilities,
-            retirement_projection=product_capability_retirements,
-            session_factory=session_factory,
-        ),
+        domain_intent_activator_registry=DomainIntentActivatorRegistry(),
         product_capability_registry=product_capabilities,
         product_capability_retirements=product_capability_retirements,
     )

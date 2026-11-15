@@ -378,11 +378,13 @@ def test_s20_trust_admission_orchestrates_rotation_and_restart(
 def test_s20_canonical_ae_runtime_image_executes_bounded_build(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    bundle = SimpleNamespace(skill_source_directory="skill")
     report = tmp_path / "image.json"
     commands: list[list[str]] = []
-    monkeypatch.setattr(image_build, "load_nsl_runtime_bundle", lambda _path: bundle)
-    monkeypatch.setattr(image_build, "verify_nsl_runtime_bundle", lambda *_a, **_k: {"status": "PASS"})
+    monkeypatch.setattr(
+        image_build,
+        "_wheel_readiness",
+        lambda *_a, **_k: {"status": "PASS", "wheel_filename": "nsl.whl"},
+    )
     monkeypatch.setattr(
         image_build,
         "_build_current_ae_base",
@@ -925,26 +927,17 @@ def test_s20_image_builder_stages_product_runtime_bundle(
     source_root = tmp_path / "source"
     context = tmp_path / "context"
     context.mkdir()
-    skill_root = tmp_path / "skills"
-    (skill_root / "nested").mkdir(parents=True)
-    (skill_root / "nested/skill.ns").write_text("skill", encoding="utf-8")
     wheel = tmp_path / "nsl.whl"
     wheel.write_bytes(b"wheel")
-    manifest = tmp_path / "manifest.json"
-    manifest.write_text("{}", encoding="utf-8")
     files = {
         "deployment/oci/canonical-platform-ae-runtime.Containerfile": "FROM scratch\n",
-        "deployment/environments/finance-golden-a-vo00.v1.json": "{}\n",
-        "deployment/environments/ae-product-capability-registry.v1.json": "{}\n",
         "deployment/locks/nsl-v0.2.1-wheel.json": "{}\n",
         "deployment/locks/python-production.lock": "lock\n",
-        "deployment/locks/ae-mybee-m1-runtime-admission.v1.json": "{}\n",
-        "deployment/locks/ae-mybee-m1-runtime-activation.v1.json": "{}\n",
+        "deployment/locks/ae-mybee-m1-runtime-admission.v2.json": "{}\n",
+        "deployment/locks/ae-mybee-m1-runtime-activation.v2.json": "{}\n",
+        "deployment/locks/ae-mybee-m1-generalized-rollback.v1.json": "{}\n",
         "deployment/locks/ae-mybee-m1-signed-skill-checkpoint.v1.json": "{}\n",
-        "deployment/environments/ae-product-capability-registry.mybee-m1.v1.json": "{}\n",
-        "deployment/retirement/golden-a-reference-inventory.v1.json": "{}\n",
-        "deployment/retirement/golden-a-rollback-receipt.v1.json": "{}\n",
-        "deployment/retirement/golden-a-selection-freeze.v1.json": "{}\n",
+        "deployment/environments/ae-product-capability-registry.mybee-m1.v2.json": "{}\n",
         "domains/mybee/skills/m1_checkpoint/context.json": "{}\n",
         "domains/mybee/skills/m1_checkpoint/mybee-m1-d04-d12.v1.nsp": "nsp\n",
         "domains/mybee/skills/m1_checkpoint/mybee-m1-release-public-key.v1.json": "{}\n",
@@ -967,27 +960,19 @@ def test_s20_image_builder_stages_product_runtime_bundle(
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(content, encoding="utf-8")
     monkeypatch.setattr(image_build, "ROOT", source_root)
-    bundle = SimpleNamespace(
-        wheel_filename="nsl.whl",
-        skill_files=("nested/skill.ns",),
-        admission_lock="deployment/locks/nsl-v0.2.1-wheel.json",
-    )
-
     image_build._stage_context(
         context,
-        bundle=bundle,
         wheel_path=wheel,
-        skill_root=skill_root,
-        manifest_path=manifest,
+        wheel_filename="nsl.whl",
     )
 
     assert (context / "wheel/nsl.whl").read_bytes() == b"wheel"
-    assert (context / "skill/nested/skill.ns").read_text(encoding="utf-8") == "skill"
-    assert (context / "config/finance-golden-a-vo00.v1.json").is_file()
-    assert (context / "locks/ae-product-nsl-runtime-bundle.v1.json").is_file()
+    assert not (context / "skill").exists()
+    assert not (context / "config").exists()
+    assert not (context / "locks").exists()
     assert (
         context
-        / "repository/deployment/locks/ae-mybee-m1-runtime-activation.v1.json"
+        / "repository/deployment/locks/ae-mybee-m1-runtime-activation.v2.json"
     ).is_file()
     assert (
         context

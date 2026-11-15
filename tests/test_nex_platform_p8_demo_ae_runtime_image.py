@@ -18,16 +18,18 @@ def test_demo_ae_runtime_containerfile_admits_every_embedded_asset_path() -> Non
         "NEX_AE_NSL_PLATFORM_LOCK=/app/deployment/product/repository/"
         "deployment/locks/python-production.lock"
     ) in source
-    assert "ae-mybee-m1-runtime-activation.v1.json" in source
+    assert "ae-mybee-m1-runtime-activation.v2.json" in source
     assert "mybee-m1-d04-d12.v1.nsp" in source
     assert (
         "install -d -o 65532 -g 65532 -m 0700 /var/lib/nex-platform/ae-runtime/nsl"
     ) in source
     assert source.index("install -d -o 65532") < source.index("USER 65532:65532")
-    assert "COPY --chown=65532:65532 config" in source
-    assert "NEX_AE_FINANCE_GOLDEN_A_AUTHORITY_PROFILE_PATH=" in source
+    assert "COPY --chown=65532:65532 config" not in source
+    assert "NEX_AE_FINANCE_GOLDEN_A_AUTHORITY_PROFILE_PATH=" not in source
     assert "NEX_AE_PRODUCT_CAPABILITY_REGISTRY_PATH=" in source
-    assert "NEX_AE_PRODUCT_CAPABILITY_RETIREMENT_PATH=" in source
+    assert "NEX_AE_PRODUCT_CAPABILITY_RETIREMENT_PATH=" not in source
+    assert "NEX_AE_NSL_BUNDLE_MANIFEST=" not in source
+    assert "NEX_AE_NSL_SKILL_ROOT=" not in source
     assert "assert all(Path(os.environ[name]).exists() for name in names)" in source
     assert "nex_ae_api.agent_runtime_process" in source
     assert "nex_ae_api.demo_runtime" not in source
@@ -44,12 +46,12 @@ def test_demo_ae_runtime_image_dry_run_requires_locked_bundle() -> None:
 
     assert result["status"] == "READY"
     assert result["bundle"]["status"] == "PASS"
-    assert result["bundle_role"] == "BOUNDED_ROLLBACK_UNTIL_CP_M1_GA_RET_02"
+    assert result["bundle_role"] == "GENERALIZED_M1_RELEASE"
     assert result["active_runtime_profile"] == "VERIFIED_PRODUCT_RELEASE"
     assert result["verified_product_release"] == {
-        "activation_state": "ACTIVE_WITH_BOUNDED_ROLLBACK",
-        "activation_hash": "sha256:6a1aa2a44eaf25e52afa33ed09ad0ea69f351ea8a309e5614b6f6162c096f3af",
-        "admission_hash": "sha256:3b561a8bd71f2702dd1020c096e0936efd49818200e3a8248dcb842395dd280d",
+        "activation_state": "ACTIVE_GENERALIZED",
+        "activation_hash": "sha256:54b7d13968adc430101095bb03581bdb453537a348babad9e690d2037fcfbe29",
+        "admission_hash": "sha256:912229dfc42e881e28418af9289c1a58b99677cb4e46b7975677725d2b98edc4",
         "release_id": "nex-mybee-m1-d04-d12-checkpoint",
         "release_hash": "sha256:0034adc847aedc5d4fe99a446f7b60dfaef5db218ebbed96ba0f96bf32feecf4",
         "package_hash": "sha256:96888a02ee4924b6ac1f46bf7031627afc4d4a53d04bc77e13acd1940ea25348",
@@ -58,11 +60,12 @@ def test_demo_ae_runtime_image_dry_run_requires_locked_bundle() -> None:
             "FINANCE.VOUCHER.APPROVE_AND_POST",
             "PROJECT.WORK_CODE_SET.GET",
         ],
-        "bounded_rollback": {
-            "profile": "GOLDEN_A_ROLLBACK",
-            "receipt_ref": "deployment/retirement/golden-a-rollback-receipt.v1.json",
-            "receipt_sha256": "sha256:94326deafc88e0d8d7613c8078de9847fb078ecf578fc77496e0eee7445d44bd",
-            "retirement_boundary": "CP-M1-GA-RET-02",
+        "rollback_target": {
+            "profile": "VERIFIED_PRODUCT_RELEASE",
+            "receipt_ref": "deployment/locks/ae-mybee-m1-generalized-rollback.v1.json",
+            "receipt_sha256": "sha256:bd50833137a2501ec291c5b5893ba4fcfc2ec7ac30b6ea5b454a92607cf65472",
+            "runtime_admission_hash": "sha256:912229dfc42e881e28418af9289c1a58b99677cb4e46b7975677725d2b98edc4",
+            "golden_a_dependency": False,
         },
     }
     assert result["source_base"] is None

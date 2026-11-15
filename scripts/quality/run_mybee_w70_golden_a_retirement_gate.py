@@ -122,14 +122,13 @@ def run_gate(root: Path = ROOT) -> dict[str, Any]:
             and rollback["new_product_selection_allowed"] is False
             and len(rollback["artifacts"]) >= 10
         ),
-        "canonical_compose_requires_retirement": (
-            PRODUCT_CAPABILITY_RETIREMENT_PATH_ENV in compose
-            and "/app/deployment/product/repository/deployment/retirement/golden-a-selection-freeze.v1.json"
-            in compose
+        "canonical_compose_has_completed_retirement": (
+            PRODUCT_CAPABILITY_RETIREMENT_PATH_ENV not in compose
+            and "ae-product-capability-registry.mybee-m1.v2.json" in compose
         ),
-        "canonical_image_requires_retirement": (
-            PRODUCT_CAPABILITY_RETIREMENT_PATH_ENV in containerfile
-            and "golden-a-selection-freeze.v1.json" in containerfile
+        "canonical_image_has_completed_retirement": (
+            PRODUCT_CAPABILITY_RETIREMENT_PATH_ENV not in containerfile
+            and "ae-mybee-m1-runtime-activation.v2.json" in containerfile
         ),
     }
     return {

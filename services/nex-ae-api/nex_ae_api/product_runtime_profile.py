@@ -15,16 +15,11 @@ from nex_ae_api.mybee_m1_skill_runtime import (
     build_mybee_m1_runtime_admission,
     build_mybee_m1_verified_skill_catalog,
 )
-from nex_ae_api.product_controlled_skill import (
-    ProductControlledSkillConfig,
-    ProductControlledSkillRuntime,
-)
 from nex_ae_api.runtime_composition import RuntimeExecutorProfile
 from nex_ae_api.step_executors import default_p6_executor_registry
 
 ROOT = Path(__file__).resolve().parents[3]
 VERIFIED_PRODUCT_RELEASE_PROFILE = "VERIFIED_PRODUCT_RELEASE"
-GOLDEN_A_ROLLBACK_PROFILE = "GOLDEN_A_ROLLBACK"
 
 
 def build_product_runtime_executor_profile(
@@ -34,30 +29,12 @@ def build_product_runtime_executor_profile(
     """Compose the installed product LOCAL_SKILL and controlled WRITE profile."""
 
     selected = str(
-        environ.get("NEX_AE_PRODUCT_RUNTIME_PROFILE") or GOLDEN_A_ROLLBACK_PROFILE
+        environ.get("NEX_AE_PRODUCT_RUNTIME_PROFILE")
+        or VERIFIED_PRODUCT_RELEASE_PROFILE
     ).strip()
-    if selected == VERIFIED_PRODUCT_RELEASE_PROFILE:
-        return _build_verified_product_release_profile(sessions, environ)
-    if selected != GOLDEN_A_ROLLBACK_PROFILE:
+    if selected != VERIFIED_PRODUCT_RELEASE_PROFILE:
         raise ValueError("NEX_AE_PRODUCT_RUNTIME_PROFILE is not admitted")
-    controlled = ProductControlledSkillRuntime(
-        sessions,
-        load_product_controlled_skill_config(environ),
-        environ=environ,
-    )
-    registry = default_p6_executor_registry(
-        lambda _context: {},
-        local_skill_dependencies=controlled.dependencies,
-        local_skill_handler=controlled.initial,
-        local_skill_continuation_handler=controlled.resume,
-    )
-    return RuntimeExecutorProfile(
-        registry=registry,
-        executor_backends={
-            kind: controlled.backend_profile for kind in registry.registered_kinds
-        },
-        package_readiness=controlled.package_readiness,
-    )
+    return _build_verified_product_release_profile(sessions, environ)
 
 
 def _build_verified_product_release_profile(
@@ -66,7 +43,7 @@ def _build_verified_product_release_profile(
     admission_path = _path(
         environ,
         "NEX_AE_PRODUCT_RUNTIME_ADMISSION_PATH",
-        ROOT / "deployment/locks/ae-mybee-m1-runtime-admission.v1.json",
+        ROOT / "deployment/locks/ae-mybee-m1-runtime-admission.v2.json",
     )
     expected_admission = build_mybee_m1_runtime_admission(environ)
     if _json_object(admission_path) != expected_admission:
@@ -74,7 +51,7 @@ def _build_verified_product_release_profile(
     activation_path = _path(
         environ,
         "NEX_AE_PRODUCT_RUNTIME_ACTIVATION_PATH",
-        ROOT / "deployment/locks/ae-mybee-m1-runtime-activation.v1.json",
+        ROOT / "deployment/locks/ae-mybee-m1-runtime-activation.v2.json",
     )
     _verify_activation_lock(
         _json_object(activation_path),
@@ -159,48 +136,6 @@ def load_verified_product_runtime_config(
     )
 
 
-def load_product_controlled_skill_config(
-    environ: Mapping[str, str],
-) -> ProductControlledSkillConfig:
-    return ProductControlledSkillConfig(
-        manifest_path=_path(
-            environ,
-            "NEX_AE_NSL_BUNDLE_MANIFEST",
-            ROOT / "deployment/locks/ae-product-nsl-runtime-bundle.v1.json",
-        ),
-        wheel_path=_path(
-            environ,
-            "NEX_AE_NSL_WHEEL",
-            ROOT
-            / "reports/deployment/p8-nsl-v0.2.1-wheel"
-            / "nex_skill_language-0.2.1-py3-none-any.whl",
-        ),
-        platform_lock_path=_path(
-            environ,
-            "NEX_AE_NSL_PLATFORM_LOCK",
-            ROOT / "deployment/locks/python-production.lock",
-        ),
-        skill_root=_path(
-            environ,
-            "NEX_AE_NSL_SKILL_ROOT",
-            Path("/home/tprover/2608_nsl/examples/golden_a_voucher_draft"),
-        ),
-        state_root=_path(
-            environ,
-            "NEX_AE_NSL_STATE_ROOT",
-            Path("/data/nex-platform/ae/nsl-runtime"),
-            require_existing=False,
-        ),
-        oa_base_url=_text(environ, "NEX_OA_BASE_URL"),
-        eos_base_url=_text(environ, "NEX_EOS_BASE_URL"),
-        ae_to_oa_service_token=_text(environ, "NEX_AE_TO_OA_SERVICE_TOKEN"),
-        ae_to_eos_service_token=_text(environ, "NEX_AE_TO_EOS_SERVICE_TOKEN"),
-        approver_role=str(
-            environ.get("NEX_AE_FINANCE_APPROVER_ROLE") or "finance_approver"
-        ).strip(),
-    )
-
-
 def _path(
     environ: Mapping[str, str],
     name: str,
@@ -234,23 +169,36 @@ def _verify_activation_lock(
     admission: Mapping[str, object],
     repository_root: Path,
 ) -> None:
-    if lock.get("schema_version") != "ae.verified_product_runtime_activation.v1":
+    if lock.get("schema_version") != "ae.verified_product_runtime_activation.v2":
         raise ValueError("verified product runtime activation schema is unsupported")
-    if lock.get("activation_state") != "ACTIVE_WITH_BOUNDED_ROLLBACK":
+    if lock.get("activation_state") != "ACTIVE_GENERALIZED":
         raise ValueError("verified product runtime activation is not active")
     if lock.get("runtime_profile") != VERIFIED_PRODUCT_RELEASE_PROFILE:
         raise ValueError("verified product runtime profile has drifted")
     if lock.get("runtime_admission_hash") != admission.get("content_hash"):
         raise ValueError("verified product runtime admission hash has drifted")
-    rollback = lock.get("bounded_rollback")
+    rollback = lock.get("rollback_target")
     if not isinstance(rollback, Mapping):
-        raise TypeError("bounded rollback receipt is required")
+        raise TypeError("generalized rollback receipt is required")
+    if rollback.get("profile") != VERIFIED_PRODUCT_RELEASE_PROFILE:
+        raise ValueError("generalized rollback profile has drifted")
+    if rollback.get("golden_a_dependency") is not False:
+        raise ValueError("generalized rollback cannot depend on Golden A")
     rollback_ref = rollback.get("receipt_ref")
     if not isinstance(rollback_ref, str) or not rollback_ref:
-        raise ValueError("bounded rollback receipt reference is invalid")
+        raise ValueError("generalized rollback receipt reference is invalid")
     receipt = repository_root / rollback_ref
     if not receipt.is_file() or rollback.get("receipt_sha256") != _file_sha256(receipt):
-        raise ValueError("bounded rollback receipt has drifted")
+        raise ValueError("generalized rollback receipt has drifted")
+    receipt_payload = _json_object(receipt)
+    if (
+        receipt_payload.get("schema_version")
+        != "ae.generalized_runtime_rollback_receipt.v1"
+        or receipt_payload.get("golden_a_dependency") is not False
+        or receipt_payload.get("runtime_admission_hash")
+        != admission.get("content_hash")
+    ):
+        raise ValueError("generalized rollback receipt is not admitted")
     expected_hash = lock.get("content_hash")
     body = {key: value for key, value in lock.items() if key != "content_hash"}
     from nex_runtime.semantic_hashes import semantic_sha256_hash_ref
