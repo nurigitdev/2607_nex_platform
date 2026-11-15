@@ -1,0 +1,52 @@
+{
+  "schema_version": "nex.mybee.skill-pack-manifest.v1",
+  "pack_id": "MYBEE.D04.ACCOUNTING",
+  "pack_version": "1.0.0",
+  "domain_code": "D04_ACCOUNTING",
+  "activation_state": "CANDIDATE",
+  "runtime_selectable": false,
+  "source_state": "DESCRIPTOR_ONLY_NOT_COMPILED",
+  "authority": {
+    "tool_inventory": {
+      "path": "domains/mybee/skills/tool_inventory.v1.json",
+      "content_digest": "sha256:ee010195add45d474551866c65112ec7417b386d53faef4bef79445f6a23d151"
+    },
+    "tool_contract_admission": {
+      "path": "contracts/admissions/nex_eos/w70_tool_contract_admission.v1.json",
+      "content_digest": "sha256:b6b37073f96d9c7a6ed0a3bdb3e6dbd03ddab4b4396654f00b2976e48dcacedd"
+    },
+    "nsl_wheel_lock": {
+      "path": "deployment/locks/nsl-v0.2.1-wheel.json",
+      "sha256": "sha256:7efa6376602f1c89951657ba170a51ae7157189a0f46e607cebbb9ef949964ea",
+      "package_version": "0.2.1"
+    }
+  },
+  "runtime": {
+    "language_version": "0.2",
+    "package_version": "0.2.1",
+    "backend_profile": "NSL_V02_IN_PROCESS",
+    "package_requirement": "SIGNED_TRUSTED_ACTIVE"
+  },
+  "trust": {
+    "publisher": "nex-mybee-ax",
+    "trust_policy_id": "policy://nex/ae/mybee/d04-accounting/v1",
+    "signing_key_id": null,
+    "signature_status": "NOT_SIGNED",
+    "governance_status": "CANDIDATE",
+    "activation_requires": "S8_01D_REGISTRY_AND_S8_01E_GATE"
+  },
+  "binding_catalog": {
+    "path": "domains/mybee/skills/d04_accounting/tool_bindings.v1.json",
+    "sha256": "sha256:52804f9a720086117bbe40c2d966504d511e2b47998ec57fe854278fc3d7f352",
+    "content_digest": "sha256:d4900b8c98e521994c15671fd0fe368332d98af57adaa6c2d4a6161c266dd636"
+  },
+  "source_files": [
+    {
+      "path": "domains/mybee/skills/d04_accounting/tool_bindings.v1.json",
+      "sha256": "sha256:52804f9a720086117bbe40c2d966504d511e2b47998ec57fe854278fc3d7f352"
+    }
+  ],
+  "release_attestation": {
+    "content_digest": "sha256:3d47bea11f6ec67640d418b7fc9ce623cda7d2113f43e7230aeeccc9542be3fe"
+  }
+}

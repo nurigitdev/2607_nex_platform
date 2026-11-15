@@ -120,6 +120,14 @@ remain visible and fail closed for activation. No new capability, schema
 authority, persistence, or runtime path is introduced. The next W70 Slice is
 `W70-S8-01C` D04/D12 Skill-Pack manifest and artifact admission.
 
+`W70-S8-01C` implementation evidence is recorded in
+[`mybee_phase1_w70_s8_01c_skill_pack_manifest.md`](../../slices/mybee_phase1_w70_s8_01c_skill_pack_manifest.md).
+It partitions all 18 admitted Tools into digest-pinned D04 Accounting and D12
+Project descriptor-only Skill-Pack candidates. Both packs remain unsigned,
+uncompiled, and runtime non-selectable; Golden A remains the only deployed
+compatibility capability. The next W70 Slice is `W70-S8-01D` Product
+Capability Registry and multi-bundle lock integration.
+
 The Post-Wave UI/UX backlog records non-blocking TestClient compatibility and
 frontend bundle-performance findings from the post-S7-01 Repository Full Gate.
 It does not change the active accounting Wave or authorize immediate UI work.

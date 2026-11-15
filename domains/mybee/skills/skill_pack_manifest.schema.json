@@ -1,0 +1,136 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/mybee/skill_pack_manifest.schema.json",
+  "title": "NeX MyBee W70 candidate Skill-Pack manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "pack_id",
+    "pack_version",
+    "domain_code",
+    "activation_state",
+    "runtime_selectable",
+    "source_state",
+    "authority",
+    "runtime",
+    "trust",
+    "binding_catalog",
+    "source_files",
+    "release_attestation"
+  ],
+  "properties": {
+    "schema_version": {"const": "nex.mybee.skill-pack-manifest.v1"},
+    "pack_id": {"enum": ["MYBEE.D04.ACCOUNTING", "MYBEE.D12.PROJECT"]},
+    "pack_version": {"const": "1.0.0"},
+    "domain_code": {"enum": ["D04_ACCOUNTING", "D12_PROJECT"]},
+    "activation_state": {"const": "CANDIDATE"},
+    "runtime_selectable": {"const": false},
+    "source_state": {"const": "DESCRIPTOR_ONLY_NOT_COMPILED"},
+    "authority": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tool_inventory", "tool_contract_admission", "nsl_wheel_lock"],
+      "properties": {
+        "tool_inventory": {"$ref": "#/$defs/content_ref"},
+        "tool_contract_admission": {"$ref": "#/$defs/content_ref"},
+        "nsl_wheel_lock": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["path", "sha256", "package_version"],
+          "properties": {
+            "path": {"const": "deployment/locks/nsl-v0.2.1-wheel.json"},
+            "sha256": {"$ref": "#/$defs/hash_ref"},
+            "package_version": {"const": "0.2.1"}
+          }
+        }
+      }
+    },
+    "runtime": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "language_version",
+        "package_version",
+        "backend_profile",
+        "package_requirement"
+      ],
+      "properties": {
+        "language_version": {"const": "0.2"},
+        "package_version": {"const": "0.2.1"},
+        "backend_profile": {"const": "NSL_V02_IN_PROCESS"},
+        "package_requirement": {"const": "SIGNED_TRUSTED_ACTIVE"}
+      }
+    },
+    "trust": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "publisher",
+        "trust_policy_id",
+        "signing_key_id",
+        "signature_status",
+        "governance_status",
+        "activation_requires"
+      ],
+      "properties": {
+        "publisher": {"const": "nex-mybee-ax"},
+        "trust_policy_id": {
+          "pattern": "^policy://nex/ae/mybee/(d04-accounting|d12-project)/v1$"
+        },
+        "signing_key_id": {"type": "null"},
+        "signature_status": {"const": "NOT_SIGNED"},
+        "governance_status": {"const": "CANDIDATE"},
+        "activation_requires": {"const": "S8_01D_REGISTRY_AND_S8_01E_GATE"}
+      }
+    },
+    "binding_catalog": {"$ref": "#/$defs/source_ref"},
+    "source_files": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "sha256"],
+        "properties": {
+          "path": {"$ref": "#/$defs/source_path"},
+          "sha256": {"$ref": "#/$defs/hash_ref"}
+        }
+      }
+    },
+    "release_attestation": {"$ref": "#/$defs/attestation"}
+  },
+  "$defs": {
+    "hash_ref": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "source_path": {
+      "type": "string",
+      "pattern": "^domains/mybee/skills/(d04_accounting|d12_project)/tool_bindings\\.v1\\.json$"
+    },
+    "content_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "content_digest"],
+      "properties": {
+        "path": {"type": "string", "minLength": 1},
+        "content_digest": {"$ref": "#/$defs/hash_ref"}
+      }
+    },
+    "source_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256", "content_digest"],
+      "properties": {
+        "path": {"$ref": "#/$defs/source_path"},
+        "sha256": {"$ref": "#/$defs/hash_ref"},
+        "content_digest": {"$ref": "#/$defs/hash_ref"}
+      }
+    },
+    "attestation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["content_digest"],
+      "properties": {"content_digest": {"$ref": "#/$defs/hash_ref"}}
+    }
+  }
+}

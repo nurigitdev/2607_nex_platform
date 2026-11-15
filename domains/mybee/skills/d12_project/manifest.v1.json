@@ -1,0 +1,52 @@
+{
+  "schema_version": "nex.mybee.skill-pack-manifest.v1",
+  "pack_id": "MYBEE.D12.PROJECT",
+  "pack_version": "1.0.0",
+  "domain_code": "D12_PROJECT",
+  "activation_state": "CANDIDATE",
+  "runtime_selectable": false,
+  "source_state": "DESCRIPTOR_ONLY_NOT_COMPILED",
+  "authority": {
+    "tool_inventory": {
+      "path": "domains/mybee/skills/tool_inventory.v1.json",
+      "content_digest": "sha256:ee010195add45d474551866c65112ec7417b386d53faef4bef79445f6a23d151"
+    },
+    "tool_contract_admission": {
+      "path": "contracts/admissions/nex_eos/w70_tool_contract_admission.v1.json",
+      "content_digest": "sha256:b6b37073f96d9c7a6ed0a3bdb3e6dbd03ddab4b4396654f00b2976e48dcacedd"
+    },
+    "nsl_wheel_lock": {
+      "path": "deployment/locks/nsl-v0.2.1-wheel.json",
+      "sha256": "sha256:7efa6376602f1c89951657ba170a51ae7157189a0f46e607cebbb9ef949964ea",
+      "package_version": "0.2.1"
+    }
+  },
+  "runtime": {
+    "language_version": "0.2",
+    "package_version": "0.2.1",
+    "backend_profile": "NSL_V02_IN_PROCESS",
+    "package_requirement": "SIGNED_TRUSTED_ACTIVE"
+  },
+  "trust": {
+    "publisher": "nex-mybee-ax",
+    "trust_policy_id": "policy://nex/ae/mybee/d12-project/v1",
+    "signing_key_id": null,
+    "signature_status": "NOT_SIGNED",
+    "governance_status": "CANDIDATE",
+    "activation_requires": "S8_01D_REGISTRY_AND_S8_01E_GATE"
+  },
+  "binding_catalog": {
+    "path": "domains/mybee/skills/d12_project/tool_bindings.v1.json",
+    "sha256": "sha256:bc13608d0c6f50cdc1884cf7996aa2e86b3254e81123a9e3bab62f5ab7143274",
+    "content_digest": "sha256:0c4ac1a600b5ca4bd33dd9529e8a13a062721c441d70540f7167c8facc165fc4"
+  },
+  "source_files": [
+    {
+      "path": "domains/mybee/skills/d12_project/tool_bindings.v1.json",
+      "sha256": "sha256:bc13608d0c6f50cdc1884cf7996aa2e86b3254e81123a9e3bab62f5ab7143274"
+    }
+  ],
+  "release_attestation": {
+    "content_digest": "sha256:067a6e4b074e90c643958bee72407f13ced7e9371c1b3e3308976ee771144a34"
+  }
+}

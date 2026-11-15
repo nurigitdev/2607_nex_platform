@@ -96,3 +96,11 @@ OpenAPI and referenced EOS schemas rather than creating MyBee-local business
 schemas. Eleven contracts are fully typed; the seven candidate/deferred
 contracts with status-only success responses are recorded but cannot be
 activated until a later canonical response contract closes the gap.
+
+W70-S8-01C partitions the 18 admitted Tools into descriptor-only D04
+Accounting and D12 Project Skill-Pack candidates under `skills/`. Their
+manifests pin the Tool inventory, contract admission, NSL v0.2.1 wheel lock,
+trust policy, binding catalogs, and source digests. The packs contain no
+executable `.ns` source, remain unsigned and non-selectable, and do not alter
+the deployed AE Product Capability Registry. S8-01D owns registry and bundle
+lock integration; S8-01E owns compilation and protected activation admission.
