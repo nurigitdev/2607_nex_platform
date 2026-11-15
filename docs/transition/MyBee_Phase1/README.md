@@ -23,7 +23,8 @@ MyBee office-work AX Service Phase-1 program.
 16. `NeX_MyBee_W50_CA01_W40_to_W50_Allocation_Entry_Reconciliation_v1.0.md`
 17. `NeX_MyBee_W60_CA01_Project_PnL_Projection_and_Management_Allocation_Entry_Reconciliation_v1.0.md`
 18. `NeX_MyBee_W70_CA01_NSL_Tool_Product_Capability_Registry_and_Skill_Pack_Entry_Reconciliation_v1.0.md`
-19. `NeX_MyBee_Post_Wave_UIUX_Compatibility_Performance_Backlog_v1.0.md`
+19. `NeX_MyBee_W70_CA02_Installed_PA_Delegation_and_Multi_Skill_Runtime_Composition_Closure_v1.0.md`
+20. `NeX_MyBee_Post_Wave_UIUX_Compatibility_Performance_Backlog_v1.0.md`
 
 The Markdown Slice Plan and its Execution Matrix JSON are one planning set.
 The JSON is machine-readable traceability input, not runtime configuration or
@@ -104,6 +105,26 @@ and separates the S8-01 foundation Gate from the W70 M1 public E2E Gate. It
 takes precedence for these W70 entry semantics while preserving all W60 GL,
 authorization, Project entitlement, and payroll-privacy invariants.
 
+W70-CA02 is the source-backed installed-runtime and staged Golden A retirement
+correction discovered before the W70 public M1 E2E. It preserves the completed
+Tool, Journal, signed Skill, and deterministic PA checkpoints while
+distinguishing release admission from installed execution composition. Golden
+A retirement is split into `CP-M1-GA-RET-01` selection freeze before
+implementation and `CP-M1-GA-RET-02` active binding removal after the
+generalized replacement passes protected acceptance. Between them,
+`CP-M1-E2E-FX-01A` closes trusted Project resolution, IA-to-PA delegation,
+claim-handoff background planning and scheduling, exact signed multi-Skill
+selection, D12/D04 executor routing, and canonical OCI/Compose promotion. It
+also requires registry-driven rather than M1-branch-driven composition,
+authoritative runtime data origins, pre-request-only fixture use, same-OCI
+acceptance, variation tests, and automated Demo/fixed-value residue checks.
+Test-only orchestration and direct EOS/WC private-state shortcuts are
+prohibited. The original `CP-M1-E2E-FX-01` resumes only after both `01A` and
+`RET-02` pass. W70-CA02 takes precedence only for this installed-runtime gap,
+Golden A active-retirement boundary, and corrected Gate ordering; it does not
+change the frozen M1 business journey or authorize an NSL core change, new
+business authority, or database migration by default.
+
 `W70-S8-01A` implementation evidence is recorded in
 [`mybee_phase1_w70_s8_01a_tool_inventory.md`](../../slices/mybee_phase1_w70_s8_01a_tool_inventory.md).
 It closes the canonical Tool inventory, operation identity, compatibility
@@ -155,8 +176,12 @@ typed UNKNOWN/reconciliation boundary without activating a product Skill.
 It admits an Ed25519-signed minimal D04/D12 NSP, binds `FL0004009` and
 `FL0012005`, and emits a deterministic ACTIVE Project Agent context-to-WRITE
 plan. The original 18-candidate packs and canonical Compose registry remain
-unpromoted. The next W70 boundary is `CP-M1-E2E-FX-01` protected public M1
-acceptance.
+unpromoted. The source-backed installed-runtime gap and corrected progression
+are recorded in
+`NeX_MyBee_W70_CA02_Installed_PA_Delegation_and_Multi_Skill_Runtime_Composition_Closure_v1.0.md`.
+The next implementation boundary is `CP-M1-GA-RET-01`, followed by
+`CP-M1-E2E-FX-01A`, `CP-M1-GA-RET-02`, and finally the original
+`CP-M1-E2E-FX-01` protected public M1 acceptance.
 
 The Post-Wave UI/UX backlog records non-blocking TestClient compatibility and
 frontend bundle-performance findings from the post-S7-01 Repository Full Gate.
