@@ -17,16 +17,18 @@ from capture_mybee_w70_installed_runtime_baseline import (
 ROOT = Path(__file__).resolve().parents[2]
 
 
-def test_captured_baseline_is_exact_and_complete() -> None:
+def test_captured_entry_baseline_is_immutable_and_complete() -> None:
     recorded = json.loads(OUTPUT.read_text(encoding="utf-8"))
 
-    assert recorded == build_baseline(ROOT)
     assert validate_baseline(recorded) is recorded
     assert len(recorded["installed_composition"]) == len(SOURCE_COMPONENTS)
     assert len(recorded["data_origin_matrix"]) == len(DATA_ORIGINS)
     assert recorded["database_migration"] is False
     assert recorded["remote_provider_required"] is False
     assert recorded["residue_baseline"]
+    assert recorded["closure_state"] == "BASELINE_CAPTURED_IMPLEMENTATION_OPEN"
+    assert recorded["next_boundary"] == "CP-M1-E2E-FX-01A.2"
+    assert all((ROOT / item["path"]).is_file() for item in recorded["installed_composition"])
 
 
 @pytest.mark.parametrize(

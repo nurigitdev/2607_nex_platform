@@ -149,7 +149,7 @@ def test_m1_registry_admits_exact_signed_subset_and_preserves_golden_a() -> None
         )
 
 
-def test_full_candidate_packs_and_canonical_compose_remain_unpromoted() -> None:
+def test_candidate_packs_remain_unpromoted_while_compose_selects_m1_release() -> None:
     packs = load_skill_pack_manifests()
     assert len([binding for pack in packs for binding in pack.bindings]) == 18
     assert all(pack.runtime_selectable is False for pack in packs)
@@ -162,8 +162,11 @@ def test_full_candidate_packs_and_canonical_compose_remain_unpromoted() -> None:
     compose = (ROOT / "deployment/compose/canonical-platform.override.yaml").read_text(
         encoding="utf-8"
     )
-    assert "ae-product-capability-registry.v1.json" in compose
-    assert "ae-product-capability-registry.mybee-m1.v1.json" not in compose
+    assert (
+        "/app/deployment/product/repository/deployment/environments/"
+        "ae-product-capability-registry.mybee-m1.v1.json"
+    ) in compose
+    assert "/app/deployment/product/config/ae-product-capability-registry.v1.json" not in compose
 
 
 def test_pa_plan_is_deterministic_context_then_governed_write() -> None:
@@ -385,7 +388,9 @@ def test_signature_verifier_failure_is_normalized(monkeypatch, tmp_path: Path) -
 
 def test_candidate_binding_missing_and_drift_are_rejected(monkeypatch) -> None:
     release = load_m1_signed_skill_release()
-    monkeypatch.setattr(bindings_module, "load_skill_pack_manifests", lambda *_: ())
+    monkeypatch.setattr(
+        bindings_module, "load_skill_pack_manifests", lambda *_args, **_kwargs: ()
+    )
     with pytest.raises(M1SkillAdmissionError) as raised:
         bindings_module._verify_candidate_bindings(release.skills, repository_root=ROOT)
     assert raised.value.code == "M1_CANDIDATE_BINDING_MISSING"

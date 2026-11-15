@@ -26,6 +26,7 @@ def test_current_repository_freezes_runtime_ownership_and_installed_binding() ->
     assert all(result["checks"].values())
     assert result["current_composition"]["forbidden_mybee_runtime_entrypoints"] == []
     assert result["current_composition"]["mybee_service_imports"] == [
+        "services/nex-ae-api/nex_ae_api/mybee_m1_skill_runtime.py",
         "services/nex-ae-api/nex_ae_api/mybee_product_consumer.py"
     ]
     assert result["integration_gaps"] == []

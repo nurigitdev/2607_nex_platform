@@ -107,12 +107,13 @@ def test_product_ae_image_contract_cannot_be_overridden_by_compose() -> None:
     assert installation._product_ae_image_contract_not_overridden(
         {
             "environment": {
-                "NEX_AE_FINANCE_GOLDEN_A_AUTHORITY_PROFILE_PATH": (
-                    "/app/deployment/product/config/finance-golden-a-vo00.v1.json"
-                ),
                 "NEX_AE_PRODUCT_CAPABILITY_REGISTRY_PATH": (
-                    "/app/deployment/product/config/"
-                    "ae-product-capability-registry.v1.json"
+                    "/app/deployment/product/repository/deployment/environments/"
+                    "ae-product-capability-registry.mybee-m1.v1.json"
+                ),
+                "NEX_AE_PRODUCT_CAPABILITY_RETIREMENT_PATH": (
+                    "/app/deployment/product/repository/deployment/retirement/"
+                    "golden-a-selection-freeze.v1.json"
                 ),
             }
         }
@@ -120,9 +121,15 @@ def test_product_ae_image_contract_cannot_be_overridden_by_compose() -> None:
     assert not installation._product_ae_image_contract_not_overridden(
         {
             "environment": {
+                "NEX_AE_FINANCE_GOLDEN_A_AUTHORITY_PROFILE_PATH": (
+                    "/app/deployment/product/config/finance-golden-a-vo00.v1.json"
+                ),
                 "NEX_AE_PRODUCT_CAPABILITY_REGISTRY_PATH": (
-                    "/app/deployment/p8-demo/config/registry.json"
-                )
+                    "/app/deployment/product/config/ae-product-capability-registry.v1.json"
+                ),
+                "NEX_AE_PRODUCT_CAPABILITY_RETIREMENT_PATH": (
+                    "/app/deployment/product/config/golden-a-selection-freeze.v1.json"
+                ),
             }
         }
     )

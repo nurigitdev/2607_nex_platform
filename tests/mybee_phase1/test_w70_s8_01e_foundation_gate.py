@@ -168,7 +168,7 @@ def test_alias_receipt_is_one_way_and_collision_construction_fails() -> None:
         )
 
 
-def test_golden_a_foundation_receipt_remains_historical_and_selection_is_frozen() -> None:
+def test_golden_a_receipt_is_historical_while_m1_selection_is_active() -> None:
     receipt = _json(RECEIPT)
     continuity = receipt["registry_continuity"]
 
@@ -181,7 +181,9 @@ def test_golden_a_foundation_receipt_remains_historical_and_selection_is_frozen(
     compose = (
         ROOT / "deployment/compose/canonical-platform.override.yaml"
     ).read_text(encoding="utf-8")
-    assert "ae-product-capability-registry.v1.json" in compose
+    assert "NEX_AE_PRODUCT_RUNTIME_PROFILE: VERIFIED_PRODUCT_RELEASE" in compose
+    assert "ae-product-capability-registry.mybee-m1.v1.json" in compose
+    assert "/app/deployment/product/config/ae-product-capability-registry.v1.json" not in compose
     assert "ae-product-capability-registry.v2.json" not in compose
     assert "NEX_AE_PRODUCT_CAPABILITY_RETIREMENT_PATH" in compose
     assert "golden-a-selection-freeze.v1.json" in compose
