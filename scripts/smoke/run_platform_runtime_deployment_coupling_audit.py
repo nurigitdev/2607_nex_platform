@@ -52,6 +52,7 @@ EXPECTED_LOOPBACK_INVENTORY = (
     ("services/nex-ae-api/nex_ae_api/documents.py", 2),
     ("services/nex-ae-api/nex_ae_api/main.py", 1),
     ("services/nex-ae-api/nex_ae_api/nsl_approval_publication.py", 1),
+    ("services/nex-ae-api/nex_ae_api/nsl_eos_journal_execution.py", 1),
     ("services/nex-ae-api/nex_ae_api/nsl_eos_write_execution.py", 1),
     ("services/nex-ae-api/nex_ae_api/oa_session_client.py", 1),
     ("services/nex-ae-api/nex_ae_api/recovery_requests.py", 2),

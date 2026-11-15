@@ -1574,11 +1574,6 @@
       "name": "eos_journal_reconciliation_unknown",
       "path": "examples/service/eos_journal_reconciliation.unknown.json",
       "schema": "schemas/service/nex_eos/journal_reconciliation.v1.schema.json"
-    },
-    {
-      "name": "w70_tool_contract_admission",
-      "path": "admissions/nex_eos/w70_tool_contract_admission.v1.json",
-      "schema": "schemas/common/tool_contract_admission.v1.schema.json"
     }
   ]
 }
