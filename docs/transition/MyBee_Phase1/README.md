@@ -22,7 +22,8 @@ MyBee office-work AX Service Phase-1 program.
 15. `NeX_MyBee_W40_S4_00A_Pre_Posting_VoucherCandidate_Revision_and_Journal_Boundary_Hardening_v1.0.md`
 16. `NeX_MyBee_W50_CA01_W40_to_W50_Allocation_Entry_Reconciliation_v1.0.md`
 17. `NeX_MyBee_W60_CA01_Project_PnL_Projection_and_Management_Allocation_Entry_Reconciliation_v1.0.md`
-18. `NeX_MyBee_Post_Wave_UIUX_Compatibility_Performance_Backlog_v1.0.md`
+18. `NeX_MyBee_W70_CA01_NSL_Tool_Product_Capability_Registry_and_Skill_Pack_Entry_Reconciliation_v1.0.md`
+19. `NeX_MyBee_Post_Wave_UIUX_Compatibility_Performance_Backlog_v1.0.md`
 
 The Markdown Slice Plan and its Execution Matrix JSON are one planning set.
 The JSON is machine-readable traceability input, not runtime configuration or
@@ -89,6 +90,19 @@ a rebuildable watermark-aware P&L projection with explicit confirmed,
 committed, unassigned, provisional, unallocated, pending, and stale
 classifications. It takes precedence for these W60 entry semantics and the
 corrected S7-02/S7-03 boundary; NVT rollup remains S7-04/W84.
+
+W70-CA01 is the source-backed NSL Tool and Skill-Pack entry amendment after
+W60 closure. It accepts the current EOS OpenAPI and referenced schemas as the
+wire authority, freezes canonical `<DOMAIN>.<BUSINESS_OBJECT>.<ACTION>` naming
+for new operations, and keeps historical Golden A identities behind explicit
+compatibility aliases. It separates READ, governed WRITE, approval, and
+activation decisions; extends the existing immutable AE product capability
+registry and NSL bundle model; and defines repository-visible D04/D12
+Skill-Pack manifests, digests, OA actions, and evidence contracts. It
+prohibits NSL compiler/runtime changes and new database migrations in S8-01,
+and separates the S8-01 foundation Gate from the W70 M1 public E2E Gate. It
+takes precedence for these W70 entry semantics while preserving all W60 GL,
+authorization, Project entitlement, and payroll-privacy invariants.
 
 The Post-Wave UI/UX backlog records non-blocking TestClient compatibility and
 frontend bundle-performance findings from the post-S7-01 Repository Full Gate.
