@@ -111,6 +111,15 @@ alias, READ/WRITE, approval, OA action, and activation-state boundary without
 activating a new Skill or changing persistence. The next W70 Slice is
 `W70-S8-01B` canonical Schema/OpenAPI Tool contract admission.
 
+`W70-S8-01B` implementation evidence is recorded in
+[`mybee_phase1_w70_s8_01b_tool_contract_admission.md`](../../slices/mybee_phase1_w70_s8_01b_tool_contract_admission.md).
+It admits all 18 inventory identities against exact EOS OpenAPI routes,
+parameters, request bodies, successful responses, JSON Schema authorities,
+OA actions, and source digests. Current status-only candidate response gaps
+remain visible and fail closed for activation. No new capability, schema
+authority, persistence, or runtime path is introduced. The next W70 Slice is
+`W70-S8-01C` D04/D12 Skill-Pack manifest and artifact admission.
+
 The Post-Wave UI/UX backlog records non-blocking TestClient compatibility and
 frontend bundle-performance findings from the post-S7-01 Repository Full Gate.
 It does not change the active accounting Wave or authorize immediate UI work.

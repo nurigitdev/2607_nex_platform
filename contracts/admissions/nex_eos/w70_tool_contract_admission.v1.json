@@ -1,0 +1,511 @@
+{
+  "schema_version": "nex.mybee.tool-contract-admission.v1",
+  "admission_id": "mybee.phase1.w70.eos-tool-contracts",
+  "admission_version": "1.0.0",
+  "revision": 1,
+  "status": "SOURCE_ADMITTED_RUNTIME_UNCHANGED",
+  "inventory": {
+    "path": "domains/mybee/skills/tool_inventory.v1.json",
+    "sha256": "sha256:ee010195add45d474551866c65112ec7417b386d53faef4bef79445f6a23d151"
+  },
+  "openapi": {
+    "path": "contracts/openapi/nex-eos.openapi.yaml",
+    "sha256": "sha256:2d4fe5c257c1e8dd2ba39d92256011dd814407eb63ac9ea3b2c5ffab9b654d06"
+  },
+  "contracts": [
+    {
+      "canonical_operation_id": "FINANCE.COST_ALLOCATION.RUN",
+      "provider_operation_id": "FINANCE.COST_ALLOCATION.RUN",
+      "method": "POST",
+      "path": "/internal/v2/finance/cost-allocation-batches",
+      "openapi_operation_ref": "#/paths/~1internal~1v2~1finance~1cost-allocation-batches/post",
+      "required_parameters": [
+        "header:X-NeX-Company-Id",
+        "header:X-NeX-Tenant-Id"
+      ],
+      "optional_parameters": [],
+      "request_body": {
+        "required": true,
+        "component_ref": "#/components/schemas/CostAllocationRun",
+        "canonical_schema_ref": "contracts/schemas/service/nex_eos/cost_allocation_run.v1.schema.json",
+        "typing_state": "CANONICAL_JSON_SCHEMA"
+      },
+      "success_responses": [
+        {
+          "status": "200",
+          "component_ref": "#/components/schemas/CostAllocationBatch",
+          "canonical_schema_ref": "contracts/schemas/service/nex_eos/cost_allocation_batch.v1.schema.json",
+          "typing_state": "CANONICAL_JSON_SCHEMA"
+        },
+        {
+          "status": "201",
+          "component_ref": "#/components/schemas/CostAllocationBatch",
+          "canonical_schema_ref": "contracts/schemas/service/nex_eos/cost_allocation_batch.v1.schema.json",
+          "typing_state": "CANONICAL_JSON_SCHEMA"
+        }
+      ]
+    },
+    {
+      "canonical_operation_id": "FINANCE.COST_ALLOCATION.VERIFY",
+      "provider_operation_id": "FINANCE.COST_ALLOCATION.VERIFY",
+      "method": "GET",
+      "path": "/internal/v2/finance/cost-allocation-batches/{batch_id}/verification",
+      "openapi_operation_ref": "#/paths/~1internal~1v2~1finance~1cost-allocation-batches~1{batch_id}~1verification/get",
+      "required_parameters": [
+        "header:X-NeX-Company-Id",
+        "header:X-NeX-Tenant-Id",
+        "path:batch_id"
+      ],
+      "optional_parameters": [],
+      "request_body": null,
+      "success_responses": [
+        {
+          "status": "200",
+          "component_ref": "#/components/schemas/CostAllocationReconciliation",
+          "canonical_schema_ref": "contracts/schemas/service/nex_eos/cost_allocation_reconciliation.v1.schema.json",
+          "typing_state": "CANONICAL_JSON_SCHEMA"
+        }
+      ]
+    },
+    {
+      "canonical_operation_id": "FINANCE.COST_ALLOCATION_PLAN.RELEASE",
+      "provider_operation_id": "FINANCE.COST_ALLOCATION_PLAN.RELEASE",
+      "method": "POST",
+      "path": "/internal/v2/finance/cost-allocation-plans/releases",
+      "openapi_operation_ref": "#/paths/~1internal~1v2~1finance~1cost-allocation-plans~1releases/post",
+      "required_parameters": [
+        "header:X-NeX-Company-Id",
+        "header:X-NeX-Tenant-Id"
+      ],
+      "optional_parameters": [],
+      "request_body": {
+        "required": true,
+        "component_ref": "#/components/schemas/CostAllocationPlanRelease",
+        "canonical_schema_ref": "contracts/schemas/service/nex_eos/cost_allocation_plan_release.v1.schema.json",
+        "typing_state": "CANONICAL_JSON_SCHEMA"
+      },
+      "success_responses": [
+        {
+          "status": "200",
+          "component_ref": null,
+          "canonical_schema_ref": null,
+          "typing_state": "OPENAPI_STATUS_ONLY"
+        },
+        {
+          "status": "201",
+          "component_ref": "#/components/schemas/CostAllocationPlan",
+          "canonical_schema_ref": "contracts/schemas/service/nex_eos/cost_allocation_plan.v1.schema.json",
+          "typing_state": "CANONICAL_JSON_SCHEMA"
+        }
+      ]
+    },
+    {
+      "canonical_operation_id": "FINANCE.FX_RATE.HISTORY",
+      "provider_operation_id": "FINANCE.FX_RATE.HISTORY",
+      "method": "GET",
+      "path": "/internal/v2/finance/fx-rate-snapshots",
+      "openapi_operation_ref": "#/paths/~1internal~1v2~1finance~1fx-rate-snapshots/get",
+      "required_parameters": [
+        "header:X-NeX-Subject-Id",
+        "header:X-NeX-Tenant-Id",
+        "query:base_currency",
+        "query:company_id",
+        "query:date_from",
+        "query:date_to",
+        "query:purpose",
+        "query:quote_currency"
+      ],
+      "optional_parameters": [
+        "query:limit"
+      ],
+      "request_body": null,
+      "success_responses": [
+        {
+          "status": "200",
+          "component_ref": null,
+          "canonical_schema_ref": null,
+          "typing_state": "OPENAPI_STATUS_ONLY"
+        }
+      ]
+    },
+    {
+      "canonical_operation_id": "FINANCE.FX_RATE.IMPORT",
+      "provider_operation_id": "FINANCE.FX_RATE.IMPORT",
+      "method": "POST",
+      "path": "/internal/v2/finance/fx-rate-batches",
+      "openapi_operation_ref": "#/paths/~1internal~1v2~1finance~1fx-rate-batches/post",
+      "required_parameters": [
+        "header:X-NeX-Subject-Id",
+        "header:X-NeX-Tenant-Id"
+      ],
+      "optional_parameters": [],
+      "request_body": {
+        "required": true,
+        "component_ref": "#/components/schemas/FxRateBatchImportCommand",
+        "canonical_schema_ref": "contracts/openapi/nex-eos.openapi.yaml#/components/schemas/FxRateBatchImportCommand",
+        "typing_state": "OPENAPI_INLINE_SCHEMA"
+      },
+      "success_responses": [
+        {
+          "status": "201",
+          "component_ref": null,
+          "canonical_schema_ref": null,
+          "typing_state": "OPENAPI_STATUS_ONLY"
+        }
+      ]
+    },
+    {
+      "canonical_operation_id": "FINANCE.FX_RATE.RESOLVE",
+      "provider_operation_id": "FINANCE.FX_RATE.RESOLVE",
+      "method": "GET",
+      "path": "/internal/v2/finance/fx-rates:resolve",
+      "openapi_operation_ref": "#/paths/~1internal~1v2~1finance~1fx-rates:resolve/get",
+      "required_parameters": [
+        "header:X-NeX-Subject-Id",
+        "header:X-NeX-Tenant-Id",
+        "query:base_currency",
+        "query:company_id",
+        "query:desired_rate_date",
+        "query:purpose",
+        "query:quote_currency"
+      ],
+      "optional_parameters": [
+        "query:as_of"
+      ],
+      "request_body": null,
+      "success_responses": [
+        {
+          "status": "200",
+          "component_ref": null,
+          "canonical_schema_ref": null,
+          "typing_state": "OPENAPI_STATUS_ONLY"
+        }
+      ]
+    },
+    {
+      "canonical_operation_id": "FINANCE.PROJECT_PNL.GET",
+      "provider_operation_id": "FINANCE.PROJECT_PNL.GET",
+      "method": "GET",
+      "path": "/internal/v2/finance/projects/{project_id}/pnl/{period_id}",
+      "openapi_operation_ref": "#/paths/~1internal~1v2~1finance~1projects~1{project_id}~1pnl~1{period_id}/get",
+      "required_parameters": [
+        "header:X-NeX-Company-Id",
+        "header:X-NeX-Correlation-Id",
+        "header:X-NeX-Subject-Id",
+        "header:X-NeX-Tenant-Id",
+        "path:period_id",
+        "path:project_id"
+      ],
+      "optional_parameters": [
+        "query:projection_version"
+      ],
+      "request_body": null,
+      "success_responses": [
+        {
+          "status": "200",
+          "component_ref": "#/components/schemas/ProjectPnlProjection",
+          "canonical_schema_ref": "contracts/schemas/service/nex_eos/project_pnl_projection.v1.schema.json",
+          "typing_state": "CANONICAL_JSON_SCHEMA"
+        }
+      ]
+    },
+    {
+      "canonical_operation_id": "FINANCE.VOUCHER.APPROVE_AND_POST",
+      "provider_operation_id": "FINANCE.VOUCHER.APPROVE_AND_POST",
+      "method": "POST",
+      "path": "/internal/v2/finance/voucher-candidates/{candidate_id}/posting",
+      "openapi_operation_ref": "#/paths/~1internal~1v2~1finance~1voucher-candidates~1{candidate_id}~1posting/post",
+      "required_parameters": [
+        "path:candidate_id"
+      ],
+      "optional_parameters": [],
+      "request_body": {
+        "required": true,
+        "component_ref": "#/components/schemas/JournalPostCommand",
+        "canonical_schema_ref": "contracts/schemas/service/nex_eos/journal_post_command.v1.schema.json",
+        "typing_state": "CANONICAL_JSON_SCHEMA"
+      },
+      "success_responses": [
+        {
+          "status": "200",
+          "component_ref": "#/components/schemas/JournalPostResult",
+          "canonical_schema_ref": "contracts/schemas/service/nex_eos/journal_post_result.v1.schema.json",
+          "typing_state": "CANONICAL_JSON_SCHEMA"
+        },
+        {
+          "status": "201",
+          "component_ref": "#/components/schemas/JournalPostResult",
+          "canonical_schema_ref": "contracts/schemas/service/nex_eos/journal_post_result.v1.schema.json",
+          "typing_state": "CANONICAL_JSON_SCHEMA"
+        }
+      ]
+    },
+    {
+      "canonical_operation_id": "FINANCE.VOUCHER_CANDIDATE.CREATE_V2",
+      "provider_operation_id": "FINANCE.VOUCHER_CANDIDATE.CREATE_V2",
+      "method": "POST",
+      "path": "/internal/v2/finance/voucher-candidates",
+      "openapi_operation_ref": "#/paths/~1internal~1v2~1finance~1voucher-candidates/post",
+      "required_parameters": [],
+      "optional_parameters": [],
+      "request_body": {
+        "required": true,
+        "component_ref": "#/components/schemas/CreateVoucherCandidateCommand",
+        "canonical_schema_ref": "contracts/schemas/service/nex_eos/voucher_candidate_create.v2.schema.json",
+        "typing_state": "CANONICAL_JSON_SCHEMA"
+      },
+      "success_responses": [
+        {
+          "status": "200",
+          "component_ref": "#/components/schemas/CreateVoucherCandidateResult",
+          "canonical_schema_ref": "contracts/schemas/service/nex_eos/voucher_candidate_create_result.v2.schema.json",
+          "typing_state": "CANONICAL_JSON_SCHEMA"
+        },
+        {
+          "status": "201",
+          "component_ref": "#/components/schemas/CreateVoucherCandidateResult",
+          "canonical_schema_ref": "contracts/schemas/service/nex_eos/voucher_candidate_create_result.v2.schema.json",
+          "typing_state": "CANONICAL_JSON_SCHEMA"
+        }
+      ]
+    },
+    {
+      "canonical_operation_id": "FINANCE.VOUCHER_CANDIDATE.GET_V2",
+      "provider_operation_id": "FINANCE.VOUCHER_CANDIDATE.GET_V2",
+      "method": "GET",
+      "path": "/internal/v2/finance/voucher-candidates/{candidate_id}",
+      "openapi_operation_ref": "#/paths/~1internal~1v2~1finance~1voucher-candidates~1{candidate_id}/get",
+      "required_parameters": [
+        "header:X-NeX-Tenant-Id",
+        "path:candidate_id"
+      ],
+      "optional_parameters": [],
+      "request_body": null,
+      "success_responses": [
+        {
+          "status": "200",
+          "component_ref": null,
+          "canonical_schema_ref": null,
+          "typing_state": "OPENAPI_STATUS_ONLY"
+        }
+      ]
+    },
+    {
+      "canonical_operation_id": "FINANCE.VOUCHER_CANDIDATE.VALIDATE",
+      "provider_operation_id": "FINANCE.VOUCHER_CANDIDATE.VALIDATE",
+      "method": "POST",
+      "path": "/internal/v2/finance/voucher-candidates/{candidate_id}/validation",
+      "openapi_operation_ref": "#/paths/~1internal~1v2~1finance~1voucher-candidates~1{candidate_id}~1validation/post",
+      "required_parameters": [
+        "path:candidate_id"
+      ],
+      "optional_parameters": [],
+      "request_body": {
+        "required": true,
+        "component_ref": "#/components/schemas/ValidateVoucherCandidateRequest",
+        "canonical_schema_ref": "contracts/schemas/service/nex_eos/voucher_candidate_validate.v1.schema.json",
+        "typing_state": "CANONICAL_JSON_SCHEMA"
+      },
+      "success_responses": [
+        {
+          "status": "200",
+          "component_ref": "#/components/schemas/VoucherCandidateValidation",
+          "canonical_schema_ref": "contracts/schemas/service/nex_eos/voucher_candidate_validation.v1.schema.json",
+          "typing_state": "CANONICAL_JSON_SCHEMA"
+        }
+      ]
+    },
+    {
+      "canonical_operation_id": "FINANCE.VOUCHER_DRAFT.CREATE",
+      "provider_operation_id": "createEosVoucherDraft",
+      "method": "POST",
+      "path": "/internal/v1/finance/voucher-drafts",
+      "openapi_operation_ref": "#/paths/~1internal~1v1~1finance~1voucher-drafts/post",
+      "required_parameters": [],
+      "optional_parameters": [],
+      "request_body": {
+        "required": true,
+        "component_ref": "#/components/schemas/CreateVoucherDraftCommand",
+        "canonical_schema_ref": "contracts/schemas/service/nex_eos/create_voucher_draft_command.v1.schema.json",
+        "typing_state": "CANONICAL_JSON_SCHEMA"
+      },
+      "success_responses": [
+        {
+          "status": "200",
+          "component_ref": "#/components/schemas/CreateVoucherDraftResult",
+          "canonical_schema_ref": "contracts/schemas/service/nex_eos/create_voucher_draft_result.v1.schema.json",
+          "typing_state": "CANONICAL_JSON_SCHEMA"
+        },
+        {
+          "status": "201",
+          "component_ref": "#/components/schemas/CreateVoucherDraftResult",
+          "canonical_schema_ref": "contracts/schemas/service/nex_eos/create_voucher_draft_result.v1.schema.json",
+          "typing_state": "CANONICAL_JSON_SCHEMA"
+        }
+      ]
+    },
+    {
+      "canonical_operation_id": "FINANCE.VOUCHER_POSTING.ADMIT",
+      "provider_operation_id": "FINANCE.VOUCHER.APPROVE_AND_POST.ADMISSION",
+      "method": "POST",
+      "path": "/internal/v2/finance/voucher-candidates/{candidate_id}/posting-admission",
+      "openapi_operation_ref": "#/paths/~1internal~1v2~1finance~1voucher-candidates~1{candidate_id}~1posting-admission/post",
+      "required_parameters": [
+        "path:candidate_id"
+      ],
+      "optional_parameters": [],
+      "request_body": {
+        "required": true,
+        "component_ref": "#/components/schemas/AccountingPostingAdmissionRequest",
+        "canonical_schema_ref": "contracts/schemas/service/nex_eos/accounting_posting_admission_request.v1.schema.json",
+        "typing_state": "CANONICAL_JSON_SCHEMA"
+      },
+      "success_responses": [
+        {
+          "status": "200",
+          "component_ref": "#/components/schemas/AccountingPostingAdmission",
+          "canonical_schema_ref": "contracts/schemas/service/nex_eos/accounting_posting_admission.v1.schema.json",
+          "typing_state": "CANONICAL_JSON_SCHEMA"
+        }
+      ]
+    },
+    {
+      "canonical_operation_id": "PROJECT.BUSINESS_READINESS.GET",
+      "provider_operation_id": "PROJECT.BUSINESS_READINESS.GET",
+      "method": "GET",
+      "path": "/internal/v2/projects/{project_id}/business-readiness",
+      "openapi_operation_ref": "#/paths/~1internal~1v2~1projects~1{project_id}~1business-readiness/get",
+      "required_parameters": [
+        "header:X-NeX-Subject-Id",
+        "header:X-NeX-Tenant-Id",
+        "path:project_id"
+      ],
+      "optional_parameters": [
+        "query:effective_on"
+      ],
+      "request_body": null,
+      "success_responses": [
+        {
+          "status": "200",
+          "component_ref": "#/components/schemas/ProjectBusinessReadiness",
+          "canonical_schema_ref": "contracts/openapi/nex-eos.openapi.yaml#/components/schemas/ProjectBusinessReadiness",
+          "typing_state": "OPENAPI_INLINE_SCHEMA"
+        }
+      ]
+    },
+    {
+      "canonical_operation_id": "PROJECT.WORK_ASSIGNMENT.ASSIGN",
+      "provider_operation_id": "PROJECT.WORK_ASSIGNMENT.ASSIGN",
+      "method": "POST",
+      "path": "/internal/v2/projects/{project_id}/work-assignments:assign",
+      "openapi_operation_ref": "#/paths/~1internal~1v2~1projects~1{project_id}~1work-assignments:assign/post",
+      "required_parameters": [
+        "path:project_id"
+      ],
+      "optional_parameters": [],
+      "request_body": {
+        "required": true,
+        "component_ref": "#/components/schemas/ProjectWorkAssignmentCommand",
+        "canonical_schema_ref": "contracts/openapi/nex-eos.openapi.yaml#/components/schemas/ProjectWorkAssignmentCommand",
+        "typing_state": "OPENAPI_INLINE_SCHEMA"
+      },
+      "success_responses": [
+        {
+          "status": "200",
+          "component_ref": null,
+          "canonical_schema_ref": null,
+          "typing_state": "OPENAPI_STATUS_ONLY"
+        },
+        {
+          "status": "201",
+          "component_ref": null,
+          "canonical_schema_ref": null,
+          "typing_state": "OPENAPI_STATUS_ONLY"
+        }
+      ]
+    },
+    {
+      "canonical_operation_id": "PROJECT.WORK_ASSIGNMENT.LIST",
+      "provider_operation_id": "PROJECT.WORK_ASSIGNMENT.LIST",
+      "method": "GET",
+      "path": "/internal/v2/projects/{project_id}/work-assignments",
+      "openapi_operation_ref": "#/paths/~1internal~1v2~1projects~1{project_id}~1work-assignments/get",
+      "required_parameters": [
+        "header:X-NeX-Subject-Id",
+        "header:X-NeX-Tenant-Id",
+        "path:project_id"
+      ],
+      "optional_parameters": [
+        "query:effective_on",
+        "query:work_code_id"
+      ],
+      "request_body": null,
+      "success_responses": [
+        {
+          "status": "200",
+          "component_ref": "#/components/schemas/ProjectWorkAssignmentCollection",
+          "canonical_schema_ref": "contracts/openapi/nex-eos.openapi.yaml#/components/schemas/ProjectWorkAssignmentCollection",
+          "typing_state": "OPENAPI_INLINE_SCHEMA"
+        }
+      ]
+    },
+    {
+      "canonical_operation_id": "PROJECT.WORK_CODE_SET.APPROVE",
+      "provider_operation_id": "PROJECT.WORK_CODE_SET.APPROVE",
+      "method": "POST",
+      "path": "/internal/v2/projects/{project_id}/work-code-sets:approve",
+      "openapi_operation_ref": "#/paths/~1internal~1v2~1projects~1{project_id}~1work-code-sets:approve/post",
+      "required_parameters": [
+        "path:project_id"
+      ],
+      "optional_parameters": [],
+      "request_body": {
+        "required": true,
+        "component_ref": "#/components/schemas/ProjectWorkCodeSetApprovalCommand",
+        "canonical_schema_ref": "contracts/openapi/nex-eos.openapi.yaml#/components/schemas/ProjectWorkCodeSetApprovalCommand",
+        "typing_state": "OPENAPI_INLINE_SCHEMA"
+      },
+      "success_responses": [
+        {
+          "status": "200",
+          "component_ref": null,
+          "canonical_schema_ref": null,
+          "typing_state": "OPENAPI_STATUS_ONLY"
+        },
+        {
+          "status": "201",
+          "component_ref": null,
+          "canonical_schema_ref": null,
+          "typing_state": "OPENAPI_STATUS_ONLY"
+        }
+      ]
+    },
+    {
+      "canonical_operation_id": "PROJECT.WORK_CODE_SET.GET",
+      "provider_operation_id": "PROJECT.WORK_CODE_SET.GET",
+      "method": "GET",
+      "path": "/internal/v2/projects/{project_id}/work-code-set",
+      "openapi_operation_ref": "#/paths/~1internal~1v2~1projects~1{project_id}~1work-code-set/get",
+      "required_parameters": [
+        "header:X-NeX-Subject-Id",
+        "header:X-NeX-Tenant-Id",
+        "path:project_id"
+      ],
+      "optional_parameters": [
+        "query:effective_on"
+      ],
+      "request_body": null,
+      "success_responses": [
+        {
+          "status": "200",
+          "component_ref": "#/components/schemas/ProjectWorkCodeSet",
+          "canonical_schema_ref": "contracts/openapi/nex-eos.openapi.yaml#/components/schemas/ProjectWorkCodeSet",
+          "typing_state": "OPENAPI_INLINE_SCHEMA"
+        }
+      ]
+    }
+  ],
+  "release_attestation": {
+    "content_digest": "sha256:b6b37073f96d9c7a6ed0a3bdb3e6dbd03ddab4b4396654f00b2976e48dcacedd"
+  }
+}

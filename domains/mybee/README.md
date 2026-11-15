@@ -87,3 +87,12 @@ aliases. The inventory does not activate a new capability or Skill. Golden A
 remains `ACTIVE_COMPATIBILITY`; all new W70 Tools remain `CANDIDATE` or
 `DEFERRED` until their later contract, artifact, registry, and protected
 Gates pass.
+
+W70-S8-01B binds those 18 identities to exact EOS OpenAPI operations through
+`contracts/admissions/nex_eos/w70_tool_contract_admission.v1.json`. The
+fail-closed loader verifies source digests, routes, parameters, request and
+success-response schemas, OA scopes, and side-effect metadata. It reuses EOS
+OpenAPI and referenced EOS schemas rather than creating MyBee-local business
+schemas. Eleven contracts are fully typed; the seven candidate/deferred
+contracts with status-only success responses are recorded but cannot be
+activated until a later canonical response contract closes the gap.

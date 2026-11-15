@@ -1285,6 +1285,21 @@
       "name": "eos_journal_reconciliation_unknown_with_journal",
       "path": "tests/negative/service/eos_journal_reconciliation.unknown_with_journal.json",
       "schema": "schemas/service/nex_eos/journal_reconciliation.v1.schema.json"
+    },
+    {
+      "name": "tool_contract_admission_lowercase_method",
+      "path": "tests/negative/common/tool_contract_admission.lowercase_method.json",
+      "schema": "schemas/common/tool_contract_admission.v1.schema.json"
+    },
+    {
+      "name": "tool_contract_admission_non_success_status",
+      "path": "tests/negative/common/tool_contract_admission.non_success_status.json",
+      "schema": "schemas/common/tool_contract_admission.v1.schema.json"
+    },
+    {
+      "name": "tool_contract_admission_skill_local_schema",
+      "path": "tests/negative/common/tool_contract_admission.skill_local_schema.json",
+      "schema": "schemas/common/tool_contract_admission.v1.schema.json"
     }
   ]
 }
