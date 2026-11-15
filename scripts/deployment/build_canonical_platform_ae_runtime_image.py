@@ -221,6 +221,15 @@ def _stage_context(
         ROOT / "deployment/environments/ae-product-capability-registry.v1.json",
         context / "config/ae-product-capability-registry.v1.json",
     )
+    for name in (
+        "golden-a-reference-inventory.v1.json",
+        "golden-a-rollback-receipt.v1.json",
+        "golden-a-selection-freeze.v1.json",
+    ):
+        shutil.copy2(
+            ROOT / "deployment/retirement" / name,
+            context / "config" / name,
+        )
     shutil.copy2(
         ROOT / bundle.admission_lock,
         context / "locks/nsl-v0.2.1-wheel.json",

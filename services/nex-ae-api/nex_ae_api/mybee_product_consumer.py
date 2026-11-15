@@ -89,6 +89,7 @@ def build_installed_mybee_voucher_candidate_consumer(
         activators = activator_registry or build_domain_intent_activator_registry(
             environ,
             product_capability_registry=capabilities,
+            include_replay_only=True,
         )
         activator = activators.resolve(GOLDEN_A_CAPABILITY_ID, required=True)
         assert activator is not None

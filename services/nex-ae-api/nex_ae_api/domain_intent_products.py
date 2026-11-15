@@ -17,17 +17,37 @@ from nex_ae_api.product_capabilities import (
     ProductCapabilityRegistry,
     load_product_capability_registry,
 )
+from nex_ae_api.product_capability_retirements import (
+    ProductCapabilityRetirementProjection,
+    load_product_capability_retirement_projection,
+)
 
 
 def build_domain_intent_activator_registry(
     environ: Mapping[str, str],
     *,
     product_capability_registry: ProductCapabilityRegistry | None = None,
+    retirement_projection: ProductCapabilityRetirementProjection | None = None,
+    include_replay_only: bool = False,
 ) -> DomainIntentActivatorRegistry:
     """Build product activators from separate authority and capability sources."""
 
     authority_source = load_golden_a_finance_authority_source(environ)
     if authority_source is None:
+        return DomainIntentActivatorRegistry()
+    retirements = retirement_projection or (
+        load_product_capability_retirement_projection(
+            environ,
+            required=(
+                str(environ.get("NEX_DEPLOYMENT_BOUNDARY") or "").strip()
+                == "CANONICAL_PLATFORM"
+            ),
+        )
+    )
+    if (
+        retirements.is_new_selection_denied(GOLDEN_A_CAPABILITY_ID)
+        and not include_replay_only
+    ):
         return DomainIntentActivatorRegistry()
     capabilities = product_capability_registry or load_product_capability_registry(
         environ

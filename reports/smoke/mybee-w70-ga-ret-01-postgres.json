@@ -1,0 +1,23 @@
+{
+  "database": "nex_ae_test",
+  "role": "nex_ae_user",
+  "checks": {
+    "database_identity": true,
+    "runtime_tables_present": true,
+    "no_in_flight_golden_execution": true,
+    "no_runnable_golden_runtime_job": true
+  },
+  "missing_tables": [],
+  "golden_lineage": {
+    "total_execution_count": 0,
+    "in_flight_execution_count": 0,
+    "runnable_runtime_job_count": 0,
+    "content_included": false
+  },
+  "schema_version": "mybee.w70.golden_a_retirement_postgres.v1",
+  "slice": "CP-M1-GA-RET-01",
+  "actual_postgres": true,
+  "database_env": "NEX_AE_TEST_DATABASE_URL",
+  "redacted_database_url": "postgresql+psycopg://nex_ae_user:***@127.0.0.1:5432/nex_ae_test",
+  "status": "PASS"
+}

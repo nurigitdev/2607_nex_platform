@@ -55,6 +55,10 @@ from nex_ae_api.product_capabilities import (
     ProductCapabilityRegistry,
     load_product_capability_registry,
 )
+from nex_ae_api.product_capability_retirements import (
+    ProductCapabilityRetirementProjection,
+    load_product_capability_retirement_projection,
+)
 from nex_ae_api.semantic_candidate_evidence import (
     InMemorySemanticCandidateStorage,
     SemanticCandidateStorage,
@@ -67,7 +71,10 @@ from nex_ae_api.semantic_candidate_evidence import (
 from nex_ae_api.semantic_candidate_failures import (
     project_semantic_candidate_failure,
 )
-from nex_ae_api.semantic_candidates import SemanticCalibrationRegistry
+from nex_ae_api.semantic_candidates import (
+    SemanticCalibrationRegistry,
+    SemanticCandidateStageError,
+)
 from nex_ae_api.work_intent import (
     SqlAlchemyWorkIntentRepository,
     build_work_intent_from_claimed_work,
@@ -322,6 +329,9 @@ class DeterministicCandidateAdmissionService:
     )
     product_capability_registry: ProductCapabilityRegistry = field(
         default_factory=ProductCapabilityRegistry, repr=False
+    )
+    product_capability_retirements: ProductCapabilityRetirementProjection = field(
+        default_factory=ProductCapabilityRetirementProjection, repr=False
     )
     clock: Callable[[], datetime] = field(default=lambda: datetime.now(UTC), repr=False)
 
@@ -709,6 +719,16 @@ class DeterministicCandidateAdmissionService:
 
         try:
             result = invoke()
+            if semantic_stage == "INTENT":
+                intent_label = result.candidate.get("intent_label")
+                if self.product_capability_retirements.is_new_selection_denied(
+                    intent_label
+                ):
+                    raise SemanticCandidateStageError(
+                        422,
+                        "CANDIDATE_CAPABILITY_RETIRED",
+                        "The requested product capability is retired from new selection.",
+                    )
             if result.admission_policy_ref is None:
                 raise _error(
                     503,
@@ -1015,7 +1035,23 @@ def attach_semantic_candidate_admission(
         )
     client = build_default_ae_mo_generation_client(environ)
     calibrations = SemanticCalibrationRegistry.from_environment(environ)
-    product_capabilities = load_product_capability_registry(resolved_environ)
+    registered_product_capabilities = load_product_capability_registry(
+        resolved_environ
+    )
+    product_capability_retirements = (
+        load_product_capability_retirement_projection(
+            resolved_environ,
+            required=(
+                str(
+                    resolved_environ.get("NEX_DEPLOYMENT_BOUNDARY") or ""
+                ).strip()
+                == "CANONICAL_PLATFORM"
+            ),
+        )
+    )
+    product_capabilities = product_capability_retirements.selectable_registry(
+        registered_product_capabilities
+    )
     service = DeterministicCandidateAdmissionService(
         mode=mode,
         admission=admission,
@@ -1033,9 +1069,11 @@ def attach_semantic_candidate_admission(
         executions=SqlAlchemyAgentExecutionRepository(session_factory),
         domain_intent_activator_registry=build_domain_intent_activator_registry(
             resolved_environ,
-            product_capability_registry=product_capabilities,
+            product_capability_registry=registered_product_capabilities,
+            retirement_projection=product_capability_retirements,
         ),
         product_capability_registry=product_capabilities,
+        product_capability_retirements=product_capability_retirements,
     )
     runtime = SemanticCandidateAdmissionRuntime(
         mode=mode,

@@ -183,6 +183,13 @@ The next implementation boundary is `CP-M1-GA-RET-01`, followed by
 `CP-M1-E2E-FX-01A`, `CP-M1-GA-RET-02`, and finally the original
 `CP-M1-E2E-FX-01` protected public M1 acceptance.
 
+`CP-M1-GA-RET-01` implementation evidence is recorded in
+[`mybee_phase1_w70_cp_m1_ga_ret_01.md`](../../slices/mybee_phase1_w70_cp_m1_ga_ret_01.md).
+It closes new Golden A public selection, preserves replay-only and bounded
+rollback assets, classifies the repository references, and proves actual AE
+PostgreSQL has no remaining in-flight Golden A execution or runnable job. The
+next implementation boundary is `CP-M1-E2E-FX-01A.1`.
+
 The Post-Wave UI/UX backlog records non-blocking TestClient compatibility and
 frontend bundle-performance findings from the post-S7-01 Repository Full Gate.
 It does not change the active accounting Wave or authorize immediate UI work.

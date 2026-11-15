@@ -1,0 +1,44 @@
+{
+  "schema_version": "ae.product_capability_retirement_projection.v1",
+  "projection_id": "mybee-w70-golden-a-selection-freeze",
+  "projection_version": 1,
+  "effective_at": "2026-11-15T00:00:00Z",
+  "covered_registries": [
+    {
+      "registry_id": "ae-product-capabilities-golden-a",
+      "registry_version": 1,
+      "registry_hash": "sha256:4ec6072f169c437116ee435213dc9f8a695be6661937bd0b117d1c74dd8c1938"
+    },
+    {
+      "registry_id": "ae-product-capabilities-mybee-m1",
+      "registry_version": 3,
+      "registry_hash": "sha256:104e60e12282ab9849932487e931d22910a5a75abcd05dcd646e5251c3140cc5"
+    }
+  ],
+  "retirements": [
+    {
+      "capability_id": "FINANCE.CREATE_VOUCHER_DRAFT",
+      "capability_version": "1.1.0",
+      "compatibility_aliases": [
+        "FINANCE.VOUCHER_DRAFT.CREATE",
+        "FINANCE.VOUCHER_DRAFT_CREATE",
+        "createEosVoucherDraft"
+      ],
+      "retirement_state": "REPLAY_ONLY",
+      "new_selection": "DENY",
+      "in_flight_policy": "DRAIN_OR_RECONCILE",
+      "active_asset_policy": "RETAIN_UNTIL_RET_02",
+      "reason_code": "W70_GOLDEN_A_PRODUCT_SELECTION_RETIRED",
+      "retirement_hash": "sha256:4cb9906e2db6448745b23df9faae1f4dcb84d46817844c7794d334069f4acba7"
+    }
+  ],
+  "inventory_ref": {
+    "path": "deployment/retirement/golden-a-reference-inventory.v1.json",
+    "sha256": "sha256:0bc05364ca3d8fbb5c24b492684b757192ccf28903ca5a76c934de0552cf39f2"
+  },
+  "rollback_receipt_ref": {
+    "path": "deployment/retirement/golden-a-rollback-receipt.v1.json",
+    "sha256": "sha256:94326deafc88e0d8d7613c8078de9847fb078ecf578fc77496e0eee7445d44bd"
+  },
+  "projection_hash": "sha256:2b02108e22ca2828c4f7dfc64f62c7b888028b6d5fe7f60658d66caf9265a379"
+}
