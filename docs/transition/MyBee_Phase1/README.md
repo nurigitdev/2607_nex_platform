@@ -128,6 +128,14 @@ uncompiled, and runtime non-selectable; Golden A remains the only deployed
 compatibility capability. The next W70 Slice is `W70-S8-01D` Product
 Capability Registry and multi-bundle lock integration.
 
+`W70-S8-01D` implementation evidence is recorded in
+[`mybee_phase1_w70_s8_01d_product_capability_registry.md`](../../slices/mybee_phase1_w70_s8_01d_product_capability_registry.md).
+It creates an immutable registry v2 candidate release, D04/D12 candidate
+bundle locks, and a multi-bundle set while preserving the v1 Golden A runtime
+selection. All 18 candidates remain non-selectable and pending S8-01E compile
+and trust admission. The next W70 Slice is `W70-S8-01E` compile, admission,
+alias, trust, and S8-01 Foundation Gate.
+
 The Post-Wave UI/UX backlog records non-blocking TestClient compatibility and
 frontend bundle-performance findings from the post-S7-01 Repository Full Gate.
 It does not change the active accounting Wave or authorize immediate UI work.

@@ -19,3 +19,11 @@ in the deployed AE Product Capability Registry. S8-01D owns registry and
 multi-bundle lock integration; S8-01E owns compile/admission and protected
 activation gating. Recording a Tool here must never be interpreted as
 runtime activation.
+
+S8-01D records these candidates in
+`deployment/environments/ae-product-capability-registry.v2.json` and pins the
+D04/D12 source descriptors through
+`deployment/locks/ae-product-nsl-runtime-bundles.v2.json`. The v2 release is
+admission evidence, not the installed runtime registry: Compose and the AE
+runtime image continue to select the immutable v1 Golden A registry until the
+S8-01E compile, signature, trust, and regression Gate passes.

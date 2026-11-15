@@ -104,3 +104,11 @@ trust policy, binding catalogs, and source digests. The packs contain no
 executable `.ns` source, remain unsigned and non-selectable, and do not alter
 the deployed AE Product Capability Registry. S8-01D owns registry and bundle
 lock integration; S8-01E owns compilation and protected activation admission.
+
+W70-S8-01D adds an immutable Product Capability Registry v2 release with the
+exact v1 Golden A active registration plus 18 separately typed candidate
+admissions. Two descriptor-only candidate bundle locks and a three-entry
+multi-bundle set pin D04, D12, and the unchanged historical Golden A lock.
+Candidate admissions expose no runtime resolver or merge path, and installed
+Compose/image configuration continues to select registry v1. S8-01E remains
+the required compile, signature, trust, and activation Gate.
