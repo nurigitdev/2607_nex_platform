@@ -1,0 +1,129 @@
+{
+  "tools": [
+    {
+      "tool_id": "FINANCE.COST_ALLOCATION.RUN",
+      "version": "1.0.0",
+      "capability": "WRITE",
+      "operation_kind": "CREATE",
+      "inputs": [
+        {
+          "name": "payload",
+          "type": {"kind": "primitive", "name": "String"}
+        }
+      ],
+      "output": {
+        "kind": "record",
+        "name": "CostAllocationRunResult",
+        "fields": [
+          {
+            "name": "operation_id",
+            "type": {"kind": "primitive", "name": "String"}
+          }
+        ]
+      },
+      "required_scope": "finance:allocation:execute",
+      "risk_level": "R3",
+      "output_classification": "INTERNAL",
+      "write_semantics": {
+        "side_effect": true,
+        "atomicity": "ATOMIC",
+        "idempotency": {
+          "required": true,
+          "scope": "TOOL_AND_TENANT",
+          "retention": "PROVIDER_DEFINED",
+          "duplicate_behavior": "RETURN_ORIGINAL_RESULT",
+          "payload_conflict_behavior": "IDEMPOTENCY_CONFLICT"
+        },
+        "commit": {"confirmation": "EXPLICIT"},
+        "approval": {"required": true},
+        "preconditions": {"supported": true},
+        "verification": {
+          "tool_id": "FINANCE.COST_ALLOCATION.VERIFY",
+          "reference_schema": {
+            "kind": "record",
+            "name": "CostAllocationRunResult",
+            "fields": [
+              {
+                "name": "operation_id",
+                "type": {"kind": "primitive", "name": "String"}
+              }
+            ]
+          },
+          "consistency_hint": "READ_AFTER_WRITE_STRONG"
+        }
+      }
+    },
+    {
+      "tool_id": "FINANCE.COST_ALLOCATION.VERIFY",
+      "version": "1.0.0",
+      "capability": "READ",
+      "inputs": [
+        {
+          "name": "operation_id",
+          "type": {"kind": "primitive", "name": "String"}
+        }
+      ],
+      "output": {
+        "kind": "record",
+        "name": "CostAllocationRunResult",
+        "fields": [
+          {
+            "name": "operation_id",
+            "type": {"kind": "primitive", "name": "String"}
+          }
+        ]
+      },
+      "required_scope": "finance:allocation:verify",
+      "risk_level": "R1",
+      "output_classification": "INTERNAL"
+    },
+    {
+      "tool_id": "FINANCE.PROJECT_PNL.GET",
+      "version": "1.0.0",
+      "capability": "READ",
+      "inputs": [
+        {
+          "name": "query",
+          "type": {"kind": "primitive", "name": "String"}
+        }
+      ],
+      "output": {
+        "kind": "record",
+        "name": "ProjectPnlReadResult",
+        "fields": [
+          {
+            "name": "result",
+            "type": {"kind": "primitive", "name": "String"}
+          }
+        ]
+      },
+      "required_scope": "project:pnl:read",
+      "risk_level": "R1",
+      "output_classification": "INTERNAL"
+    },
+    {
+      "tool_id": "PROJECT.WORK_CODE_SET.GET",
+      "version": "1.0.0",
+      "capability": "READ",
+      "inputs": [
+        {
+          "name": "query",
+          "type": {"kind": "primitive", "name": "String"}
+        }
+      ],
+      "output": {
+        "kind": "record",
+        "name": "ProjectWorkCodeSetReadResult",
+        "fields": [
+          {
+            "name": "result",
+            "type": {"kind": "primitive", "name": "String"}
+          }
+        ]
+      },
+      "required_scope": "project:work-code:read",
+      "risk_level": "R1",
+      "output_classification": "INTERNAL"
+    }
+  ]
+}

@@ -136,6 +136,15 @@ selection. All 18 candidates remain non-selectable and pending S8-01E compile
 and trust admission. The next W70 Slice is `W70-S8-01E` compile, admission,
 alias, trust, and S8-01 Foundation Gate.
 
+`W70-S8-01E` implementation evidence is recorded in
+[`mybee_phase1_w70_s8_01e_foundation_gate.md`](../../slices/mybee_phase1_w70_s8_01e_foundation_gate.md).
+It closes the S8-01 Foundation Gate against the admitted NSL v0.2.1 wheel,
+records deterministic D04 READ/WRITE and D12 READ compiler profiles, rejects
+status-only contracts, validates aliases and immutable registry/bundle hashes,
+and proves unsigned candidate packs remain non-selectable. It does not sign or
+activate a product Skill; that boundary remains owned by `CP-M1-MB8-01`. The
+next W70 Slice is `CP-M1-S8-02` checkpoint-only controlled Journal execution.
+
 The Post-Wave UI/UX backlog records non-blocking TestClient compatibility and
 frontend bundle-performance findings from the post-S7-01 Repository Full Gate.
 It does not change the active accounting Wave or authorize immediate UI work.
