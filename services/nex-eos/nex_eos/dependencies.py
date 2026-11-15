@@ -89,6 +89,10 @@ from .material_commitments import (
     EosMaterialCommitmentService,
     SqlAlchemyEosMaterialCommitmentRepository,
 )
+from .material_consumptions import (
+    EosMaterialConsumptionService,
+    SqlAlchemyEosMaterialConsumptionRepository,
+)
 from .organization import SqlAlchemyEosOrganizationRepository
 from .payroll_labor_bridge import (
     EosPayrollLaborBridgeService,
@@ -191,6 +195,7 @@ class EosDependencies:
     payroll_labor_bridge_service: EosPayrollLaborBridgeService | None
     payroll_project_allocation_service: EosPayrollProjectAllocationService | None
     material_commitment_service: EosMaterialCommitmentService | None
+    material_consumption_service: EosMaterialConsumptionService | None
     document_signoff_service: EosDocumentSignoffService | None
     scoped_approval_decision_router: EosScopedApprovalDecisionRouter | None
     fx_rate_service: EosFxRateService | None
@@ -606,6 +611,15 @@ def build_eos_dependencies(
         if database_runtime is not None
         else None
     )
+    material_consumption_service = (
+        EosMaterialConsumptionService(
+            SqlAlchemyEosMaterialConsumptionRepository(
+                database_runtime.session_factory
+            )
+        )
+        if database_runtime is not None
+        else None
+    )
     document_signoff_service = (
         EosDocumentSignoffService(
             session_factory=database_runtime.session_factory,
@@ -857,6 +871,7 @@ def build_eos_dependencies(
         payroll_labor_bridge_service=payroll_labor_bridge_service,
         payroll_project_allocation_service=payroll_project_allocation_service,
         material_commitment_service=material_commitment_service,
+        material_consumption_service=material_consumption_service,
         document_signoff_service=document_signoff_service,
         scoped_approval_decision_router=scoped_approval_decision_router,
         fx_rate_service=fx_rate_service,

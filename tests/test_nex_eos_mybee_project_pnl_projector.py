@@ -15,12 +15,15 @@ from nex_eos import (
     EOS_LABOR_EFFORT_SNAPSHOT_TABLE,
     EOS_MATERIAL_ATTRIBUTION_TABLE,
     EOS_MATERIAL_COMMITMENT_TABLE,
+    EOS_MATERIAL_CONSUMPTION_TABLE,
+    EOS_MATERIAL_RELEASE_TABLE,
     EOS_PAYROLL_POST_EVIDENCE_TABLE,
     EOS_PAYROLL_PROJECT_ALLOCATION_TABLE,
     EosProjectPnlProjector,
     EosProjectPnlProjectorError,
     ProjectPnlAllocationFact,
     ProjectPnlMaterialCommitmentFact,
+    ProjectPnlMaterialReleaseFact,
     ProjectPnlRebuildRequest,
     ProjectPnlSourcePoolFact,
     ProjectPnlSourceSnapshot,
@@ -92,6 +95,28 @@ def _material_fact(
         commitment_hash=HASH_A,
         line_hash=HASH_A if line_no == 1 else HASH_B,
         acquired_at=NOW,
+    )
+
+
+def _material_release(
+    *,
+    line_no: int = 1,
+    attribution_line_no: int = 1,
+    quantity: str = "10",
+    amount: str = "100",
+    state: str = "VERIFIED",
+) -> ProjectPnlMaterialReleaseFact:
+    return ProjectPnlMaterialReleaseFact(
+        consumption_id="76000000-0000-4000-8000-000000000098",
+        line_no=line_no,
+        commitment_id="76000000-0000-4000-8000-000000000099",
+        attribution_line_no=attribution_line_no,
+        released_quantity=Decimal(quantity),
+        released_amount_functional=Decimal(amount),
+        reconciliation_state=state,
+        consumption_hash=HASH_B,
+        line_hash=HASH_B,
+        created_at=NOW,
     )
 
 
@@ -522,6 +547,8 @@ def test_sql_source_and_projector_persist_exact_rebuild() -> None:
     EOS_COST_ALLOCATION_ADJUSTMENT_TABLE.create(runtime.engine)
     EOS_MATERIAL_COMMITMENT_TABLE.create(runtime.engine)
     EOS_MATERIAL_ATTRIBUTION_TABLE.create(runtime.engine)
+    EOS_MATERIAL_CONSUMPTION_TABLE.create(runtime.engine)
+    EOS_MATERIAL_RELEASE_TABLE.create(runtime.engine)
     shared = _pool(
         20,
         allocation_mode="MANAGEMENT_ALLOCATION",
@@ -743,5 +770,43 @@ def test_material_commitment_snapshot_drift_fails_closed(facts, message):
             _request(),
             ProjectPnlSourceSnapshot(
                 pools=(), allocations=(), material_commitments=facts
+            ),
+        )
+
+
+@pytest.mark.parametrize(
+    ("releases", "message"),
+    [
+        (
+            (_material_release(), _material_release()),
+            "duplicate event identities",
+        ),
+        (
+            (_material_release(attribution_line_no=3),),
+            "absent commitment attribution",
+        ),
+        (
+            (_material_release(state="PENDING"),),
+            "not reconciled",
+        ),
+        (
+            (_material_release(quantity="81", amount="801"),),
+            "exceed the commitment attribution",
+        ),
+    ],
+)
+def test_material_release_snapshot_drift_fails_closed(releases, message):
+    facts = (
+        _material_fact(1),
+        _material_fact(2, kind="UNASSIGNED", quantity="20", amount="200"),
+    )
+    with pytest.raises(EosProjectPnlProjectorError, match=message):
+        build_direct_allocation_projection(
+            _request(),
+            ProjectPnlSourceSnapshot(
+                pools=(),
+                allocations=(),
+                material_commitments=facts,
+                material_releases=releases,
             ),
         )

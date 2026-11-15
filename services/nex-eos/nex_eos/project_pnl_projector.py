@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from collections import defaultdict
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any, Protocol
@@ -21,6 +21,10 @@ from .cost_source_pools import EOS_COST_SOURCE_POOL_TABLE
 from .material_commitments import (
     EOS_MATERIAL_ATTRIBUTION_TABLE,
     EOS_MATERIAL_COMMITMENT_TABLE,
+)
+from .material_consumptions import (
+    EOS_MATERIAL_CONSUMPTION_TABLE,
+    EOS_MATERIAL_RELEASE_TABLE,
 )
 from .payroll_labor_bridge import (
     EOS_LABOR_EFFORT_SNAPSHOT_TABLE,
@@ -162,6 +166,23 @@ class ProjectPnlMaterialCommitmentFact:
     commitment_hash: str
     line_hash: str
     acquired_at: datetime
+    released_quantity: Decimal = Decimal("0.0000")
+    released_amount_functional: Decimal = Decimal("0.0000")
+    release_hashes: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class ProjectPnlMaterialReleaseFact:
+    consumption_id: str
+    line_no: int
+    commitment_id: str
+    attribution_line_no: int
+    released_quantity: Decimal
+    released_amount_functional: Decimal
+    reconciliation_state: str
+    consumption_hash: str
+    line_hash: str
+    created_at: datetime
 
 
 @dataclass(frozen=True)
@@ -171,6 +192,7 @@ class ProjectPnlSourceSnapshot:
     payroll_allocations: tuple[ProjectPnlPayrollAllocationFact, ...] = ()
     labor_adjustments: tuple[ProjectPnlLaborAdjustmentFact, ...] = ()
     material_commitments: tuple[ProjectPnlMaterialCommitmentFact, ...] = ()
+    material_releases: tuple[ProjectPnlMaterialReleaseFact, ...] = ()
 
 
 class ProjectPnlProjectionSource(Protocol):
@@ -206,6 +228,9 @@ class SqlAlchemyEosProjectPnlProjectionSource:
                 material_commitments = self._load_material_commitments(
                     session, request=request, as_of=as_of
                 )
+                material_releases = self._load_material_releases(
+                    session, request=request, as_of=as_of
+                )
         except EosProjectPnlProjectorError:
             raise
         except SQLAlchemyError as exc:
@@ -221,6 +246,7 @@ class SqlAlchemyEosProjectPnlProjectionSource:
             tuple(payroll_allocations),
             tuple(labor_adjustments),
             tuple(material_commitments),
+            tuple(material_releases),
         )
 
     @staticmethod
@@ -383,6 +409,40 @@ class SqlAlchemyEosProjectPnlProjectionSource:
         ).mappings()
         return [_material_commitment_fact(row) for row in rows]
 
+    @staticmethod
+    def _load_material_releases(
+        session: Session,
+        *,
+        request: ProjectPnlRebuildRequest,
+        as_of: datetime,
+    ) -> list[ProjectPnlMaterialReleaseFact]:
+        consumption = EOS_MATERIAL_CONSUMPTION_TABLE
+        release = EOS_MATERIAL_RELEASE_TABLE
+        commitment = EOS_MATERIAL_COMMITMENT_TABLE
+        rows = session.execute(
+            select(consumption, release)
+            .join(
+                release,
+                (release.c.tenant_id == consumption.c.tenant_id)
+                & (release.c.company_id == consumption.c.company_id)
+                & (release.c.consumption_id == consumption.c.consumption_id),
+            )
+            .join(
+                commitment,
+                (commitment.c.tenant_id == release.c.tenant_id)
+                & (commitment.c.company_id == release.c.company_id)
+                & (commitment.c.commitment_id == release.c.commitment_id),
+            )
+            .where(
+                consumption.c.tenant_id == request.tenant_id,
+                consumption.c.company_id == request.company_id,
+                commitment.c.period_id == request.period_id,
+                consumption.c.created_at <= as_of,
+            )
+            .order_by(consumption.c.consumption_id, release.c.line_no)
+        ).mappings()
+        return [_material_release_fact(row) for row in rows]
+
 
 class EosProjectPnlProjector:
     def __init__(
@@ -544,7 +604,8 @@ def build_direct_allocation_projection(
             blocked = True
         elif material.reconciliation_state == "PENDING":
             pending = True
-        components.append(_material_commitment_component(material))
+        if _remaining_material_amount(material) != 0:
+            components.append(_material_commitment_component(material))
 
     components.sort(key=_component_sort_key)
     reconciliation_status = (
@@ -640,6 +701,30 @@ def _validate_and_select_material_commitments(
         identities.add(identity)
         by_commitment[item.commitment_id].append(item)
 
+    attribution_by_identity = {
+        (item.commitment_id, item.line_no): item
+        for item in snapshot.material_commitments
+    }
+    releases_by_attribution: dict[
+        tuple[str, int], list[ProjectPnlMaterialReleaseFact]
+    ] = defaultdict(list)
+    release_identities: set[tuple[str, int]] = set()
+    for release in snapshot.material_releases:
+        release_identity = (release.consumption_id, release.line_no)
+        if release_identity in release_identities:
+            raise _source_drift(
+                "Material release snapshot contains duplicate event identities"
+            )
+        release_identities.add(release_identity)
+        source_identity = (release.commitment_id, release.attribution_line_no)
+        if source_identity not in attribution_by_identity:
+            raise _source_drift(
+                "Material release references an absent commitment attribution"
+            )
+        if release.reconciliation_state != "VERIFIED":
+            raise _blocked("Material release is not reconciled")
+        releases_by_attribution[source_identity].append(release)
+
     selected: list[ProjectPnlMaterialCommitmentFact] = []
     for rows in by_commitment.values():
         first = rows[0]
@@ -669,6 +754,32 @@ def _validate_and_select_material_commitments(
                 "Material commitment attribution does not conserve acquisition value"
             )
         for item in rows:
+            release_rows = sorted(
+                releases_by_attribution.get((item.commitment_id, item.line_no), ()),
+                key=lambda value: (value.created_at, value.consumption_id, value.line_no),
+            )
+            released_quantity = _money(
+                sum((release.released_quantity for release in release_rows), Decimal())
+            )
+            released_amount = _money(
+                sum(
+                    (release.released_amount_functional for release in release_rows),
+                    Decimal(),
+                )
+            )
+            if (
+                released_quantity > item.attributed_quantity
+                or released_amount > item.attributed_amount_functional
+            ):
+                raise _source_drift(
+                    "Material releases exceed the commitment attribution"
+                )
+            item = replace(
+                item,
+                released_quantity=released_quantity,
+                released_amount_functional=released_amount,
+                release_hashes=tuple(release.line_hash for release in release_rows),
+            )
             if item.attribution_kind != "PROJECT" or item.project_id != request.project_id:
                 continue
             if item.project_code != request.project_code:
@@ -686,17 +797,31 @@ def _validate_and_select_material_commitments(
 def _material_commitment_component(
     item: ProjectPnlMaterialCommitmentFact,
 ) -> ProjectPnlComponentDraft:
+    remaining = _remaining_material_amount(item)
     return ProjectPnlComponentDraft(
         classification="MATERIAL_COMMITTED",
         source_kind="MATERIAL",
-        functional_amount=item.attributed_amount_functional,
+        functional_amount=remaining,
         source_ref=(
             f"eos.material-commitment:{item.commitment_id}:line:{item.line_no}"
         ),
-        source_hash=item.line_hash,
+        source_hash=semantic_sha256_hash_ref(
+            {
+                "domain": "EOS-MATERIAL-COMMITMENT-REMAINING-V1",
+                "line_hash": item.line_hash,
+                "release_hashes": list(item.release_hashes),
+                "remaining_amount": _amount_text(remaining),
+            }
+        ),
         account_id=item.account_id,
         work_code=item.work_code,
         data_classification="CONFIDENTIAL_FINANCIAL",
+    )
+
+
+def _remaining_material_amount(item: ProjectPnlMaterialCommitmentFact) -> Decimal:
+    return _money(
+        item.attributed_amount_functional - item.released_amount_functional
     )
 
 
@@ -1205,6 +1330,10 @@ def _material_commitment_watermark(
                     "commitment_hash": item.commitment_hash,
                     "line_hash": item.line_hash,
                     "amount": _amount_text(item.attributed_amount_functional),
+                    "released_amount": _amount_text(
+                        item.released_amount_functional
+                    ),
+                    "release_hashes": list(item.release_hashes),
                     "reconciliation_state": item.reconciliation_state,
                 }
                 for item in rows
@@ -1332,6 +1461,23 @@ def _material_commitment_fact(
         commitment_hash=str(row["commitment_hash"]),
         line_hash=str(row["line_hash"]),
         acquired_at=_stored_time("acquired_at", row["acquired_at"]),
+    )
+
+
+def _material_release_fact(
+    row: Mapping[str, Any],
+) -> ProjectPnlMaterialReleaseFact:
+    return ProjectPnlMaterialReleaseFact(
+        consumption_id=str(row["consumption_id"]),
+        line_no=int(row["line_no"]),
+        commitment_id=str(row["commitment_id"]),
+        attribution_line_no=int(row["attribution_line_no"]),
+        released_quantity=_money(row["released_quantity"]),
+        released_amount_functional=_money(row["released_amount_functional"]),
+        reconciliation_state=str(row["reconciliation_state"]),
+        consumption_hash=str(row["consumption_hash"]),
+        line_hash=str(row["line_hash"]),
+        created_at=_stored_time("created_at", row["created_at"]),
     )
 
 
