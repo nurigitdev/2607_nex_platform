@@ -26,9 +26,9 @@
   ],
   "classification_counts": {
     "GENERALIZE": 23,
-    "HISTORY": 47,
+    "HISTORY": 49,
     "REMOVE_ACTIVE": 17,
-    "REPLAY_ONLY": 119
+    "REPLAY_ONLY": 120
   },
   "entries": [
     {
@@ -75,6 +75,11 @@
       "path": "contracts/tests/negative/service/eos_create_voucher_draft_result.committed_without_voucher.json",
       "classification": "GENERALIZE",
       "reason": "Reusable product contract or retirement control remains active."
+    },
+    {
+      "path": "deployment/audits/mybee-w70-e2e-fx-01a1-baseline.v1.json",
+      "classification": "HISTORY",
+      "reason": "Frozen design or Slice evidence remains immutable history."
     },
     {
       "path": "deployment/compose/canonical-platform.override.yaml",
@@ -213,6 +218,11 @@
     },
     {
       "path": "docs/slices/mybee_phase1_w40_ca02_s03_installed_entitlement_delivery_mybee_consumer_integration.md",
+      "classification": "HISTORY",
+      "reason": "Frozen design or Slice evidence remains immutable history."
+    },
+    {
+      "path": "docs/slices/mybee_phase1_w70_cp_m1_e2e_fx_01a1.md",
       "classification": "HISTORY",
       "reason": "Frozen design or Slice evidence remains immutable history."
     },
@@ -425,6 +435,11 @@
       "path": "scripts/quality/build_mybee_w70_golden_a_retirement.py",
       "classification": "GENERALIZE",
       "reason": "Reusable product contract or retirement control remains active."
+    },
+    {
+      "path": "scripts/quality/capture_mybee_w70_installed_runtime_baseline.py",
+      "classification": "REPLAY_ONLY",
+      "reason": "Artifact remains only for regression, audit, or historical replay."
     },
     {
       "path": "scripts/quality/golden_journey_runners.v1.json",
@@ -1062,5 +1077,5 @@
       "reason": "Artifact remains only for regression, audit, or historical replay."
     }
   ],
-  "inventory_hash": "sha256:92da63eaad03d0bc7f09e6e82f4ca9c8ea232d5700a54322aa752da7a60a516d"
+  "inventory_hash": "sha256:76005049ee0c6b23d60a546937d91772a29bc2edcdead10becc9316a3823c814"
 }

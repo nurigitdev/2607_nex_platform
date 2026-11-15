@@ -190,6 +190,12 @@ rollback assets, classifies the repository references, and proves actual AE
 PostgreSQL has no remaining in-flight Golden A execution or runnable job. The
 next implementation boundary is `CP-M1-E2E-FX-01A.1`.
 
+`CP-M1-E2E-FX-01A.1` evidence is recorded in
+[`mybee_phase1_w70_cp_m1_e2e_fx_01a1.md`](../../slices/mybee_phase1_w70_cp_m1_e2e_fx_01a1.md).
+It freezes the pre-change installed composition, authoritative data-origin
+matrix, and Golden/Demo residue baseline without adding a database migration.
+The next boundary is `CP-M1-E2E-FX-01A.2`.
+
 The Post-Wave UI/UX backlog records non-blocking TestClient compatibility and
 frontend bundle-performance findings from the post-S7-01 Repository Full Gate.
 It does not change the active accounting Wave or authorize immediate UI work.

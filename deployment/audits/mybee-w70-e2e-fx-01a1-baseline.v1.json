@@ -1,0 +1,140 @@
+{
+  "schema_version": "mybee.w70.installed_runtime_baseline.v1",
+  "slice": "CP-M1-E2E-FX-01A.1",
+  "captured_at": "2026-11-15T00:00:00Z",
+  "database_migration": false,
+  "remote_provider_required": false,
+  "data_origin_matrix": [
+    {
+      "runtime_value": "tenant_requester",
+      "authoritative_origin": "OA_AUTHENTICATED_SESSION",
+      "prohibited_substitute": "FIXED_PRINCIPAL"
+    },
+    {
+      "runtime_value": "project_code",
+      "authoritative_origin": "EOS_PROJECT_RESOLUTION_AND_OA_ENTITLEMENT",
+      "prohibited_substitute": "MODEL_OR_FIXTURE"
+    },
+    {
+      "runtime_value": "project_agent",
+      "authoritative_origin": "AE_SYNCHRONIZED_PROJECT_AGENT",
+      "prohibited_substitute": "SCENARIO_AGENT_ID"
+    },
+    {
+      "runtime_value": "work_item_claim",
+      "authoritative_origin": "WC_WORK_ITEM_CLAIM_ASSIGNMENT",
+      "prohibited_substitute": "RUNNER_STATE_MUTATION"
+    },
+    {
+      "runtime_value": "planning_source",
+      "authoritative_origin": "AE_DURABLE_CLAIMED_WORK_SOURCE",
+      "prohibited_substitute": "SMOKE_PAYLOAD_SHORTCUT"
+    },
+    {
+      "runtime_value": "capability",
+      "authoritative_origin": "PRODUCT_CAPABILITY_REGISTRY",
+      "prohibited_substitute": "PROMPT_OR_FILENAME"
+    },
+    {
+      "runtime_value": "skill",
+      "authoritative_origin": "SIGNED_RELEASE_EXACT_SKILL",
+      "prohibited_substitute": "DIRECTORY_ORDER"
+    },
+    {
+      "runtime_value": "business_authority",
+      "authoritative_origin": "OA_WC_EOS_POSTGRESQL_SOR",
+      "prohibited_substitute": "FIXTURE_SUCCESS"
+    },
+    {
+      "runtime_value": "runtime_state",
+      "authoritative_origin": "AE_EXECUTION_PLAN_JOB_TABLES",
+      "prohibited_substitute": "RUNNER_INSERT_UPDATE"
+    },
+    {
+      "runtime_value": "result",
+      "authoritative_origin": "AE_WC_EOS_WA_DURABLE_TRANSITIONS",
+      "prohibited_substitute": "FABRICATED_WORK_RESULT"
+    }
+  ],
+  "installed_composition": [
+    {
+      "component_id": "claim_handoff",
+      "path": "services/nex-ae-api/nex_ae_api/claim_handoff_api.py",
+      "sha256": "sha256:b6fd65772fd325483dc531df5b5b6039da67db537a16b04e92e65dce4c4f560f",
+      "current_state": "DURABLE_ADMISSION_ONLY",
+      "gap": "BACKGROUND_PLANNING_AND_SCHEDULING_NOT_COMPOSED"
+    },
+    {
+      "component_id": "background_planning",
+      "path": "services/nex-ae-api/nex_ae_api/background_planning.py",
+      "sha256": "sha256:b5aed43706e6b162587dd2a2c81bbdcdacd8b67f4a79c2c9389ac9c135f2b855",
+      "current_state": "IMPLEMENTED_COMPONENT",
+      "gap": "NOT_INSTALLED_AT_HANDOFF_BOUNDARY"
+    },
+    {
+      "component_id": "installed_worker",
+      "path": "services/nex-ae-api/nex_ae_api/agent_runtime_process.py",
+      "sha256": "sha256:047c4cd49ce17f76feb5667c9038d22587139ccb752c094d7e47e5a834b4463b",
+      "current_state": "GENERIC_WORKER_WITH_PRODUCT_PROFILE",
+      "gap": "PRODUCT_PROFILE_IS_SINGLE_SKILL"
+    },
+    {
+      "component_id": "product_executor_profile",
+      "path": "services/nex-ae-api/nex_ae_api/product_runtime_profile.py",
+      "sha256": "sha256:cddabe7078bb5a15ff53027b79fd389338eefa5dc839f29447b6b82900e8efd8",
+      "current_state": "GOLDEN_A_SINGLE_SKILL",
+      "gap": "MULTI_SKILL_RELEASE_SELECTION_MISSING"
+    },
+    {
+      "component_id": "product_consumer",
+      "path": "services/nex-ae-api/nex_ae_api/mybee_product_consumer.py",
+      "sha256": "sha256:760694c2f7fefd86f3301bb99feba7169e9268fa89dca2dba0b388b0a8a53afe",
+      "current_state": "GOLDEN_A_FIXED_CAPABILITY",
+      "gap": "GENERIC_OPERATION_REGISTRY_MISSING"
+    },
+    {
+      "component_id": "signed_release",
+      "path": "deployment/locks/ae-mybee-m1-signed-skill-checkpoint.v1.json",
+      "sha256": "sha256:e05f4d4e06f52facf2f3b47602a68c63133384e72897f2e3ff9f492f03077283",
+      "current_state": "SIGNED_D04_D12_ADMITTED",
+      "gap": "NOT_INSTALLED_IN_CANONICAL_RUNTIME"
+    },
+    {
+      "component_id": "mixed_registry",
+      "path": "deployment/environments/ae-product-capability-registry.mybee-m1.v1.json",
+      "sha256": "sha256:6ec6ce1b5d153799fed3dd36b5e213e33f1a2228dda1c407d08f81e4d236dfb1",
+      "current_state": "IMMUTABLE_MIXED_CHECKPOINT",
+      "gap": "SUCCESSOR_ACTIVE_RELEASE_REQUIRED"
+    },
+    {
+      "component_id": "canonical_compose",
+      "path": "deployment/compose/canonical-platform.override.yaml",
+      "sha256": "sha256:076cf0daf5ef69cb8c176aa50ab0fd8bd602977f76fcb4896eaa25f299093fdf",
+      "current_state": "GOLDEN_A_ASSETS_STILL_PACKAGED_FOR_ROLLBACK",
+      "gap": "M1_RELEASE_INPUTS_NOT_PROMOTED"
+    }
+  ],
+  "residue_baseline": [
+    {
+      "path": "services/nex-ae-api/nex_ae_api/product_runtime_profile.py",
+      "patterns": [
+        "golden_a"
+      ]
+    },
+    {
+      "path": "services/nex-ae-api/nex_ae_api/mybee_product_consumer.py",
+      "patterns": [
+        "golden_a"
+      ]
+    },
+    {
+      "path": "deployment/environments/ae-product-capability-registry.mybee-m1.v1.json",
+      "patterns": [
+        "FINANCE.CREATE_VOUCHER_DRAFT"
+      ]
+    }
+  ],
+  "closure_state": "BASELINE_CAPTURED_IMPLEMENTATION_OPEN",
+  "next_boundary": "CP-M1-E2E-FX-01A.2",
+  "content_hash": "sha256:c84c84e07eac5b7ee2ce943a19f6508b82a568f9de2b488bcf53b9299d96c136"
+}
