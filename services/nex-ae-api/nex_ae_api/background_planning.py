@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import hashlib
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from typing import Any
 from uuid import NAMESPACE_URL, uuid5
 
@@ -10,9 +11,12 @@ from nex_runtime.semantic_hashes import semantic_sha256_hash_ref
 
 from nex_ae_api.agent_context import TrustedContextResolution
 from nex_ae_api.agent_execution import (
+    AgentExecutionAdmissionService,
     AgentExecutionError,
+    AgentRuntimeAdmission,
     SqlAlchemyAgentExecutionRepository,
 )
+from nex_ae_api.multi_step_engine import MultiStepEngineError, SqlAlchemyMultiStepEngine
 from nex_ae_api.semantic_candidate_admission import (
     DeterministicCandidateAdmissionService,
     SemanticCandidateAdmissionError,
@@ -29,6 +33,15 @@ class BackgroundPlanningError(Exception):
 
     def __str__(self) -> str:
         return self.detail
+
+
+_BACKGROUND_RUNTIME_POLICY = {
+    "schema_version": "ae_claimed_work_runtime_policy.v1",
+    "rule_id": "ae.background.claimed_work.v1",
+    "rule_version": "v1",
+    "planning_source_type": "CLAIMED_WORKITEM",
+    "project_authority": "WC_CLAIM_HANDOFF",
+}
 
 
 @dataclass(frozen=True)
@@ -60,9 +73,7 @@ class BackgroundAgentPlanningService:
                 "Background planning requires an admitted execution and durable source.",
             )
         _require_execution_source(execution, planning_source)
-        snapshot = self.semantic_admission.capabilities.get_latest(
-            tenant_id=tenant_id
-        )
+        snapshot = self.semantic_admission.capabilities.get_latest(tenant_id=tenant_id)
         if snapshot is None:
             raise BackgroundPlanningError(
                 "ae.background_planning_capability_snapshot_missing",
@@ -91,9 +102,7 @@ class BackgroundAgentPlanningService:
             for field_name in ("artifact_refs", "evidence_refs")
             for item in planning_source[field_name]
         ][:32]
-        trusted_mode, retrieval_enabled = _trusted_execution_profile(
-            planning_source
-        )
+        trusted_mode, retrieval_enabled = _trusted_execution_profile(planning_source)
         try:
             return self.semantic_admission.admit_and_compile(
                 SemanticCandidateAdmissionRequest(
@@ -133,6 +142,113 @@ class BackgroundAgentPlanningService:
             raise BackgroundPlanningError(
                 exc.error_code, exc.detail, exc.retryable
             ) from exc
+
+
+@dataclass(frozen=True)
+class InstalledClaimHandoffAdmission:
+    """Acknowledge a WC handoff only after durable planning and scheduling."""
+
+    admission: AgentExecutionAdmissionService = field(repr=False)
+    planning: BackgroundAgentPlanningService = field(repr=False)
+    scheduler: SqlAlchemyMultiStepEngine = field(repr=False)
+    clock: Callable[[], str] = field(default=lambda: _utc_now(), repr=False)
+
+    def admit_claimed_work(
+        self,
+        *,
+        event_id: str,
+        requester_ref: str,
+        handoff: Mapping[str, Any],
+        planning_source: Mapping[str, Any],
+    ) -> AgentRuntimeAdmission:
+        admitted = self.admission.admit_claimed_work(
+            event_id=event_id,
+            requester_ref=requester_ref,
+            handoff=handoff,
+            planning_source=planning_source,
+        )
+        execution = admitted.execution
+        if execution is None:
+            raise AgentExecutionError(
+                "ae.claim_handoff_execution_missing",
+                "Claim handoff admission did not return a durable execution.",
+                True,
+            )
+        tenant_id = str(execution.get("tenant_id") or "").strip()
+        execution_id = str(execution.get("agent_execution_id") or "").strip()
+        if not tenant_id or not execution_id:
+            raise AgentExecutionError(
+                "ae.claim_handoff_execution_invalid",
+                "Claim handoff admission returned invalid execution identity.",
+            )
+        try:
+            planned = self.planning.plan_claimed_execution(
+                tenant_id=tenant_id,
+                execution_id=execution_id,
+                runtime_policy_ref=background_runtime_policy_ref(),
+                request_id=f"claim-handoff:{event_id}",
+                trace_id=_trace_id(execution),
+            )
+            if (
+                planned.status != "COMPILED"
+                or planned.agent_execution_id != execution_id
+                or not planned.executable_plan_id
+            ):
+                raise AgentExecutionError(
+                    "ae.claim_handoff_plan_not_compiled",
+                    "Claim handoff did not produce an executable plan.",
+                )
+            self.scheduler.schedule_next(
+                tenant_id=tenant_id,
+                execution_id=execution_id,
+                now=self.clock(),
+            )
+        except BackgroundPlanningError as exc:
+            raise AgentExecutionError(
+                exc.error_code, exc.detail, exc.retryable
+            ) from exc
+        except MultiStepEngineError as exc:
+            raise AgentExecutionError(
+                exc.error_code, exc.detail, exc.retryable
+            ) from exc
+        return admitted
+
+
+def build_installed_claim_handoff_admission(
+    *,
+    agent_runtime: Any,
+    semantic_runtime: Any,
+    session_factory: Any,
+) -> InstalledClaimHandoffAdmission | None:
+    admission = getattr(agent_runtime, "admission", None)
+    jobs = getattr(agent_runtime, "jobs", None)
+    semantic_service = getattr(semantic_runtime, "service", None)
+    if (
+        getattr(agent_runtime, "mode", None) != "required"
+        or getattr(semantic_runtime, "mode", None) != "required"
+        or admission is None
+        or jobs is None
+        or semantic_service is None
+        or session_factory is None
+    ):
+        return None
+    executions = SqlAlchemyAgentExecutionRepository(session_factory)
+    return InstalledClaimHandoffAdmission(
+        admission=admission,
+        planning=BackgroundAgentPlanningService(
+            semantic_admission=semantic_service,
+            executions=executions,
+        ),
+        scheduler=SqlAlchemyMultiStepEngine(session_factory, jobs),
+    )
+
+
+def background_runtime_policy_ref() -> dict[str, str]:
+    return {
+        "rule_id": _BACKGROUND_RUNTIME_POLICY["rule_id"],
+        "rule_version": _BACKGROUND_RUNTIME_POLICY["rule_version"],
+        "rule_hash": semantic_sha256_hash_ref(_BACKGROUND_RUNTIME_POLICY),
+    }
 
 
 @dataclass(frozen=True)
@@ -211,16 +327,22 @@ def _resource_ref(value: Mapping[str, Any]) -> dict[str, Any]:
         "system": "nex-wc",
         "resource_type": str(value["entity_type"]),
         "resource_id": str(value["entity_id"]),
-        **({"version": str(value["version"])} if value.get("version") is not None else {}),
+        **(
+            {"version": str(value["version"])}
+            if value.get("version") is not None
+            else {}
+        ),
     }
 
 
 def _trace_id(execution: Mapping[str, Any]) -> str:
     return hashlib.sha256(
-        f"{execution['tenant_id']}|{execution['agent_execution_id']}|{execution['correlation_id']}".encode(
-            "utf-8"
-        )
+        f"{execution['tenant_id']}|{execution['agent_execution_id']}|{execution['correlation_id']}".encode()
     ).hexdigest()[:32]
+
+
+def _utc_now() -> str:
+    return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
 
 def _trusted_execution_profile(

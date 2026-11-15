@@ -37,6 +37,7 @@ from nex_ae_api.artifacts import (
     register_artifact_handoff_routes,
 )
 from nex_ae_api.auth_sessions import register_auth_session_routes
+from nex_ae_api.background_planning import build_installed_claim_handoff_admission
 from nex_ae_api.chat import register_chat_routes
 from nex_ae_api.claim_handoff_api import register_claim_handoff_routes
 from nex_ae_api.documents import register_document_library_routes
@@ -190,10 +191,6 @@ AE_AGENT_RUNTIME = attach_agent_runtime_foundation(
     SERVICE_PERSISTENCE,
     application=app.state.ae_chat_application_service,
 )
-register_claim_handoff_routes(
-    app,
-    admission=AE_AGENT_RUNTIME.admission,
-)
 AE_WORK_RESULT_EVENTS = (
     SqlAlchemyWorkResultEventService(
         SERVICE_PERSISTENCE.api_session_factory,
@@ -261,6 +258,16 @@ AE_SEMANTIC_CANDIDATE_ADMISSION = attach_semantic_candidate_admission(
     SERVICE_PERSISTENCE,
     AE_AGENT_RUNTIME,
     prompt_store=AE_PROMPT_STORE,
+)
+AE_INSTALLED_CLAIM_HANDOFF = build_installed_claim_handoff_admission(
+    agent_runtime=AE_AGENT_RUNTIME,
+    semantic_runtime=AE_SEMANTIC_CANDIDATE_ADMISSION,
+    session_factory=SERVICE_PERSISTENCE.api_session_factory,
+)
+app.state.ae_installed_claim_handoff = AE_INSTALLED_CLAIM_HANDOFF
+register_claim_handoff_routes(
+    app,
+    admission=AE_INSTALLED_CLAIM_HANDOFF,
 )
 register_ae_web_operations_routes(
     app,
