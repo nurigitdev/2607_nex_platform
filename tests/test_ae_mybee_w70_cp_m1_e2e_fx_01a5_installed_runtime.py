@@ -86,6 +86,32 @@ def test_verified_product_release_profile_is_fail_closed_and_ready(
         "runtime_profile": VERIFIED_PRODUCT_RELEASE_PROFILE,
         "admission_hash": "sha256:912229dfc42e881e28418af9289c1a58b99677cb4e46b7975677725d2b98edc4",
         "activation_hash": "sha256:54b7d13968adc430101095bb03581bdb453537a348babad9e690d2037fcfbe29",
+        "transaction_preparation": {
+            "schema_version": "ae.m1_transaction_preparation_runtime.v1",
+            "status": "READY",
+            "provider_service_id": "nex-eos",
+            "adapter_id": "MYBEE.M1.AUTHORITATIVE_TRANSACTION_PREPARATION",
+            "adapter_version": "1.0.0",
+            "adapter_source_identity": (
+                "mybee:m1-preparation:"
+                "MYBEE.M1.AUTHORITATIVE_TRANSACTION_PREPARATION:1.0.0:"
+                "sha256:d6a3758b86a5deaa8a6cf187fefccd2908c045d85a9e113de47cbce56681b5f5"
+            ),
+            "operations": [
+                "BUSINESS.DOCUMENT_APPROVED.GET",
+                "FINANCE.ACCOUNTING_APPROVAL.REQUEST",
+                "FINANCE.VOUCHER_CANDIDATE.CREATE_V2",
+                "FINANCE.VOUCHER_CANDIDATE.VALIDATE",
+                "FINANCE.VOUCHER_CANDIDATE.REVIEW_GET",
+                "FINANCE.VOUCHER_POSTING.ADMIT",
+            ],
+            "timeout_seconds": 15.0,
+            "content_included": False,
+            "secret_included": False,
+            "readiness_hash": (
+                "sha256:a60b4e71bde65c32d1cdc4efcd11a82707429ee96d41918acf2c5b008c3e4045"
+            ),
+        },
     }
 
     drifted = json.loads(
@@ -821,10 +847,13 @@ def test_canonical_oci_and_compose_select_same_verified_release() -> None:
         "tool_catalog.v1.json",
     ):
         assert expected in compose
-    assert compose.count(
-        "/app/deployment/product/repository/deployment/environments/"
-        "ae-product-capability-registry.mybee-m1.v2.json"
-    ) == 2
+    assert (
+        compose.count(
+            "/app/deployment/product/repository/deployment/environments/"
+            "ae-product-capability-registry.mybee-m1.v2.json"
+        )
+        == 2
+    )
     assert "golden-a-selection-freeze.v1.json" not in compose
     assert "/app/deployment/environments/ae-product-capability-registry" not in compose
     assert "/app/deployment/product/config/golden-a-selection-freeze" not in compose

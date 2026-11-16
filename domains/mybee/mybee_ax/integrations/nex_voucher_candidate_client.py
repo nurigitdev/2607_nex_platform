@@ -18,6 +18,7 @@ from urllib.request import Request, urlopen
 from nex_runtime.semantic_hashes import (
     canonical_json,
     nsl_write_payload_hash_ref,
+    semantic_sha256_hash_ref,
     validate_hash_ref,
 )
 
@@ -35,9 +36,13 @@ from .nex_approval_client import (
 CREATE_OPERATION = "FINANCE.VOUCHER_CANDIDATE.CREATE_V2"
 VALIDATE_OPERATION = "FINANCE.VOUCHER_CANDIDATE.VALIDATE"
 REVIEW_GET_OPERATION = "FINANCE.VOUCHER_CANDIDATE.REVIEW_GET"
+POSTING_ADMISSION_OPERATION = "FINANCE.VOUCHER_POSTING.ADMIT"
 CREATE_PATH = "/internal/v2/finance/voucher-candidates"
 VALIDATE_PATH = "/internal/v2/finance/voucher-candidates/{candidate_id}/validation"
 REVIEW_PATH = "/internal/v2/finance/voucher-candidates/{candidate_id}/review"
+POSTING_ADMISSION_PATH = (
+    "/internal/v2/finance/voucher-candidates/{candidate_id}/posting-admission"
+)
 
 _SCOPED_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:@/-]{0,255}$")
 _CODE = re.compile(r"^[A-Z][A-Z0-9_]{0,31}$")
@@ -254,6 +259,35 @@ class NexVoucherCandidateClient:
             self._transport.send(request),
             tenant_id=request.tenant_id,
             candidate_id=candidate_id,
+        )
+
+    def admit_posting(
+        self,
+        *,
+        tenant_id: str,
+        subject_id: str,
+        company_id: str,
+        candidate_id: str,
+        expected_candidate_version: int,
+        expected_candidate_revision: int,
+        expected_candidate_hash: str,
+        accounting_approval_evidence_id: str,
+        correlation_id: str,
+    ) -> Mapping[str, Any]:
+        request = build_posting_admission_request(
+            tenant_id=tenant_id,
+            subject_id=subject_id,
+            company_id=company_id,
+            candidate_id=candidate_id,
+            expected_candidate_version=expected_candidate_version,
+            expected_candidate_revision=expected_candidate_revision,
+            expected_candidate_hash=expected_candidate_hash,
+            accounting_approval_evidence_id=accounting_approval_evidence_id,
+            correlation_id=correlation_id,
+        )
+        return admit_posting_admission_result(
+            self._transport.send(request),
+            request=request,
         )
 
 
@@ -539,6 +573,146 @@ def build_candidate_review_request(
         subject_id=draft.preparer_subject_id,
         payload=request.payload,
     )
+
+
+def build_posting_admission_request(
+    *,
+    tenant_id: str,
+    subject_id: str,
+    company_id: str,
+    candidate_id: str,
+    expected_candidate_version: int,
+    expected_candidate_revision: int,
+    expected_candidate_hash: str,
+    accounting_approval_evidence_id: str,
+    correlation_id: str,
+) -> VoucherCandidateProviderRequest:
+    admitted_candidate_id = _uuid("candidate_id", candidate_id)
+    return VoucherCandidateProviderRequest(
+        method="POST",
+        path=POSTING_ADMISSION_PATH.format(candidate_id=admitted_candidate_id),
+        operation_id=POSTING_ADMISSION_OPERATION,
+        tenant_id=_scoped_id("tenant_id", tenant_id, 128),
+        subject_id=_scoped_id("subject_id", subject_id, 128),
+        payload=MappingProxyType(
+            {
+                "schema_version": "eos_accounting_posting_admission_request.v1",
+                "tenant_id": _scoped_id("tenant_id", tenant_id, 128),
+                "company_id": _uuid("company_id", company_id),
+                "expected_candidate_version": _positive_int(
+                    "expected_candidate_version", expected_candidate_version
+                ),
+                "expected_candidate_revision": _positive_int(
+                    "expected_candidate_revision", expected_candidate_revision
+                ),
+                "expected_candidate_hash": _hash_ref(
+                    "expected_candidate_hash", expected_candidate_hash
+                ),
+                "accounting_approval_evidence_id": _uuid(
+                    "accounting_approval_evidence_id",
+                    accounting_approval_evidence_id,
+                ),
+                "correlation_id": _scoped_id("correlation_id", correlation_id, 256),
+            }
+        ),
+    )
+
+
+def admit_posting_admission_result(
+    value: object,
+    *,
+    request: VoucherCandidateProviderRequest,
+) -> Mapping[str, Any]:
+    fields = {
+        "schema_version",
+        "operation_id",
+        "admission_id",
+        "tenant_id",
+        "company_id",
+        "candidate_id",
+        "candidate_version",
+        "candidate_revision",
+        "candidate_hash",
+        "project_id",
+        "project_code",
+        "accounting_approval_evidence_id",
+        "accounting_proof_hash",
+        "approval_case_id",
+        "approver_subject_id",
+        "validation_hash",
+        "review_hash",
+        "submitted_event_id",
+        "fresh_oa_decision_ref",
+        "fresh_oa_revision_hash",
+        "fresh_project_authorization",
+        "snapshot_hash",
+        "correlation_id",
+        "admitted_at",
+        "expires_at",
+        "admission_hash",
+    }
+    if (
+        not isinstance(value, Mapping)
+        or set(value) != fields
+        or value.get("schema_version") != "eos_accounting_posting_admission.v1"
+        or value.get("operation_id") != "FINANCE.VOUCHER.APPROVE_AND_POST.ADMISSION"
+    ):
+        raise _invalid(
+            "MYBEE_POSTING_ADMISSION_INVALID",
+            "EOS Posting admission fields drifted",
+        )
+    result = dict(value)
+    payload = request.payload
+    assert payload is not None
+    expected = {
+        "tenant_id": request.tenant_id,
+        "company_id": payload["company_id"],
+        "candidate_id": request.path.split("/")[-2],
+        "candidate_version": payload["expected_candidate_version"],
+        "candidate_revision": payload["expected_candidate_revision"],
+        "candidate_hash": payload["expected_candidate_hash"],
+        "accounting_approval_evidence_id": payload["accounting_approval_evidence_id"],
+        "correlation_id": payload["correlation_id"],
+    }
+    if any(
+        result.get(field) != expected_value
+        for field, expected_value in expected.items()
+    ):
+        raise _conflict(
+            "MYBEE_POSTING_ADMISSION_BINDING_MISMATCH",
+            "EOS Posting admission does not bind the exact Candidate and proof",
+        )
+    admission_hash = _hash_ref("admission_hash", result["admission_hash"])
+    if admission_hash != semantic_sha256_hash_ref(
+        {key: item for key, item in result.items() if key != "admission_hash"}
+    ):
+        raise _conflict(
+            "MYBEE_POSTING_ADMISSION_HASH_MISMATCH",
+            "EOS Posting admission hash does not match its content",
+        )
+    for field in (
+        "admission_id",
+        "project_id",
+        "accounting_approval_evidence_id",
+        "approval_case_id",
+        "submitted_event_id",
+    ):
+        _uuid(field, result[field])
+    for field in (
+        "candidate_hash",
+        "accounting_proof_hash",
+        "fresh_oa_revision_hash",
+        "snapshot_hash",
+    ):
+        _hash_ref(field, result[field])
+    _timestamp("admitted_at", result["admitted_at"])
+    expires_at = _timestamp("expires_at", result["expires_at"])
+    if expires_at <= _timestamp("admitted_at", result["admitted_at"]):
+        raise _conflict(
+            "MYBEE_POSTING_ADMISSION_EXPIRED",
+            "EOS Posting admission validity window is invalid",
+        )
+    return MappingProxyType(result)
 
 
 def admit_candidate_create_result(
@@ -1020,6 +1194,12 @@ def _money(field: str, value: object) -> Decimal:
 
 def _is_positive_int(value: object) -> bool:
     return not isinstance(value, bool) and isinstance(value, int) and value > 0
+
+
+def _positive_int(field: str, value: object) -> int:
+    if not _is_positive_int(value):
+        raise _invalid("MYBEE_CANDIDATE_INTEGER_INVALID", f"{field} is invalid")
+    return value
 
 
 def _date_text(field: str, value: object) -> str:

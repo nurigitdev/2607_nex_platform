@@ -100,6 +100,7 @@ from .nex_tool_inventory import (
 )
 from .nex_voucher_candidate_client import (
     CREATE_OPERATION,
+    POSTING_ADMISSION_OPERATION,
     REVIEW_GET_OPERATION,
     VALIDATE_OPERATION,
     HttpVoucherCandidateProviderTransport,
@@ -112,9 +113,11 @@ from .nex_voucher_candidate_client import (
     admit_candidate_create_result,
     admit_candidate_review_projection,
     admit_candidate_validation_result,
+    admit_posting_admission_result,
     build_candidate_create_request,
     build_candidate_review_request,
     build_candidate_validation_request,
+    build_posting_admission_request,
     build_voucher_candidate_draft,
 )
 from .smbs_fx import (
@@ -144,6 +147,7 @@ __all__ = [
     "M1_D12_WORK_CODE_ID",
     "M1_PA_PLAN_SCHEMA_VERSION",
     "M1_SIGNED_SKILL_SCHEMA_VERSION",
+    "POSTING_ADMISSION_OPERATION",
     "PROJECT_PNL_GET_OPERATION",
     "PROJECT_PNL_GET_PATH",
     "REVIEW_GET_OPERATION",
@@ -210,6 +214,7 @@ __all__ = [
     "admit_candidate_create_result",
     "admit_candidate_review_projection",
     "admit_candidate_validation_result",
+    "admit_posting_admission_result",
     "admit_project_pnl_projection",
     "admit_scoped_approval_receipt",
     "build_business_proposal_approval_request",
@@ -217,6 +222,7 @@ __all__ = [
     "build_candidate_review_request",
     "build_candidate_validation_request",
     "build_pa_nsl_invocation_plan",
+    "build_posting_admission_request",
     "build_project_pnl_request",
     "build_scoped_approval_request",
     "build_smbs_fx_import_request",

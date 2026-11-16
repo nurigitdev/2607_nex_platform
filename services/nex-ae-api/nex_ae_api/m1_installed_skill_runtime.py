@@ -27,6 +27,9 @@ from nex_ae_api.controlled_skill_runtime import (
     HttpOaAuthoritySource,
     principal_document,
 )
+from nex_ae_api.m1_transaction_preparation_runtime import (
+    InstalledM1TransactionPreparation,
+)
 from nex_ae_api.nsl_controlled_write_integration import (
     NslControlledWriteIntegration,
     NslControlledWriteRequest,
@@ -113,10 +116,12 @@ class M1InstalledSkillRuntime:
         *,
         catalog: VerifiedProductSkillCatalog,
         config: M1InstalledSkillRuntimeConfig,
+        transaction_preparation: InstalledM1TransactionPreparation | None = None,
     ) -> None:
         self._sessions = sessions
         self._catalog = catalog
         self._config = config
+        self.transaction_preparation = transaction_preparation
         self._tool_catalog = load_installed_nsl_tool_catalog(config.tool_catalog_path)
         self._packages = {
             selection.capability.capability_id: _VerifiedPackageView(
@@ -156,18 +161,19 @@ class M1InstalledSkillRuntime:
             for selection in catalog.selections
             if selection.operation_adapter.operation_semantics == "WRITE"
         }
-        self.package_readiness = MappingProxyType(
-            {
-                "status": "READY",
-                "backend_profile": M1_BACKEND_PROFILE,
-                "release_id": catalog.release_id,
-                "release_hash": catalog.release_hash,
-                "catalog_hash": catalog.catalog_hash,
-                "capabilities": tuple(
-                    item.capability.capability_id for item in catalog.selections
-                ),
-            }
-        )
+        readiness = {
+            "status": "READY",
+            "backend_profile": M1_BACKEND_PROFILE,
+            "release_id": catalog.release_id,
+            "release_hash": catalog.release_hash,
+            "catalog_hash": catalog.catalog_hash,
+            "capabilities": tuple(
+                item.capability.capability_id for item in catalog.selections
+            ),
+        }
+        if transaction_preparation is not None:
+            readiness["transaction_preparation"] = transaction_preparation.readiness()
+        self.package_readiness = MappingProxyType(readiness)
 
     @property
     def backend_profile(self) -> str:

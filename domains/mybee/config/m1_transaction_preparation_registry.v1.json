@@ -1,0 +1,21 @@
+{
+  "schema_version": "nex.mybee.m1-transaction-preparation-registry.v1",
+  "adapter_id": "MYBEE.M1.AUTHORITATIVE_TRANSACTION_PREPARATION",
+  "adapter_version": "1.0.0",
+  "implementation_ref": "mybee_ax.orchestration.m1_transaction_preparation:M1TransactionPreparationAdapter",
+  "operations": [
+    "BUSINESS.DOCUMENT_APPROVED.GET",
+    "FINANCE.ACCOUNTING_APPROVAL.REQUEST",
+    "FINANCE.VOUCHER_CANDIDATE.CREATE_V2",
+    "FINANCE.VOUCHER_CANDIDATE.VALIDATE",
+    "FINANCE.VOUCHER_CANDIDATE.REVIEW_GET",
+    "FINANCE.VOUCHER_POSTING.ADMIT"
+  ],
+  "account_policy": {
+    "debit_semantic_key": "MB-COA-OTHER-EXPENSE",
+    "credit_semantic_key": "MB-COA-ACCOUNTS-PAYABLE-FX"
+  },
+  "source_kind": "EXPENSE_CLAIM",
+  "business_work_code": "FL0004011",
+  "registry_hash": "sha256:d6a3758b86a5deaa8a6cf187fefccd2908c045d85a9e113de47cbce56681b5f5"
+}

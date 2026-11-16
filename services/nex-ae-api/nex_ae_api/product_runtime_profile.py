@@ -11,6 +11,9 @@ from nex_ae_api.m1_installed_skill_runtime import (
     M1InstalledSkillRuntime,
     M1InstalledSkillRuntimeConfig,
 )
+from nex_ae_api.m1_transaction_preparation_runtime import (
+    build_installed_m1_transaction_preparation,
+)
 from nex_ae_api.mybee_m1_skill_runtime import (
     build_mybee_m1_runtime_admission,
     build_mybee_m1_verified_skill_catalog,
@@ -67,6 +70,7 @@ def _build_verified_product_release_profile(
         sessions,
         catalog=build_mybee_m1_verified_skill_catalog(environ),
         config=load_verified_product_runtime_config(environ),
+        transaction_preparation=build_installed_m1_transaction_preparation(environ),
     )
     registry = default_p6_executor_registry(
         lambda _context: {},
