@@ -27,6 +27,7 @@ from nex_ae_api.controlled_skill_runtime import (
     HttpOaAuthoritySource,
     principal_document,
 )
+from nex_ae_api.m1_plan_materialization import materialize_m1_transaction_plan
 from nex_ae_api.m1_transaction_preparation_runtime import (
     InstalledM1TransactionPreparation,
 )
@@ -193,6 +194,25 @@ class M1InstalledSkillRuntime:
         raise ProductSkillCatalogError(
             "PRODUCT_RUNTIME_HANDLER_REQUIRED",
             "Installed product execution requires the worker handler.",
+        )
+
+    def materialize_transaction_plan(
+        self,
+        *,
+        work_intent: Mapping[str, Any],
+        agent_context: Mapping[str, Any],
+        capability_snapshot: Mapping[str, Any],
+        preparation_checkpoint: Mapping[str, Any],
+    ):
+        return materialize_m1_transaction_plan(
+            work_intent=work_intent,
+            agent_context=agent_context,
+            capability_snapshot=capability_snapshot,
+            preparation_checkpoint=preparation_checkpoint,
+            installed_capabilities={
+                item.capability.capability_id: item.capability.capability
+                for item in self._catalog.selections
+            },
         )
 
     def initial(

@@ -41,8 +41,8 @@ def test_real_inventory_classifies_every_ae_module_and_freezes_baseline() -> Non
     )
 
     assert report["status"] == "PASS"
-    assert report["module_count"] == 178
-    assert report["active_import_module_count"] == 71
+    assert report["module_count"] == 179
+    assert report["active_import_module_count"] == 72
     assert report["coverage_module_count"] == 0
     assert report["checks"] == {
         "manifest_hash_valid": True,
@@ -56,11 +56,11 @@ def test_real_inventory_classifies_every_ae_module_and_freezes_baseline() -> Non
     assert {
         scope: value["module_count"] for scope, value in report["scopes"].items()
     } == {
-        "ACTIVE_PRODUCT": 168,
+        "ACTIVE_PRODUCT": 169,
         "ACTIVE_COMPATIBILITY": 5,
         "HISTORICAL_QUARANTINE": 5,
     }
-    assert report["scopes"]["ACTIVE_PRODUCT"]["active_import_module_count"] == 71
+    assert report["scopes"]["ACTIVE_PRODUCT"]["active_import_module_count"] == 72
     assert report["scopes"]["ACTIVE_COMPATIBILITY"]["active_import_module_count"] == 0
     assert report["scopes"]["HISTORICAL_QUARANTINE"]["active_import_module_count"] == 0
     assert report["current_coverage"] is None
@@ -79,10 +79,10 @@ def test_real_inventory_classifies_every_ae_module_and_freezes_baseline() -> Non
         "ret02a_statement_target": 96.25,
         "ret02a_branch_target": 94.5,
     }
-    assert len({item["path"] for item in report["modules"]}) == 178
+    assert len({item["path"] for item in report["modules"]}) == 179
     assert summary_line(report) == (
-        "ae_coverage_ownership=pass modules=178 active_graph=71 "
-        "product=168 compatibility=5 historical=5 coverage=not-provided "
+        "ae_coverage_ownership=pass modules=179 active_graph=72 "
+        "product=169 compatibility=5 historical=5 coverage=not-provided "
         "conflicts=0"
     )
 
@@ -193,7 +193,7 @@ def test_inventory_fails_gate_when_coverage_omits_owned_modules() -> None:
 
     assert report["status"] == "FAIL"
     assert report["checks"]["coverage_inventory_complete"] is False
-    assert len(report["coverage_unreported_modules"]) == 177
+    assert len(report["coverage_unreported_modules"]) == 178
     assert (
         "services/nex-ae-api/nex_ae_api/__init__.py"
         not in report["coverage_unreported_modules"]

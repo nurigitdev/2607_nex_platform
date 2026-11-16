@@ -487,7 +487,7 @@ def test_controlled_write_actual_wheel_postgres_gate() -> None:
     from nsl.idempotency import IdempotencyConflictError
     from nsl.write_intent import WriteIntent, WriteIntentError
 
-    assert importlib.metadata.version("nex-skill-language") == "0.2.0"
+    assert importlib.metadata.version("nex-skill-language") == "0.2.1"
     assert make_url(AE_DATABASE_URL).database == "nex_ae_test"
     assert make_url(EOS_DATABASE_URL).database == "nex_eos_test"
     readiness = json.loads(

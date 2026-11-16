@@ -572,6 +572,7 @@ def _checkpoint(*, stage, context, authority, identities, references, adapter):
         "stage": stage,
         "business_context_hash": context["context_hash"],
         "authority_hash": authority["authority_hash"],
+        "authority": dict(authority),
         "adapter_identity": adapter.source_identity,
         "identities": dict(identities),
         "references": dict(references),
