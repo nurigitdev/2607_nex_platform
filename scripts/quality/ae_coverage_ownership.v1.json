@@ -1,0 +1,83 @@
+{
+  "schema_version": "ae.coverage_ownership.v1",
+  "inventory_id": "mybee-w70-ae-coverage-ownership",
+  "inventory_version": 1,
+  "effective_at": "2026-11-16T00:00:00Z",
+  "source_root": "services/nex-ae-api/nex_ae_api",
+  "default_scope": "ACTIVE_PRODUCT",
+  "scope_overrides": [
+    {
+      "path": "services/nex-ae-api/nex_ae_api/demo_runtime.py",
+      "scope": "ACTIVE_COMPATIBILITY",
+      "rationale": "historical P8 process compatibility entrypoint"
+    },
+    {
+      "path": "services/nex-ae-api/nex_ae_api/golden_a_approval_journey.py",
+      "scope": "ACTIVE_COMPATIBILITY",
+      "rationale": "historical Golden A acceptance replay surface"
+    },
+    {
+      "path": "services/nex-ae-api/nex_ae_api/p8_demo_controlled_skill.py",
+      "scope": "ACTIVE_COMPATIBILITY",
+      "rationale": "historical P8 controlled-WRITE replay surface"
+    },
+    {
+      "path": "services/nex-ae-api/nex_ae_api/p8_demo_runtime_composition.py",
+      "scope": "ACTIVE_COMPATIBILITY",
+      "rationale": "historical P8 composition wrapper rebound to canonical runtime"
+    },
+    {
+      "path": "services/nex-ae-api/nex_ae_api/p8_demo_semantic_activation.py",
+      "scope": "ACTIVE_COMPATIBILITY",
+      "rationale": "historical P8 semantic activation compatibility surface"
+    },
+    {
+      "path": "services/nex-ae-api/nex_ae_api/domain_intent_products.py",
+      "scope": "HISTORICAL_QUARANTINE",
+      "rationale": "hash-pinned Golden A product mapping history"
+    },
+    {
+      "path": "services/nex-ae-api/nex_ae_api/finance_golden_a_activation.py",
+      "scope": "HISTORICAL_QUARANTINE",
+      "rationale": "hash-pinned Golden A activation history"
+    },
+    {
+      "path": "services/nex-ae-api/nex_ae_api/golden_a_planning.py",
+      "scope": "HISTORICAL_QUARANTINE",
+      "rationale": "hash-pinned Golden A planning history"
+    },
+    {
+      "path": "services/nex-ae-api/nex_ae_api/mybee_product_consumer.py",
+      "scope": "HISTORICAL_QUARANTINE",
+      "rationale": "hash-pinned Golden A MyBee consumer history"
+    },
+    {
+      "path": "services/nex-ae-api/nex_ae_api/product_controlled_skill.py",
+      "scope": "HISTORICAL_QUARANTINE",
+      "rationale": "hash-pinned Golden A mixed runtime history"
+    }
+  ],
+  "quarantine_manifest_ref": "deployment/retirement/golden-a-historical-quarantine.v1.json",
+  "canonical_deployment_inputs": [
+    "deployment/compose/canonical-platform.override.yaml",
+    "deployment/oci/canonical-platform-ae-runtime.Containerfile",
+    "scripts/deployment/build_canonical_platform_ae_runtime_image.py",
+    "services/nex-ae-api/nex_ae_api/agent_runtime_process.py"
+  ],
+  "baseline": {
+    "slice": "CP-M1-GA-RET-02A.0",
+    "source_commit": "46de02aa",
+    "coverage_ref": "reports/quality/mybee-w70-ga-ret-02a0-ae.coverage.json",
+    "statements": 39011,
+    "covered_statements": 37411,
+    "statement_coverage": 95.89859270462178,
+    "branches": 12404,
+    "covered_branches": 11666,
+    "branch_coverage": 94.05030635278942,
+    "canonical_statement_floor": 95.0,
+    "canonical_branch_floor": 94.0,
+    "ret02a_statement_target": 96.25,
+    "ret02a_branch_target": 94.5
+  },
+  "content_hash": "sha256:6db4cc8c63b89af0d4cc8309a447424e6a43c032663c477ff2d7d302122626f3"
+}

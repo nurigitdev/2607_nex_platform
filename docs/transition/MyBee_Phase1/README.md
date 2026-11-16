@@ -145,6 +145,15 @@ walks the recursive local import graph instead of checking only direct source
 strings. No database migration, public API change, or remote provider was
 required. The next boundary is `CP-M1-GA-RET-02A.1`.
 
+`CP-M1-GA-RET-02A.1` evidence is recorded in
+[`mybee_phase1_w70_cp_m1_ga_ret_02a1_coverage_ownership_inventory.md`](../../slices/mybee_phase1_w70_cp_m1_ga_ret_02a1_coverage_ownership_inventory.md).
+It classifies all 176 AE Python modules using a semantic-hash-bound manifest,
+separates ownership from canonical import reachability, and proves that the
+five hash-pinned Golden A sources are absent from both the active graph and
+canonical deployment inputs. Aggregate coverage scope and thresholds remain
+unchanged. The next boundary is `CP-M1-GA-RET-02A.2` explicit AE test
+ownership reconciliation.
+
 `W70-S8-01A` implementation evidence is recorded in
 [`mybee_phase1_w70_s8_01a_tool_inventory.md`](../../slices/mybee_phase1_w70_s8_01a_tool_inventory.md).
 It closes the canonical Tool inventory, operation identity, compatibility
