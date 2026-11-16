@@ -229,6 +229,13 @@ unverified Batch requests, and requires exact replay and restart stability.
 `.6` remains paused until this protected PostgreSQL Gate closes; afterward its
 only admitted sequence is allocation RUN, VERIFY, P&L REFRESH, and GET.
 
+`CP-M1-E2E-FX-01B.6A.1` implementation evidence is recorded in
+[`mybee_phase1_w70_cp_m1_e2e_fx_01b6a1_refresh_contract_source_resolver.md`](../../slices/mybee_phase1_w70_cp_m1_e2e_fx_01b6a1_refresh_contract_source_resolver.md).
+It closes the canonical protected contract and the mutation-free EOS source
+resolver over verified Batch, Line, SourcePool, and Project authority. The
+route and projector remain intentionally inactive until `.6A.2`; actual
+PostgreSQL protected evidence remains assigned to `.6A.3`.
+
 `W70-S8-01A` implementation evidence is recorded in
 [`mybee_phase1_w70_s8_01a_tool_inventory.md`](../../slices/mybee_phase1_w70_s8_01a_tool_inventory.md).
 It closes the canonical Tool inventory, operation identity, compatibility

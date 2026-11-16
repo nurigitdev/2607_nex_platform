@@ -133,6 +133,7 @@ from .project_pnl_projector import (
     build_eos_project_pnl_projector,
 )
 from .project_pnl_query import EosProjectPnlQueryService
+from .project_pnl_refresh import EosAllocationPnlRefreshSourceResolver
 from .project_work_assignments import EosProjectWorkAssignmentService
 from .project_work_codes import EosProjectBusinessService
 from .projects import SqlAlchemyEosProjectRepository
@@ -193,6 +194,7 @@ class EosDependencies:
     allocation_plan_service: EosAllocationPlanService | None
     cost_allocation_service: EosCostAllocationService | None
     allocation_reconciliation_service: EosAllocationReconciliationService | None
+    project_pnl_refresh_source_resolver: EosAllocationPnlRefreshSourceResolver | None
     budget_service: EosBudgetService | None
     project_budget_binding_service: EosProjectBudgetBindingService | None
     project_pnl_repository: SqlAlchemyEosProjectPnlRepository | None
@@ -553,6 +555,15 @@ def build_eos_dependencies(
         if database_runtime is not None
         else None
     )
+    project_pnl_refresh_source_resolver = (
+        EosAllocationPnlRefreshSourceResolver(
+            session_factory=database_runtime.session_factory,
+            reconciliation=allocation_reconciliation_service,
+        )
+        if database_runtime is not None
+        and allocation_reconciliation_service is not None
+        else None
+    )
     budget_service = (
         EosBudgetService(
             repository=SqlAlchemyEosBudgetRepository(database_runtime.session_factory),
@@ -887,6 +898,7 @@ def build_eos_dependencies(
         allocation_plan_service=allocation_plan_service,
         cost_allocation_service=cost_allocation_service,
         allocation_reconciliation_service=allocation_reconciliation_service,
+        project_pnl_refresh_source_resolver=project_pnl_refresh_source_resolver,
         budget_service=budget_service,
         project_budget_binding_service=project_budget_binding_service,
         project_pnl_repository=project_pnl_repository,

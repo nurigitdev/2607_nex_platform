@@ -36,6 +36,11 @@
       "schema": "schemas/service/nex_eos/cost_source_pool_admit.v1.schema.json"
     },
     {
+      "name": "eos_project_pnl_refresh_from_allocation_created",
+      "path": "examples/service/eos_project_pnl_refresh_from_allocation.created.json",
+      "schema": "schemas/service/nex_eos/project_pnl_refresh_from_allocation.v1.schema.json"
+    },
+    {
       "name": "eos_project_verification_request_valid",
       "path": "examples/service/eos_project_verification_request.valid.json",
       "schema": "schemas/service/nex_eos/project_verification_request.v1.schema.json"

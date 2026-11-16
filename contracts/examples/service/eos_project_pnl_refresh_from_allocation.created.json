@@ -1,0 +1,31 @@
+{
+  "schema_version": "eos_project_pnl_refresh_from_allocation.v1",
+  "operation": "FINANCE.PROJECT_PNL.REFRESH_FROM_ALLOCATION",
+  "tenant_id": "VO00",
+  "company_id": "73000000-0000-4000-8000-000000000001",
+  "batch_id": "73000000-0000-4000-8000-000000000005",
+  "period_id": "73000000-0000-4000-8000-000000000002",
+  "allocation_reconciliation_hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "disposition": "CREATED",
+  "projections": [
+    {
+      "project_id": "73000000-0000-4000-8000-000000000010",
+      "project_code": "VO00D260001",
+      "projection_id": "73000000-0000-4000-8000-000000000030",
+      "projection_version": 1,
+      "projection_hash": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "reconciliation_status": "VERIFIED",
+      "freshness_status": "CURRENT"
+    },
+    {
+      "project_id": "73000000-0000-4000-8000-000000000011",
+      "project_code": "VO00D260002",
+      "projection_id": "73000000-0000-4000-8000-000000000031",
+      "projection_version": 1,
+      "projection_hash": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "reconciliation_status": "VERIFIED",
+      "freshness_status": "CURRENT"
+    }
+  ],
+  "refresh_hash": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+}

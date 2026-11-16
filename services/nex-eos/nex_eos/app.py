@@ -113,6 +113,9 @@ def create_eos_app(
     app.state.eos_allocation_reconciliation_service = (
         dependencies.allocation_reconciliation_service
     )
+    app.state.eos_project_pnl_refresh_source_resolver = (
+        dependencies.project_pnl_refresh_source_resolver
+    )
     app.state.eos_budget_service = dependencies.budget_service
     app.state.eos_project_budget_binding_service = (
         dependencies.project_budget_binding_service

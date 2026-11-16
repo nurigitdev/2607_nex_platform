@@ -2100,6 +2100,52 @@ paths:
         "409": {description: BusinessOperation is not a Cost Allocation RUN.}
         "422": {description: Verification identity is malformed.}
         "503": {description: Allocation reconciliation persistence is unavailable.}
+  /internal/v2/finance/cost-allocation-batches/{batch_id}:refresh-project-pnl:
+    post:
+      operationId: FINANCE.PROJECT_PNL.REFRESH_FROM_ALLOCATION
+      tags: [Finance, Project]
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes: [service:call]
+      x-nex-business-scope: finance:project-pnl:refresh
+      x-nex-side-effect-free: false
+      x-nex-request-selector: BATCH_ID_ONLY
+      parameters:
+        - name: batch_id
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+        - name: X-NeX-Tenant-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+        - name: X-NeX-Company-Id
+          in: header
+          required: true
+          schema: {type: string, format: uuid}
+        - name: X-NeX-Correlation-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+      responses:
+        "201":
+          description: Immutable Project P&L projections created for the verified AllocationBatch.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectPnlRefreshFromAllocation"
+        "200":
+          description: Exact replay of the AllocationBatch-bound Project P&L refresh.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectPnlRefreshFromAllocation"
+        "400": {description: Request body or query parameters are not admitted.}
+        "401": {description: Service claim is missing or invalid.}
+        "404": {description: AllocationBatch is absent from tenant and company scope.}
+        "409": {description: "AllocationBatch is unverified, reversed, or has lineage drift."}
+        "422": {description: Refresh identity is malformed.}
+        "503": {description: Allocation verification or Project P&L persistence is unavailable.}
   /internal/v2/finance/business-operations/{business_operation_id}/journal-status:
     get:
       operationId: FINANCE.JOURNAL.RECONCILE
@@ -2686,6 +2732,9 @@ components:
     CostAllocationReconciliation:
       type: object
       x-nex-canonical-json-schema: schemas/service/nex_eos/cost_allocation_reconciliation.v1.schema.json
+    ProjectPnlRefreshFromAllocation:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_eos/project_pnl_refresh_from_allocation.v1.schema.json
     CostAllocationCommittedEvent:
       type: object
       x-nex-canonical-json-schema: schemas/service/nex_eos/cost_allocation_committed_event.v1.schema.json
