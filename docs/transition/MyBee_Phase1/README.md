@@ -27,7 +27,8 @@ MyBee office-work AX Service Phase-1 program.
 20. `NeX_MyBee_CP_M1_GA_RET_02A_AE_Coverage_Ownership_and_Margin_Hardening_v1.0.md`
 21. `NeX_MyBee_CP_M1_E2E_FX_01B_Durable_Business_Context_and_M1_Transaction_Orchestration_Closure_v1.0.md`
 22. `NeX_MyBee_CP_M1_E2E_FX_01B_5A_Approved_Allocation_Plan_Semantic_Resolution_Closure_v1.0.md`
-23. `NeX_MyBee_Post_Wave_UIUX_Compatibility_Performance_Backlog_v1.0.md`
+23. `NeX_MyBee_CP_M1_E2E_FX_01B_6A_EOS_Allocation_to_PnL_Projection_Activation_Boundary_v1.0.md`
+24. `NeX_MyBee_Post_Wave_UIUX_Compatibility_Performance_Backlog_v1.0.md`
 
 The Markdown Slice Plan and its Execution Matrix JSON are one planning set.
 The JSON is machine-readable traceability input, not runtime configuration or
@@ -217,6 +218,16 @@ fixed Plan ID, direct SQL, or release side effect is allowed. Existing Plan
 and Line tables remain the SoR and no migration is allowed by default. `.6`
 remains paused until the actual PostgreSQL resolution Gate binds the exact
 Plan authority to the installed post-write checkpoint.
+
+CP-M1-E2E-FX-01B.6A is the source-backed EOS projection-activation correction
+discovered when `.6` reached the Allocation-to-P&L boundary. It adds the
+protected `FINANCE.PROJECT_PNL.REFRESH_FROM_ALLOCATION` contract, accepts only
+an AllocationBatch ID, and requires EOS to derive the verified period,
+affected Projects, currency, and immutable watermark. It reuses the existing
+projection store without a migration, denies cross-tenant/company and
+unverified Batch requests, and requires exact replay and restart stability.
+`.6` remains paused until this protected PostgreSQL Gate closes; afterward its
+only admitted sequence is allocation RUN, VERIFY, P&L REFRESH, and GET.
 
 `W70-S8-01A` implementation evidence is recorded in
 [`mybee_phase1_w70_s8_01a_tool_inventory.md`](../../slices/mybee_phase1_w70_s8_01a_tool_inventory.md).
