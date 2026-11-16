@@ -25,7 +25,8 @@ MyBee office-work AX Service Phase-1 program.
 18. `NeX_MyBee_W70_CA01_NSL_Tool_Product_Capability_Registry_and_Skill_Pack_Entry_Reconciliation_v1.0.md`
 19. `NeX_MyBee_W70_CA02_Installed_PA_Delegation_and_Multi_Skill_Runtime_Composition_Closure_v1.0.md`
 20. `NeX_MyBee_CP_M1_GA_RET_02A_AE_Coverage_Ownership_and_Margin_Hardening_v1.0.md`
-21. `NeX_MyBee_Post_Wave_UIUX_Compatibility_Performance_Backlog_v1.0.md`
+21. `NeX_MyBee_CP_M1_E2E_FX_01B_Durable_Business_Context_and_M1_Transaction_Orchestration_Closure_v1.0.md`
+22. `NeX_MyBee_Post_Wave_UIUX_Compatibility_Performance_Backlog_v1.0.md`
 
 The Markdown Slice Plan and its Execution Matrix JSON are one planning set.
 The JSON is machine-readable traceability input, not runtime configuration or
@@ -193,6 +194,18 @@ product coverage of `97.1306% / 94.9836%`, and zero historical import or
 deployment conflicts. The original `CP-M1-E2E-FX-01` public M1 E2E is admitted
 to resume through the generalized installed runtime; this admission is not a
 claim that the public journey itself has passed.
+
+CP-M1-E2E-FX-01B is the source-backed transaction-orchestration correction
+discovered when that public M1 E2E resumed. It freezes a typed and hash-bound
+business request context, versions its WorkIntent/delegation/claimed-source
+propagation, productizes proposal and VoucherCandidate preparation through
+existing WC/OA/EOS APIs, materializes signed D12/D04 inputs from authoritative
+service results, and connects verified Journal completion to allocation,
+Project P&L, PA/WC/WA, and IA publication. It prohibits runner-owned product
+transitions and adds no database migration by default. The original
+`CP-M1-E2E-FX-01` remains paused until `01B.1` through `.7`, actual
+PostgreSQL, live Qwen3.5-9B, authenticated Playwright, and the Repository Full
+Gate pass.
 
 `W70-S8-01A` implementation evidence is recorded in
 [`mybee_phase1_w70_s8_01a_tool_inventory.md`](../../slices/mybee_phase1_w70_s8_01a_tool_inventory.md).
