@@ -448,7 +448,7 @@ def test_refresh_contract_schema_example_and_openapi_are_canonical():
     )
 
 
-def test_dependency_composition_exposes_source_resolver_without_route_activation():
+def test_dependency_composition_exposes_inactive_service_and_active_route():
     from nex_eos.app import create_eos_app
     from nex_eos.config import EosSettings
 
@@ -462,7 +462,8 @@ def test_dependency_composition_exposes_source_resolver_without_route_activation
     app = create_eos_app(environ={}, settings=settings)
 
     assert app.state.eos_project_pnl_refresh_source_resolver is None
-    assert not any(
+    assert app.state.eos_project_pnl_refresh_service is None
+    assert any(
         getattr(route, "operation_id", None) == PROJECT_PNL_REFRESH_OPERATION
         for route in app.routes
     )

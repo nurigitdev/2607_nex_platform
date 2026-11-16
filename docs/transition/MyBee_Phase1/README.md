@@ -236,6 +236,14 @@ resolver over verified Batch, Line, SourcePool, and Project authority. The
 route and projector remain intentionally inactive until `.6A.2`; actual
 PostgreSQL protected evidence remains assigned to `.6A.3`.
 
+`CP-M1-E2E-FX-01B.6A.2` implementation evidence is recorded in
+[`mybee_phase1_w70_cp_m1_e2e_fx_01b6a2_projection_activation.md`](../../slices/mybee_phase1_w70_cp_m1_e2e_fx_01b6a2_projection_activation.md).
+It activates the protected EOS route through the existing projector and
+immutable repository, previews all affected Projects before mutation, and
+provides exact restart/concurrency replay semantics without a migration. The
+strict AE consumer and actual PostgreSQL protected Gate remain assigned to
+`.6A.3`; the parent `.6` orchestration is still paused until that Gate closes.
+
 `W70-S8-01A` implementation evidence is recorded in
 [`mybee_phase1_w70_s8_01a_tool_inventory.md`](../../slices/mybee_phase1_w70_s8_01a_tool_inventory.md).
 It closes the canonical Tool inventory, operation identity, compatibility

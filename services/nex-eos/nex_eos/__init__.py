@@ -534,6 +534,7 @@ from .project_pnl_refresh import (
     PROJECT_PNL_REFRESH_SOURCE_SCHEMA,
     EosAllocationPnlRefreshSourceResolver,
     EosProjectPnlRefreshError,
+    EosProjectPnlRefreshService,
     ProjectPnlRefreshProject,
     ProjectPnlRefreshSource,
 )
@@ -1150,6 +1151,7 @@ __all__ = (
     "EosProjectPnlQueryError",
     "EosProjectPnlQueryService",
     "EosProjectPnlRefreshError",
+    "EosProjectPnlRefreshService",
     "EosPnlPrivacyError",
     "EosProjectPnlPrivacyGuard",
     "EosProjectWorkAssignmentError",

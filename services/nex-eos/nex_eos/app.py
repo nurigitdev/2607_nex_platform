@@ -30,6 +30,7 @@ from .project_entitlement_reconciliation_api import (
     register_project_entitlement_reconciliation_routes,
 )
 from .project_pnl_api import register_project_pnl_routes
+from .project_pnl_refresh_api import register_project_pnl_refresh_routes
 from .project_work_assignment_api import register_project_work_assignment_routes
 from .reporting_map_api import register_reporting_map_routes
 from .scoped_approval_api import register_scoped_approval_routes
@@ -116,6 +117,7 @@ def create_eos_app(
     app.state.eos_project_pnl_refresh_source_resolver = (
         dependencies.project_pnl_refresh_source_resolver
     )
+    app.state.eos_project_pnl_refresh_service = dependencies.project_pnl_refresh_service
     app.state.eos_budget_service = dependencies.budget_service
     app.state.eos_project_budget_binding_service = (
         dependencies.project_budget_binding_service
@@ -171,6 +173,7 @@ def create_eos_app(
     register_cost_allocation_routes(app)
     register_budget_routes(app)
     register_project_pnl_routes(app)
+    register_project_pnl_refresh_routes(app)
     register_approval_decision_routes(app)
     register_approved_document_routes(app)
     register_scoped_approval_routes(app)

@@ -455,9 +455,14 @@ class EosProjectPnlProjector:
         self._sink = sink
 
     def rebuild(self, request: ProjectPnlRebuildRequest) -> dict[str, Any]:
-        snapshot = self._source.load(request)
-        draft, components = build_direct_allocation_projection(request, snapshot)
+        draft, components = self.preview(request)
         return self._sink.append(draft, components)
+
+    def preview(
+        self, request: ProjectPnlRebuildRequest
+    ) -> tuple[ProjectPnlProjectionDraft, tuple[ProjectPnlComponentDraft, ...]]:
+        snapshot = self._source.load(request)
+        return build_direct_allocation_projection(request, snapshot)
 
 
 def build_direct_allocation_projection(

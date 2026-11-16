@@ -422,6 +422,46 @@ class SqlAlchemyEosProjectPnlRepository:
         except SQLAlchemyError as exc:
             raise _unavailable("Project P&L persistence is unavailable") from exc
 
+    def list_at_boundary(
+        self,
+        *,
+        tenant_id: str,
+        company_id: str,
+        project_id: str,
+        period_id: str,
+        as_of: datetime,
+        limit: int = 2,
+    ) -> tuple[dict[str, Any], ...]:
+        boundary = _aware_datetime("as_of", as_of)
+        bounded_limit = _positive_int("limit", limit)
+        try:
+            with self._session_factory() as session:
+                rows = list(
+                    session.execute(
+                        select(EOS_PROJECT_PNL_PROJECTION_TABLE)
+                        .where(
+                            EOS_PROJECT_PNL_PROJECTION_TABLE.c.tenant_id
+                            == _tenant(tenant_id),
+                            EOS_PROJECT_PNL_PROJECTION_TABLE.c.company_id
+                            == _uuid("company_id", company_id),
+                            EOS_PROJECT_PNL_PROJECTION_TABLE.c.project_id
+                            == _uuid("project_id", project_id),
+                            EOS_PROJECT_PNL_PROJECTION_TABLE.c.period_id
+                            == _uuid("period_id", period_id),
+                            EOS_PROJECT_PNL_PROJECTION_TABLE.c.as_of == boundary,
+                        )
+                        .order_by(EOS_PROJECT_PNL_PROJECTION_TABLE.c.projection_version)
+                        .limit(bounded_limit)
+                    ).mappings()
+                )
+                return tuple(
+                    self._load_wire_in_session(session, dict(row)) for row in rows
+                )
+        except EosProjectPnlPersistenceError:
+            raise
+        except SQLAlchemyError as exc:
+            raise _unavailable("Project P&L persistence is unavailable") from exc
+
     @staticmethod
     def _get_version_in_session(
         session: Session,

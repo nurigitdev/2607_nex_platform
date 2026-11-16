@@ -22,6 +22,16 @@ from .cost_allocations import (
     EOS_COST_ALLOCATION_LINE_TABLE,
 )
 from .cost_source_pools import EOS_COST_SOURCE_POOL_TABLE
+from .project_pnl import (
+    EosProjectPnlPersistenceError,
+    SqlAlchemyEosProjectPnlRepository,
+    build_project_pnl_records,
+)
+from .project_pnl_projector import (
+    EosProjectPnlProjector,
+    EosProjectPnlProjectorError,
+    ProjectPnlRebuildRequest,
+)
 from .projects import EOS_PROJECT_TABLE
 
 PROJECT_PNL_REFRESH_OPERATION = "FINANCE.PROJECT_PNL.REFRESH_FROM_ALLOCATION"
@@ -100,6 +110,178 @@ class ProjectPnlRefreshSource:
                 project.semantic_payload() for project in self.affected_projects
             ],
         }
+
+
+@dataclass(frozen=True)
+class _ProjectRefreshPlan:
+    request: ProjectPnlRebuildRequest
+    expected_projection_id: str
+    expected_projection_hash: str
+    existing: Mapping[str, Any] | None
+
+
+class EosProjectPnlRefreshService:
+    """Activate deterministic P&L projections from verified allocation state."""
+
+    def __init__(
+        self,
+        *,
+        resolver: EosAllocationPnlRefreshSourceResolver,
+        projector: EosProjectPnlProjector,
+        repository: SqlAlchemyEosProjectPnlRepository,
+    ) -> None:
+        self._resolver = resolver
+        self._projector = projector
+        self._repository = repository
+
+    def refresh(
+        self, *, tenant_id: str, company_id: str, batch_id: str
+    ) -> dict[str, Any]:
+        source = self._resolver.resolve(
+            tenant_id=tenant_id,
+            company_id=company_id,
+            batch_id=batch_id,
+        )
+        plans = tuple(
+            self._plan(source, project) for project in source.affected_projects
+        )
+        projections: list[dict[str, Any]] = []
+        created = False
+        for plan in plans:
+            if plan.existing is not None:
+                projection = dict(plan.existing)
+            else:
+                projection, was_created = self._append_or_converge(source, plan)
+                created = created or was_created
+            self._require_expected_projection(plan, projection)
+            projections.append(projection)
+        return _refresh_response(
+            source,
+            projections=tuple(projections),
+            disposition="CREATED" if created else "EXACT_REPLAY",
+        )
+
+    def _plan(
+        self,
+        source: ProjectPnlRefreshSource,
+        project: ProjectPnlRefreshProject,
+    ) -> _ProjectRefreshPlan:
+        try:
+            boundary = self._repository.list_at_boundary(
+                tenant_id=source.tenant_id,
+                company_id=source.company_id,
+                project_id=project.project_id,
+                period_id=source.period_id,
+                as_of=source.committed_at,
+                limit=2,
+            )
+            if len(boundary) > 1:
+                raise _ordering_conflict(
+                    "Multiple Project P&L projections exist at the allocation boundary"
+                )
+            latest = self._repository.get(
+                tenant_id=source.tenant_id,
+                company_id=source.company_id,
+                project_id=project.project_id,
+                period_id=source.period_id,
+            )
+        except EosProjectPnlPersistenceError as exc:
+            raise _map_persistence_error(exc) from exc
+
+        existing = boundary[0] if boundary else None
+        if existing is not None:
+            version = int(existing["projection_version"])
+        else:
+            version = 1
+            if latest is not None:
+                latest_boundary = _parse_wire_time(latest.get("as_of"))
+                if latest_boundary >= source.committed_at:
+                    raise _ordering_conflict(
+                        "A Project P&L projection already occupies or follows the "
+                        "allocation boundary"
+                    )
+                version = int(latest["projection_version"]) + 1
+
+        request = ProjectPnlRebuildRequest(
+            tenant_id=source.tenant_id,
+            company_id=source.company_id,
+            project_id=project.project_id,
+            project_code=project.project_code,
+            period_id=source.period_id,
+            projection_version=version,
+            functional_currency=source.functional_currency,
+            as_of=source.committed_at,
+            evaluated_at=source.committed_at,
+        )
+        try:
+            draft, components = self._projector.preview(request)
+            if (
+                draft.reconciliation_status != "VERIFIED"
+                or draft.freshness_status != "CURRENT"
+            ):
+                raise _projection_not_ready(draft.reconciliation_status)
+            header, _lines = build_project_pnl_records(draft, components)
+        except EosProjectPnlRefreshError:
+            raise
+        except EosProjectPnlProjectorError as exc:
+            raise _map_projector_error(exc) from exc
+        except EosProjectPnlPersistenceError as exc:
+            raise _map_persistence_error(exc) from exc
+        plan = _ProjectRefreshPlan(
+            request=request,
+            expected_projection_id=str(header["projection_id"]),
+            expected_projection_hash=str(header["projection_hash"]),
+            existing=existing,
+        )
+        if existing is not None:
+            self._require_expected_projection(plan, existing)
+        return plan
+
+    def _append_or_converge(
+        self,
+        source: ProjectPnlRefreshSource,
+        plan: _ProjectRefreshPlan,
+    ) -> tuple[dict[str, Any], bool]:
+        try:
+            return self._projector.rebuild(plan.request), True
+        except EosProjectPnlProjectorError as exc:
+            raise _map_projector_error(exc) from exc
+        except EosProjectPnlPersistenceError as exc:
+            if exc.status_code != 409:
+                raise _map_persistence_error(exc) from exc
+        try:
+            converged = self._repository.list_at_boundary(
+                tenant_id=source.tenant_id,
+                company_id=source.company_id,
+                project_id=plan.request.project_id,
+                period_id=source.period_id,
+                as_of=source.committed_at,
+                limit=2,
+            )
+        except EosProjectPnlPersistenceError as exc:
+            raise _map_persistence_error(exc) from exc
+        if len(converged) != 1:
+            raise _ordering_conflict(
+                "Concurrent Project P&L refresh did not converge to one result"
+            )
+        projection = dict(converged[0])
+        self._require_expected_projection(plan, projection)
+        return projection, False
+
+    @staticmethod
+    def _require_expected_projection(
+        plan: _ProjectRefreshPlan, projection: Mapping[str, Any]
+    ) -> None:
+        if (
+            projection.get("projection_hash") != plan.expected_projection_hash
+            or projection.get("projection_id") != plan.expected_projection_id
+            or projection.get("reconciliation_status") != "VERIFIED"
+            or projection.get("freshness_status") != "CURRENT"
+        ):
+            raise _projection_drift(
+                "Persisted Project P&L projection differs from the verified "
+                "allocation boundary"
+            )
 
 
 class EosAllocationPnlRefreshSourceResolver:
@@ -391,6 +573,57 @@ def _wire_time(value: datetime) -> str:
     return _aware_time(value).isoformat().replace("+00:00", "Z")
 
 
+def _parse_wire_time(value: object) -> datetime:
+    if not isinstance(value, str):
+        raise _ordering_conflict("Project P&L projection boundary is malformed")
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise _ordering_conflict(
+            "Project P&L projection boundary is malformed"
+        ) from exc
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC)
+
+
+def _refresh_response(
+    source: ProjectPnlRefreshSource,
+    *,
+    projections: tuple[Mapping[str, Any], ...],
+    disposition: str,
+) -> dict[str, Any]:
+    references = [
+        {
+            "project_id": str(projection["project_id"]),
+            "project_code": str(projection["project_code"]),
+            "projection_id": str(projection["projection_id"]),
+            "projection_version": int(projection["projection_version"]),
+            "projection_hash": str(projection["projection_hash"]),
+            "reconciliation_status": str(projection["reconciliation_status"]),
+            "freshness_status": str(projection["freshness_status"]),
+        }
+        for projection in sorted(projections, key=lambda item: str(item["project_id"]))
+    ]
+    semantics = {
+        "schema_version": PROJECT_PNL_REFRESH_SCHEMA,
+        "operation": PROJECT_PNL_REFRESH_OPERATION,
+        "tenant_id": source.tenant_id,
+        "company_id": source.company_id,
+        "batch_id": source.batch_id,
+        "period_id": source.period_id,
+        "allocation_reconciliation_hash": source.allocation_reconciliation_hash,
+        "projections": references,
+    }
+    return {
+        **semantics,
+        "disposition": disposition,
+        "refresh_hash": semantic_sha256_hash_ref(
+            {"domain": "EOS-PROJECT-PNL-REFRESH-V1", **semantics}
+        ),
+    }
+
+
 def _invalid(detail: str) -> EosProjectPnlRefreshError:
     return EosProjectPnlRefreshError(
         "EOS_PROJECT_PNL_REFRESH_INVALID",
@@ -430,3 +663,53 @@ def _unavailable() -> EosProjectPnlRefreshError:
         status_code=503,
         retryable=True,
     )
+
+
+def _ordering_conflict(detail: str) -> EosProjectPnlRefreshError:
+    return EosProjectPnlRefreshError(
+        "EOS_PROJECT_PNL_REFRESH_ORDERING_CONFLICT",
+        detail,
+        status_code=409,
+    )
+
+
+def _projection_not_ready(status: str) -> EosProjectPnlRefreshError:
+    return EosProjectPnlRefreshError(
+        "EOS_PROJECT_PNL_REFRESH_PROJECTION_NOT_READY",
+        f"Project P&L projection is not VERIFIED: {status}",
+        status_code=409,
+    )
+
+
+def _projection_drift(detail: str) -> EosProjectPnlRefreshError:
+    return EosProjectPnlRefreshError(
+        "EOS_PROJECT_PNL_REFRESH_PROJECTION_DRIFT",
+        detail,
+        status_code=409,
+    )
+
+
+def _map_projector_error(
+    exc: EosProjectPnlProjectorError,
+) -> EosProjectPnlRefreshError:
+    if exc.status_code >= 500:
+        return EosProjectPnlRefreshError(
+            "EOS_PROJECT_PNL_REFRESH_PROJECTOR_UNAVAILABLE",
+            "Project P&L projector is unavailable",
+            status_code=503,
+            retryable=True,
+        )
+    return _projection_drift(exc.detail)
+
+
+def _map_persistence_error(
+    exc: EosProjectPnlPersistenceError,
+) -> EosProjectPnlRefreshError:
+    if exc.status_code >= 500:
+        return EosProjectPnlRefreshError(
+            "EOS_PROJECT_PNL_REFRESH_PROJECTION_UNAVAILABLE",
+            "Project P&L projection persistence is unavailable",
+            status_code=503,
+            retryable=True,
+        )
+    return _ordering_conflict(exc.detail)
