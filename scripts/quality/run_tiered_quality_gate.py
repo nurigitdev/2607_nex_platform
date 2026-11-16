@@ -37,6 +37,11 @@ AE_EXPLICIT_OWNED_TESTS = (
     "tests/mybee_phase1/test_w70_s8_01e_foundation_gate.py",
 )
 
+WC_EXPLICIT_OWNED_TESTS = (
+    "tests/test_gb2_ca00_s20a_active_runtime_branches.py",
+    "tests/test_gb2_ca00_s20c_wc_durable_boundaries.py",
+)
+
 
 SERVICE_PROFILES = {
     "nex-oa": ServiceProfile(
@@ -78,6 +83,7 @@ SERVICE_PROFILES = {
             "test_nex_ae_wc_*.py",
         ),
         coverage_targets=("services/nex-wc/nex_wc",),
+        owned_tests=WC_EXPLICIT_OWNED_TESTS,
     ),
     "nex-eos": ServiceProfile(
         test_patterns=(

@@ -11,6 +11,7 @@ def _minimal_root(tmp_path: Path) -> Path:
     for path in (
         "tests/test_nex_cx_alpha.py",
         "tests/test_cx_beta.py",
+        "tests/test_nex_wc_alpha.py",
         "tests/test_focused.py",
         "tests/test_nex_ae_web_static.py",
         "tests/test_ae_web_runtime_audit.py",
@@ -28,6 +29,8 @@ def _minimal_root(tmp_path: Path) -> Path:
         "tests/mybee_phase1/test_w70_s8_01d_registry_bundle_locks.py",
         "tests/mybee_phase1/test_w70_s8_01e_foundation_gate.py",
         "tests/test_gb2_ca00_s20b_trust_approval_boundaries.py",
+        "tests/test_gb2_ca00_s20a_active_runtime_branches.py",
+        "tests/test_gb2_ca00_s20c_wc_durable_boundaries.py",
         "tests/test_nex_eos_alpha.py",
         "tests/test_nex_oa_eos_mybee_project_entitlement_lifecycle.py",
         "tests/test_nex_oa_eos_mybee_project_entitlement_sync.py",
@@ -215,6 +218,26 @@ def test_ae_api_owned_tests_are_stable_deduplicated_and_narrow(
         "tests/mybee_phase1/test_w70_s8_01b_tool_contract_admission.py"
         not in selected
     )
+
+
+def test_wc_slice_profile_includes_cross_named_product_boundaries(
+    tmp_path: Path,
+) -> None:
+    root = _minimal_root(tmp_path)
+
+    plan = gate.build_slice_plan(
+        root=root,
+        python_bin="python-test",
+        service="nex-wc",
+    )
+
+    assert gate.SERVICE_PROFILES["nex-wc"].owned_tests == (
+        "tests/test_gb2_ca00_s20a_active_runtime_branches.py",
+        "tests/test_gb2_ca00_s20c_wc_durable_boundaries.py",
+    )
+    assert set(gate.WC_EXPLICIT_OWNED_TESTS) <= set(plan.commands[0])
+    assert plan.test_count == 3
+    assert "--cov=services/nex-wc/nex_wc" in plan.commands[0]
 
 
 def test_supplemental_coverage_report_path_is_deterministic() -> None:
