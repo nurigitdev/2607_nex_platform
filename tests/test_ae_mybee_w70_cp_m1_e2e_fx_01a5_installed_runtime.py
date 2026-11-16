@@ -11,10 +11,10 @@ import nex_ae_api.mybee_m1_skill_runtime as skill_runtime
 import nex_ae_api.product_runtime_profile as runtime_profile
 import pytest
 from mybee_ax.integrations import M1_D04_CAPABILITY_ID, M1_D12_CAPABILITY_ID
+from nex_ae_api.controlled_skill_runtime import ControlledSkillRuntimeError
 from nex_ae_api.m1_installed_skill_runtime import M1InstalledSkillRuntime
 from nex_ae_api.multi_step_engine import StepExecutionContext
 from nex_ae_api.mybee_m1_skill_runtime import build_mybee_m1_verified_skill_catalog
-from nex_ae_api.product_controlled_skill import ProductControlledSkillError
 from nex_ae_api.product_runtime_profile import (
     VERIFIED_PRODUCT_RELEASE_PROFILE,
     build_product_runtime_executor_profile,
@@ -507,7 +507,7 @@ def test_execution_context_accepts_serialized_single_project_and_rejects_ambigui
     assert observed["project_id"] == PROJECT_ID
     assert observed["context_ref"] == "AE:AGENT_CONTEXT:context-1:2"
 
-    with pytest.raises(ProductControlledSkillError, match="One trusted Project"):
+    with pytest.raises(ControlledSkillRuntimeError, match="One trusted Project"):
         installed._execution_context(
             _context_sessions({"resolved_entities": []}),
             tenant_id=TENANT,
@@ -569,7 +569,7 @@ def test_journal_authorization_requires_evidence_and_fresh_scope() -> None:
         canonical_write_payload={"candidate_id": "candidate-1"},
     )
     now = datetime(2026, 11, 15, tzinfo=UTC)
-    with pytest.raises(ProductControlledSkillError, match="evidence is missing"):
+    with pytest.raises(ControlledSkillRuntimeError, match="evidence is missing"):
         installed._JournalAuthorizationSource(
             oa=object(), evidence=None, authority=authority, evaluated_at=now
         ).resolve(request)
@@ -588,7 +588,7 @@ def test_journal_authorization_requires_evidence_and_fresh_scope() -> None:
         authority=authority,
         evaluated_at=now,
     )
-    with pytest.raises(ProductControlledSkillError, match="denied current"):
+    with pytest.raises(ControlledSkillRuntimeError, match="denied current"):
         denied.resolve(request)
 
     allowed = installed._JournalAuthorizationSource(
@@ -627,10 +627,10 @@ def test_journal_authority_rejects_input_and_scope_drift(
     )
     invalid = _write_context(runtime)
     invalid.step["compiled_input_bindings"].pop()
-    with pytest.raises(ProductControlledSkillError, match="business contract"):
+    with pytest.raises(ControlledSkillRuntimeError, match="business contract"):
         writer._resolve_authority(invalid)
 
-    with pytest.raises(ProductControlledSkillError, match="business contract"):
+    with pytest.raises(ControlledSkillRuntimeError, match="business contract"):
         writer._resolve_authority(_write_context(runtime, tenant_id="OTHER"))
 
     writer._oa = SimpleNamespace(
@@ -641,7 +641,7 @@ def test_journal_authority_rejects_input_and_scope_drift(
             "revision_hash": HASH,
         }
     )
-    with pytest.raises(ProductControlledSkillError, match="denied"):
+    with pytest.raises(ControlledSkillRuntimeError, match="denied"):
         writer._resolve_authority(_write_context(runtime))
 
     writer._oa = SimpleNamespace(

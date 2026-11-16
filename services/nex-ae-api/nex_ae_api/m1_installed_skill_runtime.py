@@ -20,6 +20,13 @@ from nex_runtime.semantic_hashes import semantic_sha256_hash_ref
 from sqlalchemy import text
 from sqlalchemy.orm import Session, sessionmaker
 
+from nex_ae_api.controlled_skill_runtime import (
+    ControlledExecutionAuthority,
+    ControlledSkillRuntime,
+    ControlledSkillRuntimeError,
+    HttpOaAuthoritySource,
+    principal_document,
+)
 from nex_ae_api.nsl_controlled_write_integration import (
     NslControlledWriteIntegration,
     NslControlledWriteRequest,
@@ -34,13 +41,6 @@ from nex_ae_api.nsl_v02_public_api import load_nsl_v02_public_api
 from nex_ae_api.nsl_write_evidence import SqlAlchemyNslWriteEvidencePort
 from nex_ae_api.platform_approval_evidence import (
     SqlAlchemyPlatformApprovalEvidenceRepository,
-)
-from nex_ae_api.product_controlled_skill import (
-    ProductControlledSkillError,
-    ProductControlledSkillRuntime,
-    ProductExecutionAuthority,
-    _HttpOaAuthoritySource,
-    _principal_document,
 )
 from nex_ae_api.product_skill_catalog import (
     ProductOperationAdapterContext,
@@ -133,7 +133,7 @@ class M1InstalledSkillRuntime:
             repository=SqlAlchemySkillArtifactRepository(sessions),
         )
         self._bindings = SqlAlchemyNSLStepExecutionRepository(sessions)
-        self._oa = _HttpOaAuthoritySource(
+        self._oa = HttpOaAuthoritySource(
             base_url=config.oa_base_url,
             service_token=config.ae_to_oa_service_token,
         )
@@ -255,7 +255,7 @@ class M1InstalledSkillRuntime:
         context_projection = _context_projection(
             persisted=persisted,
             principal_document={
-                **_principal_document(
+                **principal_document(
                     tenant_id=context.job["tenant_id"],
                     principal_id=persisted["principal_id"],
                     authorization=authorization,
@@ -336,7 +336,7 @@ class M1InstalledSkillRuntime:
         )
 
 
-class _M1JournalControlledRuntime(ProductControlledSkillRuntime):
+class _M1JournalControlledRuntime(ControlledSkillRuntime):
     def __init__(
         self,
         sessions: sessionmaker[Session],
@@ -365,7 +365,7 @@ class _M1JournalControlledRuntime(ProductControlledSkillRuntime):
         )
 
         self._request_store = SqlAlchemyProtectedApprovalRequestStore(sessions)
-        self._oa = _HttpOaAuthoritySource(
+        self._oa = HttpOaAuthoritySource(
             base_url=config.oa_base_url,
             service_token=config.ae_to_oa_service_token,
         )
@@ -380,7 +380,7 @@ class _M1JournalControlledRuntime(ProductControlledSkillRuntime):
             result_mapper=lambda value: value,
         )
 
-    def _resolve_authority(self, context: Any) -> ProductExecutionAuthority:
+    def _resolve_authority(self, context: Any) -> ControlledExecutionAuthority:
         persisted = _execution_context(
             self._sessions,
             tenant_id=context.job["tenant_id"],
@@ -391,15 +391,15 @@ class _M1JournalControlledRuntime(ProductControlledSkillRuntime):
             set(inputs) != _WRITE_INPUTS
             or inputs.get("tenant_id") != context.job["tenant_id"]
         ):
-            raise ProductControlledSkillError(
+            raise ControlledSkillRuntimeError(
                 "Journal Skill inputs do not match the admitted business contract."
             )
         authorization = self._oa.effective_authorization(
             tenant_id=context.job["tenant_id"], subject_id=persisted["principal_id"]
         )
         if "finance:journal:approve" not in authorization.get("scopes", ()):
-            raise ProductControlledSkillError("OA denied Journal approval authority.")
-        principal = _principal_document(
+            raise ControlledSkillRuntimeError("OA denied Journal approval authority.")
+        principal = principal_document(
             tenant_id=context.job["tenant_id"],
             principal_id=persisted["principal_id"],
             authorization=authorization,
@@ -426,7 +426,7 @@ class _M1JournalControlledRuntime(ProductControlledSkillRuntime):
             write_tool_version=self._selection.release_skill.skill_version,
             precondition_evidence_ref=f"product-authority:{authority_hash}",
         )
-        return ProductExecutionAuthority(
+        return ControlledExecutionAuthority(
             context_projection=build_context_projection(
                 agent_context_ref=persisted["context_ref"],
                 agent_context_hash=persisted["context_hash"],
@@ -464,7 +464,7 @@ class _M1JournalControlledRuntime(ProductControlledSkillRuntime):
         *,
         execution: InstalledNslExecution,
         invocation: Any,
-        authority: ProductExecutionAuthority,
+        authority: ControlledExecutionAuthority,
     ) -> Any:
         contract = execution.contract
         adapters = self._selection.build_adapters(
@@ -479,7 +479,7 @@ class _M1JournalControlledRuntime(ProductControlledSkillRuntime):
             )
         )
         if adapters.write_port is None or adapters.verification_port is None:
-            raise ProductControlledSkillError(
+            raise ControlledSkillRuntimeError(
                 "Journal operation adapters are incomplete."
             )
         request = execution.controlled_write_request(
@@ -524,17 +524,17 @@ class _M1JournalControlledRuntime(ProductControlledSkillRuntime):
 class _JournalAuthorizationSource:
     oa: Any = field(repr=False)
     evidence: Mapping[str, Any] | None = field(repr=False)
-    authority: ProductExecutionAuthority = field(repr=False)
+    authority: ControlledExecutionAuthority = field(repr=False)
     evaluated_at: datetime
 
     def resolve(self, request: Any) -> Mapping[str, Any]:
         if self.evidence is None:
-            raise ProductControlledSkillError("Platform approval evidence is missing.")
+            raise ControlledSkillRuntimeError("Platform approval evidence is missing.")
         current = self.oa.effective_authorization(
             tenant_id=request.tenant_id, subject_id=request.subject_id
         )
         if "finance:journal:approve" not in current.get("scopes", ()):
-            raise ProductControlledSkillError("OA denied current Journal authority.")
+            raise ControlledSkillRuntimeError("OA denied current Journal authority.")
         descriptor = {
             "tenant_id": request.tenant_id,
             "agent_execution_id": self.evidence["agent_execution_id"],
@@ -671,7 +671,7 @@ def _execution_context(
         and item["resource_ref"].get("resource_type") == "PROJECT"
     ]
     if len(projects) != 1:
-        raise ProductControlledSkillError("One trusted Project context is required.")
+        raise ControlledSkillRuntimeError("One trusted Project context is required.")
     return {
         "context_ref": f"AE:AGENT_CONTEXT:{row['context_id']}:{row['context_generation']}",
         "context_hash": str(row["context_hash"]),

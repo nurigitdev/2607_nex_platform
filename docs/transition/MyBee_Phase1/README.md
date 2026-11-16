@@ -24,7 +24,8 @@ MyBee office-work AX Service Phase-1 program.
 17. `NeX_MyBee_W60_CA01_Project_PnL_Projection_and_Management_Allocation_Entry_Reconciliation_v1.0.md`
 18. `NeX_MyBee_W70_CA01_NSL_Tool_Product_Capability_Registry_and_Skill_Pack_Entry_Reconciliation_v1.0.md`
 19. `NeX_MyBee_W70_CA02_Installed_PA_Delegation_and_Multi_Skill_Runtime_Composition_Closure_v1.0.md`
-20. `NeX_MyBee_Post_Wave_UIUX_Compatibility_Performance_Backlog_v1.0.md`
+20. `NeX_MyBee_CP_M1_GA_RET_02A_AE_Coverage_Ownership_and_Margin_Hardening_v1.0.md`
+21. `NeX_MyBee_Post_Wave_UIUX_Compatibility_Performance_Backlog_v1.0.md`
 
 The Markdown Slice Plan and its Execution Matrix JSON are one planning set.
 The JSON is machine-readable traceability input, not runtime configuration or
@@ -124,6 +125,25 @@ prohibited. The original `CP-M1-E2E-FX-01` resumes only after both `01A` and
 Golden A active-retirement boundary, and corrected Gate ordering; it does not
 change the frozen M1 business journey or authorize an NSL core change, new
 business authority, or database migration by default.
+
+CP-M1-GA-RET-02A is the post-retirement AE quality-margin work order. It keeps
+the canonical AE coverage floors and complete source target unchanged while
+separating active product, active compatibility, and historical-quarantine
+ownership. It requires a narrow explicit many-to-many test mapping for AE
+behavior whose tests use MyBee or transition filenames, prioritizes real
+active planning denial and ambiguity branches, and prohibits restoring Golden
+A imports or hiding active code through broad coverage exclusions. Its
+corrective targets are AE statement `>= 96.25%` and branch `>= 94.50%` before
+the original public M1 E2E resumes.
+
+`CP-M1-GA-RET-02A.0` evidence is recorded in
+[`mybee_phase1_w70_cp_m1_ga_ret_02a0_mixed_runtime_primitives.md`](../../slices/mybee_phase1_w70_cp_m1_ga_ret_02a0_mixed_runtime_primitives.md).
+It removes the transitive active import of hash-pinned
+`product_controlled_skill.py` and `golden_a_planning.py` by introducing a
+scenario-neutral controlled-Skill runtime for M1. The quarantine Gate now
+walks the recursive local import graph instead of checking only direct source
+strings. No database migration, public API change, or remote provider was
+required. The next boundary is `CP-M1-GA-RET-02A.1`.
 
 `W70-S8-01A` implementation evidence is recorded in
 [`mybee_phase1_w70_s8_01a_tool_inventory.md`](../../slices/mybee_phase1_w70_s8_01a_tool_inventory.md).

@@ -82,6 +82,23 @@
     "execution": "OFFLINE_REPLAY_ONLY",
     "database_cleanup": "DENY"
   },
+  "active_import_guard": {
+    "mode": "RECURSIVE_AST_IMPORT_GRAPH",
+    "entrypoints": [
+      "services/nex-ae-api/nex_ae_api/agent_runtime_process.py",
+      "services/nex-ae-api/nex_ae_api/product_runtime_profile.py",
+      "services/nex-ae-api/nex_ae_api/semantic_candidate_admission.py",
+      "services/nex-ae-api/nex_ae_api/plan_candidate_profiles.py"
+    ],
+    "required_neutral_runtime": "services/nex-ae-api/nex_ae_api/controlled_skill_runtime.py",
+    "forbidden_historical_modules": [
+      "services/nex-ae-api/nex_ae_api/domain_intent_products.py",
+      "services/nex-ae-api/nex_ae_api/finance_golden_a_activation.py",
+      "services/nex-ae-api/nex_ae_api/golden_a_planning.py",
+      "services/nex-ae-api/nex_ae_api/mybee_product_consumer.py",
+      "services/nex-ae-api/nex_ae_api/product_controlled_skill.py"
+    ]
+  },
   "deprecated_api_aliases_retained": [
     "FINANCE.VOUCHER_DRAFT.CREATE",
     "FINANCE.VOUCHER_DRAFT_CREATE",
@@ -89,5 +106,5 @@
   ],
   "database_migration_required": false,
   "remote_provider_required": false,
-  "content_hash": "sha256:2d42b7f5778d93fa77b7fe238be89ecc14b08334d4258166b15d0ded7097585e"
+  "content_hash": "sha256:819431b1fe99583f9d4fe13663ce9b198aa583d1710640d2a3094677b43f0211"
 }

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import ast
 import hashlib
 import json
 import sys
@@ -25,6 +26,14 @@ ADMISSION_PATH = Path("deployment/locks/ae-mybee-m1-runtime-admission.v2.json")
 ROLLBACK_PATH = Path("deployment/locks/ae-mybee-m1-generalized-rollback.v1.json")
 ACTIVATION_PATH = Path("deployment/locks/ae-mybee-m1-runtime-activation.v2.json")
 QUARANTINE_PATH = Path("deployment/retirement/golden-a-historical-quarantine.v1.json")
+AE_SOURCE_ROOT = Path("services/nex-ae-api/nex_ae_api")
+ACTIVE_RUNTIME_ENTRYPOINTS = (
+    AE_SOURCE_ROOT / "agent_runtime_process.py",
+    AE_SOURCE_ROOT / "product_runtime_profile.py",
+    AE_SOURCE_ROOT / "semantic_candidate_admission.py",
+    AE_SOURCE_ROOT / "plan_candidate_profiles.py",
+)
+NEUTRAL_CONTROLLED_RUNTIME = AE_SOURCE_ROOT / "controlled_skill_runtime.py"
 
 GOLDEN_A_CAPABILITY_ID = "FINANCE.CREATE_VOUCHER_DRAFT"
 ACTIVE_CAPABILITIES = (
@@ -46,6 +55,11 @@ HISTORICAL_ASSETS = (
     "services/nex-ae-api/nex_ae_api/golden_a_planning.py",
     "services/nex-ae-api/nex_ae_api/mybee_product_consumer.py",
     "services/nex-ae-api/nex_ae_api/product_controlled_skill.py",
+)
+HISTORICAL_SOURCE_PATHS = tuple(
+    Path(item)
+    for item in HISTORICAL_ASSETS
+    if str(item).startswith(AE_SOURCE_ROOT.as_posix())
 )
 
 
@@ -222,6 +236,14 @@ def _build_quarantine(
             "execution": "OFFLINE_REPLAY_ONLY",
             "database_cleanup": "DENY",
         },
+        "active_import_guard": {
+            "mode": "RECURSIVE_AST_IMPORT_GRAPH",
+            "entrypoints": [item.as_posix() for item in ACTIVE_RUNTIME_ENTRYPOINTS],
+            "required_neutral_runtime": NEUTRAL_CONTROLLED_RUNTIME.as_posix(),
+            "forbidden_historical_modules": [
+                item.as_posix() for item in HISTORICAL_SOURCE_PATHS
+            ],
+        },
         "deprecated_api_aliases_retained": [
             "FINANCE.VOUCHER_DRAFT.CREATE",
             "FINANCE.VOUCHER_DRAFT_CREATE",
@@ -232,6 +254,65 @@ def _build_quarantine(
     }
     payload["content_hash"] = semantic_sha256_hash_ref(payload)
     return payload
+
+
+def active_ae_import_graph(root: Path) -> set[str]:
+    source_root = root / AE_SOURCE_ROOT
+    module_paths = {
+        _ae_module_name(source_root, path): path
+        for path in source_root.rglob("*.py")
+    }
+    queue = [
+        _ae_module_name(source_root, root / relative)
+        for relative in ACTIVE_RUNTIME_ENTRYPOINTS
+    ]
+    visited: set[str] = set()
+    while queue:
+        module = queue.pop()
+        if module in visited:
+            continue
+        path = module_paths.get(module)
+        if path is None:
+            continue
+        visited.add(module)
+        for imported in _ae_local_imports(path):
+            if imported in module_paths and imported not in visited:
+                queue.append(imported)
+    return {
+        module_paths[module].relative_to(root).as_posix()
+        for module in visited
+        if module in module_paths
+    }
+
+
+def _ae_module_name(source_root: Path, path: Path) -> str:
+    relative = path.relative_to(source_root)
+    parts = list(relative.with_suffix("").parts)
+    if parts[-1] == "__init__":
+        parts.pop()
+    suffix = ".".join(parts)
+    return "nex_ae_api" if not suffix else f"nex_ae_api.{suffix}"
+
+
+def _ae_local_imports(path: Path) -> set[str]:
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=path.as_posix())
+    imports: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            imports.update(
+                alias.name
+                for alias in node.names
+                if alias.name.startswith("nex_ae_api")
+            )
+        elif (
+            isinstance(node, ast.ImportFrom)
+            and node.module
+            and node.module.startswith("nex_ae_api")
+        ):
+            imports.add(node.module)
+            if node.module == "nex_ae_api":
+                imports.update(f"nex_ae_api.{alias.name}" for alias in node.names)
+    return imports
 
 
 def _json_object(path: Path) -> dict[str, Any]:

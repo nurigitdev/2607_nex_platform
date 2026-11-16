@@ -55,6 +55,7 @@ def test_successor_registry_and_rollback_are_scenario_free() -> None:
     activation = _json(ACTIVATION_PATH)
     rollback = _json(ROLLBACK_PATH)
     quarantine = _json(QUARANTINE_PATH)
+    result = run_gate(ROOT)
 
     assert (
         tuple(item["capability"]["capability_id"] for item in registry["registrations"])
@@ -71,6 +72,14 @@ def test_successor_registry_and_rollback_are_scenario_free() -> None:
         "execution": "OFFLINE_REPLAY_ONLY",
         "database_cleanup": "DENY",
     }
+    assert quarantine["active_import_guard"]["mode"] == (
+        "RECURSIVE_AST_IMPORT_GRAPH"
+    )
+    assert quarantine["active_import_guard"]["required_neutral_runtime"] == (
+        "services/nex-ae-api/nex_ae_api/controlled_skill_runtime.py"
+    )
+    assert result["historical_active_import_conflicts"] == []
+    assert result["active_import_module_count"] > 0
 
 
 @pytest.mark.parametrize(

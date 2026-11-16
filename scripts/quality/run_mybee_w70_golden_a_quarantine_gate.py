@@ -22,9 +22,12 @@ from build_mybee_w70_golden_a_quarantine import (
     ACTIVATION_PATH,
     ACTIVE_CAPABILITIES,
     ADMISSION_PATH,
+    HISTORICAL_SOURCE_PATHS,
+    NEUTRAL_CONTROLLED_RUNTIME,
     QUARANTINE_PATH,
     REGISTRY_PATH,
     ROLLBACK_PATH,
+    active_ae_import_graph,
     build_quarantine_artifacts,
     render_json,
 )
@@ -92,6 +95,10 @@ def run_gate(root: Path = ROOT) -> dict[str, Any]:
         if item.binding_key == AE_INTENT_RESOLUTION_BINDING
     )
     historical_assets = quarantine.get("historical_assets")
+    active_import_graph = active_ae_import_graph(root)
+    forbidden_historical_sources = {
+        item.as_posix() for item in HISTORICAL_SOURCE_PATHS
+    }
     checks = {
         "successor_artifacts_exact": exact,
         "active_registry_is_d04_d12_only": tuple(
@@ -130,6 +137,8 @@ def run_gate(root: Path = ROOT) -> dict[str, Any]:
             not in active_sources[
                 "services/nex-ae-api/nex_ae_api/product_runtime_profile.py"
             ]
+            and NEUTRAL_CONTROLLED_RUNTIME.as_posix() in active_import_graph
+            and not (forbidden_historical_sources & active_import_graph)
         ),
         "active_prompt_is_v9_and_scenario_free": (
             prompt.version == "v9"
@@ -141,6 +150,22 @@ def run_gate(root: Path = ROOT) -> dict[str, Any]:
             isinstance(historical_assets, list)
             and len(historical_assets) >= 10
             and all(_historical_asset_matches(root, item) for item in historical_assets)
+        ),
+        "recursive_import_guard_matches_quarantine": (
+            quarantine.get("active_import_guard")
+            == {
+                "mode": "RECURSIVE_AST_IMPORT_GRAPH",
+                "entrypoints": [
+                    "services/nex-ae-api/nex_ae_api/agent_runtime_process.py",
+                    "services/nex-ae-api/nex_ae_api/product_runtime_profile.py",
+                    "services/nex-ae-api/nex_ae_api/semantic_candidate_admission.py",
+                    "services/nex-ae-api/nex_ae_api/plan_candidate_profiles.py",
+                ],
+                "required_neutral_runtime": NEUTRAL_CONTROLLED_RUNTIME.as_posix(),
+                "forbidden_historical_modules": [
+                    item.as_posix() for item in HISTORICAL_SOURCE_PATHS
+                ],
+            }
         ),
         "quarantine_hash_is_valid": (
             quarantine.get("content_hash")
@@ -168,6 +193,10 @@ def run_gate(root: Path = ROOT) -> dict[str, Any]:
         "activation_hash": activation["content_hash"],
         "quarantine_hash": quarantine["content_hash"],
         "historical_asset_count": len(historical_assets or ()),
+        "active_import_module_count": len(active_import_graph),
+        "historical_active_import_conflicts": sorted(
+            forbidden_historical_sources & active_import_graph
+        ),
         "content_included": False,
         "secret_included": False,
     }
