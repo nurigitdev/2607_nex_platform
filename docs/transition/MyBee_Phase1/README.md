@@ -185,6 +185,15 @@ projections. The target module now has statement and branch coverage of
 historical coverage remained unchanged. The next boundary is
 `CP-M1-GA-RET-02A.5` coverage-margin closure and public M1 E2E resume decision.
 
+`CP-M1-GA-RET-02A.5` final evidence is recorded in
+[`mybee_phase1_w70_cp_m1_ga_ret_02a_ae_coverage_margin.md`](../../slices/mybee_phase1_w70_cp_m1_ga_ret_02a_ae_coverage_margin.md).
+It closes the A0-A5 corrective work with all ten acceptance criteria passing,
+aggregate AE statement/branch coverage of `96.4497% / 94.6630%`, active
+product coverage of `97.1306% / 94.9836%`, and zero historical import or
+deployment conflicts. The original `CP-M1-E2E-FX-01` public M1 E2E is admitted
+to resume through the generalized installed runtime; this admission is not a
+claim that the public journey itself has passed.
+
 `W70-S8-01A` implementation evidence is recorded in
 [`mybee_phase1_w70_s8_01a_tool_inventory.md`](../../slices/mybee_phase1_w70_s8_01a_tool_inventory.md).
 It closes the canonical Tool inventory, operation identity, compatibility

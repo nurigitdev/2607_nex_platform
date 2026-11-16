@@ -3,7 +3,7 @@
 ## 1. Status And Authority
 
 - Decision date: `2026-11-16`
-- Status: `PLANNED / SOURCE-BACKED / IMPLEMENTATION_REQUIRED`
+- Status: `CLOSED / AS-BUILT / PUBLIC M1 E2E ENTRY ADMITTED`
 - Repository: `nurigitdev/2607_nex_platform`
 - Reviewed branch: `codex/mybee-phase1-implementation`
 - Reviewed source commit: `fdcdb7e88d895cd2f25ece1f13fff2f2ec604575`
@@ -11,6 +11,9 @@
 - Product behavior change authorized: no
 - Database migration authorized: no
 - Remote model-provider dependency: none
+- Closure date: `2026-11-16`
+- Closure evidence:
+  `docs/slices/mybee_phase1_w70_cp_m1_ga_ret_02a_ae_coverage_margin.md`
 
 This work order closes the AE Slice Gate ownership and coverage-margin gap
 observed immediately after Golden A active binding removal. It does not reopen
@@ -332,3 +335,23 @@ namespaces, or perform a repository-wide coverage taxonomy migration.
 Physical relocation of historical source, retirement of active compatibility
 modules, and broader test-ownership normalization require separate decisions
 after this narrow margin-hardening Slice closes.
+
+## 10. As-Built Closure
+
+`CP-M1-GA-RET-02A.0` through `.5` are complete. The implementation preserved
+the canonical AE source root and hard floors, admitted six exact AE-owned
+cross-namespace tests, added the mandatory ownership/quarantine reporter, and
+hardened `project_delegation_planning.py` to statement and branch coverage of
+`100% / 100%`.
+
+The final canonical AE Slice Gate passed all six commands at aggregate
+statement and branch coverage of `96.4497% / 94.6630%`. Active-product
+coverage is separately visible at `97.1306% / 94.9836%`; historical coverage
+remains unchanged at `86.8421% / 81.7647%`, with zero active-import or
+canonical-deployment conflicts. All ten acceptance criteria in Section 6 are
+therefore satisfied.
+
+The original `CP-M1-E2E-FX-01` public M1 E2E is admitted to resume. This is an
+entry decision only, not public-journey acceptance. The resumed Slice retains
+its own actual PostgreSQL, signed trust, live generation, installed runtime,
+and Playwright obligations.
