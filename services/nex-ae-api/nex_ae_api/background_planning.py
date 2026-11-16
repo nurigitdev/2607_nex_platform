@@ -309,12 +309,18 @@ class _ClaimedWorkContextResolver:
 def _require_execution_source(
     execution: Mapping[str, Any], planning_source: Mapping[str, Any]
 ) -> None:
+    delegation_identity = planning_source.get("delegation_identity")
     if (
         execution.get("source_type") != "CLAIMED_WORKITEM"
         or execution.get("agent_type") not in {"CA", "PA", "EA"}
         or execution.get("work_item_ref") != planning_source.get("source_ref")
         or execution.get("project_id")
         != planning_source.get("project_ref", {}).get("entity_id")
+        or (
+            isinstance(delegation_identity, Mapping)
+            and execution.get("requester_ref")
+            != delegation_identity.get("requester_ref")
+        )
     ):
         raise BackgroundPlanningError(
             "ae.background_planning_lineage_conflict",

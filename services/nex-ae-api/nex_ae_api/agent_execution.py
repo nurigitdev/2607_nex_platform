@@ -8,6 +8,11 @@ from datetime import UTC, datetime
 from typing import Any, Literal
 from uuid import uuid4
 
+from nex_runtime.business_context import (
+    BusinessContextValidationError,
+    validate_business_request_context,
+)
+from nex_runtime.semantic_hashes import semantic_sha256_hash_ref
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
@@ -16,7 +21,6 @@ from nex_ae_api.agent_identity import (
     AgentIdentityRepositoryError,
     SqlAlchemyAgentIdentityRegistry,
 )
-from nex_runtime.semantic_hashes import semantic_sha256_hash_ref
 
 AGENT_RUNTIME_MODE_ENV = "NEX_AE_AGENT_RUNTIME_MODE"
 AGENT_RUNTIME_MODES = frozenset({"disabled", "shadow", "required"})
@@ -455,6 +459,11 @@ class AgentExecutionAdmissionService:
         normalized_planning_source = _validate_claimed_planning_source(
             planning_source
         )
+        delegation_identity = normalized_planning_source.get("delegation_identity")
+        if isinstance(delegation_identity, Mapping) and (
+            delegation_identity.get("requester_ref") != requester_ref
+        ):
+            raise _invalid("Claim handoff requester lineage is invalid.")
         if (
             normalized_planning_source["source_ref"]
             != normalized["work_item_ref"]
@@ -508,7 +517,7 @@ class AgentExecutionAdmissionService:
                 now=now,
             )
             return AgentRuntimeAdmission(mode=self._mode, execution=execution)
-        except (AgentIdentityRepositoryError, AgentExecutionError):
+        except (AgentIdentityRepositoryError, AgentExecutionError):  # noqa: TRY203
             raise
 
 
@@ -857,7 +866,7 @@ def _validate_claim_handoff(value: Mapping[str, Any]) -> dict[str, Any]:
     return normalized
 
 
-_PLANNING_SOURCE_FIELDS = frozenset(
+_PLANNING_SOURCE_V1_FIELDS = frozenset(
     {
         "schema_version",
         "source_type",
@@ -872,15 +881,28 @@ _PLANNING_SOURCE_FIELDS = frozenset(
         "result_contract_ref",
     }
 )
+_PLANNING_SOURCE_V2_FIELDS = _PLANNING_SOURCE_V1_FIELDS | frozenset(
+    {"delegation_identity", "business_request_context", "business_context_hash"}
+)
 
 
 def _validate_claimed_planning_source(value: object) -> dict[str, Any]:
-    if not isinstance(value, Mapping) or set(value) != _PLANNING_SOURCE_FIELDS:
+    if not isinstance(value, Mapping):
         raise _invalid("Claimed planning source fields are invalid.")
     normalized = dict(value)
+    schema_version = normalized.get("schema_version")
+    expected_fields = (
+        _PLANNING_SOURCE_V2_FIELDS
+        if schema_version == "p7.claimed_work_planning_source.v2"
+        else _PLANNING_SOURCE_V1_FIELDS
+    )
     if (
-        normalized.get("schema_version")
-        != "p7.claimed_work_planning_source.v1"
+        set(normalized) != expected_fields
+        or schema_version
+        not in {
+            "p7.claimed_work_planning_source.v1",
+            "p7.claimed_work_planning_source.v2",
+        }
         or normalized.get("source_type") != "CLAIMED_WORKITEM"
     ):
         raise _invalid("Claimed planning source version or type is invalid.")
@@ -918,6 +940,40 @@ def _validate_claimed_planning_source(value: object) -> dict[str, Any]:
                 or not isinstance(item.get("entity_id"), str)
             ):
                 raise _invalid(f"Claimed planning source {field} is invalid.")
+    if schema_version == "p7.claimed_work_planning_source.v2":
+        if (
+            normalized["work_class"] != "BUSINESS_TRANSACTION"
+            or normalized["required_capability"]
+            != "FINANCE.VOUCHER.APPROVE_AND_POST"
+        ):
+            raise _invalid("Claimed business planning source profile is invalid.")
+        identity = normalized.get("delegation_identity")
+        if not isinstance(identity, Mapping) or set(identity) != {
+            "delegation_id",
+            "delegation_revision",
+            "requester_ref",
+            "parent_agent_execution_id",
+        }:
+            raise _invalid("Claimed planning delegation identity is invalid.")
+        for field in (
+            "delegation_id",
+            "requester_ref",
+            "parent_agent_execution_id",
+        ):
+            _required_text(f"delegation_identity.{field}", identity.get(field))
+        revision = identity.get("delegation_revision")
+        if isinstance(revision, bool) or not isinstance(revision, int) or revision < 1:
+            raise _invalid("Claimed planning delegation revision is invalid.")
+        try:
+            context = validate_business_request_context(
+                normalized["business_request_context"]
+            )
+        except BusinessContextValidationError as exc:
+            raise _invalid(exc.detail) from exc
+        if normalized["business_context_hash"] != context["context_hash"]:
+            raise _invalid("Claimed planning business context hash is invalid.")
+        normalized["delegation_identity"] = dict(identity)
+        normalized["business_request_context"] = context
     return normalized
 
 

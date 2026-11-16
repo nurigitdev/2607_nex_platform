@@ -99,8 +99,38 @@ def _candidate(*, project_code: str = PROJECT_CODE):
 
 
 def _work_intent():
+    business_context = {
+        "schema_version": "ae.business_request_context.v1",
+        "request_kind": "FINANCE_VOUCHER_POSTING",
+        "source_prompt_ref": "AE:INTERACTION:test",
+        "company_selector": {"kind": "CODE_OR_NAME", "value": "NURIVOICE"},
+        "document": {
+            "document_type": "BUSINESS_PROPOSAL",
+            "subject_ref": "Project expense",
+            "subject_revision": 1,
+            "content_hash": "sha256:" + "a" * 64,
+            "attachment_manifest_hash": None,
+        },
+        "transaction": {
+            "counterparty_selector": "Vendor",
+            "amount": "100.00",
+            "currency": "KRW",
+            "recognition_date": "2026-11-15",
+            "description": "Post the Project expense.",
+        },
+        "requested_allocation": [
+            {"project_code": PROJECT_CODE, "ratio": "1.000000"}
+        ],
+        "candidate_provenance": {
+            "intent_candidate_hash": "sha256:" + "b" * 64,
+            "input_context_hash": "sha256:" + "c" * 64,
+            "model_profile": "test",
+            "model_ref": "test-model",
+        },
+    }
+    business_context["context_hash"] = semantic_sha256_hash_ref(business_context)
     value = {
-        "schema_version": "1.1",
+        "schema_version": "1.2",
         "work_intent_id": WORK_INTENT_ID,
         "intent_revision": 1,
         "supersedes_work_intent_id": None,
@@ -137,6 +167,8 @@ def _work_intent():
             "parameters": None,
         },
         "provenance": {},
+        "business_request_context": business_context,
+        "business_context_hash": business_context["context_hash"],
     }
     value["intent_hash"] = semantic_sha256_hash_ref(value)
     return value
@@ -314,6 +346,12 @@ def test_ia_resolved_project_entity_admits_delegate_work_scope():
         agent_plan_id=PLAN_ID,
     )
     assert plan["steps"][0]["delegation"]["project_scope_ref"] == PROJECT_ID
+    assert plan["steps"][0]["delegation"]["business_request_context"] == intent[
+        "business_request_context"
+    ]
+    assert plan["steps"][0]["delegation"]["business_context_hash"] == intent[
+        "business_context_hash"
+    ]
 
     bad_context = dict(context)
     bad_context["resolved_entities"] = []

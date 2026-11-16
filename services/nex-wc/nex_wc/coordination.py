@@ -30,7 +30,10 @@ DEFAULT_ROUTING_POLICY_VERSION = "p7-routing-policy.v1"
 DEFAULT_CAPABILITY_PROFILES = {
     "FINANCE.PROJECT_BUDGET_CHECK": frozenset(
         {"agent-profile://pa/project-budget-read/v1"}
-    )
+    ),
+    "FINANCE.VOUCHER.APPROVE_AND_POST": frozenset(
+        {"agent-profile://nex-platform/project-agent/v1"}
+    ),
 }
 
 
@@ -553,7 +556,9 @@ class InMemoryCoordinationRepository:
                     work = self._work_items._records[(tenant_id, row["work_item_id"])]
                     return {
                         **copy.deepcopy(row),
-                        "requester_ref": work["work_item"]["requester"]["entity_id"],
+                        "requester_ref": work["work_item"]["accountable_owner"][
+                            "entity_id"
+                        ],
                         "planning_source": _planning_source(
                             work["work_item"], work["delegation_spec"]
                         ),
@@ -924,7 +929,8 @@ class SqlAlchemyCoordinationRepository:
                                claim.lease_expires_at,
                                assignment.status AS assignment_status,
                                active.claim_id AS active_claim_id,
-                               w.work_item -> 'requester' ->> 'entity_id' AS requester_ref
+                               w.work_item -> 'accountable_owner' ->> 'entity_id'
+                                 AS requester_ref
                         FROM wc_event_outbox AS o
                         JOIN wc_work_item AS w
                          ON w.tenant_id = o.tenant_id
@@ -1289,7 +1295,7 @@ def _handoff(
 def _planning_source(
     work_item: Mapping[str, Any], delegation_spec: Mapping[str, Any]
 ) -> dict[str, Any]:
-    return {
+    source = {
         "schema_version": "p7.claimed_work_planning_source.v1",
         "source_type": "CLAIMED_WORKITEM",
         "source_ref": work_item["work_item_id"],
@@ -1302,6 +1308,25 @@ def _planning_source(
         "completion_policy": work_item["completion_policy"],
         "result_contract_ref": delegation_spec["result_contract_ref"],
     }
+    if delegation_spec.get("schema_version") == "1.2":
+        source.update(
+            {
+                "schema_version": "p7.claimed_work_planning_source.v2",
+                "delegation_identity": {
+                    "delegation_id": delegation_spec["delegation_id"],
+                    "delegation_revision": delegation_spec["delegation_revision"],
+                    "requester_ref": work_item["accountable_owner"]["entity_id"],
+                    "parent_agent_execution_id": delegation_spec[
+                        "parent_agent_execution_id"
+                    ],
+                },
+                "business_request_context": delegation_spec[
+                    "business_request_context"
+                ],
+                "business_context_hash": delegation_spec["business_context_hash"],
+            }
+        )
+    return source
 
 
 def _outbox_from_row(row: Mapping[str, Any]) -> dict[str, Any]:

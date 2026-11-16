@@ -13,7 +13,7 @@ from nex_wc import coordination as coordination_module
 from nex_wc.work_items import WorkItemError, validate_delegation_spec
 from referencing import Registry, Resource
 
-# Successor AE/WC contracts are admitted before activation in 01B.2/01B.3.
+# Successor AE/WC contracts were admitted in 01B.1 and activated in 01B.2/01B.3.
 ROOT = Path(__file__).resolve().parents[1]
 SCHEMA_ROOT = ROOT / "contracts" / "schemas" / "service"
 EXAMPLE_ROOT = ROOT / "contracts" / "examples" / "service"
@@ -189,16 +189,22 @@ def test_01b1_boundary_manifest_freezes_sources_operations_and_shortcuts() -> No
         assert (ROOT / source["path"]).is_file()
 
 
-def test_01b1_successor_contracts_are_admitted_but_runtime_is_not_activated() -> None:
+def test_01b1_successor_contracts_track_the_01b2_01b3_runtime_activation() -> None:
     assert work_intent_module.WORK_INTENT_SCHEMA_VERSION == "1.1"
+    assert work_intent_module.BUSINESS_WORK_INTENT_SCHEMA_VERSION == "1.2"
 
     with pytest.raises(WorkItemError):
         validate_delegation_spec(_json(DELEGATION_EXAMPLE))
 
-    with pytest.raises(work_intent_module.WorkIntentError):
-        work_intent_module._claimed_planning_source(_json(PLANNING_SOURCE_EXAMPLE))
+    planning_source = work_intent_module._claimed_planning_source(
+        _json(PLANNING_SOURCE_EXAMPLE)
+    )
+    assert planning_source["schema_version"] == "p7.claimed_work_planning_source.v2"
+    assert planning_source["business_context_hash"] == planning_source[
+        "business_request_context"
+    ]["context_hash"]
 
-    assert '"schema_version": "p7.claimed_work_planning_source.v1"' in inspect.getsource(
+    assert '"schema_version": "p7.claimed_work_planning_source.v2"' in inspect.getsource(
         coordination_module._planning_source
     )
 

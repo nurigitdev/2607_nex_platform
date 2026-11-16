@@ -8,6 +8,10 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
+from nex_runtime.business_context import (
+    BusinessContextValidationError,
+    validate_business_request_context,
+)
 from nex_runtime.semantic_hashes import (
     canonical_json,
     semantic_sha256_hash_ref,
@@ -473,20 +477,34 @@ def _validate_step(value: object) -> None:
             raise _invalid(
                 "DELEGATE_WORK requires a capability without a local version binding."
             )
-        _validate_delegation(delegation, value["output_contract_ref"])
+        _validate_delegation(
+            delegation,
+            value["output_contract_ref"],
+            required_capability,
+        )
     elif delegation is not None:
         raise _invalid("Only DELEGATE_WORK may carry delegation metadata.")
 
 
-def _validate_delegation(value: object, output_contract_ref: object) -> None:
-    fields = {
+def _validate_delegation(
+    value: object,
+    output_contract_ref: object,
+    required_capability: object,
+) -> None:
+    base_fields = {
         "work_class",
         "required_agent_type",
         "project_scope_ref",
         "result_contract_ref",
         "completion_policy",
     }
-    if not isinstance(value, Mapping) or set(value) != fields:
+    business_fields = {"business_request_context", "business_context_hash"}
+    expected_fields = (
+        base_fields | business_fields
+        if required_capability == "FINANCE.VOUCHER.APPROVE_AND_POST"
+        else base_fields
+    )
+    if not isinstance(value, Mapping) or set(value) != expected_fields:
         raise _invalid("AgentPlan delegation metadata is invalid.")
     if value["work_class"] not in _DELEGATION_WORK_CLASSES:
         raise _invalid("AgentPlan delegation work class is invalid.")
@@ -500,6 +518,15 @@ def _validate_delegation(value: object, output_contract_ref: object) -> None:
         raise _invalid("AgentPlan delegation result contract is inconsistent.")
     if value["completion_policy"] not in _DELEGATION_COMPLETION_POLICIES:
         raise _invalid("AgentPlan delegation completion policy is invalid.")
+    if business_fields.issubset(expected_fields):
+        try:
+            context = validate_business_request_context(
+                value.get("business_request_context")
+            )
+        except BusinessContextValidationError as exc:
+            raise _invalid(exc.detail) from exc
+        if value.get("business_context_hash") != context["context_hash"]:
+            raise _invalid("AgentPlan delegation business context hash is invalid.")
 
 
 def _validate_input_binding(value: object) -> None:

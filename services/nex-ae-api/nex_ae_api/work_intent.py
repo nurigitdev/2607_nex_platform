@@ -303,7 +303,11 @@ def build_work_intent_from_claimed_work(
         prompt_provenance=prompt_provenance,
     )
     result: dict[str, Any] = {
-        "schema_version": WORK_INTENT_SCHEMA_VERSION,
+        "schema_version": (
+            BUSINESS_WORK_INTENT_SCHEMA_VERSION
+            if source["schema_version"] == "p7.claimed_work_planning_source.v2"
+            else WORK_INTENT_SCHEMA_VERSION
+        ),
         "work_intent_id": work_intent_id,
         "intent_revision": 1,
         "supersedes_work_intent_id": None,
@@ -354,6 +358,33 @@ def build_work_intent_from_claimed_work(
         },
         "provenance": provenance,
     }
+    if source["schema_version"] == "p7.claimed_work_planning_source.v2":
+        if result["intent_label"] != BUSINESS_TRANSACTION_INTENT_LABEL:
+            raise _invalid(
+                "Claimed business context requires the M1 finance intent."
+            )
+        result.update(
+            {
+                "constraints": [
+                    {
+                        "constraint_type": "BUSINESS_CONTEXT_AUTHORITY",
+                        "description": (
+                            "The delegated business request context is input, not "
+                            "accounting authority."
+                        ),
+                    },
+                    {
+                        "constraint_type": "CLAIMED_WORK_AUTHORITY",
+                        "description": (
+                            "WC claim lineage and owner-service facts remain "
+                            "authoritative."
+                        ),
+                    },
+                ],
+                "business_request_context": source["business_request_context"],
+                "business_context_hash": source["business_context_hash"],
+            }
+        )
     result["intent_hash"] = semantic_sha256_hash_ref(result)
     return _validate_work_intent(result)
 
@@ -546,10 +577,10 @@ def _validate_business_work_intent(record: Mapping[str, Any]) -> None:
         raise _invalid("WorkIntent business_context_hash does not match its context.")
     source = record.get("source")
     provenance = record.get("provenance")
-    if (
-        not isinstance(source, Mapping)
-        or source.get("source_ref") != context["source_prompt_ref"]
-        or not isinstance(provenance, Mapping)
+    if not isinstance(source, Mapping) or not isinstance(provenance, Mapping):
+        raise _invalid("WorkIntent business context provenance does not match.")
+    if source.get("source_type") == "PROMPT" and (
+        source.get("source_ref") != context["source_prompt_ref"]
         or provenance.get("input_context_hash")
         != context["candidate_provenance"]["input_context_hash"]
         or provenance.get("model_profile")
@@ -558,10 +589,14 @@ def _validate_business_work_intent(record: Mapping[str, Any]) -> None:
         != context["candidate_provenance"]["model_ref"]
     ):
         raise _invalid("WorkIntent business context provenance does not match.")
+    if source.get("source_type") == "CLAIMED_WORKITEM" and not record.get(
+        "project_ref"
+    ):
+        raise _invalid("Claimed business WorkIntent requires Project authority.")
 
 
 def _claimed_planning_source(value: Mapping[str, Any]) -> dict[str, Any]:
-    required = {
+    base_fields = {
         "schema_version",
         "source_type",
         "source_ref",
@@ -574,11 +609,27 @@ def _claimed_planning_source(value: Mapping[str, Any]) -> dict[str, Any]:
         "completion_policy",
         "result_contract_ref",
     }
-    if not isinstance(value, Mapping) or set(value) != required:
+    v2_fields = base_fields | {
+        "delegation_identity",
+        "business_request_context",
+        "business_context_hash",
+    }
+    if not isinstance(value, Mapping):
         raise _invalid("Claimed planning source fields are invalid.")
     result = dict(value)
+    schema_version = result.get("schema_version")
+    expected_fields = (
+        v2_fields
+        if schema_version == "p7.claimed_work_planning_source.v2"
+        else base_fields
+    )
     if (
-        result.get("schema_version") != "p7.claimed_work_planning_source.v1"
+        set(result) != expected_fields
+        or schema_version
+        not in {
+            "p7.claimed_work_planning_source.v1",
+            "p7.claimed_work_planning_source.v2",
+        }
         or result.get("source_type") != "CLAIMED_WORKITEM"
     ):
         raise _invalid("Claimed planning source version or type is invalid.")
@@ -599,6 +650,35 @@ def _claimed_planning_source(value: Mapping[str, Any]) -> dict[str, Any]:
         or not project["entity_id"].strip()
     ):
         raise _invalid("Claimed planning source project_ref is invalid.")
+    if (
+        schema_version == "p7.claimed_work_planning_source.v1"
+        and result.get("required_capability") == BUSINESS_TRANSACTION_INTENT_LABEL
+    ):
+        raise _invalid("M1 claimed work requires business planning source v2.")
+    if schema_version == "p7.claimed_work_planning_source.v2":
+        if (
+            result.get("work_class") != "BUSINESS_TRANSACTION"
+            or result.get("required_capability")
+            != BUSINESS_TRANSACTION_INTENT_LABEL
+        ):
+            raise _invalid("Claimed business planning source profile is invalid.")
+        try:
+            context = validate_business_request_context(
+                result.get("business_request_context")
+            )
+        except BusinessRequestContextError as exc:
+            raise WorkIntentError(exc.error_code, exc.detail) from exc
+        if result.get("business_context_hash") != context["context_hash"]:
+            raise _invalid("Claimed planning business context hash is invalid.")
+        identity = result.get("delegation_identity")
+        if not isinstance(identity, Mapping) or set(identity) != {
+            "delegation_id",
+            "delegation_revision",
+            "requester_ref",
+            "parent_agent_execution_id",
+        }:
+            raise _invalid("Claimed planning delegation identity is invalid.")
+        result["business_request_context"] = context
     return result
 
 

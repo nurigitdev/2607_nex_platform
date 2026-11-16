@@ -8,6 +8,10 @@ from dataclasses import dataclass, field
 from typing import Any
 from uuid import UUID
 
+from nex_runtime.business_context import (
+    BusinessContextValidationError,
+    validate_business_request_context,
+)
 from nex_runtime.prompts import PromptRegistryError, render_prompt_from_binding
 from nex_runtime.semantic_hashes import (
     canonical_json,
@@ -17,6 +21,7 @@ from nex_runtime.semantic_hashes import (
 )
 
 from nex_ae_api.agent_plans import AgentPlanError, validate_agent_plan_contract
+from nex_ae_api.business_request_context import BUSINESS_TRANSACTION_INTENT_LABEL
 from nex_ae_api.mo_generation_client import (
     AeMoGenerationClient,
     AeMoGenerationReadiness,
@@ -683,7 +688,11 @@ def _bind_step(
         version = None
         aggregation = None
         report = None
-        delegation = metadata
+        delegation = _delegation_with_business_context(
+            metadata,
+            required_capability=required_capability,
+            work_intent=work_intent,
+        )
         output_contract_ref = metadata["result_contract_ref"]
     else:
         try:
@@ -744,6 +753,36 @@ def _bind_step(
     }
 
 
+def _delegation_with_business_context(
+    metadata: Mapping[str, Any],
+    *,
+    required_capability: str,
+    work_intent: Mapping[str, Any],
+) -> dict[str, Any]:
+    delegation = dict(metadata)
+    if required_capability != BUSINESS_TRANSACTION_INTENT_LABEL:
+        return delegation
+    if work_intent.get("schema_version") != "1.2":
+        raise _capability_error(
+            "M1 Project delegation requires an admitted WorkIntent v1.2 context."
+        )
+    try:
+        context = validate_business_request_context(
+            work_intent.get("business_request_context")
+        )
+    except BusinessContextValidationError as exc:
+        raise _capability_error(exc.detail) from exc
+    if work_intent.get("business_context_hash") != context["context_hash"]:
+        raise _capability_error("M1 WorkIntent business context hash is inconsistent.")
+    delegation.update(
+        {
+            "business_request_context": context,
+            "business_context_hash": context["context_hash"],
+        }
+    )
+    return delegation
+
+
 def _candidate_delegation(value: object) -> dict[str, Any]:
     if not isinstance(value, Mapping) or set(value) != _DELEGATION_KEYS:
         raise _schema_error("PLAN delegation metadata is invalid.")
@@ -779,8 +818,11 @@ def _require_project_scope(
 
 
 def _work_intent_projection(value: Mapping[str, Any]) -> dict[str, Any]:
-    if not isinstance(value, Mapping) or value.get("schema_version") != "1.1":
-        raise _request_error("work_intent must use schema version 1.1.")
+    if not isinstance(value, Mapping) or value.get("schema_version") not in {
+        "1.1",
+        "1.2",
+    }:
+        raise _request_error("work_intent must use schema version 1.1 or 1.2.")
     execution_id = _uuid_text(value.get("execution_id"), "work_intent.execution_id")
     _uuid_text(value.get("work_intent_id"), "work_intent.work_intent_id")
     revision = _bounded_int(value.get("intent_revision"), "intent_revision", 1, 99)
