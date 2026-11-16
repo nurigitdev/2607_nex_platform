@@ -154,6 +154,15 @@ canonical deployment inputs. Aggregate coverage scope and thresholds remain
 unchanged. The next boundary is `CP-M1-GA-RET-02A.2` explicit AE test
 ownership reconciliation.
 
+`CP-M1-GA-RET-02A.2` evidence is recorded in
+[`mybee_phase1_w70_cp_m1_ga_ret_02a2_explicit_ae_test_ownership.md`](../../slices/mybee_phase1_w70_cp_m1_ga_ret_02a2_explicit_ae_test_ownership.md).
+It adds six exact MyBee transition tests to the AE service profile through a
+separate `owned_tests` contract, preserves existing filename patterns, and
+proves stable ordering, deduplication, and exclusion of historical or
+domain-owned tests. It also reconciles stale v1 deployment expectations with
+the current v2 generalized runtime while preserving the immutable signed
+checkpoint input. The next boundary is `CP-M1-GA-RET-02A.3`.
+
 `W70-S8-01A` implementation evidence is recorded in
 [`mybee_phase1_w70_s8_01a_tool_inventory.md`](../../slices/mybee_phase1_w70_s8_01a_tool_inventory.md).
 It closes the canonical Tool inventory, operation identity, compatibility

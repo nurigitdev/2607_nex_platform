@@ -27,8 +27,11 @@ from nex_runtime.semantic_hashes import semantic_sha256_hash_ref
 
 ROOT = Path(__file__).resolve().parents[2]
 LOCK = ROOT / "deployment/locks/ae-mybee-m1-signed-skill-checkpoint.v1.json"
-REGISTRY = (
+SIGNED_RELEASE_REGISTRY = (
     ROOT / "deployment/environments/ae-product-capability-registry.mybee-m1.v1.json"
+)
+CANONICAL_REGISTRY = (
+    ROOT / "deployment/environments/ae-product-capability-registry.mybee-m1.v2.json"
 )
 
 TENANT = "VO00"
@@ -127,15 +130,14 @@ def test_signed_d04_d12_release_is_source_backed_and_production_verified() -> No
     }
 
 
-def test_m1_registry_admits_exact_signed_subset_and_preserves_golden_a() -> None:
+def test_canonical_m1_registry_admits_signed_subset_without_retired_golden_a() -> None:
     registry = load_product_capability_registry(
-        {PRODUCT_CAPABILITY_REGISTRY_PATH_ENV: str(REGISTRY)}
+        {PRODUCT_CAPABILITY_REGISTRY_PATH_ENV: str(CANONICAL_REGISTRY)}
     )
 
     assert registry.registry_id == "ae-product-capabilities-mybee-m1"
-    assert registry.registry_version == 3
+    assert registry.registry_version == 4
     assert [item.capability_id for item in registry.registrations] == [
-        "FINANCE.CREATE_VOUCHER_DRAFT",
         M1_D04_CAPABILITY_ID,
         M1_D12_CAPABILITY_ID,
     ]
@@ -164,7 +166,7 @@ def test_candidate_packs_remain_unpromoted_while_compose_selects_m1_release() ->
     )
     assert (
         "/app/deployment/product/repository/deployment/environments/"
-        "ae-product-capability-registry.mybee-m1.v1.json"
+        "ae-product-capability-registry.mybee-m1.v2.json"
     ) in compose
     assert "/app/deployment/product/config/ae-product-capability-registry.v1.json" not in compose
 
@@ -432,7 +434,7 @@ def test_candidate_binding_missing_and_drift_are_rejected(monkeypatch) -> None:
 )
 def test_registry_internal_drift_is_rejected(mutation, error_code: str) -> None:
     release = load_m1_signed_skill_release()
-    registry = json.loads(REGISTRY.read_text(encoding="utf-8"))
+    registry = json.loads(SIGNED_RELEASE_REGISTRY.read_text(encoding="utf-8"))
     reference = json.loads(LOCK.read_text(encoding="utf-8"))[
         "product_capability_registry"
     ]

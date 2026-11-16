@@ -17,6 +17,16 @@ def _minimal_root(tmp_path: Path) -> Path:
         "tests/test_ae_p4_contract.py",
         "tests/test_ae_p5_plan.py",
         "tests/test_ae_p6_runtime.py",
+        "tests/mybee_phase1/test_boundary_imports.py",
+        "tests/mybee_phase1/test_mybee_skill_admission.py",
+        "tests/mybee_phase1/test_w40_ca02_installed_configuration_wiring.py",
+        "tests/mybee_phase1/test_w40_ca02_installed_product_integration.py",
+        "tests/mybee_phase1/test_w40_ca02_runtime_ownership_audit.py",
+        "tests/mybee_phase1/test_w70_cp_m1_ga_ret_01.py",
+        "tests/mybee_phase1/test_w70_cp_m1_ga_ret_02.py",
+        "tests/mybee_phase1/test_w70_s8_01b_tool_contract_admission.py",
+        "tests/mybee_phase1/test_w70_s8_01d_registry_bundle_locks.py",
+        "tests/mybee_phase1/test_w70_s8_01e_foundation_gate.py",
         "tests/test_gb2_ca00_s20b_trust_approval_boundaries.py",
         "tests/test_nex_eos_alpha.py",
         "tests/test_nex_oa_eos_mybee_project_entitlement_lifecycle.py",
@@ -136,9 +146,59 @@ def test_ae_api_slice_profile_includes_owned_transition_runtime_regression(
         "test_nex_ae_*.py",
         "test_ae_*.py",
     )
+    assert gate.SERVICE_PROFILES["nex-ae-api"].owned_tests == (
+        "tests/mybee_phase1/test_mybee_skill_admission.py",
+        "tests/mybee_phase1/test_w40_ca02_installed_configuration_wiring.py",
+        "tests/mybee_phase1/test_w40_ca02_runtime_ownership_audit.py",
+        "tests/mybee_phase1/test_w70_cp_m1_ga_ret_02.py",
+        "tests/mybee_phase1/test_w70_s8_01d_registry_bundle_locks.py",
+        "tests/mybee_phase1/test_w70_s8_01e_foundation_gate.py",
+    )
     assert "tests/test_ae_p4_contract.py" in plan.commands[0]
     assert "tests/test_ae_p5_plan.py" in plan.commands[0]
     assert "tests/test_ae_p6_runtime.py" in plan.commands[0]
+    assert set(gate.AE_EXPLICIT_OWNED_TESTS) <= set(plan.commands[0])
+    assert plan.test_count == 11
+
+
+def test_ae_api_owned_tests_are_stable_deduplicated_and_narrow(
+    tmp_path: Path,
+) -> None:
+    root = _minimal_root(tmp_path)
+
+    first = gate.build_slice_plan(
+        root=root,
+        python_bin="python-test",
+        service="nex-ae-api",
+        focused_tests=[
+            "tests/mybee_phase1/test_w70_s8_01d_registry_bundle_locks.py"
+        ],
+    )
+    second = gate.build_slice_plan(
+        root=root,
+        python_bin="python-test",
+        service="nex-ae-api",
+        focused_tests=[
+            "tests/mybee_phase1/test_w70_s8_01d_registry_bundle_locks.py"
+        ],
+    )
+
+    selected = first.commands[0]
+    assert selected == second.commands[0]
+    assert selected.count(
+        "tests/mybee_phase1/test_w70_s8_01d_registry_bundle_locks.py"
+    ) == 1
+    assert first.test_count == 11
+    assert "tests/mybee_phase1/test_boundary_imports.py" not in selected
+    assert (
+        "tests/mybee_phase1/test_w40_ca02_installed_product_integration.py"
+        not in selected
+    )
+    assert "tests/mybee_phase1/test_w70_cp_m1_ga_ret_01.py" not in selected
+    assert (
+        "tests/mybee_phase1/test_w70_s8_01b_tool_contract_admission.py"
+        not in selected
+    )
 
 
 def test_eos_slice_profile_includes_cross_service_owned_regression(

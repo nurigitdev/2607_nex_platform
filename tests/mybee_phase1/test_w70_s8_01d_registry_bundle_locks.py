@@ -163,13 +163,21 @@ def test_w70_deployed_runtime_points_to_verified_m1_registry_with_rollback() -> 
 
     expected = (
         "/app/deployment/product/repository/deployment/environments/"
-        "ae-product-capability-registry.mybee-m1.v1.json"
+        "ae-product-capability-registry.mybee-m1.v2.json"
     )
     assert expected in compose
     assert expected in containerfile
+    assert "ae-product-capability-registry.mybee-m1.v1.json" not in compose
+    assert "ae-product-capability-registry.mybee-m1.v1.json" not in containerfile
     assert "NEX_AE_PRODUCT_RUNTIME_PROFILE: VERIFIED_PRODUCT_RELEASE" in compose
     assert "NEX_AE_PRODUCT_RUNTIME_PROFILE=VERIFIED_PRODUCT_RELEASE" in containerfile
-    assert "golden-a-rollback-receipt.v1.json" in containerfile
+    activation = _json(
+        ROOT / "deployment/locks/ae-mybee-m1-runtime-activation.v2.json"
+    )
+    assert activation["rollback_target"]["receipt_ref"] == (
+        "deployment/locks/ae-mybee-m1-generalized-rollback.v1.json"
+    )
+    assert activation["rollback_target"]["golden_a_dependency"] is False
 
     with pytest.raises(ProductCapabilityRegistryError) as raised:
         load_product_capability_registry(

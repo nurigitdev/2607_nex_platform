@@ -24,6 +24,17 @@ ALLOWED_COVERAGE_PREFIXES = ("services/", "providers/", "scripts/", "domains/")
 class ServiceProfile:
     test_patterns: tuple[str, ...]
     coverage_targets: tuple[str, ...]
+    owned_tests: tuple[str, ...] = ()
+
+
+AE_EXPLICIT_OWNED_TESTS = (
+    "tests/mybee_phase1/test_mybee_skill_admission.py",
+    "tests/mybee_phase1/test_w40_ca02_installed_configuration_wiring.py",
+    "tests/mybee_phase1/test_w40_ca02_runtime_ownership_audit.py",
+    "tests/mybee_phase1/test_w70_cp_m1_ga_ret_02.py",
+    "tests/mybee_phase1/test_w70_s8_01d_registry_bundle_locks.py",
+    "tests/mybee_phase1/test_w70_s8_01e_foundation_gate.py",
+)
 
 
 SERVICE_PROFILES = {
@@ -41,6 +52,7 @@ SERVICE_PROFILES = {
             "test_ae_*.py",
         ),
         coverage_targets=("services/nex-ae-api/nex_ae_api",),
+        owned_tests=AE_EXPLICIT_OWNED_TESTS,
     ),
     "nex-ae-web": ServiceProfile(
         test_patterns=("test_nex_ae_web_*.py", "test_ae_web_*.py"),
@@ -129,11 +141,15 @@ def build_slice_plan(
         raise ValueError(f"unsupported service profile: {service}")
 
     service_tests = _expand_test_patterns(root, profile.test_patterns)
+    owned_tests = [
+        _validated_file(root, path, prefix="tests", suffix=".py")
+        for path in profile.owned_tests
+    ]
     explicit_tests = [
         _validated_file(root, path, prefix="tests", suffix=".py")
         for path in focused_tests
     ]
-    tests = _deduplicated((*service_tests, *explicit_tests))
+    tests = _deduplicated((*service_tests, *owned_tests, *explicit_tests))
     targets = _deduplicated(
         (
             *profile.coverage_targets,
