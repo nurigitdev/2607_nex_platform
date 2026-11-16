@@ -1725,6 +1725,45 @@ paths:
         "404": {description: SourcePool was not found in tenant and company scope.}
         "422": {description: Query identity is malformed.}
         "503": {description: SourcePool persistence is unavailable.}
+  /internal/v2/finance/cost-allocation-plans:resolve:
+    post:
+      operationId: FINANCE.COST_ALLOCATION_PLAN.RESOLVE
+      tags: [Finance]
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes: [service:call]
+      x-nex-business-scope: finance:cost-allocation:read
+      x-nex-side-effect-free: true
+      parameters:
+        - name: X-NeX-Tenant-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+        - name: X-NeX-Company-Id
+          in: header
+          required: true
+          schema: {type: string, format: uuid}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CostAllocationPlanResolve"
+      responses:
+        "200":
+          description: The one approved allocation plan matching the exact semantic selector.
+          headers:
+            Cache-Control:
+              schema: {type: string, example: "no-store, max-age=0"}
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CostAllocationPlanResolution"
+        "400": {description: "Selector schema, identity, ratio, or effective date is malformed."}
+        "401": {description: Service claim is missing or invalid.}
+        "404": {description: No approved allocation plan matches the exact selector.}
+        "409": {description: More than one approved allocation plan matches the exact selector.}
+        "503": {description: Allocation plan persistence is unavailable or the bounded candidate set is exceeded.}
   /internal/v2/finance/cost-allocation-plans/releases:
     post:
       operationId: FINANCE.COST_ALLOCATION_PLAN.RELEASE
@@ -2632,6 +2671,12 @@ components:
     CostAllocationPlan:
       type: object
       x-nex-canonical-json-schema: schemas/service/nex_eos/cost_allocation_plan.v1.schema.json
+    CostAllocationPlanResolve:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_eos/cost_allocation_plan_resolve.v1.schema.json
+    CostAllocationPlanResolution:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_eos/cost_allocation_plan_resolution.v1.schema.json
     CostAllocationRun:
       type: object
       x-nex-canonical-json-schema: schemas/service/nex_eos/cost_allocation_run.v1.schema.json

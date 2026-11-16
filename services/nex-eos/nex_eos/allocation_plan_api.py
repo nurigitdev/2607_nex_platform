@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import FastAPI, Header, Request
+from fastapi import Body, FastAPI, Header, Request
 from fastapi.responses import JSONResponse
 from nex_runtime import (
     DEFAULT_SERVICE_SCOPE,
@@ -12,8 +12,46 @@ from nex_runtime import (
 
 from .allocation_plans import EosAllocationPlanError, EosAllocationPlanService
 
+_NO_STORE_HEADERS = {
+    "Cache-Control": "no-store, max-age=0",
+    "Pragma": "no-cache",
+}
+
 
 def register_allocation_plan_routes(app: FastAPI) -> None:
+    @app.post(
+        "/internal/v2/finance/cost-allocation-plans:resolve",
+        response_model=None,
+        operation_id="FINANCE.COST_ALLOCATION_PLAN.RESOLVE",
+    )
+    def resolve_allocation_plan(
+        request: Request,
+        payload: Any = Body(...),
+        tenant_id: str = Header(alias="X-NeX-Tenant-Id"),
+        company_id: str = Header(alias="X-NeX-Company-Id"),
+        authorization: str | None = Header(default=None),
+    ):
+        admitted = admit_service_token_from_request(
+            request,
+            authorization,
+            expected_audience="nex-eos",
+            required_scopes=(DEFAULT_SERVICE_SCOPE,),
+        )
+        if isinstance(admitted, JSONResponse):
+            return _no_store(admitted)
+        service = _service(request)
+        if isinstance(service, JSONResponse):
+            return _no_store(service)
+        try:
+            result = service.resolve(
+                tenant_id=tenant_id,
+                company_id=company_id,
+                payload=payload,
+            )
+        except EosAllocationPlanError as exc:
+            return _no_store(_problem(request, exc))
+        return JSONResponse(result, headers=_NO_STORE_HEADERS)
+
     @app.post(
         "/internal/v2/finance/cost-allocation-plans/releases",
         response_model=None,
@@ -110,8 +148,13 @@ def _problem(request: Request, exc: EosAllocationPlanError):
         request,
         status_code=exc.status_code,
         error_code=exc.error_code,
-        title="EOS allocation plan release failed",
+        title="EOS allocation plan request failed",
         detail=exc.detail,
         retryable=exc.retryable,
         type_uri="https://nex-platform.local/problems/eos-allocation-plan-failed",
     )
+
+
+def _no_store(response: JSONResponse) -> JSONResponse:
+    response.headers.update(_NO_STORE_HEADERS)
+    return response
