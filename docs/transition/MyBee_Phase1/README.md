@@ -175,6 +175,16 @@ consumer-composition assertion and then passed with 22,199 tests and
 statement/branch coverage of `98.4001% / 96.9544%`. The next boundary is
 `CP-M1-GA-RET-02A.4` active Project delegation branch hardening.
 
+`CP-M1-GA-RET-02A.4` evidence is recorded in
+[`mybee_phase1_w70_cp_m1_ga_ret_02a4_project_delegation_active_branches.md`](../../slices/mybee_phase1_w70_cp_m1_ga_ret_02a4_project_delegation_active_branches.md).
+It hardens the installed Project-delegation path across capability and Project
+identity mismatch, malformed WorkIntent and selectors, fresh OA denial,
+retryable dependency failure, and missing, multiple or inactive Project Agent
+projections. The target module now has statement and branch coverage of
+`100% / 100%`; the AE Slice Gate passed at `96.4497% / 94.6630%` while
+historical coverage remained unchanged. The next boundary is
+`CP-M1-GA-RET-02A.5` coverage-margin closure and public M1 E2E resume decision.
+
 `W70-S8-01A` implementation evidence is recorded in
 [`mybee_phase1_w70_s8_01a_tool_inventory.md`](../../slices/mybee_phase1_w70_s8_01a_tool_inventory.md).
 It closes the canonical Tool inventory, operation identity, compatibility
