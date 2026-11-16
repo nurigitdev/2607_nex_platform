@@ -103,7 +103,7 @@ def test_consumer_binding_helpers_are_bounded_and_non_protected_is_explicit() ->
     assert mybee_consumer_binding_ready({"status": "FAIL"}) is False
 
 
-def test_canonical_worker_configuration_admits_mybee_consumer_without_new_service() -> (
+def test_canonical_worker_configuration_admits_mybee_runtime_without_new_service() -> (
     None
 ):
     compose = (ROOT / "deployment/compose/canonical-platform.override.yaml").read_text(
@@ -115,6 +115,7 @@ def test_canonical_worker_configuration_admits_mybee_consumer_without_new_servic
 
     assert 'NEX_AE_MYBEE_EOS_TIMEOUT_SECONDS: "15"' in compose
     assert "NEX_AE_TO_EOS_SERVICE_TOKEN_REF" in compose
-    assert "build_installed_mybee_voucher_candidate_consumer(env)" in process
-    assert "mybee_product_consumer_bound" in process
+    assert "build_product_runtime_executor_profile(sessions, env)" in process
+    assert "build_installed_runtime_composition(" in process
+    assert "build_installed_mybee_voucher_candidate_consumer" not in process
     assert "nex-mybee" not in compose

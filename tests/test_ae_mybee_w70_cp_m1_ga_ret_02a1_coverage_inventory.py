@@ -51,6 +51,7 @@ def test_real_inventory_classifies_every_ae_module_and_freezes_baseline() -> Non
         "historical_hashes_match": True,
         "historical_absent_from_active_graph": True,
         "historical_absent_from_deployment_inputs": True,
+        "coverage_inventory_complete": True,
     }
     assert {
         scope: value["module_count"] for scope, value in report["scopes"].items()
@@ -81,7 +82,8 @@ def test_real_inventory_classifies_every_ae_module_and_freezes_baseline() -> Non
     assert len({item["path"] for item in report["modules"]}) == 176
     assert summary_line(report) == (
         "ae_coverage_ownership=pass modules=176 active_graph=69 "
-        "product=166 compatibility=5 historical=5"
+        "product=166 compatibility=5 historical=5 coverage=not-provided "
+        "conflicts=0"
     )
 
 
@@ -170,6 +172,32 @@ def test_inventory_rejects_quarantine_hash_and_coverage_metric_drift() -> None:
         build_ownership_inventory(
             ROOT, manifest=_json(ROOT / MANIFEST_PATH), coverage=coverage
         )
+
+
+def test_inventory_fails_gate_when_coverage_omits_owned_modules() -> None:
+    coverage = {
+        "files": {},
+        "totals": {
+            "num_statements": 0,
+            "covered_lines": 0,
+            "percent_statements_covered": 100.0,
+            "num_branches": 0,
+            "covered_branches": 0,
+            "percent_branches_covered": 100.0,
+        },
+    }
+
+    report = build_ownership_inventory(
+        ROOT, manifest=_json(ROOT / MANIFEST_PATH), coverage=coverage
+    )
+
+    assert report["status"] == "FAIL"
+    assert report["checks"]["coverage_inventory_complete"] is False
+    assert len(report["coverage_unreported_modules"]) == 175
+    assert (
+        "services/nex-ae-api/nex_ae_api/__init__.py"
+        not in report["coverage_unreported_modules"]
+    )
 
 
 def test_inventory_cli_writes_generated_evidence(tmp_path: Path) -> None:

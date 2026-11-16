@@ -163,6 +163,18 @@ domain-owned tests. It also reconciles stale v1 deployment expectations with
 the current v2 generalized runtime while preserving the immutable signed
 checkpoint input. The next boundary is `CP-M1-GA-RET-02A.3`.
 
+`CP-M1-GA-RET-02A.3` evidence is recorded in
+[`mybee_phase1_w70_cp_m1_ga_ret_02a3_ownership_reporting_quarantine_guard.md`](../../slices/mybee_phase1_w70_cp_m1_ga_ret_02a3_ownership_reporting_quarantine_guard.md).
+It makes the ownership reporter a mandatory sixth AE Slice Gate command,
+requires complete coverage reporting for all classified AE source modules,
+and preserves fail-closed historical hash, recursive import and canonical
+deployment quarantine checks. The integrated Gate passed with 6,225 tests,
+aggregate statement/branch coverage of `96.3908% / 94.5663%`, and zero
+historical conflicts. The repository Checkpoint reconciled one stale direct
+consumer-composition assertion and then passed with 22,199 tests and
+statement/branch coverage of `98.4001% / 96.9544%`. The next boundary is
+`CP-M1-GA-RET-02A.4` active Project delegation branch hardening.
+
 `W70-S8-01A` implementation evidence is recorded in
 [`mybee_phase1_w70_s8_01a_tool_inventory.md`](../../slices/mybee_phase1_w70_s8_01a_tool_inventory.md).
 It closes the canonical Tool inventory, operation identity, compatibility

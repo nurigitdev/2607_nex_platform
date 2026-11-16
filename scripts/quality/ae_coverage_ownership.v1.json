@@ -64,6 +64,9 @@
     "scripts/deployment/build_canonical_platform_ae_runtime_image.py",
     "services/nex-ae-api/nex_ae_api/agent_runtime_process.py"
   ],
+  "coverage_optional_paths": [
+    "services/nex-ae-api/nex_ae_api/__init__.py"
+  ],
   "baseline": {
     "slice": "CP-M1-GA-RET-02A.0",
     "source_commit": "46de02aa",
@@ -79,5 +82,5 @@
     "ret02a_statement_target": 96.25,
     "ret02a_branch_target": 94.5
   },
-  "content_hash": "sha256:6db4cc8c63b89af0d4cc8309a447424e6a43c032663c477ff2d7d302122626f3"
+  "content_hash": "sha256:83bd294d78fa0ffbd8888076d29f59ff4f0870638d0f38187717bcbc85c1e27c"
 }

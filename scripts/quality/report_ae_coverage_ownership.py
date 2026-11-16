@@ -75,11 +75,24 @@ def build_ownership_inventory(
         historical_paths=declared_historical,
     )
     module_set = set(modules)
+    all_coverage_files = _coverage_files(coverage)
     coverage_files = {
         path: summary
-        for path, summary in _coverage_files(coverage).items()
+        for path, summary in all_coverage_files.items()
         if path in module_set
     }
+    coverage_optional_paths = set(
+        _required_string_list(document, "coverage_optional_paths")
+    )
+    if not coverage_optional_paths <= module_set:
+        raise AeCoverageOwnershipError(
+            "coverage optional paths must belong to the AE source inventory"
+        )
+    coverage_unreported_modules = (
+        sorted(module_set - set(coverage_files) - coverage_optional_paths)
+        if coverage is not None
+        else []
+    )
     rows = [
         _module_row(
             path,
@@ -102,6 +115,7 @@ def build_ownership_inventory(
         "historical_hashes_match": True,
         "historical_absent_from_active_graph": not historical_conflicts,
         "historical_absent_from_deployment_inputs": not deployment_conflicts,
+        "coverage_inventory_complete": not coverage_unreported_modules,
     }
     return {
         "schema_version": "ae.coverage_ownership_inventory.v1",
@@ -114,9 +128,13 @@ def build_ownership_inventory(
         "module_count": len(rows),
         "active_import_module_count": len(active_graph),
         "coverage_module_count": len(coverage_files),
+        "foreign_coverage_file_count": len(
+            set(all_coverage_files) - module_set
+        ),
         "checks": checks,
         "historical_active_import_conflicts": historical_conflicts,
         "historical_deployment_conflicts": deployment_conflicts,
+        "coverage_unreported_modules": coverage_unreported_modules,
         "baseline": document["baseline"],
         "current_coverage": _coverage_totals(coverage),
         "scopes": scopes,
@@ -369,13 +387,27 @@ def _percent(covered: int, total: int) -> float:
 
 def summary_line(report: Mapping[str, Any]) -> str:
     scopes = report["scopes"]
+    current = report.get("current_coverage")
+    if current is None:
+        coverage_summary = "coverage=not-provided"
+    else:
+        product = scopes["ACTIVE_PRODUCT"]
+        historical = scopes["HISTORICAL_QUARANTINE"]
+        coverage_summary = (
+            f"product_coverage={product['statement_coverage']:.2f}/"
+            f"{product['branch_coverage']:.2f} "
+            f"historical_coverage={historical['statement_coverage']:.2f}/"
+            f"{historical['branch_coverage']:.2f}"
+        )
     return (
         f"ae_coverage_ownership={report['status'].lower()} "
         f"modules={report['module_count']} "
         f"active_graph={report['active_import_module_count']} "
         f"product={scopes['ACTIVE_PRODUCT']['module_count']} "
         f"compatibility={scopes['ACTIVE_COMPATIBILITY']['module_count']} "
-        f"historical={scopes['HISTORICAL_QUARANTINE']['module_count']}"
+        f"historical={scopes['HISTORICAL_QUARANTINE']['module_count']} "
+        f"{coverage_summary} "
+        f"conflicts={len(report['historical_active_import_conflicts']) + len(report['historical_deployment_conflicts'])}"
     )
 
 

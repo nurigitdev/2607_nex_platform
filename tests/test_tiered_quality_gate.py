@@ -36,6 +36,7 @@ def _minimal_root(tmp_path: Path) -> Path:
         "tests/test_platform_alpha.py",
         "tests/test_s97_example_closure.py",
         "scripts/smoke/run_current_smoke.py",
+        "scripts/quality/report_ae_coverage_ownership.py",
         "services/nex-cx/nex_cx/module.py",
         "domains/mybee/mybee_ax/module.py",
         "scripts/smoke/extra.py",
@@ -154,11 +155,26 @@ def test_ae_api_slice_profile_includes_owned_transition_runtime_regression(
         "tests/mybee_phase1/test_w70_s8_01d_registry_bundle_locks.py",
         "tests/mybee_phase1/test_w70_s8_01e_foundation_gate.py",
     )
+    assert gate.SERVICE_PROFILES["nex-ae-api"].coverage_reporters == (
+        "scripts/quality/report_ae_coverage_ownership.py",
+    )
     assert "tests/test_ae_p4_contract.py" in plan.commands[0]
     assert "tests/test_ae_p5_plan.py" in plan.commands[0]
     assert "tests/test_ae_p6_runtime.py" in plan.commands[0]
     assert set(gate.AE_EXPLICIT_OWNED_TESTS) <= set(plan.commands[0])
     assert plan.test_count == 11
+    assert plan.commands[-1] == (
+        "python-test",
+        "scripts/quality/report_ae_coverage_ownership.py",
+        "--coverage",
+        "reports/quality/slice-nex-ae-api.coverage.json",
+        "--output",
+        (
+            "reports/coverage/slice-nex-ae-api.coverage."
+            "report_ae_coverage_ownership.json"
+        ),
+        "--summary",
+    )
 
 
 def test_ae_api_owned_tests_are_stable_deduplicated_and_narrow(
@@ -198,6 +214,15 @@ def test_ae_api_owned_tests_are_stable_deduplicated_and_narrow(
     assert (
         "tests/mybee_phase1/test_w70_s8_01b_tool_contract_admission.py"
         not in selected
+    )
+
+
+def test_supplemental_coverage_report_path_is_deterministic() -> None:
+    assert gate._supplemental_coverage_report_path(
+        "reports/quality/custom.coverage.json",
+        "scripts/quality/report_ae_coverage_ownership.py",
+    ) == (
+        "reports/coverage/custom.coverage.report_ae_coverage_ownership.json"
     )
 
 

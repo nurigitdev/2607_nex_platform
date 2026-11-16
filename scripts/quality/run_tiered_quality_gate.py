@@ -25,6 +25,7 @@ class ServiceProfile:
     test_patterns: tuple[str, ...]
     coverage_targets: tuple[str, ...]
     owned_tests: tuple[str, ...] = ()
+    coverage_reporters: tuple[str, ...] = ()
 
 
 AE_EXPLICIT_OWNED_TESTS = (
@@ -53,6 +54,9 @@ SERVICE_PROFILES = {
         ),
         coverage_targets=("services/nex-ae-api/nex_ae_api",),
         owned_tests=AE_EXPLICIT_OWNED_TESTS,
+        coverage_reporters=(
+            "scripts/quality/report_ae_coverage_ownership.py",
+        ),
     ),
     "nex-ae-web": ServiceProfile(
         test_patterns=("test_nex_ae_web_*.py", "test_ae_web_*.py"),
@@ -185,6 +189,21 @@ def build_slice_plan(
             scopes=tuple(coverage_targets),
         )
     )
+    for coverage_reporter in profile.coverage_reporters:
+        reporter = _validated_file(
+            root, coverage_reporter, prefix="scripts/quality", suffix=".py"
+        )
+        commands.append(
+            (
+                python_bin,
+                reporter,
+                "--coverage",
+                report,
+                "--output",
+                _supplemental_coverage_report_path(report, reporter),
+                "--summary",
+            )
+        )
     commands.extend((python_bin, smoke, "--summary") for smoke in smokes)
     return GatePlan(
         tier="slice",
@@ -406,6 +425,12 @@ def _validated_coverage_target(root: Path, raw: str) -> str:
     if not (root / raw).exists():
         raise ValueError(f"coverage path does not exist: {raw}")
     return raw
+
+
+def _supplemental_coverage_report_path(report: str, reporter: str) -> str:
+    report_name = Path(report).stem
+    reporter_name = Path(reporter).stem
+    return f"reports/coverage/{report_name}.{reporter_name}.json"
 
 
 def _coverage_source_argument(target: str) -> str:
