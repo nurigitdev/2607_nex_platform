@@ -26,7 +26,8 @@ MyBee office-work AX Service Phase-1 program.
 19. `NeX_MyBee_W70_CA02_Installed_PA_Delegation_and_Multi_Skill_Runtime_Composition_Closure_v1.0.md`
 20. `NeX_MyBee_CP_M1_GA_RET_02A_AE_Coverage_Ownership_and_Margin_Hardening_v1.0.md`
 21. `NeX_MyBee_CP_M1_E2E_FX_01B_Durable_Business_Context_and_M1_Transaction_Orchestration_Closure_v1.0.md`
-22. `NeX_MyBee_Post_Wave_UIUX_Compatibility_Performance_Backlog_v1.0.md`
+22. `NeX_MyBee_CP_M1_E2E_FX_01B_5A_Approved_Allocation_Plan_Semantic_Resolution_Closure_v1.0.md`
+23. `NeX_MyBee_Post_Wave_UIUX_Compatibility_Performance_Backlog_v1.0.md`
 
 The Markdown Slice Plan and its Execution Matrix JSON are one planning set.
 The JSON is machine-readable traceability input, not runtime configuration or
@@ -206,6 +207,16 @@ transitions and adds no database migration by default. The original
 `CP-M1-E2E-FX-01` remains paused until `01B.1` through `.7`, actual
 PostgreSQL, live Qwen3.5-9B, authenticated Playwright, and the Repository Full
 Gate pass.
+
+CP-M1-E2E-FX-01B.5A is the source-backed allocation-plan authority correction
+discovered before `.6`. It adds a side-effect-free EOS semantic resolver for
+an already approved Cost Allocation Plan using exact company, source kind,
+effective date, Project identity, and ratio semantics. Zero matches fail with
+not-found and multiple matches fail as ambiguous; no latest-row, nearest-ratio,
+fixed Plan ID, direct SQL, or release side effect is allowed. Existing Plan
+and Line tables remain the SoR and no migration is allowed by default. `.6`
+remains paused until the actual PostgreSQL resolution Gate binds the exact
+Plan authority to the installed post-write checkpoint.
 
 `W70-S8-01A` implementation evidence is recorded in
 [`mybee_phase1_w70_s8_01a_tool_inventory.md`](../../slices/mybee_phase1_w70_s8_01a_tool_inventory.md).
