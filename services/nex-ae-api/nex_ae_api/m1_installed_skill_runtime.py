@@ -20,12 +20,18 @@ from nex_runtime.semantic_hashes import semantic_sha256_hash_ref
 from sqlalchemy import text
 from sqlalchemy.orm import Session, sessionmaker
 
+from nex_ae_api.allocation_plan_resolution_runtime import (
+    InstalledApprovedAllocationPlanResolution,
+)
 from nex_ae_api.controlled_skill_runtime import (
     ControlledExecutionAuthority,
     ControlledSkillRuntime,
     ControlledSkillRuntimeError,
     HttpOaAuthoritySource,
     principal_document,
+)
+from nex_ae_api.m1_allocation_plan_composition import (
+    resolve_m1_allocation_plan_authority,
 )
 from nex_ae_api.m1_plan_materialization import materialize_m1_transaction_plan
 from nex_ae_api.m1_transaction_preparation_runtime import (
@@ -118,11 +124,14 @@ class M1InstalledSkillRuntime:
         catalog: VerifiedProductSkillCatalog,
         config: M1InstalledSkillRuntimeConfig,
         transaction_preparation: InstalledM1TransactionPreparation | None = None,
+        allocation_plan_resolution: InstalledApprovedAllocationPlanResolution
+        | None = None,
     ) -> None:
         self._sessions = sessions
         self._catalog = catalog
         self._config = config
         self.transaction_preparation = transaction_preparation
+        self.allocation_plan_resolution = allocation_plan_resolution
         self._tool_catalog = load_installed_nsl_tool_catalog(config.tool_catalog_path)
         self._packages = {
             selection.capability.capability_id: _VerifiedPackageView(
@@ -174,6 +183,10 @@ class M1InstalledSkillRuntime:
         }
         if transaction_preparation is not None:
             readiness["transaction_preparation"] = transaction_preparation.readiness()
+        if allocation_plan_resolution is not None:
+            readiness["allocation_plan_resolution"] = (
+                allocation_plan_resolution.readiness()
+            )
         self.package_readiness = MappingProxyType(readiness)
 
     @property
@@ -213,6 +226,29 @@ class M1InstalledSkillRuntime:
                 item.capability.capability_id: item.capability.capability
                 for item in self._catalog.selections
             },
+        )
+
+    def resolve_allocation_plan_authority(
+        self,
+        *,
+        work_intent: Mapping[str, Any],
+        preparation_checkpoint: Mapping[str, Any],
+        source_pool: Mapping[str, Any],
+        correlation_id: str,
+        existing_checkpoint: Mapping[str, Any] | None = None,
+    ) -> Mapping[str, Any]:
+        if self.allocation_plan_resolution is None:
+            raise ProductSkillCatalogError(
+                "PRODUCT_ALLOCATION_PLAN_RESOLVER_REQUIRED",
+                "Installed AllocationPlan resolution is unavailable.",
+            )
+        return resolve_m1_allocation_plan_authority(
+            self.allocation_plan_resolution,
+            work_intent=work_intent,
+            preparation_checkpoint=preparation_checkpoint,
+            source_pool=source_pool,
+            correlation_id=correlation_id,
+            existing_checkpoint=existing_checkpoint,
         )
 
     def initial(

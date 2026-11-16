@@ -112,6 +112,20 @@ def test_verified_product_release_profile_is_fail_closed_and_ready(
                 "sha256:a60b4e71bde65c32d1cdc4efcd11a82707429ee96d41918acf2c5b008c3e4045"
             ),
         },
+        "allocation_plan_resolution": {
+            "schema_version": "ae.approved_allocation_plan_resolution_runtime.v1",
+            "status": "READY",
+            "provider_service_id": "nex-eos",
+            "operation": "FINANCE.COST_ALLOCATION_PLAN.RESOLVE",
+            "authority_schema": "mybee.approved_allocation_plan_authority.v1",
+            "timeout_seconds": 15.0,
+            "business_defaults_included": False,
+            "content_included": False,
+            "secret_included": False,
+            "readiness_hash": (
+                "sha256:9b52623852ed5b733e587e43ae872c5f08699905932b73ad720c1aaa2901ce5b"
+            ),
+        },
     }
 
     drifted = json.loads(

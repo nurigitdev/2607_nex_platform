@@ -10,7 +10,7 @@
   },
   "openapi": {
     "path": "contracts/openapi/nex-eos.openapi.yaml",
-    "sha256": "sha256:2d4fe5c257c1e8dd2ba39d92256011dd814407eb63ac9ea3b2c5ffab9b654d06"
+    "sha256": "sha256:e6caa38f74b1eac38216a853e6fd1b633b013e53421ec123415dc24ec447907b"
   },
   "contracts": [
     {
@@ -506,6 +506,6 @@
     }
   ],
   "release_attestation": {
-    "content_digest": "sha256:b6b37073f96d9c7a6ed0a3bdb3e6dbd03ddab4b4396654f00b2976e48dcacedd"
+    "content_digest": "sha256:e2481d0722e8bd725721775d4e62e91a36f0f421113be93f2e065ef7a0d25f59"
   }
 }

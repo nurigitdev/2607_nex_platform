@@ -9,8 +9,8 @@
   },
   "bundle_set": {
     "path": "deployment/locks/ae-product-nsl-runtime-bundles.v2.json",
-    "sha256": "sha256:679bf11aab7b117e1896193f0642b0c17887a8b8446d347bc3c11e7e5ef305d0",
-    "content_hash": "sha256:709ab85a3d337695c506d13569e97652910321d30edb78bc3eac34ad39c488f0"
+    "sha256": "sha256:6887a8708cbbd35a13b70e5f572f6b449f5b9ee2c12640ae063a33a4b5f15361",
+    "content_hash": "sha256:9b296488404b9d0ec9349bdb83e444b6ad27dcce630742ab56c31ade35eb0031"
   },
   "active_registrations": [
     {
@@ -61,7 +61,7 @@
         "skill_id": "FINANCE.COST_ALLOCATION.RUN",
         "exact_skill_version": "1.0.0",
         "source_manifest_ref": "domains/mybee/skills/d04_accounting/manifest.v1.json",
-        "source_manifest_digest": "sha256:3d47bea11f6ec67640d418b7fc9ce623cda7d2113f43e7230aeeccc9542be3fe",
+        "source_manifest_digest": "sha256:54641d4749973e9297a153672f79fb19f1851eab89488022ff4289dbfa5ca656",
         "binding_catalog_ref": "domains/mybee/skills/d04_accounting/tool_bindings.v1.json",
         "binding_catalog_digest": "sha256:d4900b8c98e521994c15671fd0fe368332d98af57adaa6c2d4a6161c266dd636",
         "contract_admission_ref": "contracts/admissions/nex_eos/w70_tool_contract_admission.v1.json#/contracts/0",
@@ -70,9 +70,9 @@
       "bundle_lock": {
         "bundle_id": "nex-mybee-d04-accounting-candidate-v1",
         "manifest_ref": "deployment/locks/ae-mybee-d04-accounting-candidate-bundle.v1.json",
-        "manifest_sha256": "sha256:48df27c388e22908bd131d0415f2ca06a23bc27e92208e0fdb478f1fe296a7ae"
+        "manifest_sha256": "sha256:7d4ccafce478bbf0c431f0faa0a89b521066f2448f5073140174245efe0bf8a7"
       },
-      "candidate_hash": "sha256:057a45d62720196d8a23f72563ba51d3c2122f05d626ca873370754806c3ce62"
+      "candidate_hash": "sha256:a27cc857dba05a6a76d19f238c65f625a99308f6b285d804b7849ffc002a8e81"
     },
     {
       "capability_id": "FINANCE.COST_ALLOCATION.VERIFY",
@@ -87,7 +87,7 @@
         "skill_id": "FINANCE.COST_ALLOCATION.VERIFY",
         "exact_skill_version": "1.0.0",
         "source_manifest_ref": "domains/mybee/skills/d04_accounting/manifest.v1.json",
-        "source_manifest_digest": "sha256:3d47bea11f6ec67640d418b7fc9ce623cda7d2113f43e7230aeeccc9542be3fe",
+        "source_manifest_digest": "sha256:54641d4749973e9297a153672f79fb19f1851eab89488022ff4289dbfa5ca656",
         "binding_catalog_ref": "domains/mybee/skills/d04_accounting/tool_bindings.v1.json",
         "binding_catalog_digest": "sha256:d4900b8c98e521994c15671fd0fe368332d98af57adaa6c2d4a6161c266dd636",
         "contract_admission_ref": "contracts/admissions/nex_eos/w70_tool_contract_admission.v1.json#/contracts/1",
@@ -96,9 +96,9 @@
       "bundle_lock": {
         "bundle_id": "nex-mybee-d04-accounting-candidate-v1",
         "manifest_ref": "deployment/locks/ae-mybee-d04-accounting-candidate-bundle.v1.json",
-        "manifest_sha256": "sha256:48df27c388e22908bd131d0415f2ca06a23bc27e92208e0fdb478f1fe296a7ae"
+        "manifest_sha256": "sha256:7d4ccafce478bbf0c431f0faa0a89b521066f2448f5073140174245efe0bf8a7"
       },
-      "candidate_hash": "sha256:2ea0a61b1c74c73233d3432064b181efe28453a692c00ba1934808e773957df5"
+      "candidate_hash": "sha256:07eaaffd8a6d6e395d91ff9e59e5212f86a73aa63f35b598a8a7818c56fd18cb"
     },
     {
       "capability_id": "FINANCE.COST_ALLOCATION_PLAN.RELEASE",
@@ -113,7 +113,7 @@
         "skill_id": "FINANCE.COST_ALLOCATION_PLAN.RELEASE",
         "exact_skill_version": "1.0.0",
         "source_manifest_ref": "domains/mybee/skills/d04_accounting/manifest.v1.json",
-        "source_manifest_digest": "sha256:3d47bea11f6ec67640d418b7fc9ce623cda7d2113f43e7230aeeccc9542be3fe",
+        "source_manifest_digest": "sha256:54641d4749973e9297a153672f79fb19f1851eab89488022ff4289dbfa5ca656",
         "binding_catalog_ref": "domains/mybee/skills/d04_accounting/tool_bindings.v1.json",
         "binding_catalog_digest": "sha256:d4900b8c98e521994c15671fd0fe368332d98af57adaa6c2d4a6161c266dd636",
         "contract_admission_ref": "contracts/admissions/nex_eos/w70_tool_contract_admission.v1.json#/contracts/2",
@@ -122,9 +122,9 @@
       "bundle_lock": {
         "bundle_id": "nex-mybee-d04-accounting-candidate-v1",
         "manifest_ref": "deployment/locks/ae-mybee-d04-accounting-candidate-bundle.v1.json",
-        "manifest_sha256": "sha256:48df27c388e22908bd131d0415f2ca06a23bc27e92208e0fdb478f1fe296a7ae"
+        "manifest_sha256": "sha256:7d4ccafce478bbf0c431f0faa0a89b521066f2448f5073140174245efe0bf8a7"
       },
-      "candidate_hash": "sha256:125cd5904338bd079d43cc8c2eb242106a5d248eaa84d0a6141d5482e76c94d3"
+      "candidate_hash": "sha256:b2ecafbdabcb4875bbfec5544e6fdc9d7ea299fafd4955952c808568c4a92478"
     },
     {
       "capability_id": "FINANCE.FX_RATE.HISTORY",
@@ -139,7 +139,7 @@
         "skill_id": "FINANCE.FX_RATE.HISTORY",
         "exact_skill_version": "1.0.0",
         "source_manifest_ref": "domains/mybee/skills/d04_accounting/manifest.v1.json",
-        "source_manifest_digest": "sha256:3d47bea11f6ec67640d418b7fc9ce623cda7d2113f43e7230aeeccc9542be3fe",
+        "source_manifest_digest": "sha256:54641d4749973e9297a153672f79fb19f1851eab89488022ff4289dbfa5ca656",
         "binding_catalog_ref": "domains/mybee/skills/d04_accounting/tool_bindings.v1.json",
         "binding_catalog_digest": "sha256:d4900b8c98e521994c15671fd0fe368332d98af57adaa6c2d4a6161c266dd636",
         "contract_admission_ref": "contracts/admissions/nex_eos/w70_tool_contract_admission.v1.json#/contracts/3",
@@ -148,9 +148,9 @@
       "bundle_lock": {
         "bundle_id": "nex-mybee-d04-accounting-candidate-v1",
         "manifest_ref": "deployment/locks/ae-mybee-d04-accounting-candidate-bundle.v1.json",
-        "manifest_sha256": "sha256:48df27c388e22908bd131d0415f2ca06a23bc27e92208e0fdb478f1fe296a7ae"
+        "manifest_sha256": "sha256:7d4ccafce478bbf0c431f0faa0a89b521066f2448f5073140174245efe0bf8a7"
       },
-      "candidate_hash": "sha256:3dd4c8ba7ee5b77980248f0283daea8bb1db4e8800973c30dceb68e6c4124440"
+      "candidate_hash": "sha256:2cc0c1a7fd9d9ba3818108e421355b036d184468b96b4b57d0bfeacf4e9155fa"
     },
     {
       "capability_id": "FINANCE.FX_RATE.IMPORT",
@@ -165,7 +165,7 @@
         "skill_id": "FINANCE.FX_RATE.IMPORT",
         "exact_skill_version": "1.0.0",
         "source_manifest_ref": "domains/mybee/skills/d04_accounting/manifest.v1.json",
-        "source_manifest_digest": "sha256:3d47bea11f6ec67640d418b7fc9ce623cda7d2113f43e7230aeeccc9542be3fe",
+        "source_manifest_digest": "sha256:54641d4749973e9297a153672f79fb19f1851eab89488022ff4289dbfa5ca656",
         "binding_catalog_ref": "domains/mybee/skills/d04_accounting/tool_bindings.v1.json",
         "binding_catalog_digest": "sha256:d4900b8c98e521994c15671fd0fe368332d98af57adaa6c2d4a6161c266dd636",
         "contract_admission_ref": "contracts/admissions/nex_eos/w70_tool_contract_admission.v1.json#/contracts/4",
@@ -174,9 +174,9 @@
       "bundle_lock": {
         "bundle_id": "nex-mybee-d04-accounting-candidate-v1",
         "manifest_ref": "deployment/locks/ae-mybee-d04-accounting-candidate-bundle.v1.json",
-        "manifest_sha256": "sha256:48df27c388e22908bd131d0415f2ca06a23bc27e92208e0fdb478f1fe296a7ae"
+        "manifest_sha256": "sha256:7d4ccafce478bbf0c431f0faa0a89b521066f2448f5073140174245efe0bf8a7"
       },
-      "candidate_hash": "sha256:3baaf5038145bb226a997ef47eb062e23317401a1894d5bfb00eb2a77a531560"
+      "candidate_hash": "sha256:d45cd6f2916a0c53534472cfc3a6c0f4daa7032757883fb5e9fca7f355650130"
     },
     {
       "capability_id": "FINANCE.FX_RATE.RESOLVE",
@@ -191,7 +191,7 @@
         "skill_id": "FINANCE.FX_RATE.RESOLVE",
         "exact_skill_version": "1.0.0",
         "source_manifest_ref": "domains/mybee/skills/d04_accounting/manifest.v1.json",
-        "source_manifest_digest": "sha256:3d47bea11f6ec67640d418b7fc9ce623cda7d2113f43e7230aeeccc9542be3fe",
+        "source_manifest_digest": "sha256:54641d4749973e9297a153672f79fb19f1851eab89488022ff4289dbfa5ca656",
         "binding_catalog_ref": "domains/mybee/skills/d04_accounting/tool_bindings.v1.json",
         "binding_catalog_digest": "sha256:d4900b8c98e521994c15671fd0fe368332d98af57adaa6c2d4a6161c266dd636",
         "contract_admission_ref": "contracts/admissions/nex_eos/w70_tool_contract_admission.v1.json#/contracts/5",
@@ -200,9 +200,9 @@
       "bundle_lock": {
         "bundle_id": "nex-mybee-d04-accounting-candidate-v1",
         "manifest_ref": "deployment/locks/ae-mybee-d04-accounting-candidate-bundle.v1.json",
-        "manifest_sha256": "sha256:48df27c388e22908bd131d0415f2ca06a23bc27e92208e0fdb478f1fe296a7ae"
+        "manifest_sha256": "sha256:7d4ccafce478bbf0c431f0faa0a89b521066f2448f5073140174245efe0bf8a7"
       },
-      "candidate_hash": "sha256:c36da856014ee5978bb70d9ec0f172adecad1923dee6ccdc8fef2ba228d77542"
+      "candidate_hash": "sha256:7bcb898f061a92d2b3fed7349b54b1a41a6556275ec1a14aca8095e90b309f2d"
     },
     {
       "capability_id": "FINANCE.PROJECT_PNL.GET",
@@ -217,7 +217,7 @@
         "skill_id": "FINANCE.PROJECT_PNL.GET",
         "exact_skill_version": "1.0.0",
         "source_manifest_ref": "domains/mybee/skills/d04_accounting/manifest.v1.json",
-        "source_manifest_digest": "sha256:3d47bea11f6ec67640d418b7fc9ce623cda7d2113f43e7230aeeccc9542be3fe",
+        "source_manifest_digest": "sha256:54641d4749973e9297a153672f79fb19f1851eab89488022ff4289dbfa5ca656",
         "binding_catalog_ref": "domains/mybee/skills/d04_accounting/tool_bindings.v1.json",
         "binding_catalog_digest": "sha256:d4900b8c98e521994c15671fd0fe368332d98af57adaa6c2d4a6161c266dd636",
         "contract_admission_ref": "contracts/admissions/nex_eos/w70_tool_contract_admission.v1.json#/contracts/6",
@@ -226,9 +226,9 @@
       "bundle_lock": {
         "bundle_id": "nex-mybee-d04-accounting-candidate-v1",
         "manifest_ref": "deployment/locks/ae-mybee-d04-accounting-candidate-bundle.v1.json",
-        "manifest_sha256": "sha256:48df27c388e22908bd131d0415f2ca06a23bc27e92208e0fdb478f1fe296a7ae"
+        "manifest_sha256": "sha256:7d4ccafce478bbf0c431f0faa0a89b521066f2448f5073140174245efe0bf8a7"
       },
-      "candidate_hash": "sha256:ad6754b154b0480ed5baaca26b6e69dabe133328a591f1c1ee36e063ef3101dc"
+      "candidate_hash": "sha256:af111de1a9f352085b8b4bf8f121ccf8f84d7917c1b4046fa814f41c2b7ec0a8"
     },
     {
       "capability_id": "FINANCE.VOUCHER.APPROVE_AND_POST",
@@ -243,7 +243,7 @@
         "skill_id": "FINANCE.VOUCHER.APPROVE_AND_POST",
         "exact_skill_version": "1.0.0",
         "source_manifest_ref": "domains/mybee/skills/d04_accounting/manifest.v1.json",
-        "source_manifest_digest": "sha256:3d47bea11f6ec67640d418b7fc9ce623cda7d2113f43e7230aeeccc9542be3fe",
+        "source_manifest_digest": "sha256:54641d4749973e9297a153672f79fb19f1851eab89488022ff4289dbfa5ca656",
         "binding_catalog_ref": "domains/mybee/skills/d04_accounting/tool_bindings.v1.json",
         "binding_catalog_digest": "sha256:d4900b8c98e521994c15671fd0fe368332d98af57adaa6c2d4a6161c266dd636",
         "contract_admission_ref": "contracts/admissions/nex_eos/w70_tool_contract_admission.v1.json#/contracts/7",
@@ -252,9 +252,9 @@
       "bundle_lock": {
         "bundle_id": "nex-mybee-d04-accounting-candidate-v1",
         "manifest_ref": "deployment/locks/ae-mybee-d04-accounting-candidate-bundle.v1.json",
-        "manifest_sha256": "sha256:48df27c388e22908bd131d0415f2ca06a23bc27e92208e0fdb478f1fe296a7ae"
+        "manifest_sha256": "sha256:7d4ccafce478bbf0c431f0faa0a89b521066f2448f5073140174245efe0bf8a7"
       },
-      "candidate_hash": "sha256:73e5634602b5f6bac16861b8e96b34fda9f3bbd13dacdd1c8b4592b574f363bd"
+      "candidate_hash": "sha256:7dc48d82f890027f2ed2b1fa1731042f3146ae0650c4c8946676d7d266eb4950"
     },
     {
       "capability_id": "FINANCE.VOUCHER_CANDIDATE.CREATE_V2",
@@ -269,7 +269,7 @@
         "skill_id": "FINANCE.VOUCHER_CANDIDATE.CREATE_V2",
         "exact_skill_version": "1.0.0",
         "source_manifest_ref": "domains/mybee/skills/d04_accounting/manifest.v1.json",
-        "source_manifest_digest": "sha256:3d47bea11f6ec67640d418b7fc9ce623cda7d2113f43e7230aeeccc9542be3fe",
+        "source_manifest_digest": "sha256:54641d4749973e9297a153672f79fb19f1851eab89488022ff4289dbfa5ca656",
         "binding_catalog_ref": "domains/mybee/skills/d04_accounting/tool_bindings.v1.json",
         "binding_catalog_digest": "sha256:d4900b8c98e521994c15671fd0fe368332d98af57adaa6c2d4a6161c266dd636",
         "contract_admission_ref": "contracts/admissions/nex_eos/w70_tool_contract_admission.v1.json#/contracts/8",
@@ -278,9 +278,9 @@
       "bundle_lock": {
         "bundle_id": "nex-mybee-d04-accounting-candidate-v1",
         "manifest_ref": "deployment/locks/ae-mybee-d04-accounting-candidate-bundle.v1.json",
-        "manifest_sha256": "sha256:48df27c388e22908bd131d0415f2ca06a23bc27e92208e0fdb478f1fe296a7ae"
+        "manifest_sha256": "sha256:7d4ccafce478bbf0c431f0faa0a89b521066f2448f5073140174245efe0bf8a7"
       },
-      "candidate_hash": "sha256:43843e6a39fe5c2713830878ddf2dee22eb12222ba650b218b71e50bd2da15db"
+      "candidate_hash": "sha256:037aeb4907101849857bf6e040f2c10efb5a7934f8fe42aff8a869cb8db74783"
     },
     {
       "capability_id": "FINANCE.VOUCHER_CANDIDATE.GET_V2",
@@ -295,7 +295,7 @@
         "skill_id": "FINANCE.VOUCHER_CANDIDATE.GET_V2",
         "exact_skill_version": "1.0.0",
         "source_manifest_ref": "domains/mybee/skills/d04_accounting/manifest.v1.json",
-        "source_manifest_digest": "sha256:3d47bea11f6ec67640d418b7fc9ce623cda7d2113f43e7230aeeccc9542be3fe",
+        "source_manifest_digest": "sha256:54641d4749973e9297a153672f79fb19f1851eab89488022ff4289dbfa5ca656",
         "binding_catalog_ref": "domains/mybee/skills/d04_accounting/tool_bindings.v1.json",
         "binding_catalog_digest": "sha256:d4900b8c98e521994c15671fd0fe368332d98af57adaa6c2d4a6161c266dd636",
         "contract_admission_ref": "contracts/admissions/nex_eos/w70_tool_contract_admission.v1.json#/contracts/9",
@@ -304,9 +304,9 @@
       "bundle_lock": {
         "bundle_id": "nex-mybee-d04-accounting-candidate-v1",
         "manifest_ref": "deployment/locks/ae-mybee-d04-accounting-candidate-bundle.v1.json",
-        "manifest_sha256": "sha256:48df27c388e22908bd131d0415f2ca06a23bc27e92208e0fdb478f1fe296a7ae"
+        "manifest_sha256": "sha256:7d4ccafce478bbf0c431f0faa0a89b521066f2448f5073140174245efe0bf8a7"
       },
-      "candidate_hash": "sha256:159beed0f3aad51c9b46c07ef865d91559faacd1fd5c78456ebd45f1731c528c"
+      "candidate_hash": "sha256:4d0fa25e5c8c7bd9f825130a102b10a599c957fc121f8a85eb4cb82ed8e4ed3f"
     },
     {
       "capability_id": "FINANCE.VOUCHER_CANDIDATE.VALIDATE",
@@ -321,7 +321,7 @@
         "skill_id": "FINANCE.VOUCHER_CANDIDATE.VALIDATE",
         "exact_skill_version": "1.0.0",
         "source_manifest_ref": "domains/mybee/skills/d04_accounting/manifest.v1.json",
-        "source_manifest_digest": "sha256:3d47bea11f6ec67640d418b7fc9ce623cda7d2113f43e7230aeeccc9542be3fe",
+        "source_manifest_digest": "sha256:54641d4749973e9297a153672f79fb19f1851eab89488022ff4289dbfa5ca656",
         "binding_catalog_ref": "domains/mybee/skills/d04_accounting/tool_bindings.v1.json",
         "binding_catalog_digest": "sha256:d4900b8c98e521994c15671fd0fe368332d98af57adaa6c2d4a6161c266dd636",
         "contract_admission_ref": "contracts/admissions/nex_eos/w70_tool_contract_admission.v1.json#/contracts/10",
@@ -330,9 +330,9 @@
       "bundle_lock": {
         "bundle_id": "nex-mybee-d04-accounting-candidate-v1",
         "manifest_ref": "deployment/locks/ae-mybee-d04-accounting-candidate-bundle.v1.json",
-        "manifest_sha256": "sha256:48df27c388e22908bd131d0415f2ca06a23bc27e92208e0fdb478f1fe296a7ae"
+        "manifest_sha256": "sha256:7d4ccafce478bbf0c431f0faa0a89b521066f2448f5073140174245efe0bf8a7"
       },
-      "candidate_hash": "sha256:3a90d4a3445e2852a904818c306f574e3e20f2a3aa123a1e13ff2f0ce9df3905"
+      "candidate_hash": "sha256:fd3eb48ad805b69c4a16af51fecbf35c4dd21f76811a8acfee64a203b1266f5f"
     },
     {
       "capability_id": "FINANCE.VOUCHER_DRAFT.CREATE",
@@ -350,7 +350,7 @@
         "skill_id": "FINANCE.VOUCHER_DRAFT.CREATE",
         "exact_skill_version": "1.0.0",
         "source_manifest_ref": "domains/mybee/skills/d04_accounting/manifest.v1.json",
-        "source_manifest_digest": "sha256:3d47bea11f6ec67640d418b7fc9ce623cda7d2113f43e7230aeeccc9542be3fe",
+        "source_manifest_digest": "sha256:54641d4749973e9297a153672f79fb19f1851eab89488022ff4289dbfa5ca656",
         "binding_catalog_ref": "domains/mybee/skills/d04_accounting/tool_bindings.v1.json",
         "binding_catalog_digest": "sha256:d4900b8c98e521994c15671fd0fe368332d98af57adaa6c2d4a6161c266dd636",
         "contract_admission_ref": "contracts/admissions/nex_eos/w70_tool_contract_admission.v1.json#/contracts/11",
@@ -359,9 +359,9 @@
       "bundle_lock": {
         "bundle_id": "nex-mybee-d04-accounting-candidate-v1",
         "manifest_ref": "deployment/locks/ae-mybee-d04-accounting-candidate-bundle.v1.json",
-        "manifest_sha256": "sha256:48df27c388e22908bd131d0415f2ca06a23bc27e92208e0fdb478f1fe296a7ae"
+        "manifest_sha256": "sha256:7d4ccafce478bbf0c431f0faa0a89b521066f2448f5073140174245efe0bf8a7"
       },
-      "candidate_hash": "sha256:f7e397cb91f4edb34d6fe349073732572aff085ac653e14625419f50d860a8e0"
+      "candidate_hash": "sha256:a221c04e154315d0b6db6f5422ab7512d513c497b25ea04b5771e5c65c7dfd51"
     },
     {
       "capability_id": "FINANCE.VOUCHER_POSTING.ADMIT",
@@ -378,7 +378,7 @@
         "skill_id": "FINANCE.VOUCHER_POSTING.ADMIT",
         "exact_skill_version": "1.0.0",
         "source_manifest_ref": "domains/mybee/skills/d04_accounting/manifest.v1.json",
-        "source_manifest_digest": "sha256:3d47bea11f6ec67640d418b7fc9ce623cda7d2113f43e7230aeeccc9542be3fe",
+        "source_manifest_digest": "sha256:54641d4749973e9297a153672f79fb19f1851eab89488022ff4289dbfa5ca656",
         "binding_catalog_ref": "domains/mybee/skills/d04_accounting/tool_bindings.v1.json",
         "binding_catalog_digest": "sha256:d4900b8c98e521994c15671fd0fe368332d98af57adaa6c2d4a6161c266dd636",
         "contract_admission_ref": "contracts/admissions/nex_eos/w70_tool_contract_admission.v1.json#/contracts/12",
@@ -387,9 +387,9 @@
       "bundle_lock": {
         "bundle_id": "nex-mybee-d04-accounting-candidate-v1",
         "manifest_ref": "deployment/locks/ae-mybee-d04-accounting-candidate-bundle.v1.json",
-        "manifest_sha256": "sha256:48df27c388e22908bd131d0415f2ca06a23bc27e92208e0fdb478f1fe296a7ae"
+        "manifest_sha256": "sha256:7d4ccafce478bbf0c431f0faa0a89b521066f2448f5073140174245efe0bf8a7"
       },
-      "candidate_hash": "sha256:1afb39c3eb43445803b6d24f12dd81950164302cd465c771827d89f31bd75c0b"
+      "candidate_hash": "sha256:8cf6c086440cf114ec9f6f69b2c276042ba3a031509b65d64b6c7fde9cf1e767"
     },
     {
       "capability_id": "PROJECT.BUSINESS_READINESS.GET",
@@ -404,7 +404,7 @@
         "skill_id": "PROJECT.BUSINESS_READINESS.GET",
         "exact_skill_version": "1.0.0",
         "source_manifest_ref": "domains/mybee/skills/d12_project/manifest.v1.json",
-        "source_manifest_digest": "sha256:067a6e4b074e90c643958bee72407f13ced7e9371c1b3e3308976ee771144a34",
+        "source_manifest_digest": "sha256:6d6020dd91681eafb20e2e26b78f9134306e7d3e4762e337d2adf4ed552a94e6",
         "binding_catalog_ref": "domains/mybee/skills/d12_project/tool_bindings.v1.json",
         "binding_catalog_digest": "sha256:0c4ac1a600b5ca4bd33dd9529e8a13a062721c441d70540f7167c8facc165fc4",
         "contract_admission_ref": "contracts/admissions/nex_eos/w70_tool_contract_admission.v1.json#/contracts/13",
@@ -413,9 +413,9 @@
       "bundle_lock": {
         "bundle_id": "nex-mybee-d12-project-candidate-v1",
         "manifest_ref": "deployment/locks/ae-mybee-d12-project-candidate-bundle.v1.json",
-        "manifest_sha256": "sha256:4c5cc6ed0b9e3ce867548094c56bf70011817cd58b88ea89c8f817a159ec6d0b"
+        "manifest_sha256": "sha256:907b1d70217385506b64e05788551647d82be1a62e1476da98ce3d7f951e5589"
       },
-      "candidate_hash": "sha256:229723f154126298d7a612e3e2cc7f40b5792eca55b18c7da742ab32d65494a8"
+      "candidate_hash": "sha256:65fe684d924efc7448e975b1df7fb298cf77ef1514edd88effc3b26324786962"
     },
     {
       "capability_id": "PROJECT.WORK_ASSIGNMENT.ASSIGN",
@@ -430,7 +430,7 @@
         "skill_id": "PROJECT.WORK_ASSIGNMENT.ASSIGN",
         "exact_skill_version": "1.0.0",
         "source_manifest_ref": "domains/mybee/skills/d12_project/manifest.v1.json",
-        "source_manifest_digest": "sha256:067a6e4b074e90c643958bee72407f13ced7e9371c1b3e3308976ee771144a34",
+        "source_manifest_digest": "sha256:6d6020dd91681eafb20e2e26b78f9134306e7d3e4762e337d2adf4ed552a94e6",
         "binding_catalog_ref": "domains/mybee/skills/d12_project/tool_bindings.v1.json",
         "binding_catalog_digest": "sha256:0c4ac1a600b5ca4bd33dd9529e8a13a062721c441d70540f7167c8facc165fc4",
         "contract_admission_ref": "contracts/admissions/nex_eos/w70_tool_contract_admission.v1.json#/contracts/14",
@@ -439,9 +439,9 @@
       "bundle_lock": {
         "bundle_id": "nex-mybee-d12-project-candidate-v1",
         "manifest_ref": "deployment/locks/ae-mybee-d12-project-candidate-bundle.v1.json",
-        "manifest_sha256": "sha256:4c5cc6ed0b9e3ce867548094c56bf70011817cd58b88ea89c8f817a159ec6d0b"
+        "manifest_sha256": "sha256:907b1d70217385506b64e05788551647d82be1a62e1476da98ce3d7f951e5589"
       },
-      "candidate_hash": "sha256:5c075444b23b755419def000d38bc87d9525e0d18a1316eb3248ac9d1cefffba"
+      "candidate_hash": "sha256:88d41e2f37f48f9be83e4326508bac473a0c263f9e2aa1c2b613a4d573fd0533"
     },
     {
       "capability_id": "PROJECT.WORK_ASSIGNMENT.LIST",
@@ -456,7 +456,7 @@
         "skill_id": "PROJECT.WORK_ASSIGNMENT.LIST",
         "exact_skill_version": "1.0.0",
         "source_manifest_ref": "domains/mybee/skills/d12_project/manifest.v1.json",
-        "source_manifest_digest": "sha256:067a6e4b074e90c643958bee72407f13ced7e9371c1b3e3308976ee771144a34",
+        "source_manifest_digest": "sha256:6d6020dd91681eafb20e2e26b78f9134306e7d3e4762e337d2adf4ed552a94e6",
         "binding_catalog_ref": "domains/mybee/skills/d12_project/tool_bindings.v1.json",
         "binding_catalog_digest": "sha256:0c4ac1a600b5ca4bd33dd9529e8a13a062721c441d70540f7167c8facc165fc4",
         "contract_admission_ref": "contracts/admissions/nex_eos/w70_tool_contract_admission.v1.json#/contracts/15",
@@ -465,9 +465,9 @@
       "bundle_lock": {
         "bundle_id": "nex-mybee-d12-project-candidate-v1",
         "manifest_ref": "deployment/locks/ae-mybee-d12-project-candidate-bundle.v1.json",
-        "manifest_sha256": "sha256:4c5cc6ed0b9e3ce867548094c56bf70011817cd58b88ea89c8f817a159ec6d0b"
+        "manifest_sha256": "sha256:907b1d70217385506b64e05788551647d82be1a62e1476da98ce3d7f951e5589"
       },
-      "candidate_hash": "sha256:70c8d1fbaf42302bfaab73149d6fc786de5acd80f78c199d85ea04fb1211930d"
+      "candidate_hash": "sha256:68fa37068c60920d665bad61adf70185d83766cbc467db351009341e30c778a1"
     },
     {
       "capability_id": "PROJECT.WORK_CODE_SET.APPROVE",
@@ -482,7 +482,7 @@
         "skill_id": "PROJECT.WORK_CODE_SET.APPROVE",
         "exact_skill_version": "1.0.0",
         "source_manifest_ref": "domains/mybee/skills/d12_project/manifest.v1.json",
-        "source_manifest_digest": "sha256:067a6e4b074e90c643958bee72407f13ced7e9371c1b3e3308976ee771144a34",
+        "source_manifest_digest": "sha256:6d6020dd91681eafb20e2e26b78f9134306e7d3e4762e337d2adf4ed552a94e6",
         "binding_catalog_ref": "domains/mybee/skills/d12_project/tool_bindings.v1.json",
         "binding_catalog_digest": "sha256:0c4ac1a600b5ca4bd33dd9529e8a13a062721c441d70540f7167c8facc165fc4",
         "contract_admission_ref": "contracts/admissions/nex_eos/w70_tool_contract_admission.v1.json#/contracts/16",
@@ -491,9 +491,9 @@
       "bundle_lock": {
         "bundle_id": "nex-mybee-d12-project-candidate-v1",
         "manifest_ref": "deployment/locks/ae-mybee-d12-project-candidate-bundle.v1.json",
-        "manifest_sha256": "sha256:4c5cc6ed0b9e3ce867548094c56bf70011817cd58b88ea89c8f817a159ec6d0b"
+        "manifest_sha256": "sha256:907b1d70217385506b64e05788551647d82be1a62e1476da98ce3d7f951e5589"
       },
-      "candidate_hash": "sha256:9ff6f2e9dcd9aae317c95262954a4383b8821b71613907eaaae5821d3bcb801d"
+      "candidate_hash": "sha256:b1557c6daa4d6fe35d33de2fdf3059ab64e1e21079a24af94fa3cfb68a9fa243"
     },
     {
       "capability_id": "PROJECT.WORK_CODE_SET.GET",
@@ -508,7 +508,7 @@
         "skill_id": "PROJECT.WORK_CODE_SET.GET",
         "exact_skill_version": "1.0.0",
         "source_manifest_ref": "domains/mybee/skills/d12_project/manifest.v1.json",
-        "source_manifest_digest": "sha256:067a6e4b074e90c643958bee72407f13ced7e9371c1b3e3308976ee771144a34",
+        "source_manifest_digest": "sha256:6d6020dd91681eafb20e2e26b78f9134306e7d3e4762e337d2adf4ed552a94e6",
         "binding_catalog_ref": "domains/mybee/skills/d12_project/tool_bindings.v1.json",
         "binding_catalog_digest": "sha256:0c4ac1a600b5ca4bd33dd9529e8a13a062721c441d70540f7167c8facc165fc4",
         "contract_admission_ref": "contracts/admissions/nex_eos/w70_tool_contract_admission.v1.json#/contracts/17",
@@ -517,10 +517,10 @@
       "bundle_lock": {
         "bundle_id": "nex-mybee-d12-project-candidate-v1",
         "manifest_ref": "deployment/locks/ae-mybee-d12-project-candidate-bundle.v1.json",
-        "manifest_sha256": "sha256:4c5cc6ed0b9e3ce867548094c56bf70011817cd58b88ea89c8f817a159ec6d0b"
+        "manifest_sha256": "sha256:907b1d70217385506b64e05788551647d82be1a62e1476da98ce3d7f951e5589"
       },
-      "candidate_hash": "sha256:add2cfa544b2750a986c43dfb74ca38db8e428f8f5c3763a04bd4bf67a6a48ea"
+      "candidate_hash": "sha256:74361210bff83020735dd846f544b3a1ab4512edcfa16d7e710daff1b8a5e5be"
     }
   ],
-  "registry_hash": "sha256:c0d73447f00aef5cebaeb8072dea8c39c000aca94c0d384c55547da95dcf683e"
+  "registry_hash": "sha256:248022fb08cf0c51654fa85bf84fd46bd62584b29e335fb033ac3c841cbc27e1"
 }

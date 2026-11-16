@@ -7,6 +7,9 @@ from pathlib import Path
 
 from sqlalchemy.orm import Session, sessionmaker
 
+from nex_ae_api.allocation_plan_resolution_runtime import (
+    build_installed_allocation_plan_resolution,
+)
 from nex_ae_api.m1_installed_skill_runtime import (
     M1InstalledSkillRuntime,
     M1InstalledSkillRuntimeConfig,
@@ -71,6 +74,7 @@ def _build_verified_product_release_profile(
         catalog=build_mybee_m1_verified_skill_catalog(environ),
         config=load_verified_product_runtime_config(environ),
         transaction_preparation=build_installed_m1_transaction_preparation(environ),
+        allocation_plan_resolution=build_installed_allocation_plan_resolution(environ),
     )
     registry = default_p6_executor_registry(
         lambda _context: {},
