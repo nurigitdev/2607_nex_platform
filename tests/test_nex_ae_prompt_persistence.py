@@ -207,7 +207,7 @@ def test_startup_upgrades_existing_context_v1_binding_with_history() -> None:
     assert history["correlation_id"] == "p65-s7-context-prompt-v2"
 
 
-def test_startup_upgrades_existing_intent_v1_binding_with_history() -> None:
+def test_startup_upgrades_existing_intent_v9_binding_with_history() -> None:
     factory = session_factory()
     store = SqlAlchemyAePromptRegistryStore(factory)
     seed_prompt_registry(store, AE_HISTORICAL_PROMPT_SEEDS)
@@ -215,18 +215,21 @@ def test_startup_upgrades_existing_intent_v1_binding_with_history() -> None:
     before = store.get_binding(AE_INTENT_RESOLUTION_BINDING)
     assert (
         store.get_template_version(before["prompt_template_version_id"])["version"]
-        == "v1"
+        == "v9"
     )
 
     seed_ae_prompt_registry(store)
 
     after = store.get_binding(AE_INTENT_RESOLUTION_BINDING)
     version = store.get_template_version(after["prompt_template_version_id"])
-    assert version["version"] == "v9"
+    assert version["version"] == "v10"
     assert version["metadata"]["historical_scenario_dependency"] is False
     assert version["metadata"]["nvt_project_operations"] == ("create_get_list_update")
     assert version["metadata"]["employee_authority"] == "oa_only"
     assert version["metadata"]["nvt_fallback_rule"] == "non_nvt_only"
+    assert version["metadata"]["business_request_context"] == (
+        "ae.business_request_context.v1"
+    )
     with factory() as session:
         history = (
             session.execute(
@@ -234,7 +237,8 @@ def test_startup_upgrades_existing_intent_v1_binding_with_history() -> None:
                     "SELECT old_prompt_template_version_id, "
                     "new_prompt_template_version_id, correlation_id "
                     "FROM ae_prompt_binding_history "
-                    "WHERE correlation_id = 'w70-ga-ret-02-intent-prompt-v9'"
+                    "WHERE correlation_id = "
+                    "'w70-cp-m1-e2e-fx-01b2-intent-prompt-v10'"
                 )
             )
             .mappings()

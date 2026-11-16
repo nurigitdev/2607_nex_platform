@@ -18,9 +18,17 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
 
+from nex_ae_api.business_request_context import (
+    BUSINESS_TRANSACTION_INTENT_LABEL,
+    BusinessRequestContextError,
+    admit_business_request_context,
+    validate_business_request_context,
+)
+
 PLANNING_MODE_ENV = "NEX_AE_PLANNING_MODE"
 PLANNING_MODES = frozenset({"disabled", "shadow", "required"})
 WORK_INTENT_SCHEMA_VERSION = "1.1"
+BUSINESS_WORK_INTENT_SCHEMA_VERSION = "1.2"
 
 _MODE_PROFILE = {
     "GENERAL_ANSWER": (
@@ -80,6 +88,9 @@ def build_work_intent_from_decision(
     intent_revision: int = 1,
     supersedes_work_intent_id: str | None = None,
     prompt_provenance: Mapping[str, Any] | None = None,
+    intent_candidate: Mapping[str, Any] | None = None,
+    intent_candidate_hash: str | None = None,
+    attachment_manifest_hash: str | None = None,
     id_factory: Callable[[], str] | None = None,
 ) -> dict[str, Any]:
     _require_uuid("execution_id", execution_id)
@@ -119,6 +130,94 @@ def build_work_intent_from_decision(
         input_context_hash=input_context_hash,
         prompt_provenance=prompt_provenance,
     )
+    if intent_label == BUSINESS_TRANSACTION_INTENT_LABEL:
+        if intent_candidate is None or intent_candidate_hash is None:
+            raise _invalid(
+                "M1 business WorkIntent requires its admitted IntentCandidate and hash."
+            )
+        try:
+            admitted_business = admit_business_request_context(
+                candidate=intent_candidate,
+                candidate_hash=intent_candidate_hash,
+                source_prompt_ref=source_ref,
+                input_context_hash=input_context_hash,
+                model_profile=provenance["model_profile"],
+                model_ref=provenance["model_ref"],
+                attachment_manifest_hash=attachment_manifest_hash,
+            )
+        except BusinessRequestContextError as exc:
+            raise WorkIntentError(exc.error_code, exc.detail) from exc
+        parameter_confidences = [
+            float(item["confidence"])
+            for item in admitted_business.parameter_candidates
+        ]
+        entity_confidences = [
+            float(item["confidence"]) for item in admitted_business.entity_selectors
+        ]
+        work_intent = {
+            "schema_version": BUSINESS_WORK_INTENT_SCHEMA_VERSION,
+            "work_intent_id": resolved_id,
+            "intent_revision": intent_revision,
+            "supersedes_work_intent_id": supersedes_work_intent_id,
+            "execution_id": execution_id,
+            "source": {
+                "source_type": "PROMPT",
+                "source_ref": source_ref,
+                "actor_ref": actor_ref,
+                "received_at": received_at,
+            },
+            "execution_mode": "INTERACTIVE",
+            "compatibility_execution_mode": mode,
+            "project_ref": None,
+            "intent_label": intent_label,
+            "goal": (
+                "Prepare and post the admitted Project-attributed business "
+                "transaction."
+            ),
+            "work_class": "BUSINESS_TRANSACTION",
+            "required_capability_hints": [BUSINESS_TRANSACTION_INTENT_LABEL],
+            "entity_selectors": list(admitted_business.entity_selectors),
+            "parameter_candidates": list(admitted_business.parameter_candidates),
+            "constraints": [
+                {
+                    "constraint_type": "BUSINESS_CONTEXT_AUTHORITY",
+                    "description": (
+                        "The business request context is input, not accounting "
+                        "authority."
+                    ),
+                }
+            ],
+            "completion_criteria": [
+                {
+                    "criterion_id": "C1",
+                    "description": (
+                        "The active Project Agent returns the governed accounting "
+                        "result."
+                    ),
+                    "required": True,
+                    "result_contract_ref": (
+                        "contract://nex/mybee/finance/journal-posting-result/v1"
+                    ),
+                }
+            ],
+            "clarification": {
+                "status": "NOT_REQUIRED",
+                "reasons": [],
+                "questions": [],
+            },
+            "confidence": {
+                "overall": confidence,
+                "intent": confidence,
+                "entities": min(entity_confidences),
+                "parameters": min(parameter_confidences),
+            },
+            "provenance": provenance,
+            "business_request_context": dict(admitted_business.context),
+            "business_context_hash": admitted_business.context["context_hash"],
+        }
+        work_intent["intent_hash"] = semantic_sha256_hash_ref(work_intent)
+        return _validate_work_intent(work_intent)
+
     work_intent: dict[str, Any] = {
         "schema_version": WORK_INTENT_SCHEMA_VERSION,
         "work_intent_id": resolved_id,
@@ -394,8 +493,12 @@ def _build_provenance(
 
 def _validate_work_intent(value: Mapping[str, Any]) -> dict[str, Any]:
     record = json.loads(canonical_json(dict(value)))
-    if record.get("schema_version") != WORK_INTENT_SCHEMA_VERSION:
-        raise _invalid("WorkIntent schema_version must be 1.1.")
+    schema_version = record.get("schema_version")
+    if schema_version not in {
+        WORK_INTENT_SCHEMA_VERSION,
+        BUSINESS_WORK_INTENT_SCHEMA_VERSION,
+    }:
+        raise _invalid("WorkIntent schema_version must be 1.1 or 1.2.")
     _require_uuid("work_intent_id", record.get("work_intent_id"))
     _require_uuid("execution_id", record.get("execution_id"))
     _validate_revision(
@@ -414,6 +517,8 @@ def _validate_work_intent(value: Mapping[str, Any]) -> dict[str, Any]:
         raise _invalid("WorkIntent execution_mode does not match its source.")
     if record.get("compatibility_execution_mode") not in _MODE_PROFILE:
         raise _invalid("WorkIntent compatibility execution mode is unsupported.")
+    if schema_version == BUSINESS_WORK_INTENT_SCHEMA_VERSION:
+        _validate_business_work_intent(record)
     validate_hash_ref(record.get("intent_hash"))
     expected_hash = semantic_sha256_hash_ref(
         {key: item for key, item in record.items() if key != "intent_hash"}
@@ -421,6 +526,38 @@ def _validate_work_intent(value: Mapping[str, Any]) -> dict[str, Any]:
     if record["intent_hash"] != expected_hash:
         raise _invalid("WorkIntent intent_hash does not match its semantic content.")
     return record
+
+
+def _validate_business_work_intent(record: Mapping[str, Any]) -> None:
+    if (
+        record.get("intent_label") != BUSINESS_TRANSACTION_INTENT_LABEL
+        or record.get("work_class") != "BUSINESS_TRANSACTION"
+        or BUSINESS_TRANSACTION_INTENT_LABEL
+        not in record.get("required_capability_hints", ())
+    ):
+        raise _invalid("WorkIntent v1.2 is reserved for the admitted M1 business path.")
+    try:
+        context = validate_business_request_context(
+            record.get("business_request_context")
+        )
+    except BusinessRequestContextError as exc:
+        raise WorkIntentError(exc.error_code, exc.detail) from exc
+    if record.get("business_context_hash") != context["context_hash"]:
+        raise _invalid("WorkIntent business_context_hash does not match its context.")
+    source = record.get("source")
+    provenance = record.get("provenance")
+    if (
+        not isinstance(source, Mapping)
+        or source.get("source_ref") != context["source_prompt_ref"]
+        or not isinstance(provenance, Mapping)
+        or provenance.get("input_context_hash")
+        != context["candidate_provenance"]["input_context_hash"]
+        or provenance.get("model_profile")
+        != context["candidate_provenance"]["model_profile"]
+        or provenance.get("model_ref")
+        != context["candidate_provenance"]["model_ref"]
+    ):
+        raise _invalid("WorkIntent business context provenance does not match.")
 
 
 def _claimed_planning_source(value: Mapping[str, Any]) -> dict[str, Any]:

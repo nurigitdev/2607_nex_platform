@@ -462,6 +462,8 @@ class DeterministicCandidateAdmissionService:
                     input_context_hash=intent_evidence["input_context_hash"],
                     work_intent_id=ids.work_intent,
                     prompt_provenance=_work_intent_provenance(intent_evidence),
+                    intent_candidate=intent_candidate,
+                    intent_candidate_hash=str(intent_evidence["candidate_hash"]),
                 )
         assert work_intent is not None
         context_resolver = request.context_resolver

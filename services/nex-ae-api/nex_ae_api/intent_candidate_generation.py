@@ -296,6 +296,8 @@ class LiveIntentCandidateService:
                 "model_profile": generation.model_profile,
                 "model_ref": generation.model_ref,
             },
+            intent_candidate=candidate,
+            intent_candidate_hash=candidate_hash,
             id_factory=id_factory,
         )
         return _result(

@@ -420,8 +420,10 @@ def _activate_work_intent(
     expected = semantic_sha256_hash_ref(
         {key: value for key, value in record.items() if key != "intent_hash"}
     )
-    if record.get("schema_version") != "1.1" or record.get("intent_hash") != expected:
-        raise _invalid("Project delegation requires an intact WorkIntent v1.1.")
+    if record.get("schema_version") not in {"1.1", "1.2"} or record.get(
+        "intent_hash"
+    ) != expected:
+        raise _invalid("Project delegation requires an intact WorkIntent v1.1 or v1.2.")
     confidence = selector.get("confidence")
     if isinstance(confidence, bool) or not isinstance(confidence, (int, float)):
         raise _invalid("Project selector confidence is invalid.")
@@ -442,6 +444,11 @@ def _activate_work_intent(
                 }
             ],
             "constraints": [
+                *(
+                    list(record.get("constraints", ()))
+                    if record.get("schema_version") == "1.2"
+                    else []
+                ),
                 {
                     "constraint_type": "PROJECT_DELEGATION_AUTHORITY",
                     "description": "EOS, OA, and AE Project Agent state are authoritative.",
