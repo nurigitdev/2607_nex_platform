@@ -164,7 +164,7 @@ class InstalledM1ProductPlanningCoordinator:
             raise _not_found("M1 preparation checkpoint was not found.")
         stage = _stage(checkpoint["stage"])
         authority_kind, event_type, authority_key = stage
-        preparation = _preparation_projection(checkpoint)
+        preparation = m1_preparation_projection(checkpoint)
         authority_ref = _text(
             preparation["references"].get(authority_key), authority_key, 512
         )
@@ -255,7 +255,7 @@ class InstalledM1ProductPlanningCoordinator:
             execution=execution,
             checkpoint=previous,
         )
-        preparation = _preparation_projection(previous)
+        preparation = m1_preparation_projection(previous)
         payload = context["event"]["event_payload"]
         evidence_ref = _text(
             payload.get("authority_evidence_ref"),
@@ -291,6 +291,35 @@ class InstalledM1ProductPlanningCoordinator:
             causation_id=event_id,
         )
         return self._result(checkpoint, replayed=False)
+
+    def load_ready_checkpoint(
+        self,
+        *,
+        work_intent: Mapping[str, Any],
+        agent_context: Mapping[str, Any],
+        capability_snapshot: Mapping[str, Any],
+        execution: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Load the exact latest READY checkpoint without mutating runtime state."""
+        lineage = self._lineage(
+            work_intent=work_intent,
+            agent_context=agent_context,
+            capability_snapshot=capability_snapshot,
+            execution=execution,
+        )
+        checkpoint = self._latest(lineage)
+        if checkpoint is None:
+            raise _not_found("M1 preparation checkpoint was not found.")
+        self._require_checkpoint_lineage(checkpoint, lineage)
+        if (
+            checkpoint.get("stage") != self.registration.ready_state
+            or checkpoint.get("stage_kind") != "READY"
+        ):
+            raise _conflict("M1 preparation is not ready for plan activation.")
+        return {
+            "checkpoint": dict(checkpoint),
+            "preparation": m1_preparation_projection(checkpoint),
+        }
 
     def _persist_checkpoint(
         self,
@@ -379,7 +408,7 @@ class InstalledM1ProductPlanningCoordinator:
         self, checkpoint: Mapping[str, Any], *, created_at: str | None = None
     ) -> dict[str, Any]:
         authority_kind, event_type, authority_key = _stage(checkpoint["stage"])
-        preparation = _preparation_projection(checkpoint)
+        preparation = m1_preparation_projection(checkpoint)
         authority_ref = _text(
             preparation["references"].get(authority_key), authority_key, 512
         )
@@ -572,7 +601,7 @@ class InstalledM1ProductPlanningCoordinator:
         return authority
 
 
-def _preparation_projection(checkpoint: Mapping[str, Any]) -> dict[str, Any]:
+def m1_preparation_projection(checkpoint: Mapping[str, Any]) -> dict[str, Any]:
     matches = [
         item
         for item in checkpoint.get("authority_refs", ())
@@ -588,6 +617,9 @@ def _preparation_projection(checkpoint: Mapping[str, Any]) -> dict[str, Any]:
     ):
         raise _conflict("M1 preparation projection differs from checkpoint lineage.")
     return projection
+
+
+_preparation_projection = m1_preparation_projection
 
 
 def _stage(value: object) -> tuple[str, str, str]:

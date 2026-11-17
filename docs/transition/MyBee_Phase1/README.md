@@ -317,6 +317,19 @@ and actual `nex_ae_test` shared persistence/restart evidence has zero residue.
 M1 remains globally `CONTRACT_ONLY`; `READY_FOR_D04` plan persistence and
 scheduling are assigned to the next canonical Slice, `6B.3`.
 
+`CP-M1-E2E-FX-01B.6B.3` implementation evidence is recorded in
+[`mybee_phase1_w70_cp_m1_e2e_fx_01b6b3_plan_persistence_scheduling.md`](../../slices/mybee_phase1_w70_cp_m1_e2e_fx_01b6b3_plan_persistence_scheduling.md).
+It reloads the exact durable `READY_FOR_D04` checkpoint, invokes the existing
+deterministic `.5` materializer, persists AgentPlan, PlanValidation, and
+ExecutablePlan through their existing repositories, and calls the existing
+scheduler only after all three records are durable or exactly replayed.
+Provider PLAN output remains non-authoritative, semantic drift fails closed,
+and crash recovery uses immutable repository replay rather than Slice-local
+state. No migration, queue, worker, inbox, generic runtime branch, or remote
+provider dependency was added. M1 remains globally `CONTRACT_ONLY`; the next
+canonical Slice is `6B.4`, which owns the installed multi-service PostgreSQL
+replay, restart, approval ACK-loss, scheduling, and zero-residue Gate.
+
 `CP-M1-E2E-FX-01B.6A.1` implementation evidence is recorded in
 [`mybee_phase1_w70_cp_m1_e2e_fx_01b6a1_refresh_contract_source_resolver.md`](../../slices/mybee_phase1_w70_cp_m1_e2e_fx_01b6a1_refresh_contract_source_resolver.md).
 It closes the canonical protected contract and the mutation-free EOS source
