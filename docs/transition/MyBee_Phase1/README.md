@@ -343,6 +343,20 @@ publication artifacts. The matrix leaves zero residue, requires no remote
 provider, adds no migration, and keeps M1 `CONTRACT_ONLY`; installed process
 activation remains assigned to `6B.5`.
 
+`CP-M1-E2E-FX-01B.6B.5A` is the required controlled amendment before installed
+activation. Read
+[`NeX_MyBee_CP_M1_E2E_FX_01B_6B_5A_Installed_Product_Coordinator_Authority_and_Dispatch_Closure_v1.0.md`](NeX_MyBee_CP_M1_E2E_FX_01B_6B_5A_Installed_Product_Coordinator_Authority_and_Dispatch_Closure_v1.0.md)
+before resuming `6B.5`. Source-backed review found that the M1 registration is
+still contract-only, no installed owner-authority resolver exists, valid
+step-less Product resume jobs cannot be claimed by the current dispatcher,
+and public claimed-work planning bypasses Product coordination. The amendment
+productizes owner-authoritative resolution, generic runtime assignment kinds,
+capability-selected public routing, one installed composition factory, and
+activation/readiness/rollback locks. It prohibits scenario branches, fixed
+business values, a second queue or worker, and a migration by default. `01B.7`
+remains suspended until the five `6B.5A` implementation Slices close the
+protected installed Gate.
+
 `CP-M1-E2E-FX-01B.6A.1` implementation evidence is recorded in
 [`mybee_phase1_w70_cp_m1_e2e_fx_01b6a1_refresh_contract_source_resolver.md`](../../slices/mybee_phase1_w70_cp_m1_e2e_fx_01b6a1_refresh_contract_source_resolver.md).
 It closes the canonical protected contract and the mutation-free EOS source
