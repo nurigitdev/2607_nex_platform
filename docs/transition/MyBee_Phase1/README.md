@@ -305,6 +305,18 @@ behavior and migration `2517` remain compatible, actual `nex_ae_test` smoke
 has zero residue, and M1 remains `CONTRACT_ONLY`. The corrective `6B.1A`
 boundary is implementation-closed; the next canonical Slice is `6B.2`.
 
+`CP-M1-E2E-FX-01B.6B.2` implementation evidence is recorded in
+[`mybee_phase1_w70_cp_m1_e2e_fx_01b6b2_durable_preparation_approval_resume.md`](../../slices/mybee_phase1_w70_cp_m1_e2e_fx_01b6b2_durable_preparation_approval_resume.md).
+It connects the registered M1 Product Coordinator to the existing proposal and
+VoucherCandidate preparation adapter, persists hash-bound checkpoints for both
+owner-authoritative approval waits, and reloads fresh authority at each resume.
+Approval events may advance only after the shared matcher has produced a
+`RESUME_EXECUTION` RuntimeJob; direct Product-specific resume is rejected.
+Exact replay and ACK loss are idempotent, stale or drifted events fail closed,
+and actual `nex_ae_test` shared persistence/restart evidence has zero residue.
+M1 remains globally `CONTRACT_ONLY`; `READY_FOR_D04` plan persistence and
+scheduling are assigned to the next canonical Slice, `6B.3`.
+
 `CP-M1-E2E-FX-01B.6A.1` implementation evidence is recorded in
 [`mybee_phase1_w70_cp_m1_e2e_fx_01b6a1_refresh_contract_source_resolver.md`](../../slices/mybee_phase1_w70_cp_m1_e2e_fx_01b6a1_refresh_contract_source_resolver.md).
 It closes the canonical protected contract and the mutation-free EOS source
