@@ -273,6 +273,16 @@ projections. Actual `nex_ae_test` evidence covers the old and new paths,
 deferred binding denial, append-only denial, and rollback zero residue. M1
 remains `CONTRACT_ONLY`; generic repository APIs are assigned to `6B.1A.2`.
 
+`CP-M1-E2E-FX-01B.6B.1A.2` implementation evidence is recorded in
+[`mybee_phase1_w70_cp_m1_e2e_fx_01b6b1a2_persistence_api.md`](../../slices/mybee_phase1_w70_cp_m1_e2e_fx_01b6b1a2_persistence_api.md).
+It adds one generalized wait/event persistence API plus immutable Product
+Preparation checkpoint and typed-binding repositories over migration `2517`.
+Product binding writes are atomic with the shared envelope, exact replay is
+idempotent, semantic drift and incomplete lineage fail closed, and existing
+WorkResult/NSL persistence remains compatible. Actual `nex_ae_test` evidence
+proves rollback zero residue. Runtime matching and resume routing remain
+assigned to `6B.1A.3`; M1 remains `CONTRACT_ONLY`.
+
 `CP-M1-E2E-FX-01B.6A.1` implementation evidence is recorded in
 [`mybee_phase1_w70_cp_m1_e2e_fx_01b6a1_refresh_contract_source_resolver.md`](../../slices/mybee_phase1_w70_cp_m1_e2e_fx_01b6a1_refresh_contract_source_resolver.md).
 It closes the canonical protected contract and the mutation-free EOS source

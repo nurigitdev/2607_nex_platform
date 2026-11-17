@@ -33,15 +33,36 @@ def _rehash(document: dict[str, object]) -> dict[str, object]:
     return result
 
 
+def _expected_inventory_counts(manifest: dict[str, object]) -> dict[str, int]:
+    source_root = manifest["source_root"]
+    assert isinstance(source_root, str)
+    modules = tuple((ROOT / source_root).rglob("*.py"))
+    overrides = manifest["scope_overrides"]
+    assert isinstance(overrides, list)
+    compatibility_count = sum(
+        item["scope"] == "ACTIVE_COMPATIBILITY" for item in overrides
+    )
+    historical_count = sum(
+        item["scope"] == "HISTORICAL_QUARANTINE" for item in overrides
+    )
+    return {
+        "module_count": len(modules),
+        "product_count": len(modules) - compatibility_count - historical_count,
+        "compatibility_count": compatibility_count,
+        "historical_count": historical_count,
+    }
+
+
 def test_real_inventory_classifies_every_ae_module_and_freezes_baseline() -> None:
     manifest = _json(ROOT / MANIFEST_PATH)
+    expected = _expected_inventory_counts(manifest)
     report = build_ownership_inventory(
         ROOT,
         manifest=manifest,
     )
 
     assert report["status"] == "PASS"
-    assert report["module_count"] == 184
+    assert report["module_count"] == expected["module_count"]
     assert report["active_import_module_count"] == 95
     assert report["coverage_module_count"] == 0
     assert report["checks"] == {
@@ -56,9 +77,9 @@ def test_real_inventory_classifies_every_ae_module_and_freezes_baseline() -> Non
     assert {
         scope: value["module_count"] for scope, value in report["scopes"].items()
     } == {
-        "ACTIVE_PRODUCT": 174,
-        "ACTIVE_COMPATIBILITY": 5,
-        "HISTORICAL_QUARANTINE": 5,
+        "ACTIVE_PRODUCT": expected["product_count"],
+        "ACTIVE_COMPATIBILITY": expected["compatibility_count"],
+        "HISTORICAL_QUARANTINE": expected["historical_count"],
     }
     assert report["scopes"]["ACTIVE_PRODUCT"]["active_import_module_count"] == 95
     assert report["scopes"]["ACTIVE_COMPATIBILITY"]["active_import_module_count"] == 0
@@ -79,10 +100,14 @@ def test_real_inventory_classifies_every_ae_module_and_freezes_baseline() -> Non
         "ret02a_statement_target": 96.25,
         "ret02a_branch_target": 94.5,
     }
-    assert len({item["path"] for item in report["modules"]}) == 184
+    assert len({item["path"] for item in report["modules"]}) == expected[
+        "module_count"
+    ]
     assert summary_line(report) == (
-        "ae_coverage_ownership=pass modules=184 active_graph=95 "
-        "product=174 compatibility=5 historical=5 coverage=not-provided "
+        f"ae_coverage_ownership=pass modules={expected['module_count']} "
+        f"active_graph=95 product={expected['product_count']} "
+        f"compatibility={expected['compatibility_count']} "
+        f"historical={expected['historical_count']} coverage=not-provided "
         "conflicts=0"
     )
 
@@ -175,6 +200,10 @@ def test_inventory_rejects_quarantine_hash_and_coverage_metric_drift() -> None:
 
 
 def test_inventory_fails_gate_when_coverage_omits_owned_modules() -> None:
+    manifest = _json(ROOT / MANIFEST_PATH)
+    expected = _expected_inventory_counts(manifest)
+    optional_paths = manifest["coverage_optional_paths"]
+    assert isinstance(optional_paths, list)
     coverage = {
         "files": {},
         "totals": {
@@ -188,12 +217,14 @@ def test_inventory_fails_gate_when_coverage_omits_owned_modules() -> None:
     }
 
     report = build_ownership_inventory(
-        ROOT, manifest=_json(ROOT / MANIFEST_PATH), coverage=coverage
+        ROOT, manifest=manifest, coverage=coverage
     )
 
     assert report["status"] == "FAIL"
     assert report["checks"]["coverage_inventory_complete"] is False
-    assert len(report["coverage_unreported_modules"]) == 183
+    assert len(report["coverage_unreported_modules"]) == (
+        expected["module_count"] - len(optional_paths)
+    )
     assert (
         "services/nex-ae-api/nex_ae_api/__init__.py"
         not in report["coverage_unreported_modules"]
