@@ -41,7 +41,7 @@ def test_real_inventory_classifies_every_ae_module_and_freezes_baseline() -> Non
     )
 
     assert report["status"] == "PASS"
-    assert report["module_count"] == 182
+    assert report["module_count"] == 184
     assert report["active_import_module_count"] == 95
     assert report["coverage_module_count"] == 0
     assert report["checks"] == {
@@ -56,7 +56,7 @@ def test_real_inventory_classifies_every_ae_module_and_freezes_baseline() -> Non
     assert {
         scope: value["module_count"] for scope, value in report["scopes"].items()
     } == {
-        "ACTIVE_PRODUCT": 172,
+        "ACTIVE_PRODUCT": 174,
         "ACTIVE_COMPATIBILITY": 5,
         "HISTORICAL_QUARANTINE": 5,
     }
@@ -79,10 +79,10 @@ def test_real_inventory_classifies_every_ae_module_and_freezes_baseline() -> Non
         "ret02a_statement_target": 96.25,
         "ret02a_branch_target": 94.5,
     }
-    assert len({item["path"] for item in report["modules"]}) == 182
+    assert len({item["path"] for item in report["modules"]}) == 184
     assert summary_line(report) == (
-        "ae_coverage_ownership=pass modules=182 active_graph=95 "
-        "product=172 compatibility=5 historical=5 coverage=not-provided "
+        "ae_coverage_ownership=pass modules=184 active_graph=95 "
+        "product=174 compatibility=5 historical=5 coverage=not-provided "
         "conflicts=0"
     )
 
@@ -193,7 +193,7 @@ def test_inventory_fails_gate_when_coverage_omits_owned_modules() -> None:
 
     assert report["status"] == "FAIL"
     assert report["checks"]["coverage_inventory_complete"] is False
-    assert len(report["coverage_unreported_modules"]) == 181
+    assert len(report["coverage_unreported_modules"]) == 183
     assert (
         "services/nex-ae-api/nex_ae_api/__init__.py"
         not in report["coverage_unreported_modules"]

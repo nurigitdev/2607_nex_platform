@@ -244,6 +244,17 @@ narrow persistence decision. `.7` remains paused until the actual
 PostgreSQL replay, restart, approval ACK-loss, scheduling, and residue Gate
 closes.
 
+`CP-M1-E2E-FX-01B.6B.1` implementation evidence is recorded in
+[`mybee_phase1_w70_cp_m1_e2e_fx_01b6b1_product_coordinator_storage_fit.md`](../../slices/mybee_phase1_w70_cp_m1_e2e_fx_01b6b1_product_coordinator_storage_fit.md).
+It closes the generic exact-capability Product Coordinator contract and
+registers M1 as `CONTRACT_ONLY`. The source-backed audit passes but records
+storage fit as `NOT_FIT`: current wait registration, external event inbox,
+step result, and runtime-job payload cannot preserve the two pre-plan approval
+waits without changing WorkResult, NSL approval, or executable-step meaning.
+`6B.2` is paused pending `CP-M1-E2E-FX-01B.6B.1A`, which must select and
+authorize the smallest typed checkpoint and approval-event persistence
+correction.
+
 `CP-M1-E2E-FX-01B.6A.1` implementation evidence is recorded in
 [`mybee_phase1_w70_cp_m1_e2e_fx_01b6a1_refresh_contract_source_resolver.md`](../../slices/mybee_phase1_w70_cp_m1_e2e_fx_01b6a1_refresh_contract_source_resolver.md).
 It closes the canonical protected contract and the mutation-free EOS source
