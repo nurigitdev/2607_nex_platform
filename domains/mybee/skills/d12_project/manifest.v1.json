@@ -13,7 +13,7 @@
     },
     "tool_contract_admission": {
       "path": "contracts/admissions/nex_eos/w70_tool_contract_admission.v1.json",
-      "content_digest": "sha256:e2481d0722e8bd725721775d4e62e91a36f0f421113be93f2e065ef7a0d25f59"
+      "content_digest": "sha256:c8ff6913aa4f601e7f94ef6f016a657585b1fe1470934884a620203fa74c0e37"
     },
     "nsl_wheel_lock": {
       "path": "deployment/locks/nsl-v0.2.1-wheel.json",
@@ -47,6 +47,6 @@
     }
   ],
   "release_attestation": {
-    "content_digest": "sha256:6d6020dd91681eafb20e2e26b78f9134306e7d3e4762e337d2adf4ed552a94e6"
+    "content_digest": "sha256:9ca21ef929fdf086f4f435fa67479f5ca69edf64c6bd8524de204b8097bd46a1"
   }
 }

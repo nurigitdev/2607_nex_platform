@@ -8,8 +8,8 @@
     "pack_id": "MYBEE.D12.PROJECT",
     "pack_version": "1.0.0",
     "manifest_ref": "domains/mybee/skills/d12_project/manifest.v1.json",
-    "manifest_sha256": "sha256:cbf439f9164b190d4400cc04b215949cc689fc7ea0b34e8672132d5bb6803676",
-    "manifest_content_digest": "sha256:6d6020dd91681eafb20e2e26b78f9134306e7d3e4762e337d2adf4ed552a94e6",
+    "manifest_sha256": "sha256:edecf834584f9d5c7f7e3ecb0e9384f4cf7542c2bebe79283ae949f3720169b3",
+    "manifest_content_digest": "sha256:9ca21ef929fdf086f4f435fa67479f5ca69edf64c6bd8524de204b8097bd46a1",
     "binding_catalog_ref": "domains/mybee/skills/d12_project/tool_bindings.v1.json",
     "binding_catalog_sha256": "sha256:bc13608d0c6f50cdc1884cf7996aa2e86b3254e81123a9e3bab62f5ab7143274",
     "binding_catalog_content_digest": "sha256:0c4ac1a600b5ca4bd33dd9529e8a13a062721c441d70540f7167c8facc165fc4"
@@ -27,5 +27,5 @@
     "compile_state": "PENDING_S8_01E",
     "activation_requires": "S8_01E_GATE"
   },
-  "content_hash": "sha256:e708b5e229a500f2c3a4acffa86718c03da8e52511228bb4ff38966cb476ff2c"
+  "content_hash": "sha256:2fa2a750b32d3fbc4e2ae30da65a2647174af4d07688b5fa4c238169dfc3ddf9"
 }

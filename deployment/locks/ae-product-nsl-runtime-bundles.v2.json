@@ -7,17 +7,17 @@
       "bundle_id": "nex-mybee-d04-accounting-candidate-v1",
       "state": "CANDIDATE_DESCRIPTOR_ONLY",
       "manifest_ref": "deployment/locks/ae-mybee-d04-accounting-candidate-bundle.v1.json",
-      "manifest_sha256": "sha256:7d4ccafce478bbf0c431f0faa0a89b521066f2448f5073140174245efe0bf8a7",
+      "manifest_sha256": "sha256:8296dad2dfe298247652828aed5063d4e821a584dae40fa73bf817f1d9bac053",
       "pack_id": "MYBEE.D04.ACCOUNTING",
-      "pack_manifest_digest": "sha256:54641d4749973e9297a153672f79fb19f1851eab89488022ff4289dbfa5ca656"
+      "pack_manifest_digest": "sha256:309473bc94072ceb96ffe99c17f1dbf8b3f3567500124a9f0630374bad306f59"
     },
     {
       "bundle_id": "nex-mybee-d12-project-candidate-v1",
       "state": "CANDIDATE_DESCRIPTOR_ONLY",
       "manifest_ref": "deployment/locks/ae-mybee-d12-project-candidate-bundle.v1.json",
-      "manifest_sha256": "sha256:907b1d70217385506b64e05788551647d82be1a62e1476da98ce3d7f951e5589",
+      "manifest_sha256": "sha256:51e8c3d0292cdb02675fddc2b6a8651cf65138d391c60620743f477be15ff1f3",
       "pack_id": "MYBEE.D12.PROJECT",
-      "pack_manifest_digest": "sha256:6d6020dd91681eafb20e2e26b78f9134306e7d3e4762e337d2adf4ed552a94e6"
+      "pack_manifest_digest": "sha256:9ca21ef929fdf086f4f435fa67479f5ca69edf64c6bd8524de204b8097bd46a1"
     },
     {
       "bundle_id": "nex-product-nsl-v0.2.1-finance-voucher-draft-v1",
@@ -28,5 +28,5 @@
       "pack_manifest_digest": null
     }
   ],
-  "content_hash": "sha256:9b296488404b9d0ec9349bdb83e444b6ad27dcce630742ab56c31ade35eb0031"
+  "content_hash": "sha256:777e4b89dc405bb773c08b3597126c9b2052cdd8ef5f8e17c552beeaad7f3aa1"
 }

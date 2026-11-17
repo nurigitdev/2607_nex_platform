@@ -249,8 +249,8 @@
         "domain_code": "D04_ACCOUNTING",
         "bundle_id": "nex-mybee-d04-accounting-candidate-v1",
         "bundle_ref": "deployment/locks/ae-mybee-d04-accounting-candidate-bundle.v1.json",
-        "bundle_sha256": "sha256:7d4ccafce478bbf0c431f0faa0a89b521066f2448f5073140174245efe0bf8a7",
-        "content_hash": "sha256:7f9e46ff825eddbda363f4bf7c928ae42dcd78eadaff16f97ed61b532918a5d7",
+        "bundle_sha256": "sha256:8296dad2dfe298247652828aed5063d4e821a584dae40fa73bf817f1d9bac053",
+        "content_hash": "sha256:1c0b46f94be940dc0046c813b3d634a764789cd79446614fdc21c4e4aeb16d08",
         "trust_policy_id": "policy://nex/ae/mybee/d04-accounting/v1",
         "signature_status": "NOT_SIGNED",
         "runtime_selectable": false,
@@ -260,8 +260,8 @@
         "domain_code": "D12_PROJECT",
         "bundle_id": "nex-mybee-d12-project-candidate-v1",
         "bundle_ref": "deployment/locks/ae-mybee-d12-project-candidate-bundle.v1.json",
-        "bundle_sha256": "sha256:907b1d70217385506b64e05788551647d82be1a62e1476da98ce3d7f951e5589",
-        "content_hash": "sha256:e708b5e229a500f2c3a4acffa86718c03da8e52511228bb4ff38966cb476ff2c",
+        "bundle_sha256": "sha256:51e8c3d0292cdb02675fddc2b6a8651cf65138d391c60620743f477be15ff1f3",
+        "content_hash": "sha256:2fa2a750b32d3fbc4e2ae30da65a2647174af4d07688b5fa4c238169dfc3ddf9",
         "trust_policy_id": "policy://nex/ae/mybee/d12-project/v1",
         "signature_status": "NOT_SIGNED",
         "runtime_selectable": false,
@@ -273,11 +273,11 @@
   },
   "registry_continuity": {
     "candidate_registry_ref": "deployment/environments/ae-product-capability-registry.v2.json",
-    "candidate_registry_sha256": "sha256:c085839ad0da01e61d30b9ad5d090936ca1c2d813d74ff6093de8eaa2f0e9b54",
-    "candidate_registry_hash": "sha256:248022fb08cf0c51654fa85bf84fd46bd62584b29e335fb033ac3c841cbc27e1",
+    "candidate_registry_sha256": "sha256:c80a129788331b150f9221dd0c2430f5ee73914921efaec357a8dfbe638774e5",
+    "candidate_registry_hash": "sha256:9a9b8c39896ac899a24f5ff8937a09fc29cd6c6e600804a8c881d43f0bb5afa2",
     "candidate_registry_version": 2,
     "bundle_set_ref": "deployment/locks/ae-product-nsl-runtime-bundles.v2.json",
-    "bundle_set_sha256": "sha256:6887a8708cbbd35a13b70e5f572f6b449f5b9ee2c12640ae063a33a4b5f15361",
+    "bundle_set_sha256": "sha256:d2ac556cf88c9b0dbcae5e1f30afd1121326cb473c2c09775cf097feef50a12a",
     "bundle_set_readiness": {
       "schema_version": "nex_nsl_runtime_bundle_set_readiness.v1",
       "status": "PASS",
@@ -286,7 +286,7 @@
       "bundle_count": 3,
       "active_bundle_count": 1,
       "candidate_bundle_count": 2,
-      "content_hash": "sha256:9b296488404b9d0ec9349bdb83e444b6ad27dcce630742ab56c31ade35eb0031"
+      "content_hash": "sha256:777e4b89dc405bb773c08b3597126c9b2052cdd8ef5f8e17c552beeaad7f3aa1"
     },
     "active_registry_ref": "deployment/environments/ae-product-capability-registry.v1.json",
     "active_registry_sha256": "sha256:cb43b573d2e9284b79b10502a68b9a7f9fed2939b0a88db5c745b4c5396ec126",
@@ -302,5 +302,5 @@
     "signed_minimal_skill_owner": "CP-M1-MB8-01",
     "remote_provider_required": false
   },
-  "content_hash": "sha256:cd344a1a2c7507ce8fbc5bb11558f8df8e569f3c39c0313393e50b63955f01f7"
+  "content_hash": "sha256:15e8f805aa15424559b627f72f39b05934fd07dece6a1662c3732c8dc3a25d33"
 }

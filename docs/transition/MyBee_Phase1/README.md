@@ -244,6 +244,15 @@ provides exact restart/concurrency replay semantics without a migration. The
 strict AE consumer and actual PostgreSQL protected Gate remain assigned to
 `.6A.3`; the parent `.6` orchestration is still paused until that Gate closes.
 
+`CP-M1-E2E-FX-01B.6A.3` implementation evidence is recorded in
+[`mybee_phase1_w70_cp_m1_e2e_fx_01b6a3_strict_consumer_protected_gate.md`](../../slices/mybee_phase1_w70_cp_m1_e2e_fx_01b6a3_strict_consumer_protected_gate.md).
+It closes the strict provider-neutral consumer, installed AE composition,
+signed W70 admission reconciliation, and actual `nex_eos_test` creation,
+replay, restart, concurrency, scope-denial, zero-mutation, and zero-residue
+Gate. The corrective `6A` boundary is closed without a migration or model
+provider, and the parent `.6` orchestration is ready to resume only as
+`allocation RUN -> VERIFY -> P&L REFRESH -> GET`.
+
 `W70-S8-01A` implementation evidence is recorded in
 [`mybee_phase1_w70_s8_01a_tool_inventory.md`](../../slices/mybee_phase1_w70_s8_01a_tool_inventory.md).
 It closes the canonical Tool inventory, operation identity, compatibility
