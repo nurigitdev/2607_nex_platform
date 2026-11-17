@@ -3,24 +3,36 @@ from __future__ import annotations
 from mybee_ax.integrations import M1_D04_CAPABILITY_ID, M1_D12_CAPABILITY_ID
 from mybee_ax.orchestration import M1PreparationRegistration
 
+from nex_ae_api.planning_capabilities import LOCAL_SKILL_EXECUTOR_KIND
 from nex_ae_api.product_capabilities import ProductCapabilityRegistry
 from nex_ae_api.product_planning_coordinators import (
     ProductPlanningCoordinatorError,
     ProductPlanningCoordinatorRegistration,
     ProductPlanningCoordinatorRegistry,
+    ProductPlanningReplayPolicy,
     build_product_planning_coordinator_registration,
     capability_binding,
+    skill_bundle_lock,
+)
+from nex_ae_api.product_preparation_persistence import (
+    PRODUCT_PREPARATION_CHECKPOINT_SCHEMA_VERSION,
 )
 
 M1_PRODUCT_COORDINATOR_ID = "MYBEE.M1.TRANSACTION_PREPARATION"
-M1_PRODUCT_COORDINATOR_VERSION = "1.0.0"
+M1_PRODUCT_COORDINATOR_VERSION = "1.1.0"
 M1_PRODUCT_COORDINATOR_REGISTRY_ID = "ae-product-coordinators-mybee-m1"
 M1_PRODUCT_COORDINATOR_IMPLEMENTATION_REF = (
-    "nex_ae_api.m1_product_planning_coordinator:"
-    "InstalledM1ProductPlanningCoordinator"
+    "nex_ae_api.m1_product_planning_coordinator:InstalledM1ProductPlanningCoordinator"
 )
 M1_PLAN_MATERIALIZER_SOURCE_IDENTITY = (
     "nex-ae:m1-plan-materializer:ae.m1_plan_materialization.v1"
+)
+M1_PRODUCT_COORDINATOR_REPLAY_POLICY = ProductPlanningReplayPolicy(
+    policy_id="ae.product_preparation_resume.exact.v1",
+    exact_event_replay="RETURN_ORIGINAL_RESUME",
+    semantic_drift="FAIL_CLOSED_ZERO_MUTATION",
+    stale_or_out_of_order="DENY",
+    ack_loss_redelivery="CONVERGE",
 )
 
 
@@ -66,6 +78,13 @@ def build_m1_product_planning_coordinator_registration(
         ready_state="READY_FOR_D04",
         terminal_states=("PREPARATION_FAILED", "PREPARATION_CANCELLED"),
         required_operations=operations,
+        checkpoint_schema_version=(PRODUCT_PREPARATION_CHECKPOINT_SCHEMA_VERSION),
+        replay_policy=M1_PRODUCT_COORDINATOR_REPLAY_POLICY,
+        supported_executor_kinds=(LOCAL_SKILL_EXECUTOR_KIND,),
+        installed_skill_bundle_locks=(
+            skill_bundle_lock(d04),
+            skill_bundle_lock(d12),
+        ),
     )
 
 
@@ -81,7 +100,7 @@ def build_m1_product_planning_coordinator_registry(
     registry = ProductPlanningCoordinatorRegistry(
         (registration,),
         registry_id=M1_PRODUCT_COORDINATOR_REGISTRY_ID,
-        registry_version=1,
+        registry_version=2,
     )
     registry.require_product_capabilities(product_capabilities)
     return registry

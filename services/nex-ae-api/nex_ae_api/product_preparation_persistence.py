@@ -23,6 +23,9 @@ PRODUCT_AUTHORITY_KINDS = frozenset({"BUSINESS_FORMAL", "ACCOUNTING_REVIEW"})
 PRODUCT_CHECKPOINT_STAGE_KINDS = frozenset(
     {"INITIAL", "WAITING", "READY", "TERMINAL"}
 )
+PRODUCT_PREPARATION_CHECKPOINT_SCHEMA_VERSION = (
+    "ae.product_preparation_checkpoint.v1"
+)
 
 
 @dataclass

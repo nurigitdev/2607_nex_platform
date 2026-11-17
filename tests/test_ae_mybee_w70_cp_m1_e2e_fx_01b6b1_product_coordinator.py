@@ -9,9 +9,12 @@ import run_mybee_w70_cp_m1_e2e_fx_01b6b1_storage_fit_audit as audit
 from mybee_ax.orchestration import load_m1_transaction_preparation_registration
 from nex_ae_api.m1_product_planning_coordinator import (
     M1_PRODUCT_COORDINATOR_ID,
+    M1_PRODUCT_COORDINATOR_REPLAY_POLICY,
+    M1_PRODUCT_COORDINATOR_VERSION,
     build_m1_product_planning_coordinator_registration,
     build_m1_product_planning_coordinator_registry,
 )
+from nex_ae_api.planning_capabilities import LOCAL_SKILL_EXECUTOR_KIND
 from nex_ae_api.product_capabilities import (
     ProductCapabilityRegistry,
     load_product_capability_registry,
@@ -20,14 +23,19 @@ from nex_ae_api.product_planning_coordinators import (
     ProductPlanningCapabilityBinding,
     ProductPlanningCoordinatorError,
     ProductPlanningCoordinatorRegistry,
+    ProductPlanningReplayPolicy,
+    ProductPlanningSkillBundleLock,
     build_product_planning_coordinator_registration,
     capability_binding,
+    skill_bundle_lock,
+)
+from nex_ae_api.product_preparation_persistence import (
+    PRODUCT_PREPARATION_CHECKPOINT_SCHEMA_VERSION,
 )
 
 ROOT = Path(__file__).resolve().parents[1]
 CAPABILITY_REGISTRY = (
-    ROOT
-    / "deployment/environments/ae-product-capability-registry.mybee-m1.v2.json"
+    ROOT / "deployment/environments/ae-product-capability-registry.mybee-m1.v2.json"
 )
 HASH_A = "sha256:" + "a" * 64
 HASH_B = "sha256:" + "b" * 64
@@ -48,6 +56,33 @@ def _binding(
         capability_id=capability_id,
         capability_version=capability_version,
         capability_registration_hash=registration_hash,
+    )
+
+
+def _replay_policy() -> ProductPlanningReplayPolicy:
+    return ProductPlanningReplayPolicy(
+        policy_id="ae.product_preparation_resume.test.v1",
+        exact_event_replay="RETURN_ORIGINAL_RESUME",
+        semantic_drift="FAIL_CLOSED_ZERO_MUTATION",
+        stale_or_out_of_order="DENY",
+        ack_loss_redelivery="CONVERGE",
+    )
+
+
+def _skill_lock(
+    capability_id: str = "DOMAIN.OBJECT.ACTION",
+    capability_version: str = "1.0.0",
+    registration_hash: str = HASH_A,
+) -> ProductPlanningSkillBundleLock:
+    return ProductPlanningSkillBundleLock(
+        capability_id=capability_id,
+        capability_version=capability_version,
+        capability_registration_hash=registration_hash,
+        bundle_id="test-product-bundle",
+        bundle_manifest_ref="deployment-lock://test-product-bundle.v1",
+        skill_id=f"SKILL.{capability_id}",
+        exact_skill_version="1.0.0",
+        skill_semantic_hash=HASH_B,
     )
 
 
@@ -73,6 +108,10 @@ def _registration(
         ready_state="READY",
         terminal_states=("FAILED", "CANCELLED"),
         required_operations=("DOMAIN.OBJECT.READ", "DOMAIN.OBJECT.WRITE"),
+        checkpoint_schema_version="ae.product_preparation_checkpoint.test.v1",
+        replay_policy=_replay_policy(),
+        supported_executor_kinds=("LOCAL_SKILL",),
+        installed_skill_bundle_locks=(_skill_lock(capability_id, capability_version),),
     )
 
 
@@ -95,6 +134,7 @@ def test_m1_registration_is_exact_capability_bound_and_contract_only() -> None:
 
     assert first == replay
     assert first.coordinator_id == M1_PRODUCT_COORDINATOR_ID
+    assert first.coordinator_version == M1_PRODUCT_COORDINATOR_VERSION
     assert first.capability_id == "FINANCE.VOUCHER.APPROVE_AND_POST"
     assert first.activation_status == "CONTRACT_ONLY"
     assert first.initial_state == "PREPARATION_PENDING"
@@ -103,21 +143,38 @@ def test_m1_registration_is_exact_capability_bound_and_contract_only() -> None:
         "WAITING_ACCOUNTING_APPROVAL",
     )
     assert first.ready_state == "READY_FOR_D04"
-    assert {
-        item.capability_id for item in first.required_capabilities
-    } == {
+    assert first.checkpoint_schema_version == (
+        PRODUCT_PREPARATION_CHECKPOINT_SCHEMA_VERSION
+    )
+    assert first.replay_policy == M1_PRODUCT_COORDINATOR_REPLAY_POLICY
+    assert first.supported_executor_kinds == (LOCAL_SKILL_EXECUTOR_KIND,)
+    assert {item.capability_id for item in first.required_capabilities} == {
         "FINANCE.VOUCHER.APPROVE_AND_POST",
         "PROJECT.WORK_CODE_SET.GET",
     }
     assert first.registration_hash.startswith("sha256:")
-    assert registry.resolve(
-        first.capability_id,
-        first.capability_version,
-        capability_registration_hash=(
-            first.trigger_capability.capability_registration_hash
-        ),
-        required=True,
-    ) == first
+    assert {item.capability_id for item in first.installed_skill_bundle_locks} == {
+        "FINANCE.VOUCHER.APPROVE_AND_POST",
+        "PROJECT.WORK_CODE_SET.GET",
+    }
+    assert all(
+        item.bundle_id == "nex-mybee-m1-d04-d12-checkpoint"
+        and item.bundle_manifest_ref
+        == "deployment-lock://ae-mybee-m1-signed-skill-checkpoint.v1"
+        for item in first.installed_skill_bundle_locks
+    )
+    assert registry.registry_version == 2
+    assert (
+        registry.resolve(
+            first.capability_id,
+            first.capability_version,
+            capability_registration_hash=(
+                first.trigger_capability.capability_registration_hash
+            ),
+            required=True,
+        )
+        == first
+    )
     with pytest.raises(
         ProductPlanningCoordinatorError,
         match="not active",
@@ -197,6 +254,53 @@ def test_registry_resolves_exact_versions_and_fails_closed_on_drift() -> None:
             registry_id="tampered",
             registry_version=1,
         )
+    with pytest.raises(ProductPlanningCoordinatorError, match="hash is invalid"):
+        ProductPlanningCoordinatorRegistry(
+            (replace(one, registration_hash="not-a-hash"),),
+            registry_id="invalid-registration-hash",
+            registry_version=1,
+        )
+
+
+def test_registration_hash_binds_runtime_compatibility_contract() -> None:
+    registration = _registration()
+    tampered = (
+        replace(
+            registration,
+            checkpoint_schema_version="ae.product_preparation_checkpoint.test.v2",
+        ),
+        replace(
+            registration,
+            replay_policy=replace(
+                registration.replay_policy,
+                policy_id="ae.product_preparation_resume.test.v2",
+            ),
+        ),
+        replace(
+            registration,
+            supported_executor_kinds=("DETERMINISTIC_REPORT", "LOCAL_SKILL"),
+        ),
+        replace(
+            registration,
+            installed_skill_bundle_locks=(
+                replace(
+                    registration.installed_skill_bundle_locks[0],
+                    bundle_id="drifted-product-bundle",
+                ),
+            ),
+        ),
+    )
+
+    for candidate in tampered:
+        with pytest.raises(
+            ProductPlanningCoordinatorError,
+            match="hash does not match",
+        ):
+            ProductPlanningCoordinatorRegistry(
+                (candidate,),
+                registry_id="tampered-runtime-contract",
+                registry_version=1,
+            )
 
 
 def test_registration_contract_rejects_inconsistent_or_ambiguous_inputs() -> None:
@@ -223,6 +327,10 @@ def test_registration_contract_rejects_inconsistent_or_ambiguous_inputs() -> Non
         "ready_state": "READY",
         "terminal_states": ("FAILED",),
         "required_operations": ("DOMAIN.OBJECT.READ",),
+        "checkpoint_schema_version": "ae.product_preparation_checkpoint.test.v1",
+        "replay_policy": _replay_policy(),
+        "supported_executor_kinds": ("LOCAL_SKILL",),
+        "installed_skill_bundle_locks": (_skill_lock(),),
     }
     with pytest.raises(ProductPlanningCoordinatorError, match="activation"):
         build_product_planning_coordinator_registration(
@@ -264,6 +372,57 @@ def test_registration_contract_rejects_inconsistent_or_ambiguous_inputs() -> Non
         build_product_planning_coordinator_registration(
             **{**common, "required_operations": ()}
         )
+    with pytest.raises(ProductPlanningCoordinatorError, match="checkpoint_schema"):
+        build_product_planning_coordinator_registration(
+            **{**common, "checkpoint_schema_version": " "}
+        )
+    with pytest.raises(ProductPlanningCoordinatorError, match="replay policy"):
+        build_product_planning_coordinator_registration(
+            **{**common, "replay_policy": object()}
+        )
+    with pytest.raises(ProductPlanningCoordinatorError, match="semantic_drift"):
+        build_product_planning_coordinator_registration(
+            **{
+                **common,
+                "replay_policy": replace(_replay_policy(), semantic_drift="IGNORE"),
+            }
+        )
+    with pytest.raises(ProductPlanningCoordinatorError, match="executor"):
+        build_product_planning_coordinator_registration(
+            **{**common, "supported_executor_kinds": ()}
+        )
+    with pytest.raises(ProductPlanningCoordinatorError, match="executor"):
+        build_product_planning_coordinator_registration(
+            **{**common, "supported_executor_kinds": "LOCAL_SKILL"}
+        )
+    with pytest.raises(ProductPlanningCoordinatorError, match="uppercase"):
+        build_product_planning_coordinator_registration(
+            **{**common, "supported_executor_kinds": ("local_skill",)}
+        )
+    with pytest.raises(ProductPlanningCoordinatorError, match="bundle locks"):
+        build_product_planning_coordinator_registration(
+            **{**common, "installed_skill_bundle_locks": ()}
+        )
+    with pytest.raises(ProductPlanningCoordinatorError, match="bundle locks"):
+        build_product_planning_coordinator_registration(
+            **{**common, "installed_skill_bundle_locks": "bundle-lock"}
+        )
+    with pytest.raises(ProductPlanningCoordinatorError, match="differ"):
+        build_product_planning_coordinator_registration(
+            **{
+                **common,
+                "installed_skill_bundle_locks": (_skill_lock("DOMAIN.OTHER.READ"),),
+            }
+        )
+    with pytest.raises(ProductPlanningCoordinatorError, match="hash is invalid"):
+        build_product_planning_coordinator_registration(
+            **{
+                **common,
+                "installed_skill_bundle_locks": (
+                    replace(_skill_lock(), skill_semantic_hash="not-a-hash"),
+                ),
+            }
+        )
     with pytest.raises(ProductPlanningCoordinatorError, match="coordinator_id"):
         build_product_planning_coordinator_registration(
             **{**common, "coordinator_id": " "}
@@ -285,8 +444,33 @@ def test_capability_binding_and_registry_admission_detect_product_drift() -> Non
         )
     )
     assert binding == _binding()
+    assert skill_bundle_lock(
+        SimpleNamespace(
+            capability_id="DOMAIN.OBJECT.ACTION",
+            capability_version="1.0.0",
+            registration_hash=HASH_A,
+            skill_artifact={
+                "bundle_id": "bundle-a",
+                "bundle_manifest_ref": "deployment-lock://bundle-a.v1",
+                "skill_id": "SKILL.DOMAIN.OBJECT.ACTION",
+                "exact_skill_version": "1.0.0",
+                "skill_semantic_hash": HASH_B,
+            },
+        )
+    ) == ProductPlanningSkillBundleLock(
+        capability_id="DOMAIN.OBJECT.ACTION",
+        capability_version="1.0.0",
+        capability_registration_hash=HASH_A,
+        bundle_id="bundle-a",
+        bundle_manifest_ref="deployment-lock://bundle-a.v1",
+        skill_id="SKILL.DOMAIN.OBJECT.ACTION",
+        exact_skill_version="1.0.0",
+        skill_semantic_hash=HASH_B,
+    )
     with pytest.raises(ProductPlanningCoordinatorError, match="invalid"):
         capability_binding(SimpleNamespace(capability_id="MISSING"))
+    with pytest.raises(ProductPlanningCoordinatorError, match="source is invalid"):
+        skill_bundle_lock(SimpleNamespace(capability_id="MISSING"))
 
     registration = _registration()
     registry = ProductPlanningCoordinatorRegistry(
@@ -352,9 +536,7 @@ def test_source_backed_storage_fit_audit_stops_before_semantic_overload() -> Non
 
     assert result["audit_status"] == "PASS", result
     assert result["storage_fit"] == "NOT_FIT"
-    assert result["entry_decision"] == (
-        "STOP_FOR_CONTROLLED_PERSISTENCE_DECISION"
-    )
+    assert result["entry_decision"] == ("STOP_FOR_CONTROLLED_PERSISTENCE_DECISION")
     assert result["coordinator_activation"] == "CONTRACT_ONLY"
     assert result["product_value_residue"] == []
     assert all(result["checks"].values())
@@ -362,12 +544,9 @@ def test_source_backed_storage_fit_audit_stops_before_semantic_overload() -> Non
     assert result["durable_storage_fit"]["external_event_inbox"]["fit"] is False
     assert result["durable_storage_fit"]["step_result"]["fit"] is False
     assert result["durable_storage_fit"]["runtime_job_payload"]["fit"] is False
-    assert result["required_follow_up"]["slice"] == (
-        "CP-M1-E2E-FX-01B.6B.1A"
-    )
+    assert result["required_follow_up"]["slice"] == ("CP-M1-E2E-FX-01B.6B.1A")
     assert (
-        result["required_follow_up"]["migration_authorized_by_current_slice"]
-        is False
+        result["required_follow_up"]["migration_authorized_by_current_slice"] is False
     )
     assert result["remote_provider_required"] is False
     assert result["database_contacted"] is False
@@ -388,8 +567,7 @@ def test_storage_fit_audit_detects_schema_drift_and_fixture_residue(
     )
     m1_registration = tmp_path / audit.M1_REGISTRATION
     m1_registration.write_text(
-        m1_registration.read_text(encoding="utf-8")
-        + '\nFIXED_TENANT = "VO00"\n',
+        m1_registration.read_text(encoding="utf-8") + '\nFIXED_TENANT = "VO00"\n',
         encoding="utf-8",
     )
 
@@ -415,8 +593,7 @@ def test_storage_fit_audit_reports_missing_source(tmp_path: Path) -> None:
     assert result["storage_fit"] == "NOT_FIT"
     assert result["issues"]
     assert any(
-        item.startswith("required source is unavailable:")
-        for item in result["issues"]
+        item.startswith("required source is unavailable:") for item in result["issues"]
     )
 
 

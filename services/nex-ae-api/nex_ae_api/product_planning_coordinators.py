@@ -7,12 +7,18 @@ from typing import Any, Protocol
 from nex_runtime.semantic_hashes import semantic_sha256_hash_ref, validate_hash_ref
 
 PRODUCT_PLANNING_COORDINATOR_REGISTRY_SCHEMA_VERSION = (
-    "ae.product_planning_coordinator_registry.v1"
+    "ae.product_planning_coordinator_registry.v2"
 )
 PRODUCT_PLANNING_COORDINATOR_REGISTRATION_SCHEMA_VERSION = (
-    "ae.product_planning_coordinator_registration.v1"
+    "ae.product_planning_coordinator_registration.v2"
 )
 PRODUCT_COORDINATOR_ACTIVATION_STATUSES = frozenset({"CONTRACT_ONLY", "ACTIVE"})
+PRODUCT_COORDINATOR_REPLAY_OUTCOMES = {
+    "exact_event_replay": frozenset({"RETURN_ORIGINAL_RESUME"}),
+    "semantic_drift": frozenset({"FAIL_CLOSED_ZERO_MUTATION"}),
+    "stale_or_out_of_order": frozenset({"DENY"}),
+    "ack_loss_redelivery": frozenset({"CONVERGE"}),
+}
 
 
 @dataclass(frozen=True)
@@ -39,6 +45,48 @@ class ProductPlanningCapabilityBinding:
 
 
 @dataclass(frozen=True)
+class ProductPlanningReplayPolicy:
+    policy_id: str
+    exact_event_replay: str
+    semantic_drift: str
+    stale_or_out_of_order: str
+    ack_loss_redelivery: str
+
+    def projection(self) -> dict[str, str]:
+        return {
+            "policy_id": self.policy_id,
+            "exact_event_replay": self.exact_event_replay,
+            "semantic_drift": self.semantic_drift,
+            "stale_or_out_of_order": self.stale_or_out_of_order,
+            "ack_loss_redelivery": self.ack_loss_redelivery,
+        }
+
+
+@dataclass(frozen=True)
+class ProductPlanningSkillBundleLock:
+    capability_id: str
+    capability_version: str
+    capability_registration_hash: str
+    bundle_id: str
+    bundle_manifest_ref: str
+    skill_id: str
+    exact_skill_version: str
+    skill_semantic_hash: str
+
+    def projection(self) -> dict[str, str]:
+        return {
+            "capability_id": self.capability_id,
+            "capability_version": self.capability_version,
+            "capability_registration_hash": self.capability_registration_hash,
+            "bundle_id": self.bundle_id,
+            "bundle_manifest_ref": self.bundle_manifest_ref,
+            "skill_id": self.skill_id,
+            "exact_skill_version": self.exact_skill_version,
+            "skill_semantic_hash": self.skill_semantic_hash,
+        }
+
+
+@dataclass(frozen=True)
 class ProductPlanningCoordinatorRegistration:
     coordinator_id: str
     coordinator_version: str
@@ -53,6 +101,10 @@ class ProductPlanningCoordinatorRegistration:
     ready_state: str
     terminal_states: tuple[str, ...]
     required_operations: tuple[str, ...]
+    checkpoint_schema_version: str
+    replay_policy: ProductPlanningReplayPolicy
+    supported_executor_kinds: tuple[str, ...]
+    installed_skill_bundle_locks: tuple[ProductPlanningSkillBundleLock, ...]
     registration_hash: str
 
     @property
@@ -85,6 +137,12 @@ class ProductPlanningCoordinatorRegistration:
             "ready_state": self.ready_state,
             "terminal_states": list(self.terminal_states),
             "required_operations": list(self.required_operations),
+            "checkpoint_schema_version": self.checkpoint_schema_version,
+            "replay_policy": self.replay_policy.projection(),
+            "supported_executor_kinds": list(self.supported_executor_kinds),
+            "installed_skill_bundle_locks": [
+                item.projection() for item in self.installed_skill_bundle_locks
+            ],
             "registration_hash": self.registration_hash,
         }
 
@@ -191,9 +249,7 @@ class ProductPlanningCoordinatorRegistry:
                 ),
                 "registry_id": self.registry_id,
                 "registry_version": self.registry_version,
-                "registrations": [
-                    item.projection() for item in self._registrations
-                ],
+                "registrations": [item.projection() for item in self._registrations],
             }
         )
 
@@ -218,9 +274,7 @@ class ProductPlanningCoordinatorRegistry:
         required: bool = False,
     ) -> ProductPlanningCoordinatorRegistration | None:
         normalized_id = _text(capability_id, "capability_id", 160)
-        normalized_version = _text(
-            capability_version, "capability_version", 64
-        )
+        normalized_version = _text(capability_version, "capability_version", 64)
         match = next(
             (
                 item
@@ -247,10 +301,7 @@ class ProductPlanningCoordinatorRegistry:
                 raise _invalid(
                     "Product capability registration hash is invalid."
                 ) from exc
-            if (
-                match.trigger_capability.capability_registration_hash
-                != expected_hash
-            ):
+            if match.trigger_capability.capability_registration_hash != expected_hash:
                 raise _error(
                     "PRODUCT_COORDINATOR_CAPABILITY_DRIFT",
                     "Product coordinator capability registration differs.",
@@ -298,16 +349,16 @@ def build_product_planning_coordinator_registration(
     ready_state: str,
     terminal_states: Sequence[str],
     required_operations: Sequence[str],
+    checkpoint_schema_version: str,
+    replay_policy: ProductPlanningReplayPolicy,
+    supported_executor_kinds: Sequence[str],
+    installed_skill_bundle_locks: Sequence[ProductPlanningSkillBundleLock],
 ) -> ProductPlanningCoordinatorRegistration:
     if not isinstance(trigger_capability, ProductPlanningCapabilityBinding):
         raise _invalid("Product coordinator trigger capability is invalid.")
     required = tuple(required_capabilities)
-    if (
-        not 1 <= len(required) <= 16
-        or any(
-            not isinstance(item, ProductPlanningCapabilityBinding)
-            for item in required
-        )
+    if not 1 <= len(required) <= 16 or any(
+        not isinstance(item, ProductPlanningCapabilityBinding) for item in required
     ):
         raise _invalid("Product coordinator required capabilities are invalid.")
     required = tuple(
@@ -324,9 +375,7 @@ def build_product_planning_coordinator_registration(
         )
         not in required_identities
     ):
-        raise _invalid(
-            "Product coordinator capability bindings are inconsistent."
-        )
+        raise _invalid("Product coordinator capability bindings are inconsistent.")
     activation = _text(activation_status, "activation_status", 32)
     if activation not in PRODUCT_COORDINATOR_ACTIVATION_STATUSES:
         raise _invalid("Product coordinator activation status is invalid.")
@@ -334,32 +383,25 @@ def build_product_planning_coordinator_registration(
     terminal = _states(terminal_states, "terminal_states")
     initial = _state(initial_state, "initial_state")
     ready = _state(ready_state, "ready_state")
-    if len({initial, ready, *waiting, *terminal}) != (
-        2 + len(waiting) + len(terminal)
-    ):
+    if len({initial, ready, *waiting, *terminal}) != (2 + len(waiting) + len(terminal)):
         raise _invalid("Product coordinator states must be distinct.")
     operations = tuple(
-        sorted(
-            {
-                _text(item, "required_operation", 160)
-                for item in required_operations
-            }
-        )
+        sorted({_text(item, "required_operation", 160) for item in required_operations})
     )
     if not operations:
         raise _invalid("Product coordinator operations are required.")
+    checkpoint_schema = _text(
+        checkpoint_schema_version, "checkpoint_schema_version", 64
+    )
+    replay = _replay_policy(replay_policy)
+    executors = _upper_tokens(supported_executor_kinds, "supported_executor_kinds")
+    skill_locks = _skill_bundle_locks(installed_skill_bundle_locks, required)
     projection = {
-        "schema_version": (
-            PRODUCT_PLANNING_COORDINATOR_REGISTRATION_SCHEMA_VERSION
-        ),
+        "schema_version": (PRODUCT_PLANNING_COORDINATOR_REGISTRATION_SCHEMA_VERSION),
         "coordinator_id": _text(coordinator_id, "coordinator_id", 160),
-        "coordinator_version": _text(
-            coordinator_version, "coordinator_version", 64
-        ),
+        "coordinator_version": _text(coordinator_version, "coordinator_version", 64),
         "activation_status": activation,
-        "implementation_ref": _text(
-            implementation_ref, "implementation_ref", 512
-        ),
+        "implementation_ref": _text(implementation_ref, "implementation_ref", 512),
         "trigger_capability": trigger_capability.projection(),
         "required_capabilities": [item.projection() for item in required],
         "preparation_adapter_source_identity": _text(
@@ -377,6 +419,10 @@ def build_product_planning_coordinator_registration(
         "ready_state": ready,
         "terminal_states": list(terminal),
         "required_operations": list(operations),
+        "checkpoint_schema_version": checkpoint_schema,
+        "replay_policy": replay.projection(),
+        "supported_executor_kinds": list(executors),
+        "installed_skill_bundle_locks": [item.projection() for item in skill_locks],
     }
     return ProductPlanningCoordinatorRegistration(
         coordinator_id=projection["coordinator_id"],
@@ -394,6 +440,10 @@ def build_product_planning_coordinator_registration(
         ready_state=ready,
         terminal_states=terminal,
         required_operations=operations,
+        checkpoint_schema_version=checkpoint_schema,
+        replay_policy=replay,
+        supported_executor_kinds=executors,
+        installed_skill_bundle_locks=skill_locks,
         registration_hash=semantic_sha256_hash_ref(projection),
     )
 
@@ -407,11 +457,108 @@ def capability_binding(registration: Any) -> ProductPlanningCapabilityBinding:
         raise _invalid("Product capability registration is invalid.") from exc
     return ProductPlanningCapabilityBinding(
         capability_id=_text(capability_id, "capability_id", 160),
-        capability_version=_text(
-            capability_version, "capability_version", 64
-        ),
+        capability_version=_text(capability_version, "capability_version", 64),
         capability_registration_hash=registration_hash,
     )
+
+
+def skill_bundle_lock(registration: Any) -> ProductPlanningSkillBundleLock:
+    try:
+        capability_id = registration.capability_id
+        capability_version = registration.capability_version
+        capability_registration_hash = validate_hash_ref(registration.registration_hash)
+        artifact = registration.skill_artifact
+        bundle_id = artifact["bundle_id"]
+        bundle_manifest_ref = artifact["bundle_manifest_ref"]
+        skill_id = artifact["skill_id"]
+        exact_skill_version = artifact["exact_skill_version"]
+        skill_semantic_hash = validate_hash_ref(artifact["skill_semantic_hash"])
+    except (AttributeError, KeyError, TypeError, ValueError) as exc:
+        raise _invalid("Product Skill bundle lock source is invalid.") from exc
+    return ProductPlanningSkillBundleLock(
+        capability_id=_text(capability_id, "capability_id", 160),
+        capability_version=_text(capability_version, "capability_version", 64),
+        capability_registration_hash=capability_registration_hash,
+        bundle_id=_text(bundle_id, "bundle_id", 160),
+        bundle_manifest_ref=_text(bundle_manifest_ref, "bundle_manifest_ref", 512),
+        skill_id=_text(skill_id, "skill_id", 160),
+        exact_skill_version=_text(exact_skill_version, "exact_skill_version", 64),
+        skill_semantic_hash=skill_semantic_hash,
+    )
+
+
+def _replay_policy(value: object) -> ProductPlanningReplayPolicy:
+    if not isinstance(value, ProductPlanningReplayPolicy):
+        raise _invalid("Product coordinator replay policy is invalid.")
+    projection = value.projection()
+    _text(projection["policy_id"], "replay_policy.policy_id", 160)
+    for field, allowed in PRODUCT_COORDINATOR_REPLAY_OUTCOMES.items():
+        if projection[field] not in allowed:
+            raise _invalid(f"Product coordinator replay policy {field} is invalid.")
+    return value
+
+
+def _upper_tokens(values: Sequence[str], field: str) -> tuple[str, ...]:
+    if isinstance(values, (str, bytes)) or not isinstance(values, Sequence):
+        raise _invalid(f"Product coordinator {field} is invalid.")
+    normalized = tuple(sorted(_state(item, field) for item in values))
+    if not normalized or len(set(normalized)) != len(normalized):
+        raise _invalid(f"Product coordinator {field} is invalid.")
+    return normalized
+
+
+def _skill_bundle_locks(
+    values: Sequence[ProductPlanningSkillBundleLock],
+    required: tuple[ProductPlanningCapabilityBinding, ...],
+) -> tuple[ProductPlanningSkillBundleLock, ...]:
+    if isinstance(values, (str, bytes)) or not isinstance(values, Sequence):
+        raise _invalid("Product coordinator installed Skill bundle locks are invalid.")
+    normalized = tuple(values)
+    if not 1 <= len(normalized) <= 16 or any(
+        not isinstance(item, ProductPlanningSkillBundleLock) for item in normalized
+    ):
+        raise _invalid("Product coordinator installed Skill bundle locks are invalid.")
+    normalized = tuple(
+        sorted(
+            normalized,
+            key=lambda item: (item.capability_id, item.capability_version),
+        )
+    )
+    lock_bindings = [
+        (
+            item.capability_id,
+            item.capability_version,
+            item.capability_registration_hash,
+        )
+        for item in normalized
+    ]
+    expected_bindings = [
+        (
+            item.capability_id,
+            item.capability_version,
+            item.capability_registration_hash,
+        )
+        for item in required
+    ]
+    if lock_bindings != expected_bindings or len(set(lock_bindings)) != len(
+        lock_bindings
+    ):
+        raise _invalid(
+            "Product coordinator installed Skill bundle locks differ from capabilities."
+        )
+    for item in normalized:
+        _text(item.bundle_id, "bundle_lock.bundle_id", 160)
+        _text(item.bundle_manifest_ref, "bundle_lock.bundle_manifest_ref", 512)
+        _text(item.skill_id, "bundle_lock.skill_id", 160)
+        _text(item.exact_skill_version, "bundle_lock.exact_skill_version", 64)
+        try:
+            validate_hash_ref(item.capability_registration_hash)
+            validate_hash_ref(item.skill_semantic_hash)
+        except ValueError as exc:
+            raise _invalid(
+                "Product coordinator installed Skill bundle lock hash is invalid."
+            ) from exc
+    return normalized
 
 
 def _states(values: Sequence[str], field: str) -> tuple[str, ...]:

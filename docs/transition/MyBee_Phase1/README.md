@@ -294,6 +294,17 @@ Product handler is installed; therefore M1 is still `CONTRACT_ONLY`. Actual
 `nex_ae_test` restart/replay evidence proves rollback zero residue without a
 new migration, queue, daemon, or worker.
 
+`CP-M1-E2E-FX-01B.6B.1A.4` implementation evidence is recorded in
+[`mybee_phase1_w70_cp_m1_e2e_fx_01b6b1a4_registration_compatibility.md`](../../slices/mybee_phase1_w70_cp_m1_e2e_fx_01b6b1a4_registration_compatibility.md).
+It advances the immutable Product Coordinator registration and registry
+contracts to schema `v2`, hash-binds the checkpoint schema, replay policy,
+executor set, and exact D04/D12 Skill locks, and advances the contract-only M1
+coordinator to version `1.1.0`. The locks are derived from the admitted Product
+Capability Registry rather than fixture values. Existing WorkResult/NSL
+behavior and migration `2517` remain compatible, actual `nex_ae_test` smoke
+has zero residue, and M1 remains `CONTRACT_ONLY`. The corrective `6B.1A`
+boundary is implementation-closed; the next canonical Slice is `6B.2`.
+
 `CP-M1-E2E-FX-01B.6A.1` implementation evidence is recorded in
 [`mybee_phase1_w70_cp_m1_e2e_fx_01b6a1_refresh_contract_source_resolver.md`](../../slices/mybee_phase1_w70_cp_m1_e2e_fx_01b6a1_refresh_contract_source_resolver.md).
 It closes the canonical protected contract and the mutation-free EOS source
