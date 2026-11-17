@@ -20,6 +20,7 @@ RUNTIME_ATTEMPT_OUTCOMES = frozenset(
     {"RUNNING", "DONE", "FAILED", "LEASE_EXPIRED", "CANCELLED"}
 )
 RUNTIME_ADMISSION_POLICIES = frozenset({"REJECT", "DELAY"})
+RESUME_TARGET_KINDS = frozenset({"EXECUTABLE_STEP", "PRODUCT_COORDINATOR"})
 _PRIVATE_PAYLOAD_KEYS = frozenset(
     {"content", "message_text", "prompt", "raw_content", "response"}
 )
@@ -79,6 +80,7 @@ class SqlAlchemyRuntimeJobQueue:
         wait_id: str | None = None,
         payload: Mapping[str, Any] | None = None,
         causation_id: str | None = None,
+        resume_target_kind: str = "EXECUTABLE_STEP",
     ) -> dict[str, Any]:
         if job_type not in RUNTIME_JOB_TYPES:
             raise _invalid(
@@ -86,13 +88,15 @@ class SqlAlchemyRuntimeJobQueue:
                 "or RESUME_EXECUTION."
             )
         normalized_wait_id = _optional("wait_id", wait_id)
+        normalized_resume_target = _resume_target_kind(resume_target_kind)
         if job_type == "RESUME_EXECUTION":
-            if executable_step_id is None or normalized_wait_id is None:
-                raise _invalid(
-                    "RESUME_EXECUTION requires executable_step_id and wait_id."
-                )
+            if normalized_wait_id is None:
+                raise _invalid("RESUME_EXECUTION requires wait_id.")
+            _validate_resume_target_shape(normalized_resume_target, executable_step_id)
         elif normalized_wait_id is not None:
             raise _invalid("Only RESUME_EXECUTION may reference wait_id.")
+        elif normalized_resume_target != "EXECUTABLE_STEP":
+            raise _invalid("Only RESUME_EXECUTION may use a Product resume target.")
         normalized_payload = _payload(payload)
         params = {
             "tenant_id": _required("tenant_id", tenant_id),
@@ -129,7 +133,7 @@ class SqlAlchemyRuntimeJobQueue:
         tenant_id: str,
         runtime_job_id: str,
         execution_id: str,
-        executable_step_id: str,
+        executable_step_id: str | None,
         wait_id: str,
         dedup_key: str,
         run_after: str,
@@ -137,14 +141,17 @@ class SqlAlchemyRuntimeJobQueue:
         now: str,
         payload: Mapping[str, Any],
         causation_id: str,
+        resume_target_kind: str = "EXECUTABLE_STEP",
     ) -> dict[str, Any]:
         normalized_payload = _payload(payload)
+        normalized_resume_target = _resume_target_kind(resume_target_kind)
+        _validate_resume_target_shape(normalized_resume_target, executable_step_id)
         params = {
             "tenant_id": _required("tenant_id", tenant_id),
             "runtime_job_id": _required("runtime_job_id", runtime_job_id),
             "job_type": "RESUME_EXECUTION",
             "execution_id": _required("execution_id", execution_id),
-            "executable_step_id": _required("executable_step_id", executable_step_id),
+            "executable_step_id": _optional("executable_step_id", executable_step_id),
             "wait_id": _required("wait_id", wait_id),
             "dedup_key": _required("dedup_key", dedup_key),
             "run_after": _timestamp("run_after", run_after),
@@ -209,6 +216,15 @@ class SqlAlchemyRuntimeJobQueue:
             raise
         except SQLAlchemyError as exc:
             raise _unavailable() from exc
+
+    def get_in_session(
+        self, session: Session, *, tenant_id: str, runtime_job_id: str
+    ) -> dict[str, Any] | None:
+        return _load_job(
+            session,
+            _required("tenant_id", tenant_id),
+            _required("runtime_job_id", runtime_job_id),
+        )
 
     def claim(
         self,
@@ -1004,8 +1020,7 @@ def _require_same_job(
     )
     if (
         any(_comparable(existing[key]) != _comparable(params[key]) for key in keys)
-        or _comparable(existing.get("wait_id"))
-        != _comparable(params.get("wait_id"))
+        or _comparable(existing.get("wait_id")) != _comparable(params.get("wait_id"))
         or _parse_timestamp("run_after", existing["run_after"])
         != _parse_timestamp("run_after", params["run_after"])
         or existing["payload"] != payload
@@ -1087,6 +1102,29 @@ def _required(field: str, value: object) -> str:
 
 def _optional(field: str, value: object) -> str | None:
     return None if value is None else _required(field, value)
+
+
+def _resume_target_kind(value: object) -> str:
+    normalized = _required("resume_target_kind", value).upper()
+    if normalized not in RESUME_TARGET_KINDS:
+        raise _invalid(
+            "resume_target_kind must be EXECUTABLE_STEP or PRODUCT_COORDINATOR."
+        )
+    return normalized
+
+
+def _validate_resume_target_shape(
+    resume_target_kind: str, executable_step_id: object
+) -> None:
+    if resume_target_kind == "EXECUTABLE_STEP":
+        if executable_step_id is None:
+            raise _invalid("EXECUTABLE_STEP resume jobs require executable_step_id.")
+        _required("executable_step_id", executable_step_id)
+        return
+    if executable_step_id is not None:
+        raise _invalid(
+            "PRODUCT_COORDINATOR resume jobs cannot reference executable_step_id."
+        )
 
 
 def _datetime_value(value: Any) -> str:

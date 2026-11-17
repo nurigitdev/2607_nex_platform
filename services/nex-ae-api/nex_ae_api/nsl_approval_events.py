@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from nex_ae_api.nsl_approval_publication import NSL_APPROVAL_RESUME_CONTRACT_REF
 from nex_ae_api.runtime_jobs import RuntimeJobError, SqlAlchemyRuntimeJobQueue
+from nex_ae_api.runtime_resume import RuntimeEventMatcher, RuntimeResumeError
 
 NSL_APPROVAL_EVENT_SCHEMA_VERSION = "ae_nsl_approval_decided_event.v1"
 _FIELDS = frozenset(
@@ -61,13 +62,18 @@ class SqlAlchemyNslApprovalEventService:
     ) -> None:
         self._session_factory = session_factory
         self._runtime_jobs = runtime_jobs
+        self._resume_matcher = RuntimeEventMatcher(runtime_jobs)
         self._clock = clock or (lambda: datetime.now(UTC))
 
     def ingest(self, event: object) -> dict[str, Any]:
         return self._reconcile(validate_nsl_approval_event(event), persist=True)
 
     def reconcile_pending(self, *, limit: int = 100) -> list[dict[str, Any]]:
-        if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 500:
+        if (
+            isinstance(limit, bool)
+            or not isinstance(limit, int)
+            or not 1 <= limit <= 500
+        ):
             raise _invalid("limit must be between 1 and 500.")
         try:
             with self._session_factory() as session:
@@ -86,9 +92,7 @@ class SqlAlchemyNslApprovalEventService:
             for row in rows
         ]
 
-    def _reconcile(
-        self, event: Mapping[str, Any], *, persist: bool
-    ) -> dict[str, Any]:
+    def _reconcile(self, event: Mapping[str, Any], *, persist: bool) -> dict[str, Any]:
         now = _time(self._clock())
         event_hash = semantic_sha256_hash_ref(event)
         params = {
@@ -127,7 +131,11 @@ class SqlAlchemyNslApprovalEventService:
                 terminal = _terminal_reason(context)
                 if terminal is not None:
                     _cancel_and_reject(
-                        session, event=event, wait_id=context["wait_id"], reason=terminal, now=now
+                        session,
+                        event=event,
+                        wait_id=context["wait_id"],
+                        reason=terminal,
+                        now=now,
                     )
                     session.commit()
                     return _projection(
@@ -142,27 +150,35 @@ class SqlAlchemyNslApprovalEventService:
                     return _projection(
                         _load_inbox(session, event=event),
                         created=created,
-                        wait={"state": context["wait_state"], "resume_runtime_job_id": None},
+                        wait={
+                            "state": context["wait_state"],
+                            "resume_runtime_job_id": None,
+                        },
                     )
                 if not _ready(context):
                     session.commit()
                     return _projection(
                         inbox,
                         created=created,
-                        wait={"state": context["wait_state"], "resume_runtime_job_id": None},
+                        wait={
+                            "state": context["wait_state"],
+                            "resume_runtime_job_id": None,
+                        },
                     )
                 runtime_job_id = deterministic_nsl_approval_resume_job_id(
                     tenant_id=event["tenant_id"],
                     wait_id=context["wait_id"],
                     event_id=event["event_id"],
                 )
-                job = self._runtime_jobs.enqueue_resume_in_session(
+                match = self._resume_matcher.match_in_session(
                     session,
                     tenant_id=event["tenant_id"],
+                    wait_id=context["wait_id"],
+                    event_id=event["event_id"],
                     runtime_job_id=runtime_job_id,
                     execution_id=context["agent_execution_id"],
                     executable_step_id=context["executable_step_id"],
-                    wait_id=context["wait_id"],
+                    resume_target_kind="EXECUTABLE_STEP",
                     dedup_key=f"p8:nsl-approval-resume:{context['wait_id']}:{event['event_id']}",
                     run_after=now,
                     correlation_id=event["correlation_id"],
@@ -177,24 +193,28 @@ class SqlAlchemyNslApprovalEventService:
                     },
                     causation_id=event["event_id"],
                 )
-                _mark_matched(
-                    session,
-                    event=event,
-                    wait_id=context["wait_id"],
-                    runtime_job_id=job["runtime_job_id"],
-                    now=now,
-                )
                 session.commit()
                 return _projection(
                     _load_inbox(session, event=event),
                     created=created,
                     wait={
                         "state": "RESUME_QUEUED",
-                        "resume_runtime_job_id": job["runtime_job_id"],
+                        "resume_runtime_job_id": match["resume_runtime_job_id"],
                     },
                 )
         except NslApprovalEventError:
             raise
+        except RuntimeResumeError as exc:
+            raise NslApprovalEventError(
+                (
+                    "ae.nsl_approval_wait_conflict"
+                    if exc.error_code == "ae.runtime_resume_conflict"
+                    else exc.error_code
+                ),
+                exc.detail,
+                503 if exc.retryable else 409,
+                exc.retryable,
+            ) from exc
         except RuntimeJobError as exc:
             raise NslApprovalEventError(
                 exc.error_code, exc.detail, 503 if exc.retryable else 409, exc.retryable
@@ -273,7 +293,9 @@ def _load_context(
     return context
 
 
-def _semantic_rejection(event: Mapping[str, Any], context: Mapping[str, Any]) -> str | None:
+def _semantic_rejection(
+    event: Mapping[str, Any], context: Mapping[str, Any]
+) -> str | None:
     expected = {
         "approval_request_id": context["approval_request_id"],
         "nsl_execution_id": context["nsl_execution_id"],
@@ -346,7 +368,9 @@ def _load_inbox(
         "event_id": str(row["event_id"]),
         "event_payload": _payload(row["event_payload"]),
         "received_at": _time(row["received_at"]),
-        "processed_at": None if row["processed_at"] is None else _time(row["processed_at"]),
+        "processed_at": None
+        if row["processed_at"] is None
+        else _time(row["processed_at"]),
     }
 
 
@@ -452,7 +476,9 @@ def _resume_token_ref(event: Mapping[str, Any]) -> str:
 
 
 def _insert_sql(session: Session) -> str:
-    payload = "CAST(:event_payload AS JSONB)" if _postgres(session) else ":event_payload"
+    payload = (
+        "CAST(:event_payload AS JSONB)" if _postgres(session) else ":event_payload"
+    )
     return _INSERT_SQL.replace(":payload_expression", payload)
 
 

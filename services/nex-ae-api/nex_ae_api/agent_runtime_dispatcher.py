@@ -844,6 +844,9 @@ _MALFORMED_SELECT_SQL = """
     LEFT JOIN ae_executable_step AS step
       ON step.tenant_id = job.tenant_id
      AND step.executable_step_id = job.executable_step_id
+    LEFT JOIN ae_wait_registration AS wait
+      ON wait.tenant_id = job.tenant_id
+     AND CAST(wait.wait_id AS TEXT) = job.wait_id
     WHERE ((job.state = 'QUEUED' AND job.run_after <= :now)
            OR (job.state = 'RUNNING' AND job.lease_until <= :now))
       AND (
@@ -851,6 +854,16 @@ _MALFORMED_SELECT_SQL = """
         OR step.executable_step_id IS NULL
         OR step.executor_kind IS NULL
         OR step.executor_kind NOT IN :platform_executor_kinds
+      )
+      AND NOT (
+        job.job_type = 'RESUME_EXECUTION'
+        AND job.executable_step_id IS NULL
+        AND wait.wait_type = 'PRODUCT_PREPARATION'
+        AND wait.resume_target_kind = 'PRODUCT_COORDINATOR'
+        AND wait.executable_step_id IS NULL
+        AND CAST(wait.agent_execution_id AS TEXT) = job.execution_id
+        AND wait.state = 'RESUME_QUEUED'
+        AND CAST(wait.resume_runtime_job_id AS TEXT) = CAST(job.runtime_job_id AS TEXT)
       )
     ORDER BY CASE WHEN job.state = 'RUNNING' THEN 0 ELSE 1 END,
              job.run_after, job.created_at, job.runtime_job_id

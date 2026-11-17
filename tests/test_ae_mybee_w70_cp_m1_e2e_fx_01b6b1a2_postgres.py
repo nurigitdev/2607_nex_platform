@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from datetime import UTC, datetime
 
 import pytest
 from nex_ae_api.product_preparation_persistence import (
@@ -12,6 +13,11 @@ from nex_ae_api.product_preparation_persistence import (
     seal_product_preparation_event,
     seal_product_preparation_event_binding,
     seal_product_preparation_wait_binding,
+)
+from nex_ae_api.runtime_jobs import SqlAlchemyRuntimeJobQueue
+from nex_ae_api.runtime_resume import (
+    SqlAlchemyProductPreparationResumeService,
+    SqlAlchemyResumeRouteSource,
 )
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
@@ -293,18 +299,22 @@ def test_actual_postgres_repository_api_is_atomic_replayable_and_zero_residue() 
 
         assert saved_wait["wait"]["state"] == "PENDING"
         assert saved_event["event"]["state"] == "RECEIVED"
-        assert envelopes.load_product_wait_context(
-            tenant_id=TENANT, wait_id=WAIT_ID
-        )["checkpoint"]["checkpoint_hash"] == first["checkpoint_hash"]
-        assert envelopes.load_product_event_context(
-            tenant_id=TENANT, event_id=EVENT_ID
-        )["wait_binding"]["wait_id"] == WAIT_ID
-        assert envelopes.register_wait(
-            wait, product_binding=wait_binding
-        ) == saved_wait
-        assert envelopes.accept_event(
-            event, product_binding=event_binding
-        ) == saved_event
+        assert (
+            envelopes.load_product_wait_context(tenant_id=TENANT, wait_id=WAIT_ID)[
+                "checkpoint"
+            ]["checkpoint_hash"]
+            == first["checkpoint_hash"]
+        )
+        assert (
+            envelopes.load_product_event_context(tenant_id=TENANT, event_id=EVENT_ID)[
+                "wait_binding"
+            ]["wait_id"]
+            == WAIT_ID
+        )
+        assert envelopes.register_wait(wait, product_binding=wait_binding) == saved_wait
+        assert (
+            envelopes.accept_event(event, product_binding=event_binding) == saved_event
+        )
 
         second = checkpoints.append(
             seal_product_preparation_checkpoint(
@@ -320,12 +330,15 @@ def test_actual_postgres_repository_api_is_atomic_replayable_and_zero_residue() 
                 )
             )
         )
-        assert checkpoints.latest(
-            tenant_id=TENANT,
-            agent_execution_id=EXECUTION_ID,
-            coordinator_id=COORDINATOR_ID,
-            coordinator_version=COORDINATOR_VERSION,
-        )["checkpoint_id"] == second["checkpoint_id"]
+        assert (
+            checkpoints.latest(
+                tenant_id=TENANT,
+                agent_execution_id=EXECUTION_ID,
+                coordinator_id=COORDINATOR_ID,
+                coordinator_version=COORDINATOR_VERSION,
+            )["checkpoint_id"]
+            == second["checkpoint_id"]
+        )
 
         changed_event = seal_product_preparation_event(
             {
@@ -361,9 +374,10 @@ def test_actual_postgres_repository_api_is_atomic_replayable_and_zero_residue() 
             envelopes.accept_event(changed_event, product_binding=changed_binding)
         assert conflict.value.error_code.endswith("_conflict")
 
-        counts = connection.execute(
-            text(
-                """
+        counts = (
+            connection.execute(
+                text(
+                    """
                 SELECT
                     (SELECT count(*) FROM ae_product_prep_checkpoint
                      WHERE tenant_id = :tenant_id) AS checkpoints,
@@ -372,9 +386,12 @@ def test_actual_postgres_repository_api_is_atomic_replayable_and_zero_residue() 
                     (SELECT count(*) FROM ae_product_prep_event_binding
                      WHERE tenant_id = :tenant_id) AS event_bindings
                 """
-            ),
-            {"tenant_id": TENANT},
-        ).mappings().one()
+                ),
+                {"tenant_id": TENANT},
+            )
+            .mappings()
+            .one()
+        )
         assert dict(counts) == {
             "checkpoints": 2,
             "wait_bindings": 1,
@@ -396,6 +413,76 @@ def test_actual_postgres_repository_api_is_atomic_replayable_and_zero_residue() 
                   + (SELECT count(*) FROM ae_external_event_inbox
                      WHERE tenant_id = :tenant_id)
                 """
+            ),
+            {"tenant_id": TENANT},
+        ).scalar_one()
+        assert residue == 0
+    engine.dispose()
+
+
+def test_actual_postgres_product_event_match_and_route_are_restart_safe() -> None:
+    assert DATABASE_URL is not None
+    engine = create_engine(DATABASE_URL, poolclass=NullPool)
+    connection = engine.connect()
+    transaction = connection.begin()
+    sessions = sessionmaker(
+        bind=connection,
+        expire_on_commit=False,
+        join_transaction_mode="create_savepoint",
+    )
+    checkpoints = SqlAlchemyProductPreparationCheckpointRepository(sessions)
+    envelopes = SqlAlchemyGeneralizedWaitEventRepository(sessions)
+    resume = SqlAlchemyProductPreparationResumeService(
+        sessions,
+        runtime_jobs=SqlAlchemyRuntimeJobQueue(sessions),
+        clock=lambda: datetime(2026, 11, 17, 8, tzinfo=UTC),
+    )
+    try:
+        _seed_lineage(connection)
+        checkpoint = checkpoints.append(
+            seal_product_preparation_checkpoint(_checkpoint_base())
+        )
+        wait, wait_binding = _wait(checkpoint)
+        envelopes.register_wait(wait, product_binding=wait_binding)
+        event, event_binding = _event(checkpoint)
+        envelopes.accept_event(event, product_binding=event_binding)
+
+        first = resume.reconcile(tenant_id=TENANT, event_id=EVENT_ID)
+        restarted = SqlAlchemyProductPreparationResumeService(
+            sessions,
+            runtime_jobs=SqlAlchemyRuntimeJobQueue(sessions),
+            clock=lambda: datetime(2026, 11, 17, 9, tzinfo=UTC),
+        ).reconcile(tenant_id=TENANT, event_id=EVENT_ID)
+        route = SqlAlchemyResumeRouteSource(sessions).resolve(
+            tenant_id=TENANT,
+            runtime_job_id=first["resume_runtime_job_id"],
+        )
+
+        assert restarted == first
+        assert route.resume_target_kind == "PRODUCT_COORDINATOR"
+        assert route.executable_step_id is None
+        assert (
+            connection.execute(
+                text(
+                    "SELECT count(*) FROM ae_runtime_job "
+                    "WHERE tenant_id = :tenant_id AND wait_id = :wait_id"
+                ),
+                {"tenant_id": TENANT, "wait_id": WAIT_ID},
+            ).scalar_one()
+            == 1
+        )
+    finally:
+        transaction.rollback()
+        connection.close()
+
+    with engine.connect() as verification:
+        residue = verification.execute(
+            text(
+                "SELECT "
+                "(SELECT count(*) FROM ae_runtime_job WHERE tenant_id = :tenant_id) + "
+                "(SELECT count(*) FROM ae_wait_registration WHERE tenant_id = :tenant_id) + "
+                "(SELECT count(*) FROM ae_external_event_inbox WHERE tenant_id = :tenant_id) + "
+                "(SELECT count(*) FROM ae_product_prep_checkpoint WHERE tenant_id = :tenant_id)"
             ),
             {"tenant_id": TENANT},
         ).scalar_one()

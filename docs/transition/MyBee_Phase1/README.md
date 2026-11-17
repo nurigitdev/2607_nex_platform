@@ -283,6 +283,17 @@ WorkResult/NSL persistence remains compatible. Actual `nex_ae_test` evidence
 proves rollback zero residue. Runtime matching and resume routing remain
 assigned to `6B.1A.3`; M1 remains `CONTRACT_ONLY`.
 
+`CP-M1-E2E-FX-01B.6B.1A.3` implementation evidence is recorded in
+[`mybee_phase1_w70_cp_m1_e2e_fx_01b6b1a3_runtime_resume.md`](../../slices/mybee_phase1_w70_cp_m1_e2e_fx_01b6b1a3_runtime_resume.md).
+It introduces one atomic matcher for shared wait/event envelopes, generalizes
+`RESUME_EXECUTION` into explicit executable-step and Product Coordinator
+targets, and resolves queued routes from persisted authority. Existing
+WorkResult and NSL approval validation remains active and compatible. Product
+resume jobs are reference-only, exact-replay safe, and remain queued when no
+Product handler is installed; therefore M1 is still `CONTRACT_ONLY`. Actual
+`nex_ae_test` restart/replay evidence proves rollback zero residue without a
+new migration, queue, daemon, or worker.
+
 `CP-M1-E2E-FX-01B.6A.1` implementation evidence is recorded in
 [`mybee_phase1_w70_cp_m1_e2e_fx_01b6a1_refresh_contract_source_resolver.md`](../../slices/mybee_phase1_w70_cp_m1_e2e_fx_01b6a1_refresh_contract_source_resolver.md).
 It closes the canonical protected contract and the mutation-free EOS source

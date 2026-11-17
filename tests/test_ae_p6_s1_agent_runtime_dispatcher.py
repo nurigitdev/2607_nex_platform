@@ -97,6 +97,23 @@ def runtime_store():
         connection.execute(
             text(
                 """
+                CREATE TABLE ae_wait_registration (
+                    tenant_id TEXT NOT NULL,
+                    wait_id TEXT NOT NULL,
+                    agent_execution_id TEXT NOT NULL,
+                    executable_step_id TEXT NULL,
+                    wait_type TEXT NOT NULL,
+                    resume_target_kind TEXT NOT NULL,
+                    state TEXT NOT NULL,
+                    resume_runtime_job_id TEXT NULL,
+                    PRIMARY KEY (tenant_id, wait_id)
+                )
+                """
+            )
+        )
+        connection.execute(
+            text(
+                """
                 CREATE TABLE ae_runtime_job_attempt (
                     attempt_id TEXT PRIMARY KEY,
                     tenant_id TEXT NOT NULL,
@@ -782,6 +799,51 @@ def test_malformed_jobs_follow_explicit_dead_letter_issue_path(runtime_store) ->
             == "QUEUED"
         )
     assert queue.get("tenant-e", valid["runtime_job_id"])["state"] == "QUEUED"
+
+
+def test_product_coordinator_resume_is_not_step_malformed(runtime_store) -> None:
+    engine, factory = runtime_store
+    queue = _queue(factory)
+    tenant_id = "tenant-product-resume"
+    execution_id = "execution-product-resume"
+    wait_id = "wait-product-resume"
+    runtime_job_id = "job-product-resume"
+    with engine.begin() as connection:
+        connection.execute(
+            text("INSERT INTO ae_agent_execution VALUES (:tenant, :execution)"),
+            {"tenant": tenant_id, "execution": execution_id},
+        )
+        connection.execute(
+            text(
+                "INSERT INTO ae_wait_registration VALUES "
+                "(:tenant, :wait, :execution, NULL, 'PRODUCT_PREPARATION', "
+                "'PRODUCT_COORDINATOR', 'RESUME_QUEUED', :job)"
+            ),
+            {
+                "tenant": tenant_id,
+                "wait": wait_id,
+                "execution": execution_id,
+                "job": runtime_job_id,
+            },
+        )
+    job = queue.enqueue_unique(
+        tenant_id=tenant_id,
+        runtime_job_id=runtime_job_id,
+        job_type="RESUME_EXECUTION",
+        execution_id=execution_id,
+        wait_id=wait_id,
+        dedup_key="product-resume:dispatcher-guard",
+        run_after=NOW,
+        correlation_id="correlation-product-resume",
+        now=NOW,
+        payload={"wait_id": wait_id, "event_id": "event-product-resume"},
+        resume_target_kind="PRODUCT_COORDINATOR",
+    )
+
+    result = _dispatcher(factory).reconcile_malformed_jobs(observed_at=NOW)
+
+    assert result["reconciled_count"] == 0
+    assert queue.get(tenant_id, job["runtime_job_id"])["state"] == "QUEUED"
 
 
 def test_store_failures_are_translated() -> None:

@@ -63,7 +63,7 @@ def test_real_inventory_classifies_every_ae_module_and_freezes_baseline() -> Non
 
     assert report["status"] == "PASS"
     assert report["module_count"] == expected["module_count"]
-    assert report["active_import_module_count"] == 95
+    assert report["active_import_module_count"] == 96
     assert report["coverage_module_count"] == 0
     assert report["checks"] == {
         "manifest_hash_valid": True,
@@ -81,7 +81,7 @@ def test_real_inventory_classifies_every_ae_module_and_freezes_baseline() -> Non
         "ACTIVE_COMPATIBILITY": expected["compatibility_count"],
         "HISTORICAL_QUARANTINE": expected["historical_count"],
     }
-    assert report["scopes"]["ACTIVE_PRODUCT"]["active_import_module_count"] == 95
+    assert report["scopes"]["ACTIVE_PRODUCT"]["active_import_module_count"] == 96
     assert report["scopes"]["ACTIVE_COMPATIBILITY"]["active_import_module_count"] == 0
     assert report["scopes"]["HISTORICAL_QUARANTINE"]["active_import_module_count"] == 0
     assert report["current_coverage"] is None
@@ -100,12 +100,10 @@ def test_real_inventory_classifies_every_ae_module_and_freezes_baseline() -> Non
         "ret02a_statement_target": 96.25,
         "ret02a_branch_target": 94.5,
     }
-    assert len({item["path"] for item in report["modules"]}) == expected[
-        "module_count"
-    ]
+    assert len({item["path"] for item in report["modules"]}) == expected["module_count"]
     assert summary_line(report) == (
         f"ae_coverage_ownership=pass modules={expected['module_count']} "
-        f"active_graph=95 product={expected['product_count']} "
+        f"active_graph=96 product={expected['product_count']} "
         f"compatibility={expected['compatibility_count']} "
         f"historical={expected['historical_count']} coverage=not-provided "
         "conflicts=0"
@@ -132,8 +130,7 @@ def test_inventory_requires_exact_quarantine_and_existing_overrides() -> None:
     missing_historical["scope_overrides"] = [
         item
         for item in missing_historical["scope_overrides"]
-        if item["path"]
-        != "services/nex-ae-api/nex_ae_api/domain_intent_products.py"
+        if item["path"] != "services/nex-ae-api/nex_ae_api/domain_intent_products.py"
     ]
     missing_historical = _rehash(missing_historical)
     with pytest.raises(AeCoverageOwnershipError, match="hash-pinned quarantine"):
@@ -216,9 +213,7 @@ def test_inventory_fails_gate_when_coverage_omits_owned_modules() -> None:
         },
     }
 
-    report = build_ownership_inventory(
-        ROOT, manifest=manifest, coverage=coverage
-    )
+    report = build_ownership_inventory(ROOT, manifest=manifest, coverage=coverage)
 
     assert report["status"] == "FAIL"
     assert report["checks"]["coverage_inventory_complete"] is False

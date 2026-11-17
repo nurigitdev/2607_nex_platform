@@ -85,9 +85,22 @@ def test_decision_is_backed_by_current_wait_event_and_job_constraints() -> None:
     assert "REFERENCES ae_executable_step" in wait_foundation
     assert "wait_type IN ('WORK_RESULT', 'NSL_APPROVAL')" in wait_types
     assert "ck_ae_wait_nsl_approval_lineage" in nsl_wait
-    assert "event_type IN ('WORK_RESULT_SUBMITTED', 'NSL_APPROVAL_DECIDED')" in event_types
-    assert 'RUNTIME_JOB_TYPES = P4_RUNTIME_JOB_TYPES | {"RESUME_EXECUTION"}' in runtime_jobs
-    assert "RESUME_EXECUTION requires executable_step_id and wait_id" in runtime_jobs
+    assert (
+        "event_type IN ('WORK_RESULT_SUBMITTED', 'NSL_APPROVAL_DECIDED')" in event_types
+    )
+    assert (
+        'RUNTIME_JOB_TYPES = P4_RUNTIME_JOB_TYPES | {"RESUME_EXECUTION"}'
+        in runtime_jobs
+    )
+    assert (
+        'RESUME_TARGET_KINDS = frozenset({"EXECUTABLE_STEP", "PRODUCT_COORDINATOR"})'
+        in runtime_jobs
+    )
+    assert "RESUME_EXECUTION requires wait_id" in runtime_jobs
+    assert (
+        "PRODUCT_COORDINATOR resume jobs cannot reference executable_step_id"
+        in runtime_jobs
+    )
 
 
 def test_authorized_migration_scope_is_bounded_and_identifiers_are_safe() -> None:
@@ -123,7 +136,10 @@ def test_checkpoint_and_event_contracts_remain_authority_safe() -> None:
         assert required in decision
 
     assert "contains no raw prompt, document, voucher, payroll, account" in decision
-    assert "RuntimeJob payload is transport metadata, not checkpoint or approval" in decision
+    assert (
+        "RuntimeJob payload is transport metadata, not checkpoint or approval"
+        in decision
+    )
 
 
 def test_plan_and_registration_policies_close_6b1_gaps() -> None:
