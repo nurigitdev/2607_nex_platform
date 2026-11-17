@@ -1725,6 +1725,46 @@ paths:
         "404": {description: SourcePool was not found in tenant and company scope.}
         "422": {description: Query identity is malformed.}
         "503": {description: SourcePool persistence is unavailable.}
+  /internal/v2/finance/transaction-preparation-authority:resolve:
+    post:
+      operationId: FINANCE.TRANSACTION_PREPARATION_AUTHORITY.RESOLVE
+      tags: [Finance]
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes: [service:call]
+      x-nex-business-scope: finance:voucher-candidate:create
+      x-nex-side-effect-free: true
+      parameters:
+        - name: X-NeX-Tenant-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+        - name: X-NeX-Subject-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 256}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TransactionPreparationAuthorityResolve"
+      responses:
+        "200":
+          description: Exact EOS/OA authority projection for one admitted transaction context.
+          headers:
+            Cache-Control:
+              schema: {type: string, example: "no-store, max-age=0"}
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TransactionPreparationAuthorityResolution"
+        "401": {description: "Service claim is missing or invalid."}
+        "403": {description: "Fresh Project authority was denied."}
+        "404": {description: "Required company, Project, period, account, or policy authority was not found."}
+        "409": {description: "Authority is ambiguous, stale, inactive, cross-scope, or inconsistent."}
+        "422": {description: "Request schema, identity, or hash is malformed."}
+        "503": {description: "EOS persistence or fresh OA authority is unavailable."}
   /internal/v2/finance/cost-allocation-plans:resolve:
     post:
       operationId: FINANCE.COST_ALLOCATION_PLAN.RESOLVE
@@ -2723,6 +2763,12 @@ components:
     CostAllocationPlanResolution:
       type: object
       x-nex-canonical-json-schema: schemas/service/nex_eos/cost_allocation_plan_resolution.v1.schema.json
+    TransactionPreparationAuthorityResolve:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_eos/transaction_preparation_authority_resolve.v1.schema.json
+    TransactionPreparationAuthorityResolution:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_eos/transaction_preparation_authority_resolution.v1.schema.json
     CostAllocationRun:
       type: object
       x-nex-canonical-json-schema: schemas/service/nex_eos/cost_allocation_run.v1.schema.json

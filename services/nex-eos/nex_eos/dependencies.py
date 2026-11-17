@@ -148,6 +148,9 @@ from .scoped_approvals import (
     EosScopedApprovalService,
     SqlAlchemyEosScopedApprovalRepository,
 )
+from .transaction_preparation_authority import (
+    EosTransactionPreparationAuthorityService,
+)
 from .voucher_access import EosVoucherAccessService
 from .voucher_candidate_commands import EosCreateVoucherCandidateService
 from .voucher_candidate_revision_commands import EosReviseVoucherCandidateService
@@ -229,6 +232,9 @@ class EosDependencies:
     voucher_candidate_revision_service: EosReviseVoucherCandidateService | None
     candidate_validation_service: EosCandidateValidationService | None
     candidate_review_repository: SqlAlchemyEosCandidateReviewRepository | None
+    transaction_preparation_authority_service: (
+        EosTransactionPreparationAuthorityService | None
+    )
 
 
 def build_eos_dependencies(
@@ -804,6 +810,26 @@ def build_eos_dependencies(
         if database_runtime is not None and authorization_source is not None
         else None
     )
+    transaction_preparation_authority_service = (
+        EosTransactionPreparationAuthorityService(
+            legal_entities=legal_entities,
+            projects=projects,
+            accounts=SqlAlchemyEosCoaOperationsRepository(
+                database_runtime.session_factory
+            ),
+            periods=SqlAlchemyEosAccountingPeriodRepository(
+                database_runtime.session_factory
+            ),
+            approval_policies=approval_policies,
+            project_authorizer=project_authorizer,
+        )
+        if database_runtime is not None
+        and legal_entities is not None
+        and projects is not None
+        and approval_policies is not None
+        and project_authorizer is not None
+        else None
+    )
     fx_rate_service = (
         EosFxRateService(
             SqlAlchemyEosFxRateRepository(database_runtime.session_factory),
@@ -945,4 +971,7 @@ def build_eos_dependencies(
         voucher_candidate_revision_service=voucher_candidate_revision_service,
         candidate_validation_service=candidate_validation_service,
         candidate_review_repository=candidate_review_repository,
+        transaction_preparation_authority_service=(
+            transaction_preparation_authority_service
+        ),
     )

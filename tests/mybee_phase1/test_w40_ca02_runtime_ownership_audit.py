@@ -30,6 +30,7 @@ def test_current_repository_freezes_runtime_ownership_and_installed_binding() ->
         "services/nex-ae-api/nex_ae_api/m1_allocation_plan_composition.py",
         "services/nex-ae-api/nex_ae_api/m1_installed_skill_runtime.py",
         "services/nex-ae-api/nex_ae_api/m1_plan_materialization.py",
+            "services/nex-ae-api/nex_ae_api/m1_preparation_authority_source.py",
         "services/nex-ae-api/nex_ae_api/m1_product_planning_coordinator.py",
         "services/nex-ae-api/nex_ae_api/m1_product_preparation_coordinator.py",
         "services/nex-ae-api/nex_ae_api/m1_transaction_preparation_runtime.py",

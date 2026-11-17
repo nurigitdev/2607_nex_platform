@@ -215,6 +215,58 @@ class SqlAlchemyEosLegalEntityRepository:
             raise _persistence_error() from exc
         return dict(row) if row is not None else None
 
+    def resolve_active_legal_entity(
+        self,
+        *,
+        tenant_id: str,
+        selector_kind: str,
+        selector_value: str,
+        effective_on: date,
+    ) -> dict[str, Any] | None:
+        tenant_id = _scoped_id("tenant_id", tenant_id)
+        kind = str(selector_kind).strip().upper()
+        if kind not in {"CODE", "NAME", "CODE_OR_NAME"}:
+            raise EosLegalEntityError(
+                "EOS_LEGAL_ENTITY_SELECTOR_INVALID",
+                "LegalEntity selector kind is invalid",
+                status_code=422,
+            )
+        value = str(selector_value).strip()
+        if not value or len(value) > 160:
+            raise EosLegalEntityError(
+                "EOS_LEGAL_ENTITY_SELECTOR_INVALID",
+                "LegalEntity selector value is invalid",
+                status_code=422,
+            )
+        predicates = []
+        if kind in {"CODE", "CODE_OR_NAME"}:
+            predicates.append(EOS_LEGAL_ENTITY_TABLE.c.company_code == value)
+        if kind in {"NAME", "CODE_OR_NAME"}:
+            predicates.append(EOS_LEGAL_ENTITY_TABLE.c.name == value)
+        statement = (
+            select(EOS_LEGAL_ENTITY_TABLE)
+            .where(
+                EOS_LEGAL_ENTITY_TABLE.c.tenant_id == tenant_id,
+                EOS_LEGAL_ENTITY_TABLE.c.status == "ACTIVE",
+                EOS_LEGAL_ENTITY_TABLE.c.effective_from
+                <= _date("effective_on", effective_on),
+                or_(*predicates),
+            )
+            .order_by(EOS_LEGAL_ENTITY_TABLE.c.company_id)
+        )
+        try:
+            with self._session_factory() as session:
+                rows = session.execute(statement).mappings().all()
+        except SQLAlchemyError as exc:
+            raise _persistence_error() from exc
+        if len(rows) > 1:
+            raise EosLegalEntityError(
+                "EOS_LEGAL_ENTITY_SELECTOR_AMBIGUOUS",
+                "LegalEntity selector matched more than one active company",
+                status_code=409,
+            )
+        return dict(rows[0]) if rows else None
+
     def create_project_company_binding(
         self, value: ProjectCompanyBindingInput
     ) -> dict[str, Any]:

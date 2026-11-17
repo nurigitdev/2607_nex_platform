@@ -34,6 +34,9 @@ from .project_pnl_refresh_api import register_project_pnl_refresh_routes
 from .project_work_assignment_api import register_project_work_assignment_routes
 from .reporting_map_api import register_reporting_map_routes
 from .scoped_approval_api import register_scoped_approval_routes
+from .transaction_preparation_authority_api import (
+    register_transaction_preparation_authority_routes,
+)
 from .voucher_api import register_voucher_command_routes
 from .wa_project_verification import (
     EosWaProjectVerifier,
@@ -166,6 +169,9 @@ def create_eos_app(
         dependencies.candidate_validation_service
     )
     app.state.eos_candidate_review_repository = dependencies.candidate_review_repository
+    app.state.eos_transaction_preparation_authority_service = (
+        dependencies.transaction_preparation_authority_service
+    )
     register_voucher_command_routes(app)
     register_finance_v2_routes(app)
     register_cost_source_pool_routes(app)
@@ -191,6 +197,7 @@ def create_eos_app(
     register_legal_entity_routes(app)
     register_accounting_period_routes(app)
     register_fx_rate_routes(app)
+    register_transaction_preparation_authority_routes(app)
     verifier = (
         EosWaProjectVerifier(
             projects=dependencies.projects,
