@@ -28,7 +28,8 @@ MyBee office-work AX Service Phase-1 program.
 21. `NeX_MyBee_CP_M1_E2E_FX_01B_Durable_Business_Context_and_M1_Transaction_Orchestration_Closure_v1.0.md`
 22. `NeX_MyBee_CP_M1_E2E_FX_01B_5A_Approved_Allocation_Plan_Semantic_Resolution_Closure_v1.0.md`
 23. `NeX_MyBee_CP_M1_E2E_FX_01B_6A_EOS_Allocation_to_PnL_Projection_Activation_Boundary_v1.0.md`
-24. `NeX_MyBee_Post_Wave_UIUX_Compatibility_Performance_Backlog_v1.0.md`
+24. `NeX_MyBee_CP_M1_E2E_FX_01B_6B_Installed_M1_Preparation_and_Deterministic_Plan_Activation_Closure_v1.0.md`
+25. `NeX_MyBee_Post_Wave_UIUX_Compatibility_Performance_Backlog_v1.0.md`
 
 The Markdown Slice Plan and its Execution Matrix JSON are one planning set.
 The JSON is machine-readable traceability input, not runtime configuration or
@@ -229,6 +230,20 @@ unverified Batch requests, and requires exact replay and restart stability.
 `.6` remains paused until this protected PostgreSQL Gate closes; afterward its
 only admitted sequence is allocation RUN, VERIFY, P&L REFRESH, and GET.
 
+CP-M1-E2E-FX-01B.6B is the source-backed installed-runtime correction
+discovered at the `.7` entry audit. It connects an admitted M1 WorkIntent to
+a capability-selected product coordinator, preserves both authoritative
+approval waits as durable restart-safe checkpoints, invokes the existing
+`.5` materializer only at `READY_FOR_D04`, and persists AgentPlan,
+PlanValidation, and ExecutablePlan lineage before using the existing
+scheduler. It prohibits fixture-driven business values, runner state
+injection, provider PLAN financial authority, and semantic overloading of
+existing wait/event types. No migration is authorized by default; if current
+storage cannot preserve the exact semantics, implementation must stop for a
+narrow persistence decision. `.7` remains paused until the actual
+PostgreSQL replay, restart, approval ACK-loss, scheduling, and residue Gate
+closes.
+
 `CP-M1-E2E-FX-01B.6A.1` implementation evidence is recorded in
 [`mybee_phase1_w70_cp_m1_e2e_fx_01b6a1_refresh_contract_source_resolver.md`](../../slices/mybee_phase1_w70_cp_m1_e2e_fx_01b6a1_refresh_contract_source_resolver.md).
 It closes the canonical protected contract and the mutation-free EOS source
@@ -261,7 +276,11 @@ then closes redacted PA/WC results, WA evidence intake, and owner-visible IA
 publication through existing product components. Actual OA/AE/WC/EOS/WA test
 databases, replay, restart, authorization/privacy negatives, zero residue, and
 the AE Slice Gate close the boundary without a migration or model provider.
-The next Slice is `CP-M1-E2E-FX-01B.7` protected public-product closure.
+The `.7` entry audit found that the installed path does not yet activate the
+existing preparation adapter, `READY_FOR_D04` materializer, plan
+persistence, and scheduler from a public-originated WorkIntent. The next
+required boundary is `CP-M1-E2E-FX-01B.6B`; only its closure may resume
+`CP-M1-E2E-FX-01B.7` protected public-product acceptance.
 
 `W70-S8-01A` implementation evidence is recorded in
 [`mybee_phase1_w70_s8_01a_tool_inventory.md`](../../slices/mybee_phase1_w70_s8_01a_tool_inventory.md).
