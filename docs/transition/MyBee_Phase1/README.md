@@ -262,7 +262,16 @@ wait, event inbox, and `RESUME_EXECUTION` mechanics become shared runtime
 primitives, while Product Preparation adds only immutable checkpoint history
 and typed wait/event bindings. Existing WorkResult and NSL behavior remains
 compatible and is generalized incrementally. The decision authorizes one
-bounded AE migration in `6B.2`; it does not activate M1.
+bounded AE migration, now delivered by `6B.1A.1`; it does not activate M1.
+
+`CP-M1-E2E-FX-01B.6B.1A.1` implementation evidence is recorded in
+[`mybee_phase1_w70_cp_m1_e2e_fx_01b6b1a1_schema_compatibility_migration.md`](../../slices/mybee_phase1_w70_cp_m1_e2e_fx_01b6b1a1_schema_compatibility_migration.md).
+It applies migration `2517` to generalize the existing wait and event inbox,
+adds only the immutable Product Preparation checkpoint and typed bindings,
+and preserves existing WorkResult and NSL writers through bounded compatibility
+projections. Actual `nex_ae_test` evidence covers the old and new paths,
+deferred binding denial, append-only denial, and rollback zero residue. M1
+remains `CONTRACT_ONLY`; generic repository APIs are assigned to `6B.1A.2`.
 
 `CP-M1-E2E-FX-01B.6A.1` implementation evidence is recorded in
 [`mybee_phase1_w70_cp_m1_e2e_fx_01b6a1_refresh_contract_source_resolver.md`](../../slices/mybee_phase1_w70_cp_m1_e2e_fx_01b6a1_refresh_contract_source_resolver.md).
