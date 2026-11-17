@@ -255,6 +255,15 @@ waits without changing WorkResult, NSL approval, or executable-step meaning.
 authorize the smallest typed checkpoint and approval-event persistence
 correction.
 
+`CP-M1-E2E-FX-01B.6B.1A` is design-closed by
+[`NeX_MyBee_CP_M1_E2E_FX_01B_6B_1A_Durable_Product_Preparation_Checkpoint_and_Approval_Event_Persistence_Decision_v1.0.md`](NeX_MyBee_CP_M1_E2E_FX_01B_6B_1A_Durable_Product_Preparation_Checkpoint_and_Approval_Event_Persistence_Decision_v1.0.md).
+It selects a generic-envelope and typed-binding architecture: the existing
+wait, event inbox, and `RESUME_EXECUTION` mechanics become shared runtime
+primitives, while Product Preparation adds only immutable checkpoint history
+and typed wait/event bindings. Existing WorkResult and NSL behavior remains
+compatible and is generalized incrementally. The decision authorizes one
+bounded AE migration in `6B.2`; it does not activate M1.
+
 `CP-M1-E2E-FX-01B.6A.1` implementation evidence is recorded in
 [`mybee_phase1_w70_cp_m1_e2e_fx_01b6a1_refresh_contract_source_resolver.md`](../../slices/mybee_phase1_w70_cp_m1_e2e_fx_01b6a1_refresh_contract_source_resolver.md).
 It closes the canonical protected contract and the mutation-free EOS source
