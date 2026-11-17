@@ -330,6 +330,19 @@ provider dependency was added. M1 remains globally `CONTRACT_ONLY`; the next
 canonical Slice is `6B.4`, which owns the installed multi-service PostgreSQL
 replay, restart, approval ACK-loss, scheduling, and zero-residue Gate.
 
+`CP-M1-E2E-FX-01B.6B.4` implementation evidence is recorded in
+[`mybee_phase1_w70_cp_m1_e2e_fx_01b6b4_protected_gate.md`](../../slices/mybee_phase1_w70_cp_m1_e2e_fx_01b6b4_protected_gate.md).
+It runs the installed AE Product Preparation and deterministic planning
+persistence over actual `nex_ae_test`, proves restart and ACK-loss convergence
+at both approval waits and after plan scheduling, and combines the existing
+WC, OA, and EOS owner-service PostgreSQL smokes into one protected matrix.
+Cross-scope, unavailable fresh authority, stale event, and semantic drift
+remain zero-mutation failures. Proposal, candidate, review, admission, plan,
+RuntimeJob, and posted-journal replay do not create duplicate financial or
+publication artifacts. The matrix leaves zero residue, requires no remote
+provider, adds no migration, and keeps M1 `CONTRACT_ONLY`; installed process
+activation remains assigned to `6B.5`.
+
 `CP-M1-E2E-FX-01B.6A.1` implementation evidence is recorded in
 [`mybee_phase1_w70_cp_m1_e2e_fx_01b6a1_refresh_contract_source_resolver.md`](../../slices/mybee_phase1_w70_cp_m1_e2e_fx_01b6a1_refresh_contract_source_resolver.md).
 It closes the canonical protected contract and the mutation-free EOS source
