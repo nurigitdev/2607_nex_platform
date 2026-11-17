@@ -244,6 +244,7 @@ def test_01b5_materializes_d12_then_d04_through_existing_compiler() -> None:
     d04_inputs = {
         item["target_name"]: item["value"] for item in d04["compiled_input_bindings"]
     }
+    assert d04_inputs.pop("m1_preparation_checkpoint") == preparation
     assert d04_inputs == {
         "schema_version": "eos.journal_posting_command.v1",
         "tenant_id": TENANT,

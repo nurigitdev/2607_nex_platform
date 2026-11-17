@@ -30,6 +30,10 @@ def _protected_environment() -> dict[str, str]:
         "NEX_AE_FINANCE_GOLDEN_A_AUTHORITY_PROFILE_PATH": str(AUTHORITY_PROFILE),
         "NEX_EOS_BASE_URL": "https://eos.example",
         "NEX_AE_TO_EOS_SERVICE_TOKEN": "signed-ae-to-eos-token",
+        "NEX_WA_BASE_URL": "https://wa.example",
+        "NEX_AE_TO_WA_SERVICE_TOKEN": "signed-ae-to-wa-token",
+        "NEX_WC_BASE_URL": "https://wc.example",
+        "NEX_AE_TO_WC_SERVICE_TOKEN": "signed-ae-to-wc-token",
         "NEX_SERVICE_TOKEN_ROLLOUT_PROFILE": "SIGNED_ONLY",
     }
 

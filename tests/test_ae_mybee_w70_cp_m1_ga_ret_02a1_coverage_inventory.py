@@ -42,7 +42,7 @@ def test_real_inventory_classifies_every_ae_module_and_freezes_baseline() -> Non
 
     assert report["status"] == "PASS"
     assert report["module_count"] == 182
-    assert report["active_import_module_count"] == 74
+    assert report["active_import_module_count"] == 95
     assert report["coverage_module_count"] == 0
     assert report["checks"] == {
         "manifest_hash_valid": True,
@@ -60,7 +60,7 @@ def test_real_inventory_classifies_every_ae_module_and_freezes_baseline() -> Non
         "ACTIVE_COMPATIBILITY": 5,
         "HISTORICAL_QUARANTINE": 5,
     }
-    assert report["scopes"]["ACTIVE_PRODUCT"]["active_import_module_count"] == 74
+    assert report["scopes"]["ACTIVE_PRODUCT"]["active_import_module_count"] == 95
     assert report["scopes"]["ACTIVE_COMPATIBILITY"]["active_import_module_count"] == 0
     assert report["scopes"]["HISTORICAL_QUARANTINE"]["active_import_module_count"] == 0
     assert report["current_coverage"] is None
@@ -81,7 +81,7 @@ def test_real_inventory_classifies_every_ae_module_and_freezes_baseline() -> Non
     }
     assert len({item["path"] for item in report["modules"]}) == 182
     assert summary_line(report) == (
-        "ae_coverage_ownership=pass modules=182 active_graph=74 "
+        "ae_coverage_ownership=pass modules=182 active_graph=95 "
         "product=172 compatibility=5 historical=5 coverage=not-provided "
         "conflicts=0"
     )

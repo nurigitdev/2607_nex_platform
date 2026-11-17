@@ -60,6 +60,7 @@ class ControlledExecutionAuthority:
     agent_id: str
     org_scope_refs: tuple[str, ...]
     business_result_seed: Mapping[str, Any] | None
+    runtime_metadata: Mapping[str, Any] | None = None
 
 
 class ControlledSkillRuntime:
@@ -223,8 +224,10 @@ class ControlledSkillRuntime:
                 invocation=invocation,
                 authority=authority,
             )
-            return _controlled_write_outcome(
-                controlled,
+            return self._controlled_write_outcome(
+                context=context,
+                result=controlled,
+                authority=authority,
                 business_operation_id=invocation.business_operation_id,
             )
         except P5StepExecutorError:
@@ -263,6 +266,19 @@ class ControlledSkillRuntime:
         authority: ControlledExecutionAuthority,
     ) -> Any:
         raise NotImplementedError
+
+    def _controlled_write_outcome(
+        self,
+        *,
+        context: Any,
+        result: Any,
+        authority: ControlledExecutionAuthority,
+        business_operation_id: str,
+    ) -> P5ExecutorOutcome:
+        del context, authority
+        return _controlled_write_outcome(
+            result, business_operation_id=business_operation_id
+        )
 
 
 class HttpOaAuthoritySource:

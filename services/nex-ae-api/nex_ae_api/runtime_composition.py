@@ -28,6 +28,9 @@ from nex_ae_api.step_executors import (
     P5StepExecutionWorker,
     P5StepExecutorRegistry,
 )
+from nex_ae_api.work_result_publication import (
+    SqlAlchemyInstalledBackgroundResultCloser,
+)
 from nex_ae_api.workspace_result_publication import (
     AgentResultCompletionNotifier,
     SqlAlchemyInstalledIaResultCloser,
@@ -141,6 +144,7 @@ class InstalledRuntimeComposition:
     executor_profile: RuntimeExecutorProfile
     result_publisher: SqlAlchemyWorkspaceResultPublisher
     result_closer: SqlAlchemyInstalledIaResultCloser
+    background_result_closer: SqlAlchemyInstalledBackgroundResultCloser | None = None
 
     def run_cycle(self, *, finalize_lifecycle: bool = True) -> dict[str, Any]:
         lifecycle = AgentRuntimeWorkerLifecycle(
@@ -161,9 +165,28 @@ class InstalledRuntimeComposition:
             finalize_lifecycle=finalize_lifecycle,
         )
         closure = self.result_closer.close_ready(limit=10)
+        background_closure = (
+            self.background_result_closer.close_ready(limit=10)
+            if self.background_result_closer is not None
+            else {
+                "candidate_count": 0,
+                "finalized_count": 0,
+                "published_count": 0,
+                "replayed_count": 0,
+                "failed_count": 0,
+                "failures": [],
+            }
+        )
         claimed_count = int(result["claimed_count"])
-        closure_work = int(closure["finalized_count"]) + int(closure["published_count"])
-        failed_count = int(result["failed_count"]) + int(closure["failed_count"])
+        closure_work = sum(
+            int(item["finalized_count"]) + int(item["published_count"])
+            for item in (closure, background_closure)
+        )
+        failed_count = (
+            int(result["failed_count"])
+            + int(closure["failed_count"])
+            + int(background_closure["failed_count"])
+        )
         return {
             "status": "WORK" if claimed_count or closure_work else "IDLE",
             "domain_claiming_enabled": True,
@@ -173,6 +196,7 @@ class InstalledRuntimeComposition:
             "failed_count": failed_count,
             "stop_reason": result["stop_reason"],
             "result_closure": closure,
+            "background_result_closure": background_closure,
         }
 
 
@@ -184,6 +208,8 @@ def build_installed_runtime_composition(
     environ: Mapping[str, str],
     executor_profile: RuntimeExecutorProfile | None,
     completion_notifier: AgentResultCompletionNotifier | None = None,
+    background_result_closer: SqlAlchemyInstalledBackgroundResultCloser
+    | None = None,
     declared_at: str | None = None,
 ) -> InstalledRuntimeComposition:
     if executor_profile is None:
@@ -228,6 +254,7 @@ def build_installed_runtime_composition(
             sessions,
             publisher=publisher,
         ),
+        background_result_closer=background_result_closer,
     )
 
 

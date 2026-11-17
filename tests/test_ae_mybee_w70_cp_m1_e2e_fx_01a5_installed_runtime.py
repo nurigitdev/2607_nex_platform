@@ -95,7 +95,7 @@ def test_verified_product_release_profile_is_fail_closed_and_ready(
             "adapter_source_identity": (
                 "mybee:m1-preparation:"
                 "MYBEE.M1.AUTHORITATIVE_TRANSACTION_PREPARATION:1.0.0:"
-                "sha256:d6a3758b86a5deaa8a6cf187fefccd2908c045d85a9e113de47cbce56681b5f5"
+                    "sha256:5eef656e73f922c16c39c17808503fc5cae477b00f9c64f832215d7acda8e2fe"
             ),
             "operations": [
                 "BUSINESS.DOCUMENT_APPROVED.GET",
@@ -109,7 +109,7 @@ def test_verified_product_release_profile_is_fail_closed_and_ready(
             "content_included": False,
             "secret_included": False,
             "readiness_hash": (
-                "sha256:a60b4e71bde65c32d1cdc4efcd11a82707429ee96d41918acf2c5b008c3e4045"
+                "sha256:72fa3c033aecfdd6cf54118790b0086edcd67cb07ded89d67a50119179d03c6e"
             ),
         },
         "allocation_plan_resolution": {
@@ -522,6 +522,8 @@ def _context_sessions(context_json):
         "context_json": context_json,
         "principal_id": "employee-101",
         "agent_id": "66666666-6666-4666-8666-666666666666",
+        "correlation_id": "corr-m1-runtime",
+        "intent_json": {"intent_hash": HASH},
     }
     return lambda: _ContextSession(row)
 
@@ -663,6 +665,8 @@ def test_journal_authority_rejects_input_and_scope_drift(
             "principal_id": "employee-101",
             "agent_id": "66666666-6666-4666-8666-666666666666",
             "project_id": PROJECT_ID,
+            "correlation_id": "corr-m1-runtime",
+            "work_intent": {"intent_hash": HASH},
         },
     )
     invalid = _write_context(runtime)

@@ -19,6 +19,7 @@ from nex_runtime import (
     check_sqlalchemy_engine,
     database_pool_settings,
     required_database_url,
+    resolve_service_endpoint,
 )
 from nex_runtime.runtime_package_admission import (
     build_runtime_package_check,
@@ -28,6 +29,7 @@ from sqlalchemy import inspect, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
+from nex_ae_api.agent_results import SqlAlchemyAgentResultRepository
 from nex_ae_api.agent_runtime_worker import (
     AE_AGENT_RUNTIME_WORKER_TYPE,
     AgentRuntimeShutdownToken,
@@ -49,9 +51,19 @@ from nex_ae_api.runtime_composition import (
     RuntimeExecutorProfile,
     build_installed_runtime_composition,
 )
+from nex_ae_api.service_auth import resolve_ae_outbound_service_token
 from nex_ae_api.step_executors import (
     P5DeterministicProjectionExecutor,
     P5StepExecutorRegistry,
+)
+from nex_ae_api.wa_completion_notifications import (
+    build_ae_wa_post_completion_notifier,
+)
+from nex_ae_api.wa_source_projections import SqlAlchemyAgentResultWaProjectionSource
+from nex_ae_api.work_result_publication import (
+    HttpWcWorkResultClient,
+    SqlAlchemyInstalledBackgroundResultCloser,
+    SqlAlchemyWcWorkResultPublisher,
 )
 
 PROCESS_ID = "nex-ae-agent-runtime-worker"
@@ -252,12 +264,43 @@ def build_installed_agent_runtime_process(
                 if selected in {"staging_live", "production"}
                 else build_deterministic_component_executor_profile()
             )
+        completion_notifier = None
+        background_result_closer = None
+        if selected in {"staging_live", "production"}:
+            completion_notifier = build_ae_wa_post_completion_notifier(
+                agent_results=SqlAlchemyAgentResultWaProjectionSource(
+                    SqlAlchemyAgentResultRepository(sessions)
+                ),
+                environ=env,
+            )
+            wc_endpoint = resolve_service_endpoint("nex-wc", environ=env)
+            wc_client = HttpWcWorkResultClient(
+                base_url=str(env.get("NEX_WC_BASE_URL") or wc_endpoint.base_url),
+                service_token=resolve_ae_outbound_service_token(
+                    env.get("NEX_AE_TO_WC_SERVICE_TOKEN"),
+                    audience="nex-wc",
+                    environ=env,
+                ),
+                timeout_seconds=float(
+                    env.get("NEX_AE_TO_WC_TIMEOUT_SECONDS", "15")
+                ),
+            )
+            background_result_closer = SqlAlchemyInstalledBackgroundResultCloser(
+                sessions,
+                publisher=SqlAlchemyWcWorkResultPublisher(
+                    sessions,
+                    wc_client,
+                    completion_notifier=completion_notifier,
+                ),
+            )
         composition = build_installed_runtime_composition(
             sessions=sessions,
             heartbeat_emitter=heartbeat,
             worker_id=worker_id,
             environ=env,
             executor_profile=selected_executor_profile,
+            completion_notifier=completion_notifier,
+            background_result_closer=background_result_closer,
         )
         return InstalledAgentRuntimeProcess(
             profile=selected,

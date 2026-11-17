@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import uuid
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
@@ -9,6 +10,15 @@ from pathlib import Path
 from types import MappingProxyType, SimpleNamespace
 from typing import Any
 
+from mybee_ax.integrations import (
+    HttpCostAllocationProviderTransport,
+    HttpProjectPnlProviderTransport,
+    HttpProjectPnlRefreshProviderTransport,
+    NexCostAllocationClient,
+    NexProjectPnlClient,
+    NexProjectPnlRefreshClient,
+)
+from mybee_ax.orchestration import M1FinancialResultIntegrator
 from nex_runtime.nsl_package_admission import inspect_installed_nsl_package
 from nex_runtime.nsl_runtime_adapter import (
     InstalledNslExecution,
@@ -23,6 +33,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from nex_ae_api.allocation_plan_resolution_runtime import (
     InstalledApprovedAllocationPlanResolution,
 )
+from nex_ae_api.business_result_summary import build_project_allocation_summary
 from nex_ae_api.controlled_skill_runtime import (
     ControlledExecutionAuthority,
     ControlledSkillRuntime,
@@ -82,6 +93,7 @@ _WRITE_INPUTS = frozenset(
         "accounting_approval_evidence_id",
     }
 )
+_PREPARATION_INPUT = "m1_preparation_checkpoint"
 
 
 @dataclass(frozen=True)
@@ -152,6 +164,33 @@ class M1InstalledSkillRuntime:
             base_url=config.oa_base_url,
             service_token=config.ae_to_oa_service_token,
         )
+        financial_result = None
+        if (
+            transaction_preparation is not None
+            and allocation_plan_resolution is not None
+        ):
+            financial_result = M1FinancialResultIntegrator(
+                allocation_client=NexCostAllocationClient(
+                    HttpCostAllocationProviderTransport(
+                        eos_base_url=config.eos_base_url,
+                        service_token=config.ae_to_eos_service_token,
+                    )
+                ),
+                refresh_client=NexProjectPnlRefreshClient(
+                    HttpProjectPnlRefreshProviderTransport(
+                        eos_base_url=config.eos_base_url,
+                        service_token=config.ae_to_eos_service_token,
+                    )
+                ),
+                pnl_client=NexProjectPnlClient(
+                    HttpProjectPnlProviderTransport(
+                        eos_base_url=config.eos_base_url,
+                        service_token=config.ae_to_eos_service_token,
+                    )
+                ),
+                authority_resolver=self.resolve_allocation_plan_authority,
+                registration=transaction_preparation.adapter.registration,
+            )
         self.public_api = load_nsl_v02_public_api(
             inspect_installed_nsl_package(
                 _json_object(config.wheel_lock_path),
@@ -167,6 +206,7 @@ class M1InstalledSkillRuntime:
                 config=config,
                 public_api=self.public_api,
                 catalog_hash=catalog.catalog_hash,
+                financial_result=financial_result,
             )
             for selection in catalog.selections
             if selection.operation_adapter.operation_semantics == "WRITE"
@@ -409,6 +449,7 @@ class _M1JournalControlledRuntime(ControlledSkillRuntime):
         config: M1InstalledSkillRuntimeConfig,
         public_api: Any,
         catalog_hash: str,
+        financial_result: M1FinancialResultIntegrator | None,
     ) -> None:
         self._sessions = sessions
         self._selection = selection
@@ -421,6 +462,7 @@ class _M1JournalControlledRuntime(ControlledSkillRuntime):
         )
         self.public_api = public_api
         self._registry_hash = catalog_hash
+        self._financial_result = financial_result
         self._evidence = SqlAlchemyPlatformApprovalEvidenceRepository(sessions)
         from nex_ae_api.nsl_approval_requests import (
             SqlAlchemyProtectedApprovalRequestStore,
@@ -449,6 +491,7 @@ class _M1JournalControlledRuntime(ControlledSkillRuntime):
             execution_id=context.step["agent_execution_id"],
         )
         inputs = _compiled_inputs(context)
+        preparation = inputs.pop(_PREPARATION_INPUT, None)
         if (
             set(inputs) != _WRITE_INPUTS
             or inputs.get("tenant_id") != context.job["tenant_id"]
@@ -519,6 +562,12 @@ class _M1JournalControlledRuntime(ControlledSkillRuntime):
             agent_id=persisted["agent_id"],
             org_scope_refs=tuple(authorization.get("org_scope_refs", ())),
             business_result_seed=None,
+            runtime_metadata={
+                "work_intent": persisted["work_intent"],
+                "preparation_checkpoint": preparation,
+                "principal_id": persisted["principal_id"],
+                "correlation_id": persisted["correlation_id"],
+            },
         )
 
     def _execute_controlled_write(
@@ -579,6 +628,80 @@ class _M1JournalControlledRuntime(ControlledSkillRuntime):
                 write_port=adapters.write_port,
                 verification_port=adapters.verification_port,
             ).execute(request)
+        )
+
+    def _controlled_write_outcome(
+        self,
+        *,
+        context: Any,
+        result: Any,
+        authority: ControlledExecutionAuthority,
+        business_operation_id: str,
+    ) -> P5ExecutorOutcome:
+        base = super()._controlled_write_outcome(
+            context=context,
+            result=result,
+            authority=authority,
+            business_operation_id=business_operation_id,
+        )
+        if base.state != "SUCCEEDED":
+            return base
+        if self._financial_result is None or authority.runtime_metadata is None:
+            raise ControlledSkillRuntimeError(
+                "M1 financial result integration is not installed."
+            )
+        metadata = authority.runtime_metadata
+        preparation = metadata.get("preparation_checkpoint")
+        work_intent = metadata.get("work_intent")
+        if not isinstance(preparation, Mapping) or not isinstance(
+            work_intent, Mapping
+        ):
+            raise ControlledSkillRuntimeError(
+                "M1 durable preparation lineage is unavailable."
+            )
+        financial = self._financial_result.integrate(
+            tenant_id=str(context.job["tenant_id"]),
+            company_id=str(authority.canonical_write_payload["company_id"]),
+            subject_id=str(metadata["principal_id"]),
+            correlation_id=str(metadata["correlation_id"]),
+            journal_id=_committed_journal_id(result),
+            work_intent=work_intent,
+            preparation_checkpoint=preparation,
+        )
+        summary = build_project_allocation_summary(financial)
+        return P5ExecutorOutcome(
+            state=base.state,
+            result_contract_ref=base.result_contract_ref,
+            result_payload={
+                **dict(base.result_payload),
+                "financial_result": dict(financial),
+                "business_summary": summary,
+            },
+            external_refs=tuple(
+                sorted(
+                    {
+                        *base.external_refs,
+                        str(financial["journal_ref"]),
+                        str(financial["source_pool_ref"]),
+                        str(financial["allocation_batch_ref"]),
+                    }
+                )
+            ),
+            artifact_refs=base.artifact_refs,
+            evidence_refs=tuple(
+                sorted(
+                    {
+                        *base.evidence_refs,
+                        f"EOS:PNL_REFRESH:{financial['pnl_refresh_hash']}",
+                        *(
+                            f"EOS:PROJECT_PNL:{item['projection_id']}:v{item['projection_version']}"
+                            for item in financial["project_results"]
+                        ),
+                    }
+                )
+            ),
+            error_ref=base.error_ref,
+            business_operation_id=base.business_operation_id,
         )
 
 
@@ -709,10 +832,20 @@ def _execution_context(
         row = (
             session.execute(
                 text(
-                    "SELECT context_id, context_generation, context_hash, context_json, "
-                    "principal_id, agent_id FROM ae_agent_context "
-                    "WHERE tenant_id = :tenant_id AND agent_execution_id = :execution_id "
-                    "ORDER BY context_generation DESC LIMIT 1"
+                    "SELECT context.context_id, context.context_generation, "
+                    "context.context_hash, context.context_json, "
+                    "context.principal_id, context.agent_id, "
+                    "execution.correlation_id, intent.intent_json "
+                    "FROM ae_agent_context AS context "
+                    "JOIN ae_agent_execution AS execution "
+                    "ON execution.tenant_id = context.tenant_id "
+                    "AND execution.agent_execution_id = context.agent_execution_id "
+                    "JOIN ae_work_intent AS intent "
+                    "ON intent.tenant_id = context.tenant_id "
+                    "AND intent.work_intent_id = context.work_intent_id "
+                    "WHERE context.tenant_id = :tenant_id "
+                    "AND context.agent_execution_id = :execution_id "
+                    "ORDER BY context.context_generation DESC LIMIT 1"
                 ),
                 {"tenant_id": tenant_id, "execution_id": execution_id},
             )
@@ -722,6 +855,11 @@ def _execution_context(
     context = row["context_json"]
     if isinstance(context, str):
         context = json.loads(context)
+    work_intent = row["intent_json"]
+    if isinstance(work_intent, str):
+        work_intent = json.loads(work_intent)
+    if not isinstance(work_intent, Mapping):
+        raise ControlledSkillRuntimeError("Persisted WorkIntent is invalid.")
     entities = (
         context.get("resolved_entities") if isinstance(context, Mapping) else None
     )
@@ -740,7 +878,27 @@ def _execution_context(
         "principal_id": str(row["principal_id"]),
         "agent_id": str(row["agent_id"]),
         "project_id": str(projects[0]),
+        "correlation_id": str(row["correlation_id"]),
+        "work_intent": dict(work_intent),
     }
+
+
+def _committed_journal_id(result: Any) -> str:
+    outcome = getattr(result, "outcome", None)
+    write_result = getattr(outcome, "result", None)
+    reference = str(getattr(write_result, "business_reference", ""))
+    prefix = "eos.posted_journal:"
+    if not reference.startswith(prefix):
+        raise ControlledSkillRuntimeError(
+            "Committed Journal result reference is unavailable."
+        )
+    candidate = reference[len(prefix) :]
+    try:
+        return str(uuid.UUID(candidate))
+    except (ValueError, AttributeError) as exc:
+        raise ControlledSkillRuntimeError(
+            "Committed Journal result reference is invalid."
+        ) from exc
 
 
 def _compiled_inputs(context: Any) -> dict[str, Any]:

@@ -71,6 +71,9 @@ class M1PreparationRegistration:
     operations: tuple[str, ...]
     debit_semantic_key: str
     credit_semantic_key: str
+    allocation_source_kind: str
+    allocation_mode: str
+    allocation_source_record_line_ref: str
     source_kind: str
     business_work_code: str
     registry_hash: str
@@ -375,6 +378,7 @@ def load_m1_transaction_preparation_registration(
         "implementation_ref",
         "operations",
         "account_policy",
+        "allocation_policy",
         "source_kind",
         "business_work_code",
         "registry_hash",
@@ -396,6 +400,23 @@ def load_m1_transaction_preparation_registration(
         "credit_semantic_key",
     }:
         raise _invalid("M1 transaction preparation account policy is invalid.")
+    allocation_policy = value.get("allocation_policy")
+    if not isinstance(allocation_policy, Mapping) or set(allocation_policy) != {
+        "source_kind",
+        "allocation_mode",
+        "source_record_line_ref",
+    }:
+        raise _invalid("M1 transaction preparation allocation policy is invalid.")
+    if allocation_policy.get("source_kind") not in {
+        "PAYROLL",
+        "PURCHASE",
+        "SERVICE",
+        "SHARED_EXPENSE",
+        "REVENUE",
+        "FX_GAIN_LOSS",
+        "OTHER",
+    } or allocation_policy.get("allocation_mode") != "MANAGEMENT_ALLOCATION":
+        raise _invalid("M1 transaction allocation policy is unsupported.")
     return M1PreparationRegistration(
         adapter_id=str(value["adapter_id"]),
         adapter_version=_text("adapter_version", value["adapter_version"]),
@@ -403,6 +424,14 @@ def load_m1_transaction_preparation_registration(
         operations=tuple(str(item) for item in value["operations"]),
         debit_semantic_key=_text("debit_semantic_key", policy["debit_semantic_key"]),
         credit_semantic_key=_text("credit_semantic_key", policy["credit_semantic_key"]),
+        allocation_source_kind=_text(
+            "allocation_source_kind", allocation_policy["source_kind"]
+        ),
+        allocation_mode=_text("allocation_mode", allocation_policy["allocation_mode"]),
+        allocation_source_record_line_ref=_text(
+            "allocation_source_record_line_ref",
+            allocation_policy["source_record_line_ref"],
+        ),
         source_kind=_text("source_kind", value["source_kind"]),
         business_work_code=_text("business_work_code", value["business_work_code"]),
         registry_hash=expected_hash,

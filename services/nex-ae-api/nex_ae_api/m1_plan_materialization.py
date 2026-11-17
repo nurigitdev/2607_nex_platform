@@ -36,6 +36,7 @@ _D04_REFERENCE_FIELDS = {
     "posting_admission_hash",
     "posting_admission_expires_at",
 }
+_M1_PREPARATION_INPUT = "m1_preparation_checkpoint"
 
 
 @dataclass(frozen=True)
@@ -173,6 +174,9 @@ def _agent_plan(
         "accounting_approval_evidence_id": references[
             "accounting_approval_evidence_id"
         ],
+        # Durable runtime lineage only. The installed executor removes this
+        # value before constructing the canonical NSL/EOS WRITE payload.
+        _M1_PREPARATION_INPUT: preparation,
     }
     plan: dict[str, Any] = {
         "schema_version": "1.1",

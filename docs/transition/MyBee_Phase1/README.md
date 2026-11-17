@@ -253,6 +253,16 @@ Gate. The corrective `6A` boundary is closed without a migration or model
 provider, and the parent `.6` orchestration is ready to resume only as
 `allocation RUN -> VERIFY -> P&L REFRESH -> GET`.
 
+`CP-M1-E2E-FX-01B.6` implementation evidence is recorded in
+[`mybee_phase1_w70_cp_m1_e2e_fx_01b6_result_integration.md`](../../slices/mybee_phase1_w70_cp_m1_e2e_fx_01b6_result_integration.md).
+It connects the verified Journal to generic EOS SourcePool admission,
+allocation RUN/VERIFY, Batch-only P&L refresh, and authorized Project reads,
+then closes redacted PA/WC results, WA evidence intake, and owner-visible IA
+publication through existing product components. Actual OA/AE/WC/EOS/WA test
+databases, replay, restart, authorization/privacy negatives, zero residue, and
+the AE Slice Gate close the boundary without a migration or model provider.
+The next Slice is `CP-M1-E2E-FX-01B.7` protected public-product closure.
+
 `W70-S8-01A` implementation evidence is recorded in
 [`mybee_phase1_w70_s8_01a_tool_inventory.md`](../../slices/mybee_phase1_w70_s8_01a_tool_inventory.md).
 It closes the canonical Tool inventory, operation identity, compatibility
