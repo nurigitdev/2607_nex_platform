@@ -162,6 +162,16 @@ def test_registry_seeds_configured_bindings_idempotently_and_survives_restart() 
     assert context_version["metadata"]["hardening"] == (
         "resource_selector_enum_and_empty_default"
     )
+    delegation_binding = restarted.get_binding(
+        AE_PROJECT_DELEGATION_PLAN_BUILDER_BINDING
+    )
+    delegation_version = restarted.get_template_version(
+        delegation_binding["prompt_template_version_id"]
+    )
+    assert delegation_version["version"] == "v2"
+    assert delegation_version["metadata"]["hardening"] == (
+        "direct_plan_kind_exact_enum"
+    )
     assert restarted.get_binding("missing") is None
     assert restarted.get_template_version("missing") is None
 
@@ -205,6 +215,52 @@ def test_startup_upgrades_existing_context_v1_binding_with_history() -> None:
         history["new_prompt_template_version_id"] == after["prompt_template_version_id"]
     )
     assert history["correlation_id"] == "cp-m1-context-prompt-v3"
+
+
+def test_startup_upgrades_project_delegation_v1_binding_with_history() -> None:
+    factory = session_factory()
+    store = SqlAlchemyAePromptRegistryStore(factory)
+    historical = [
+        seed
+        for seed in AE_HISTORICAL_PROMPT_SEEDS
+        if seed.binding_key == AE_PROJECT_DELEGATION_PLAN_BUILDER_BINDING
+    ]
+    seed_prompt_registry(store, historical)
+
+    before = store.get_binding(AE_PROJECT_DELEGATION_PLAN_BUILDER_BINDING)
+    assert (
+        store.get_template_version(before["prompt_template_version_id"])["version"]
+        == "v1"
+    )
+
+    seed_ae_prompt_registry(store)
+
+    after = store.get_binding(AE_PROJECT_DELEGATION_PLAN_BUILDER_BINDING)
+    assert (
+        store.get_template_version(after["prompt_template_version_id"])["version"]
+        == "v2"
+    )
+    with factory() as session:
+        history = (
+            session.execute(
+                text(
+                    "SELECT old_prompt_template_version_id, "
+                    "new_prompt_template_version_id, correlation_id "
+                    "FROM ae_prompt_binding_history "
+                    "WHERE correlation_id = "
+                    "'cp-m1-project-delegation-prompt-v2'"
+                )
+            )
+            .mappings()
+            .one()
+        )
+    assert (
+        history["old_prompt_template_version_id"]
+        == before["prompt_template_version_id"]
+    )
+    assert (
+        history["new_prompt_template_version_id"] == after["prompt_template_version_id"]
+    )
 
 
 def test_startup_upgrades_existing_intent_v9_binding_with_history() -> None:

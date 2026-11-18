@@ -583,6 +583,7 @@ def test_active_intent_prompt_is_v11_and_delegation_prompt_is_separate():
     assert "allocation_project_code_1" in source
     assert '"ae.plan_builder.project_delegation.v1"' in source
     assert "p7.plan_candidate.v1" in source
+    assert "suggested_plan_kind equals DIRECT" in source
     assert "FINANCE.VOUCHER.APPROVE_AND_POST" in source
     assert "project_ref=None" in Path(
         "services/nex-ae-api/nex_ae_api/project_delegation_planning.py"
