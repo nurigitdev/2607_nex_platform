@@ -16,7 +16,9 @@
   - CP-M1-E2E-FX-01B.7 resume decision
 - Runtime code changes by this document: none
 - Database migration authorized by this document: none by default
-- Remote model-provider dependency: none for focused 6B.5A implementation
+- Remote model-provider dependency: none for deterministic-only focused
+  implementation; `.5A.3A` provider-assisted acceptance is the explicit
+  exception
 
 This controlled amendment closes the structural gaps discovered while
 entering installed composition. It does not add an M1 scenario path. It
@@ -356,6 +358,15 @@ JSON payloads or infer the assignment from untrusted content.
 - retain provider planning artifacts as non-authoritative evidence; and
 - prove ordinary non-product planning remains compatible.
 
+### CP-M1-E2E-FX-01B.6B.5A.3A: Advisory Product Planning Proposal Boundary
+
+Before installed activation, read and implement
+`NeX_MyBee_CP_M1_E2E_FX_01B_6B_5A_3A_Advisory_Product_Planning_Proposal_and_Deterministic_Execution_Boundary_v1.0.md`.
+It separates provider-generated Product planning proposals from final
+deterministic AgentPlan and ExecutablePlan authority, adds explicit
+coordinator planning policies, and prohibits an unavailable registered
+Product capability from silently falling through to direct provider planning.
+
 ### CP-M1-E2E-FX-01B.6B.5A.4: Activation Lock, Compose, OCI, And Readiness
 
 - create immutable coordinator activation and rollback receipts;
@@ -374,9 +385,11 @@ JSON payloads or infer the assignment from untrusted content.
 - record source, deployment, fixture-residue, and migration evidence; and
 - admit or deny completion of 6B.5 and resumption of 01B.7.
 
-Remote generation, embedding, and reranker providers are not required for
-6B.5A. The resumed 01B.7 acceptance owns live Qwen3.5-9B and authenticated
-Playwright evidence.
+Embedding and reranker providers are not required for 6B.5A. Generation is
+not required for deterministic-only focused checks, but provider-assisted
+proposal acceptance introduced by `.5A.3A` may use live Qwen3.5-9B when its
+policy is `PROVIDER_ASSISTED_REQUIRED`. The resumed 01B.7 acceptance still
+owns the complete live-provider and authenticated Playwright journey.
 
 ## 8. Verification Matrix
 

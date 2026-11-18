@@ -354,8 +354,18 @@ productizes owner-authoritative resolution, generic runtime assignment kinds,
 capability-selected public routing, one installed composition factory, and
 activation/readiness/rollback locks. It prohibits scenario branches, fixed
 business values, a second queue or worker, and a migration by default. `01B.7`
-remains suspended until the five `6B.5A` implementation Slices close the
-protected installed Gate.
+remains suspended until the five original `6B.5A` Slices and three corrective
+`.5A.3A` Slices close the protected installed Gate.
+
+After `CP-M1-E2E-FX-01B.6B.5A.3`, read
+[`NeX_MyBee_CP_M1_E2E_FX_01B_6B_5A_3A_Advisory_Product_Planning_Proposal_and_Deterministic_Execution_Boundary_v1.0.md`](NeX_MyBee_CP_M1_E2E_FX_01B_6B_5A_3A_Advisory_Product_Planning_Proposal_and_Deterministic_Execution_Boundary_v1.0.md)
+before `.5A.4`. The corrective amendment makes generation-provider planning
+an admitted, immutable, non-authoritative `ProductPlanningProposal`, while
+Product Coordinator checkpoints and deterministic materialization remain the
+only final execution authority. It also freezes explicit deterministic-only,
+provider-assisted optional, and provider-assisted required policies and
+prohibits registered Product work from silently falling through to direct
+provider planning.
 
 `CP-M1-E2E-FX-01B.6A.1` implementation evidence is recorded in
 [`mybee_phase1_w70_cp_m1_e2e_fx_01b6a1_refresh_contract_source_resolver.md`](../../slices/mybee_phase1_w70_cp_m1_e2e_fx_01b6a1_refresh_contract_source_resolver.md).
