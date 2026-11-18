@@ -25,6 +25,7 @@ from nex_ae_api.multi_step_engine import SqlAlchemyMultiStepEngine
 from nex_ae_api.plan_validation import SqlAlchemyPlanValidationRepository
 from nex_ae_api.planning_capabilities import SqlAlchemyCapabilitySnapshotRepository
 from nex_ae_api.product_capabilities import load_product_capability_registry
+from nex_ae_api.product_planning_coordinators import ProductPlanningPolicy
 from nex_ae_api.product_preparation_persistence import (
     ProductPreparationPersistenceError,
     SqlAlchemyGeneralizedWaitEventRepository,
@@ -48,10 +49,12 @@ from test_ae_mybee_w70_cp_m1_e2e_fx_01b5_plan_materialization import (
 from test_ae_mybee_w70_cp_m1_e2e_fx_01b6b2_preparation_resume import (
     ENVELOPE_ID,
     EVIDENCE_ID,
-    NOW as AUTHORITY_NOW,
     TENANT,
     _AuthoritySource,
     _PreparationAdapter,
+)
+from test_ae_mybee_w70_cp_m1_e2e_fx_01b6b2_preparation_resume import (
+    NOW as AUTHORITY_NOW,
 )
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -64,6 +67,14 @@ TRIGGER_ID = "61000000-0000-4000-8000-000000000002"
 LEGACY_INTERACTION_ID = "61000000-0000-4000-8000-000000000003"
 WORKSPACE_ID = "61000000-0000-4000-8000-000000000004"
 CONVERSATION_ID = "61000000-0000-4000-8000-000000000005"
+DETERMINISTIC_PERSISTENCE_POLICY = ProductPlanningPolicy(
+    mode="DETERMINISTIC_ONLY",
+    proposal_schema_version="ae.product_planning_proposal.v1",
+    prompt_binding_key="ae.plan_builder.project_delegation.v1",
+    admission_policy_ref="ae.product_planning_proposal.strict.v1",
+    deterministic_fallback_ref=None,
+    proposal_consumers=(),
+)
 
 
 class _ProtectedPreparationAdapter(_PreparationAdapter):
@@ -95,6 +106,7 @@ def _components(sessions, *, work_intent, adapter=None, authority_source=None):
     registration = build_m1_product_planning_coordinator_registration(
         product_capabilities=_registry(),
         preparation_registration=selected_adapter.registration,
+        planning_policy=DETERMINISTIC_PERSISTENCE_POLICY,
     )
     checkpoints = SqlAlchemyProductPreparationCheckpointRepository(sessions)
     waits = SqlAlchemyGeneralizedWaitEventRepository(sessions)

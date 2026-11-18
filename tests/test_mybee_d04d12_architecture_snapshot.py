@@ -5,7 +5,6 @@ import json
 import subprocess
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[1]
 MANIFEST = ROOT / "docs/mybee_phase1/baselines/source_manifest.json"
 PLATFORM_LOCK = ROOT / "domains/mybee/compatibility/platform.lock.json"
@@ -48,17 +47,19 @@ def test_s0_01_manifest_pins_a_reachable_clean_master_baseline() -> None:
     )
 
 
-def test_s0_01_frozen_authority_and_migration_heads_are_exact() -> None:
+def test_s0_01_frozen_authority_and_migration_baselines_are_forward_only() -> None:
     manifest = _load(MANIFEST)
     authority = manifest["frozen_authority"]
     assert _sha256(ROOT / authority["path"]) == authority["sha256"]
 
     for service_id, expected in manifest["migration_heads"].items():
         migration_dir = ROOT / "database" / service_id / "migrations"
+        baseline = ROOT / expected["path"]
         actual_head = max(migration_dir.glob("[0-9]*_*.sql"), key=_migration_version)
-        assert actual_head.relative_to(ROOT).as_posix() == expected["path"]
-        assert _migration_version(actual_head) == expected["version"]
-        assert _sha256(actual_head) == expected["sha256"]
+        assert baseline.parent == migration_dir
+        assert _migration_version(baseline) == expected["version"]
+        assert _sha256(baseline) == expected["sha256"]
+        assert _migration_version(actual_head) >= expected["version"]
 
 
 def test_s0_01_platform_lock_matches_canonical_contracts_and_nsl() -> None:

@@ -936,6 +936,8 @@ def test_s20_image_builder_stages_product_runtime_bundle(
         "deployment/locks/ae-mybee-m1-runtime-admission.v2.json": "{}\n",
         "deployment/locks/ae-mybee-m1-runtime-activation.v2.json": "{}\n",
         "deployment/locks/ae-mybee-m1-generalized-rollback.v1.json": "{}\n",
+        "deployment/locks/ae-mybee-m1-product-coordinator-activation.v1.json": "{}\n",
+        "deployment/locks/ae-mybee-m1-product-coordinator-rollback.v1.json": "{}\n",
         "deployment/locks/ae-mybee-m1-signed-skill-checkpoint.v1.json": "{}\n",
         "deployment/environments/ae-product-capability-registry.mybee-m1.v2.json": "{}\n",
         "domains/mybee/skills/m1_checkpoint/context.json": "{}\n",
@@ -973,6 +975,14 @@ def test_s20_image_builder_stages_product_runtime_bundle(
     assert (
         context
         / "repository/deployment/locks/ae-mybee-m1-runtime-activation.v2.json"
+    ).is_file()
+    assert (
+        context
+        / "repository/deployment/locks/ae-mybee-m1-product-coordinator-activation.v1.json"
+    ).is_file()
+    assert (
+        context
+        / "repository/deployment/locks/ae-mybee-m1-product-coordinator-rollback.v1.json"
     ).is_file()
     assert (
         context
