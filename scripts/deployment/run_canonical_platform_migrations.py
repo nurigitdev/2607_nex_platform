@@ -20,10 +20,13 @@ from nex_runtime import load_env_file
 from nex_runtime.demo_database import (
     DemoDatabaseGuardError,
     inspect_demo_database_targets,
+    load_current_platform_backup_set_manifest,
     load_demo_backup_set_manifest,
+    resolve_current_platform_database_targets,
     resolve_demo_database_targets,
 )
 from nex_runtime.demo_migrations import (
+    execute_current_platform_migration_closure,
     execute_demo_migration_closure,
 )
 from run_migrations import run_service_migrations
@@ -32,6 +35,33 @@ DEFAULT_REPORT = ROOT / "reports/deployment/canonical-platform-migrations.json"
 
 
 def run_canonical_platform_migrations(
+    environ: Mapping[str, str],
+    *,
+    backup_manifest_path: Path,
+    confirmation: str,
+    database_root: Path = ROOT / "database",
+    connect: Any = psycopg.connect,
+    migration_runner: Any = run_service_migrations,
+) -> dict[str, Any]:
+    targets = resolve_current_platform_database_targets(environ)
+    inspections = inspect_demo_database_targets(
+        targets,
+        database_root=database_root,
+        connect=connect,
+    )
+    backup_manifest = load_current_platform_backup_set_manifest(backup_manifest_path)
+    return execute_current_platform_migration_closure(
+        targets,
+        inspections,
+        backup_manifest,
+        confirmation=confirmation,
+        database_root=database_root,
+        migration_runner=migration_runner,
+        connect=connect,
+    )
+
+
+def run_p8_demo_migrations(
     environ: Mapping[str, str],
     *,
     backup_manifest_path: Path,
@@ -56,8 +86,6 @@ def run_canonical_platform_migrations(
         migration_runner=migration_runner,
         connect=connect,
     )
-
-
 def write_report(path: Path, report: Mapping[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
@@ -77,13 +105,21 @@ def summary_line(report: Mapping[str, Any]) -> str:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Apply admitted Canonical Platform migrations to the seven dev databases."
+        description=(
+            "Apply admitted Canonical Platform migrations to the eight current "
+            "development databases."
+        )
     )
     parser.add_argument("--env-file", type=Path)
     parser.add_argument("--backup-manifest", type=Path, required=True)
     parser.add_argument("--confirmation", required=True)
     parser.add_argument("--report", type=Path, default=DEFAULT_REPORT)
     parser.add_argument("--summary", action="store_true")
+    parser.add_argument(
+        "--historical-p8-demo",
+        action="store_true",
+        help=argparse.SUPPRESS,
+    )
     return parser
 
 
@@ -92,7 +128,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.env_file is not None:
         load_env_file(args.env_file)
     try:
-        report = run_canonical_platform_migrations(
+        runner = (
+            run_p8_demo_migrations
+            if args.historical_p8_demo
+            else run_canonical_platform_migrations
+        )
+        report = runner(
             os.environ,
             backup_manifest_path=args.backup_manifest,
             confirmation=args.confirmation,
@@ -113,6 +154,3 @@ def main(argv: Sequence[str] | None = None) -> int:
 
 if __name__ == "__main__":  # pragma: no cover
     raise SystemExit(main())
-
-
-run_demo_migrations = run_canonical_platform_migrations

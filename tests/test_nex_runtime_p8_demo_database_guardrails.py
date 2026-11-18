@@ -8,6 +8,7 @@ from types import SimpleNamespace
 
 import pytest
 from nex_runtime.demo_database import (
+    CURRENT_PLATFORM_DEVELOPMENT_DATABASE_TARGETS,
     DEMO_DATABASE_BACKUP_CONFIRMATION,
     DEMO_DATABASE_TARGETS,
     DemoBackupSetResult,
@@ -22,6 +23,7 @@ from nex_runtime.demo_database import (
     execute_demo_pre_migration_backup_set,
     inspect_demo_database_targets,
     load_demo_backup_set_manifest,
+    resolve_current_platform_database_targets,
     resolve_demo_database_targets,
     validate_demo_backup_set_manifest,
     write_demo_backup_credentials,
@@ -45,6 +47,17 @@ def _environment() -> dict[str, str]:
             f"{target.expected_database_name}"
         )
         for target in DEMO_DATABASE_TARGETS
+    }
+
+
+def _current_platform_environment() -> dict[str, str]:
+    return {
+        target.database_env: (
+            "postgresql+psycopg://"
+            f"{target.expected_role_name}:current-secret@127.0.0.1:5432/"
+            f"{target.expected_database_name}"
+        )
+        for target in CURRENT_PLATFORM_DEVELOPMENT_DATABASE_TARGETS
     }
 
 
@@ -132,6 +145,33 @@ def test_demo_targets_resolve_exact_seven_dev_identities_without_exposure() -> N
     ]
     assert all(item.host == "127.0.0.1" and item.port == 5432 for item in resolved)
     assert "demo-secret" not in repr(resolved)
+
+
+def test_current_platform_targets_add_wa_without_changing_demo_baseline() -> None:
+    resolved = resolve_current_platform_database_targets(
+        _current_platform_environment()
+    )
+
+    assert [item.target.service_id for item in resolved] == [
+        "nex-oa",
+        "nex-ag",
+        "nex-ae-api",
+        "nex-cx",
+        "nex-mo",
+        "nex-wc",
+        "nex-eos",
+        "nex-wa",
+    ]
+    assert resolved[-1].target.expected_database_name == "nex_wa_dev"
+    assert "current-secret" not in repr(resolved)
+    with pytest.raises(
+        DemoDatabaseGuardError,
+        match="current_platform_service_unknown",
+    ):
+        resolve_current_platform_database_targets(
+            _current_platform_environment(),
+            service_ids=("nex-unknown",),
+        )
 
 
 @pytest.mark.parametrize(

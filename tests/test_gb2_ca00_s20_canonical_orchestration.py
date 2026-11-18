@@ -39,6 +39,7 @@ def _targets() -> tuple[SimpleNamespace, ...]:
             "nex-mo",
             "nex-wc",
             "nex-eos",
+            "nex-wa",
         )
     )
 
@@ -81,12 +82,16 @@ def test_s20_installed_acceptance_orchestrates_live_and_restart_hooks(
         "_image_environment_from_installed_runtime_reports",
         lambda *_args: {"NEX_AE_RUNTIME_IMAGE": "example/ae@sha256:ae"},
     )
-    monkeypatch.setattr(installed, "resolve_demo_database_targets", lambda _env: _targets())
+    monkeypatch.setattr(
+        installed,
+        "resolve_current_platform_database_targets",
+        lambda _env: _targets(),
+    )
     monkeypatch.setattr(installed, "inspect_demo_database_targets", lambda *_args, **_kwargs: ())
     monkeypatch.setattr(
         installed,
-        "demo_database_admission_public_projection",
-        lambda _items: {"migration_current_count": 7, "state": "ADMITTED"},
+        "current_platform_database_admission_public_projection",
+        lambda _items: {"migration_current_count": 8, "state": "ADMITTED"},
     )
     monkeypatch.setattr(installed, "_pending_domain_counts", lambda _urls: {"pending": 0})
     monkeypatch.setattr(

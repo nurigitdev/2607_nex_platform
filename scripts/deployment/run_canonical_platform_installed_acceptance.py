@@ -13,12 +13,12 @@ import ssl
 import subprocess
 import sys
 import time
-from urllib.parse import urlsplit, urlunsplit
 from collections.abc import Callable, Mapping, Sequence
 from contextlib import contextmanager
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Any
+from urllib.parse import urlsplit, urlunsplit
 
 import psycopg
 import yaml
@@ -68,9 +68,9 @@ from nex_runtime.current_platform_installation import (
     admit_current_platform_installation,
 )
 from nex_runtime.demo_database import (
-    demo_database_admission_public_projection,
+    current_platform_database_admission_public_projection,
     inspect_demo_database_targets,
-    resolve_demo_database_targets,
+    resolve_current_platform_database_targets,
 )
 from nex_runtime.demo_domain_activation import (
     DEMO_DOMAIN_PROCESSES,
@@ -229,16 +229,18 @@ def execute_canonical_platform_acceptance(
     image_environment = _image_environment_from_installed_runtime_reports(
         image_report, ae_image_report
     )
-    targets = resolve_demo_database_targets(env)
+    targets = resolve_current_platform_database_targets(env)
     inspections = inspect_demo_database_targets(
         targets,
         database_root=root / "database",
         connect=psycopg.connect,
     )
-    database_admission = demo_database_admission_public_projection(inspections)
+    database_admission = current_platform_database_admission_public_projection(
+        inspections
+    )
     if database_admission["migration_current_count"] != len(targets):
         raise CanonicalPlatformInstalledAcceptanceError(
-            "all seven Demo dev databases must be migration-current"
+            "all eight current Platform dev databases must be migration-current"
         )
     urls = {item.target.service_id: item.database_url for item in targets}
     queue_counts = _pending_domain_counts(urls)
@@ -534,6 +536,7 @@ def _secret_values(
         "NEX_MO_DATABASE_URL": urls["nex-mo"],
         "NEX_WC_DATABASE_URL": urls["nex-wc"],
         "NEX_EOS_DATABASE_URL": urls["nex-eos"],
+        "NEX_WA_DATABASE_URL": urls["nex-wa"],
     }
     values = {
         target: _container_database_url(value)

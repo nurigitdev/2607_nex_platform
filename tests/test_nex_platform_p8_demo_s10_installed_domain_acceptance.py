@@ -22,6 +22,7 @@ def _urls() -> dict[str, str]:
         "nex-mo": "postgresql+psycopg://nex_mo_user:secret@127.0.0.1:5432/nex_mo_dev",
         "nex-wc": "postgresql+psycopg://nex_wc_user:secret@127.0.0.1:5432/nex_wc_dev",
         "nex-eos": "postgresql+psycopg://nex_eos_user:secret@127.0.0.1:5432/nex_eos_dev",
+        "nex-wa": "postgresql+psycopg://nex_wa_user:secret@127.0.0.1:5432/nex_wa_dev",
     }
 
 
@@ -118,6 +119,9 @@ def test_secret_material_covers_base_bindings_without_exposing_urls() -> None:
     assert values["NEX_AE_DATABASE_URL"].startswith(
         "postgresql+psycopg://nex_ae_user:secret@host.docker.internal"
     )
+    assert values["NEX_WA_DATABASE_URL"].startswith(
+        "postgresql+psycopg://nex_wa_user:secret@host.docker.internal"
+    )
     assert len(values) == len(acceptance.DEMO_SECRET_BINDINGS)
     assert values["NEX_MO_VLLM_API_KEY"].startswith("unused-")
     with pytest.raises(acceptance.P8DemoS10AcceptanceError, match="PostgreSQL"):
@@ -130,9 +134,7 @@ def test_runtime_traefik_config_uses_operator_provider_endpoints(
     destination = tmp_path / "dynamic.yaml"
     path = acceptance._materialize_runtime_traefik_config(
         {
-            "NEX_MO_REMOTE_EMBEDDING_URL": (
-                "http://192.168.20.243:9112/v1/embeddings"
-            ),
+            "NEX_MO_REMOTE_EMBEDDING_URL": ("http://192.168.20.243:9112/v1/embeddings"),
             "NEX_MO_REMOTE_RERANKER_URL": "http://192.168.20.243:9113/v1/rerank",
             "NEX_MO_VLLM_BASE_URL": "http://192.168.20.243:9116",
         },

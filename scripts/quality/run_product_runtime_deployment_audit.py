@@ -22,6 +22,7 @@ CANONICAL_DEPLOYMENT_ENTRYPOINTS = (
     "scripts/deployment/build_canonical_platform_images.py",
     "scripts/deployment/build_canonical_platform_ae_runtime_image.py",
     "scripts/deployment/check_canonical_platform_compose.py",
+    "scripts/deployment/run_canonical_platform_database_guardrails.py",
     "scripts/deployment/run_canonical_platform_external_dependencies.py",
     "scripts/deployment/run_canonical_platform_migrations.py",
     "scripts/deployment/run_canonical_platform_trust_admission.py",

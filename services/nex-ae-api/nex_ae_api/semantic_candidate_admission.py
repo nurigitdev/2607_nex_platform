@@ -60,6 +60,9 @@ from nex_ae_api.product_capability_retirements import (
     ProductCapabilityRetirementProjection,
     load_product_capability_retirement_projection,
 )
+from nex_ae_api.product_domain_intent_activators import (
+    build_active_product_domain_intent_activator_registry,
+)
 from nex_ae_api.product_planning_proposals import (
     ProductPlanningProposalError,
     build_product_planning_proposal,
@@ -1202,6 +1205,12 @@ def attach_semantic_candidate_admission(
     product_capabilities = product_capability_retirements.selectable_registry(
         registered_product_capabilities
     )
+    domain_intent_activators = build_active_product_domain_intent_activator_registry(
+        resolved_environ,
+        product_capability_registry=product_capabilities,
+        retirement_projection=product_capability_retirements,
+        session_factory=session_factory,
+    )
     service = DeterministicCandidateAdmissionService(
         mode=mode,
         admission=admission,
@@ -1220,7 +1229,7 @@ def attach_semantic_candidate_admission(
         validations=SqlAlchemyPlanValidationRepository(session_factory),
         executable_plans=SqlAlchemyExecutablePlanRepository(session_factory),
         executions=SqlAlchemyAgentExecutionRepository(session_factory),
-        domain_intent_activator_registry=DomainIntentActivatorRegistry(),
+        domain_intent_activator_registry=domain_intent_activators,
         product_capability_registry=product_capabilities,
         product_capability_retirements=product_capability_retirements,
     )

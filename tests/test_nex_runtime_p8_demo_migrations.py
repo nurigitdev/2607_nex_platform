@@ -13,6 +13,7 @@ from nex_runtime.demo_database import (
     resolve_demo_database_targets,
 )
 from nex_runtime.demo_migrations import (
+    CURRENT_PLATFORM_MIGRATION_CONFIRMATION,
     DEMO_MIGRATION_CONFIRMATION,
     execute_demo_migration_closure,
 )
@@ -332,14 +333,14 @@ def _load_script():
     return module
 
 
-def test_demo_migration_cli_summary_report_and_error(
+def test_current_platform_migration_cli_summary_report_and_error(
     tmp_path: Path, monkeypatch, capsys
 ) -> None:
     module = _load_script()
     report = {
         "status": "PASS",
-        "service_count": 7,
-        "migration_current_count": 7,
+        "service_count": 8,
+        "migration_current_count": 8,
         "backup_id": "backup",
         "services": [{"applied": ["0001"]}],
     }
@@ -355,7 +356,7 @@ def test_demo_migration_cli_summary_report_and_error(
                 "--backup-manifest",
                 str(tmp_path / "backup.json"),
                 "--confirmation",
-                DEMO_MIGRATION_CONFIRMATION,
+                CURRENT_PLATFORM_MIGRATION_CONFIRMATION,
                 "--report",
                 str(output),
                 "--summary",
@@ -364,7 +365,7 @@ def test_demo_migration_cli_summary_report_and_error(
         == 0
     )
     assert json.loads(output.read_text(encoding="utf-8")) == report
-    assert "current=7" in capsys.readouterr().out
+    assert "current=8" in capsys.readouterr().out
 
     monkeypatch.setattr(
         module,
@@ -379,9 +380,51 @@ def test_demo_migration_cli_summary_report_and_error(
                 "--backup-manifest",
                 str(tmp_path / "backup.json"),
                 "--confirmation",
-                DEMO_MIGRATION_CONFIRMATION,
+                CURRENT_PLATFORM_MIGRATION_CONFIRMATION,
             ]
         )
         == 1
     )
     assert "safe_failure" in capsys.readouterr().err
+
+
+def test_historical_p8_demo_cli_selects_seven_database_runner(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    module = _load_script()
+    report = {
+        "status": "PASS",
+        "service_count": 7,
+        "migration_current_count": 7,
+        "backup_id": "backup",
+        "services": [{"applied": []}],
+    }
+    monkeypatch.setattr(
+        module,
+        "run_canonical_platform_migrations",
+        lambda *_args, **_kwargs: pytest.fail(
+            "historical command must not use current-platform admission"
+        ),
+    )
+    monkeypatch.setattr(
+        module,
+        "run_p8_demo_migrations",
+        lambda *_args, **_kwargs: report,
+    )
+
+    assert (
+        module.main(
+            [
+                "--historical-p8-demo",
+                "--backup-manifest",
+                str(tmp_path / "backup.json"),
+                "--confirmation",
+                DEMO_MIGRATION_CONFIRMATION,
+                "--report",
+                str(tmp_path / "report.json"),
+                "--summary",
+            ]
+        )
+        == 0
+    )
+    assert "services=7" in capsys.readouterr().out
