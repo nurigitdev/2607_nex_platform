@@ -1,4 +1,4 @@
-import { createReadStream, existsSync, statSync } from "node:fs";
+import { createReadStream, existsSync, readFileSync, statSync } from "node:fs";
 import { createServer, request as httpRequest } from "node:http";
 import { request as httpsRequest } from "node:https";
 import { extname, join, normalize, resolve, sep } from "node:path";
@@ -10,6 +10,7 @@ const webBaseUrl = optionalHttpUrl(process.env.NEX_AE_WEB_BASE_URL);
 const port = Number(process.env.PORT || webBaseUrl?.port || defaultPort(webBaseUrl) || 5173);
 const host = process.env.HOST || webBaseUrl?.hostname || "127.0.0.1";
 const aeApiProxyTarget = process.env.AE_API_PROXY_TARGET || process.env.NEX_AE_API_BASE_URL || "";
+const installedTenantId = process.env.NEX_AE_WEB_TENANT_ID || "";
 export const AE_API_PROXY_PREFIX = "/ae-api";
 
 function optionalHttpUrl(value) {
@@ -45,8 +46,10 @@ const mimeTypes = {
 export function createAeWebServer({
   rootDir = staticRoot,
   apiProxyTarget = aeApiProxyTarget,
-  apiProxyPrefix = AE_API_PROXY_PREFIX
+  apiProxyPrefix = AE_API_PROXY_PREFIX,
+  tenantId = installedTenantId
 } = {}) {
+  const admittedTenantId = normalizeTenantId(tenantId);
   return createServer((request, response) => {
     const url = new URL(request.url || "/", `http://${request.headers.host}`);
     if (isProxyPath(url.pathname, apiProxyPrefix)) {
@@ -88,8 +91,28 @@ export function createAeWebServer({
       "referrer-policy": "same-origin"
     });
     if (request.method === "HEAD") response.end();
+    else if (extname(filePath) === ".html" && admittedTenantId) {
+      response.end(injectTenantMeta(readFileSync(filePath, "utf8"), admittedTenantId));
+    }
     else createReadStream(filePath).pipe(response);
   });
+}
+
+export function injectTenantMeta(html, tenantId) {
+  const admittedTenantId = normalizeTenantId(tenantId);
+  if (!admittedTenantId) return html;
+  const pattern = /(<meta\s+name=["']nex-ae-tenant-id["']\s+content=["'])[^"']*(["']\s*\/?>)/i;
+  if (!pattern.test(html)) throw new Error("AE Web tenant meta is unavailable");
+  return html.replace(pattern, `$1${admittedTenantId}$2`);
+}
+
+function normalizeTenantId(value) {
+  const normalized = String(value || "").trim();
+  if (!normalized) return "";
+  if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(normalized)) {
+    throw new Error("NEX_AE_WEB_TENANT_ID is invalid");
+  }
+  return normalized;
 }
 
 export function isProxyPath(pathname, apiProxyPrefix = AE_API_PROXY_PREFIX) {

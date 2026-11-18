@@ -424,7 +424,9 @@ async function waitForResult(page, interactionId, timeout) {
 }
 
 async function login(page, { tenantId, employeeId, password, timeout }) {
-  await page.fill("#credential-tenant-id", tenantId);
+  if (await page.locator("#credential-tenant-id").count()) {
+    await page.fill("#credential-tenant-id", tenantId);
+  }
   await page.fill("#credential-employee-id", employeeId);
   await page.fill("#credential-password", password);
   const responsePromise = page.waitForResponse(response =>
@@ -433,7 +435,20 @@ async function login(page, { tenantId, employeeId, password, timeout }) {
   { timeout });
   await page.click("#credential-login-submit-button");
   const response = await responsePromise;
-  if (response.status() !== 200) throw new Error(`CredentialLoginStatus${response.status()}`);
+  if (response.status() !== 200) {
+    let payload = null;
+    try {
+      payload = await response.json();
+    } catch {
+      payload = null;
+    }
+    const errorCode = String(payload?.error_code || "");
+    throw new Error(
+      /^[A-Za-z][A-Za-z0-9_.-]{0,95}$/.test(errorCode)
+        ? errorCode.replaceAll(/[^A-Za-z0-9]/g, "")
+        : `CredentialLoginStatus${response.status()}`
+    );
+  }
   await page.waitForSelector("#authenticated-shell:not([hidden])", { timeout });
 }
 

@@ -179,6 +179,7 @@ def execute_m1_product_golden_journey(
 
     runtime_env = {
         **env,
+        "NEX_AE_WEB_TENANT_ID": str(baseline["tenant"]["tenant_id"]),
         "NEX_CANONICAL_PLATFORM_SEMANTIC_CALIBRATION_POLICIES_JSON": (
             _semantic_calibration_json(model_ref=model_revision)
         ),
