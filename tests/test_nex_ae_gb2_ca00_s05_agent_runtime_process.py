@@ -176,12 +176,27 @@ def test_local_mock_check_is_package_only_and_execution_is_rejected() -> None:
 def test_protected_profile_selects_product_executor_composition(monkeypatch) -> None:
     engine = _sqlite_engine()
     product_profile = process.build_deterministic_component_executor_profile()
+    product_skill_runtime = SimpleNamespace()
     observed = []
     monkeypatch.setattr(
         process,
+        "build_installed_product_skill_runtime",
+        lambda sessions, environ: product_skill_runtime,
+    )
+    monkeypatch.setattr(
+        process,
         "build_product_runtime_executor_profile",
-        lambda sessions, environ: (
-            observed.append((sessions, environ)) or product_profile
+        lambda sessions, environ, **values: (
+            observed.append((sessions, environ, values)) or product_profile
+        ),
+    )
+    monkeypatch.setattr(
+        process,
+        "build_activated_m1_product_planning_composition",
+        lambda **values: SimpleNamespace(
+            assignment_handler=None,
+            runtime_registry=SimpleNamespace(identities=()),
+            environ=values["environ"],
         ),
     )
     installed = process.build_installed_agent_runtime_process(
@@ -205,6 +220,7 @@ def test_protected_profile_selects_product_executor_composition(monkeypatch) -> 
         assert installed.composition.product_planning.assignment_handler is None
         assert not hasattr(installed, "mybee_product_consumer")
         assert len(observed) == 1
+        assert observed[0][2]["runtime"] is product_skill_runtime
     finally:
         installed.close()
 

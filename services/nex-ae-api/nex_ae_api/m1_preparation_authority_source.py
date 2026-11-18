@@ -36,6 +36,9 @@ TRANSACTION_PREPARATION_AUTHORITY_REQUEST_SCHEMA = (
 TRANSACTION_PREPARATION_AUTHORITY_RESPONSE_SCHEMA = (
     "eos_transaction_preparation_authority_resolution.v1"
 )
+M1_PREPARATION_AUTHORITY_SOURCE_IDENTITY = (
+    "nex-ae:m1-preparation-authority:http-eos-oa:v1"
+)
 
 _RESPONSE_FIELDS = frozenset(
     {

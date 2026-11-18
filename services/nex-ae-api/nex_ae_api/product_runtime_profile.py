@@ -31,6 +31,8 @@ VERIFIED_PRODUCT_RELEASE_PROFILE = "VERIFIED_PRODUCT_RELEASE"
 def build_product_runtime_executor_profile(
     sessions: sessionmaker[Session],
     environ: Mapping[str, str],
+    *,
+    runtime: M1InstalledSkillRuntime | None = None,
 ) -> RuntimeExecutorProfile:
     """Compose the installed product LOCAL_SKILL and controlled WRITE profile."""
 
@@ -40,12 +42,55 @@ def build_product_runtime_executor_profile(
     ).strip()
     if selected != VERIFIED_PRODUCT_RELEASE_PROFILE:
         raise ValueError("NEX_AE_PRODUCT_RUNTIME_PROFILE is not admitted")
-    return _build_verified_product_release_profile(sessions, environ)
+    return _build_verified_product_release_profile(
+        sessions,
+        environ,
+        runtime=runtime,
+    )
 
 
 def _build_verified_product_release_profile(
-    sessions: sessionmaker[Session], environ: Mapping[str, str]
+    sessions: sessionmaker[Session],
+    environ: Mapping[str, str],
+    *,
+    runtime: M1InstalledSkillRuntime | None = None,
 ) -> RuntimeExecutorProfile:
+    expected_admission, activation = _admit_verified_product_release(environ)
+    installed = runtime or _build_installed_product_skill_runtime(sessions, environ)
+    registry = default_p6_executor_registry(
+        lambda _context: {},
+        local_skill_dependencies=installed.dependencies,
+        local_skill_handler=installed.initial,
+        local_skill_continuation_handler=installed.resume,
+    )
+    readiness = {
+        **dict(installed.package_readiness),
+        "runtime_profile": VERIFIED_PRODUCT_RELEASE_PROFILE,
+        "admission_hash": expected_admission["content_hash"],
+        "activation_hash": activation["content_hash"],
+    }
+    return RuntimeExecutorProfile(
+        registry=registry,
+        executor_backends={
+            kind: installed.backend_profile for kind in registry.registered_kinds
+        },
+        package_readiness=readiness,
+    )
+
+
+def build_installed_product_skill_runtime(
+    sessions: sessionmaker[Session],
+    environ: Mapping[str, str],
+) -> M1InstalledSkillRuntime:
+    """Build the single admitted Product Skill runtime shared by worker roles."""
+
+    _admit_verified_product_release(environ)
+    return _build_installed_product_skill_runtime(sessions, environ)
+
+
+def _admit_verified_product_release(
+    environ: Mapping[str, str],
+) -> tuple[dict[str, object], dict[str, object]]:
     admission_path = _path(
         environ,
         "NEX_AE_PRODUCT_RUNTIME_ADMISSION_PATH",
@@ -59,8 +104,9 @@ def _build_verified_product_release_profile(
         "NEX_AE_PRODUCT_RUNTIME_ACTIVATION_PATH",
         ROOT / "deployment/locks/ae-mybee-m1-runtime-activation.v2.json",
     )
+    activation = _json_object(activation_path)
     _verify_activation_lock(
-        _json_object(activation_path),
+        activation,
         admission=expected_admission,
         repository_root=_path(
             environ,
@@ -69,31 +115,19 @@ def _build_verified_product_release_profile(
             require_existing=True,
         ),
     )
-    runtime = M1InstalledSkillRuntime(
+    return expected_admission, activation
+
+
+def _build_installed_product_skill_runtime(
+    sessions: sessionmaker[Session],
+    environ: Mapping[str, str],
+) -> M1InstalledSkillRuntime:
+    return M1InstalledSkillRuntime(
         sessions,
         catalog=build_mybee_m1_verified_skill_catalog(environ),
         config=load_verified_product_runtime_config(environ),
         transaction_preparation=build_installed_m1_transaction_preparation(environ),
         allocation_plan_resolution=build_installed_allocation_plan_resolution(environ),
-    )
-    registry = default_p6_executor_registry(
-        lambda _context: {},
-        local_skill_dependencies=runtime.dependencies,
-        local_skill_handler=runtime.initial,
-        local_skill_continuation_handler=runtime.resume,
-    )
-    readiness = {
-        **dict(runtime.package_readiness),
-        "runtime_profile": VERIFIED_PRODUCT_RELEASE_PROFILE,
-        "admission_hash": expected_admission["content_hash"],
-        "activation_hash": _json_object(activation_path)["content_hash"],
-    }
-    return RuntimeExecutorProfile(
-        registry=registry,
-        executor_backends={
-            kind: runtime.backend_profile for kind in registry.registered_kinds
-        },
-        package_readiness=readiness,
     )
 
 

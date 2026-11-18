@@ -200,6 +200,8 @@ def _stage_context(
         "deployment/locks/ae-mybee-m1-runtime-admission.v2.json",
         "deployment/locks/ae-mybee-m1-runtime-activation.v2.json",
         "deployment/locks/ae-mybee-m1-generalized-rollback.v1.json",
+        "deployment/locks/ae-mybee-m1-product-coordinator-activation.v1.json",
+        "deployment/locks/ae-mybee-m1-product-coordinator-rollback.v1.json",
         "deployment/locks/ae-mybee-m1-signed-skill-checkpoint.v1.json",
         "deployment/locks/nsl-v0.2.1-wheel.json",
         "deployment/locks/python-production.lock",

@@ -147,9 +147,22 @@ services:
       NEX_AE_AGENT_RUNTIME_MODE: required
       NEX_AE_PLANNING_MODE: required
       NEX_AE_PRODUCT_CAPABILITY_REGISTRY_PATH: /app/deployment/product/repository/deployment/environments/ae-product-capability-registry.mybee-m1.v2.json
+      NEX_AE_PRODUCT_COORDINATOR_ACTIVATION_PATH: /app/deployment/product/repository/deployment/locks/ae-mybee-m1-product-coordinator-activation.v1.json
+      NEX_AE_PRODUCT_COORDINATOR_ROLLBACK_PATH: /app/deployment/product/repository/deployment/locks/ae-mybee-m1-product-coordinator-rollback.v1.json
+      NEX_AE_PRODUCT_RUNTIME_PROFILE: VERIFIED_PRODUCT_RELEASE
+      NEX_AE_PRODUCT_REPOSITORY_ROOT: /app/deployment/product/repository
+      NEX_AE_PRODUCT_RUNTIME_ADMISSION_PATH: /app/deployment/product/repository/deployment/locks/ae-mybee-m1-runtime-admission.v2.json
+      NEX_AE_PRODUCT_RUNTIME_ACTIVATION_PATH: /app/deployment/product/repository/deployment/locks/ae-mybee-m1-runtime-activation.v2.json
+      NEX_AE_PRODUCT_TOOL_CATALOG_PATH: /app/deployment/product/repository/domains/mybee/skills/m1_checkpoint/tool_catalog.v1.json
+      NEX_AE_PRODUCT_RUNTIME_CONTEXT_PATH: /app/deployment/product/repository/domains/mybee/skills/m1_checkpoint/context.json
+      NEX_AE_AGENT_WORKER_NSL_WHEEL_LOCK: /app/deployment/product/repository/deployment/locks/nsl-v0.2.1-wheel.json
+      NEX_AE_NSL_PLATFORM_LOCK: /app/deployment/product/repository/deployment/locks/python-production.lock
+      NEX_AE_NSL_STATE_ROOT: /var/lib/nex-platform/ae-runtime/nsl
+      NEX_AE_MYBEE_EOS_TIMEOUT_SECONDS: "15"
       NEX_AE_PROJECT_AGENT_PROFILE_POLICY_PATH: /app/deployment/product/config/project-agent-profile-policy.v1.json
       NEX_AE_P65_SEMANTIC_CALIBRATION_POLICIES_JSON: ${NEX_CANONICAL_PLATFORM_SEMANTIC_CALIBRATION_POLICIES_JSON:?semantic calibration policies are required}
       NEX_AE_TO_MO_SERVICE_TOKEN_REF: secret://openbao/nex-platform/staging/nex-ae-api/NEX_AE_TO_MO_SERVICE_TOKEN@${NEX_CANONICAL_PLATFORM_SECRET_VERSION:-v1}
+      NEX_AE_TO_OA_SERVICE_TOKEN_REF: secret://openbao/nex-platform/staging/nex-ae-api/NEX_AE_TO_OA_SERVICE_TOKEN@${NEX_CANONICAL_PLATFORM_SECRET_VERSION:-v1}
       NEX_AE_TO_AG_SERVICE_TOKEN_REF: secret://openbao/nex-platform/staging/nex-ae-api/NEX_AE_TO_AG_SERVICE_TOKEN@${NEX_CANONICAL_PLATFORM_SECRET_VERSION:-v1}
       NEX_WC_BASE_URL: https://wc.nex-staging.test:8443
       NEX_EOS_BASE_URL: https://eos.nex-staging.test:8443
@@ -287,6 +300,8 @@ services:
       NEX_AE_M1_SIGNED_SKILL_LOCK: /app/deployment/product/repository/deployment/locks/ae-mybee-m1-signed-skill-checkpoint.v1.json
       NEX_AE_PRODUCT_RUNTIME_ADMISSION_PATH: /app/deployment/product/repository/deployment/locks/ae-mybee-m1-runtime-admission.v2.json
       NEX_AE_PRODUCT_RUNTIME_ACTIVATION_PATH: /app/deployment/product/repository/deployment/locks/ae-mybee-m1-runtime-activation.v2.json
+      NEX_AE_PRODUCT_COORDINATOR_ACTIVATION_PATH: /app/deployment/product/repository/deployment/locks/ae-mybee-m1-product-coordinator-activation.v1.json
+      NEX_AE_PRODUCT_COORDINATOR_ROLLBACK_PATH: /app/deployment/product/repository/deployment/locks/ae-mybee-m1-product-coordinator-rollback.v1.json
       NEX_AE_PRODUCT_CAPABILITY_REGISTRY_PATH: /app/deployment/product/repository/deployment/environments/ae-product-capability-registry.mybee-m1.v2.json
       NEX_AE_PRODUCT_TOOL_CATALOG_PATH: /app/deployment/product/repository/domains/mybee/skills/m1_checkpoint/tool_catalog.v1.json
       NEX_AE_PRODUCT_RUNTIME_CONTEXT_PATH: /app/deployment/product/repository/domains/mybee/skills/m1_checkpoint/context.json

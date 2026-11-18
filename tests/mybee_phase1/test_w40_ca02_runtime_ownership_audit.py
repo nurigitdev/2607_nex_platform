@@ -36,6 +36,7 @@ def test_current_repository_freezes_runtime_ownership_and_installed_binding() ->
         "services/nex-ae-api/nex_ae_api/m1_transaction_preparation_runtime.py",
         "services/nex-ae-api/nex_ae_api/mybee_m1_skill_runtime.py",
         "services/nex-ae-api/nex_ae_api/mybee_product_consumer.py",
+        "services/nex-ae-api/nex_ae_api/product_coordinator_activation.py",
         "services/nex-ae-api/nex_ae_api/product_planning_runtime.py",
         "services/nex-ae-api/nex_ae_api/project_pnl_refresh_runtime.py",
     ]

@@ -44,10 +44,14 @@ from nex_ae_api.mybee_product_admission import (
 )
 from nex_ae_api.nsl_backend_profiles import NSL_V01_PROCESS_ISOLATED_BACKEND
 from nex_ae_api.product_capabilities import load_product_capability_registry
+from nex_ae_api.product_coordinator_activation import (
+    build_activated_m1_product_planning_composition,
+)
 from nex_ae_api.product_planning_runtime import (
     build_contract_m1_product_planning_composition,
 )
 from nex_ae_api.product_runtime_profile import (
+    build_installed_product_skill_runtime,
     build_product_runtime_executor_profile,
 )
 from nex_ae_api.runtime_composition import (
@@ -262,9 +266,18 @@ def build_installed_agent_runtime_process(
         mybee_admission = not_required_mybee_product_admission()
         if selected in {"staging_live", "production"}:
             mybee_admission = require_mybee_product_package()
+        product_skill_runtime = None
         if selected_executor_profile is None:
+            if selected in {"staging_live", "production"}:
+                product_skill_runtime = build_installed_product_skill_runtime(
+                    sessions, env
+                )
             selected_executor_profile = (
-                build_product_runtime_executor_profile(sessions, env)
+                build_product_runtime_executor_profile(
+                    sessions,
+                    env,
+                    runtime=product_skill_runtime,
+                )
                 if selected in {"staging_live", "production"}
                 else build_deterministic_component_executor_profile()
             )
@@ -272,10 +285,21 @@ def build_installed_agent_runtime_process(
         background_result_closer = None
         product_planning = None
         if selected in {"staging_live", "production"}:
-            product_planning = build_contract_m1_product_planning_composition(
-                sessions=sessions,
-                product_capabilities=load_product_capability_registry(env),
-            )
+            product_capabilities = load_product_capability_registry(env)
+            if str(
+                env.get("NEX_AE_PRODUCT_COORDINATOR_ACTIVATION_PATH") or ""
+            ).strip():
+                product_planning = build_activated_m1_product_planning_composition(
+                    sessions=sessions,
+                    product_capabilities=product_capabilities,
+                    environ=env,
+                    product_runtime=product_skill_runtime,
+                )
+            else:
+                product_planning = build_contract_m1_product_planning_composition(
+                    sessions=sessions,
+                    product_capabilities=product_capabilities,
+                )
             completion_notifier = build_ae_wa_post_completion_notifier(
                 agent_results=SqlAlchemyAgentResultWaProjectionSource(
                     SqlAlchemyAgentResultRepository(sessions)

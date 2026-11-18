@@ -21,7 +21,6 @@ from nex_ae_api.product_controlled_skill import (
     _product_business_binding,
     _product_handlers,
 )
-from nex_ae_api.step_executors import LocalSkillExecutorDependencies
 from nex_runtime.nsl_runtime_bundle import (
     NslRuntimeBundleError,
     load_nsl_runtime_bundle,
@@ -165,7 +164,7 @@ def test_product_profile_defaults_to_generalized_verified_release(
     monkeypatch.setattr(
         profile,
         "_build_verified_product_release_profile",
-        lambda sessions, environ: (
+        lambda sessions, environ, **_values: (
             observed.update(sessions=sessions, environ=environ) or expected
         ),
     )

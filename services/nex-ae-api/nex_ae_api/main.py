@@ -53,6 +53,9 @@ from nex_ae_api.private_object_store import (
     AePrivateObjectStorageError,
     build_ae_private_object_store,
 )
+from nex_ae_api.product_coordinator_activation import (
+    build_activated_m1_product_planning_composition,
+)
 from nex_ae_api.product_planning_event_api import (
     register_product_planning_event_routes,
 )
@@ -271,12 +274,20 @@ if (
     SERVICE_PERSISTENCE.api_session_factory is not None
     and AE_SEMANTIC_CANDIDATE_ADMISSION.service is not None
 ):
-    AE_PRODUCT_PLANNING = build_contract_m1_product_planning_composition(
-        sessions=SERVICE_PERSISTENCE.api_session_factory,
-        product_capabilities=(
-            AE_SEMANTIC_CANDIDATE_ADMISSION.service.product_capability_registry
-        ),
+    _product_capabilities = (
+        AE_SEMANTIC_CANDIDATE_ADMISSION.service.product_capability_registry
     )
+    if os.getenv("NEX_AE_PRODUCT_COORDINATOR_ACTIVATION_PATH", "").strip():
+        AE_PRODUCT_PLANNING = build_activated_m1_product_planning_composition(
+            sessions=SERVICE_PERSISTENCE.api_session_factory,
+            product_capabilities=_product_capabilities,
+            environ=os.environ,
+        )
+    else:
+        AE_PRODUCT_PLANNING = build_contract_m1_product_planning_composition(
+            sessions=SERVICE_PERSISTENCE.api_session_factory,
+            product_capabilities=_product_capabilities,
+        )
     AE_SEMANTIC_CANDIDATE_ADMISSION = replace(
         AE_SEMANTIC_CANDIDATE_ADMISSION,
         service=replace(

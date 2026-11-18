@@ -1,0 +1,329 @@
+{
+  "activation_id": "mybee-m1-product-coordinator-active-v1",
+  "activation_state": "ACTIVE",
+  "authority_resolver": {
+    "implementation_ref": "nex_ae_api.m1_preparation_authority_source:HttpM1PreparationAuthoritySource",
+    "preparation_adapter_source_identity": "mybee:m1-preparation:MYBEE.M1.AUTHORITATIVE_TRANSACTION_PREPARATION:1.0.0:sha256:5eef656e73f922c16c39c17808503fc5cae477b00f9c64f832215d7acda8e2fe",
+    "source_identity": "nex-ae:m1-preparation-authority:http-eos-oa:v1"
+  },
+  "checkpoint_schema_version": "ae.product_preparation_checkpoint.v1",
+  "content_hash": "sha256:2a1f8a3c4e9a2a6bf023fc30753fdb724c63a94246e5d0ba24c6ae59fb8545ad",
+  "content_included": false,
+  "coordinator_registration": {
+    "coordinator_id": "MYBEE.M1.TRANSACTION_PREPARATION",
+    "coordinator_version": "1.1.0",
+    "planning_policy_hash": "sha256:e078944dabf8ef652e9e77aeb0998ac6fc9876b6e0af3b658bd092545e978b2f",
+    "registration_hash": "sha256:d4a416905563acac19514ffcc9f89dbc9c980efe7ea37662129144dd74f667b6"
+  },
+  "coordinator_registry": {
+    "registry_hash": "sha256:f31611e9c0997e32388dfd2c32d97f283d603a68d0307da2398de450e60585d3",
+    "registry_id": "ae-product-coordinators-mybee-m1",
+    "registry_version": 3
+  },
+  "materializer_source_identity": "nex-ae:m1-plan-materializer:ae.m1_plan_materialization.v1",
+  "migration_inventory": {
+    "count": 64,
+    "entries": [
+      {
+        "name": "0021_prompt_analytics_foundation.sql",
+        "sha256": "sha256:e9342a92d81126e4b932c3fecd400e5e8cc0521e057024b135cb3b4bf8344901"
+      },
+      {
+        "name": "0029_prompt_registry_seed.sql",
+        "sha256": "sha256:3ec9eb93b21e3079abaf579d418001643644b52afeacecb8d368c371dc9cc814"
+      },
+      {
+        "name": "0083_service_job_queue_foundation.sql",
+        "sha256": "sha256:6b08fc08d24d8b8269fdd81723c050b0ffa5617ff811d5b30aa485426ebbd753"
+      },
+      {
+        "name": "0085_service_operational_events_foundation.sql",
+        "sha256": "sha256:72bac83d865bd6ac0965d88573c4cd8828cb5debd4983f12b753aedb7c92b7e9"
+      },
+      {
+        "name": "0112_service_worker_heartbeat_foundation.sql",
+        "sha256": "sha256:a23f39861158f05a3811910ad661eb23a33e7e191a3eb4bad5f4a8a9828a5444"
+      },
+      {
+        "name": "0135_service_job_replay_lineage.sql",
+        "sha256": "sha256:54dd144f20d0a145cf082cd30723c4e43d388966d7086fa4c16f7d0b291d098f"
+      },
+      {
+        "name": "0137_service_log_entries_foundation.sql",
+        "sha256": "sha256:594718b82c2e93da37d0a70dad14be541277a700c835f60dc1e5817c444b53ef"
+      },
+      {
+        "name": "0157_service_log_retention_history.sql",
+        "sha256": "sha256:6fef18c63240104ec17dc26ddbd395c297782775a8d926d0ab77098d68abda57"
+      },
+      {
+        "name": "0334_ae_generation_feedback_persistence.sql",
+        "sha256": "sha256:512d79c31c0eddde7c5db04c00ebc2b739c93a01ccc4a9a7a02df8f9c9fe8b80"
+      },
+      {
+        "name": "0383_ae_repaired_response_handoff_persistence.sql",
+        "sha256": "sha256:618d2c30d8b1992367b1b4b32ab4f1d49ffd7b20c431300ed7a83781240b4caa"
+      },
+      {
+        "name": "0387_ae_repaired_response_decision_persistence.sql",
+        "sha256": "sha256:7e15e95efc103f8394412e77fe811b0341fc511c74e0a8448ca21cef50ba1837"
+      },
+      {
+        "name": "0402_ae_artifact_persistence_foundation.sql",
+        "sha256": "sha256:19582bbb43643187ad49ca5c805aebd17f7171a81f30b052083932386239b9ac"
+      },
+      {
+        "name": "0406_ae_artifact_handoff_trace_request_columns.sql",
+        "sha256": "sha256:7320cc0c010851acc7e152ccf3599c03866c58d49f3a6669a8b28dab5a7d02e5"
+      },
+      {
+        "name": "0407_ae_chat_artifact_refs_foundation.sql",
+        "sha256": "sha256:283f07b6545f75f30bee0cabea2fabb7ef525d95221a502c60e8bb3ec0038ec5"
+      },
+      {
+        "name": "0472_ae_artifact_retention_execution_history.sql",
+        "sha256": "sha256:4a021807e0296e2865af63356d5a949558a40295b2fe1bd98daa3e1e9c714059"
+      },
+      {
+        "name": "0513_ae_artifact_retention_scheduler_lease.sql",
+        "sha256": "sha256:049fefee49d2a6b05744f97fc42897062ad65852b39aa10b42e7436934afced3"
+      },
+      {
+        "name": "0557_ae_artifact_retention_scheduler_daemon_run_persistence.sql",
+        "sha256": "sha256:6aaee7f594d0149b4593a4db6c204cba7ff02c40dda1ad2d6c001f61e34fb72f"
+      },
+      {
+        "name": "0564_ae_artifact_retention_scheduler_daemon_supervisor_persistence.sql",
+        "sha256": "sha256:3d2886cd3b6ae5b0abb4b604a6db56fa5b47765293f12bb27f23657f4b98c76b"
+      },
+      {
+        "name": "0566_ae_artifact_retention_scheduler_daemon_supervisor_index_names.sql",
+        "sha256": "sha256:842da5d9b5660035848695d8dcf1be87570f018dc4c1cba228dcf21714e9f5b9"
+      },
+      {
+        "name": "0575_ae_artifact_retention_scheduler_daemon_supervised_process_persistence.sql",
+        "sha256": "sha256:de9bd8f00b279b23c708955a37a506aef66e15111d566feb2e13b8c0ff1c1ab6"
+      },
+      {
+        "name": "0596_ae_operator_control_execution_persistence.sql",
+        "sha256": "sha256:4b561783c0a9e8f5e9eb9a59c218f07d22cd77a9e4d2033850e74f2be4723e57"
+      },
+      {
+        "name": "0612_ae_worker_result_persistence.sql",
+        "sha256": "sha256:cf63634ec1ef05171de67bd47b6f113c24c57a72814d0370426c167fbbe3cc92"
+      },
+      {
+        "name": "1014_ae_workspace_activity_persistence.sql",
+        "sha256": "sha256:55bf627d305d48e55227710452bfc31b6fa033062eb626e4d3d26465c4e4e483"
+      },
+      {
+        "name": "1344_ae_upload_handoff_persistence.sql",
+        "sha256": "sha256:5e8544442667d29015e7098416d7deb29b7847a1351861bf49aad61717170f2f"
+      },
+      {
+        "name": "1375_ae_trace_projection_indexes.sql",
+        "sha256": "sha256:e8d523e3e64280665a3c49e0db66c0c2373af267cb4626a82fa6724ec65c2ffc"
+      },
+      {
+        "name": "2001_ae_agent_identity.sql",
+        "sha256": "sha256:8cdcdc4f748d4a1b7af0126d79d51461a24b775c24951a4f39aecae95accabb6"
+      },
+      {
+        "name": "2002_ae_conversation_journal.sql",
+        "sha256": "sha256:9f8e413951fa8d352a0342376ea773f7270bac71da298cf0a43a2a0dee847047"
+      },
+      {
+        "name": "2003_ae_agent_execution.sql",
+        "sha256": "sha256:fa8883e0ea132dcd4bcb84ce084c26e0733f7a98e566c4aa5f9866b14c060a57"
+      },
+      {
+        "name": "2004_ae_runtime_job.sql",
+        "sha256": "sha256:f4b8ac7910a6d994734402aac1a807b390b556c6ae012c142a01bf671b0cf541"
+      },
+      {
+        "name": "2005_ae_executable_step.sql",
+        "sha256": "sha256:753a814d3fa2a59bb9c54a24f6846ff70de4eb675e3ec3890e9dfaefb3845956"
+      },
+      {
+        "name": "2006_ae_agent_result.sql",
+        "sha256": "sha256:6a466f2a0ee7587cf895a0c29ee50ec03d6007b50b4a7a9cf98ea832dc4dff78"
+      },
+      {
+        "name": "2100_ae_prompt_registry_hardening.sql",
+        "sha256": "sha256:b8296261faa2d0f715c5c2bdcb7c78a9c6019450b9936eab051eb8058fe12cb0"
+      },
+      {
+        "name": "2101_ae_work_intent.sql",
+        "sha256": "sha256:a2f4760a3ebe7a1ac30c1f3c5ca9d08fa41d5c02cf1211b9f6ddb96446678abf"
+      },
+      {
+        "name": "2102_ae_agent_context.sql",
+        "sha256": "sha256:4f94cf879a77f43890fa50da4c9dbc321b19a269c37883795b6ba5afe863477d"
+      },
+      {
+        "name": "2103_ae_capability_plan_validation.sql",
+        "sha256": "sha256:59433f7a4f56bd773f40bcac602480b262d9518eb1f366973343179f3708cf6a"
+      },
+      {
+        "name": "2104_ae_executable_plan.sql",
+        "sha256": "sha256:1c6052299bd3a1025ded3f201bf2d2db28043d8454d4eb4569ce81dd36e81bda"
+      },
+      {
+        "name": "2105_ae_executable_step_generalization.sql",
+        "sha256": "sha256:6573ef6af28076bc79dfbe1bdbdf6f799f4d6eb5bb729508f0e72275298d401e"
+      },
+      {
+        "name": "2106_ae_step_result.sql",
+        "sha256": "sha256:7e6e23931f2ad41daf8e1c82684748b073f8b15a81cb4be54bde516c6a150799"
+      },
+      {
+        "name": "2200_ae_runtime_dispatch.sql",
+        "sha256": "sha256:3492eeb731adfa416ea58b1a35988fb4d83326dbd6cd0320648e9686c4e7876d"
+      },
+      {
+        "name": "2201_ae_nsl_artifact.sql",
+        "sha256": "sha256:042870f81d10c7ef4d95a3975723c6cb365a58d31e250f9fb7689853dcd3a01f"
+      },
+      {
+        "name": "2202_ae_nsl_step_execution.sql",
+        "sha256": "sha256:30cd31043be8cb38103a075d849f259289fe75d020c80d508bdd7b429cf220de"
+      },
+      {
+        "name": "2203_ae_local_skill_activation.sql",
+        "sha256": "sha256:f3b2897dd15f291d18cd1a4b8ce293d1a92b9671404905e894944bbc273778b8"
+      },
+      {
+        "name": "2204_ae_nsl_backend_run.sql",
+        "sha256": "sha256:fb7b3a61d9331e7798c34a9f1170dabd5dbb07414ca741b94cf887d519cd430b"
+      },
+      {
+        "name": "2205_ae_nsl_dual_profile.sql",
+        "sha256": "sha256:8841f282fb2d71f1b8be9fe062b7cb012a4a8c739faacf7b78736945c52a0c4d"
+      },
+      {
+        "name": "2300_ae_semantic_candidate.sql",
+        "sha256": "sha256:7935fa26bb7dce598550c01bc5b33dc769464565fba7a857252abb83d066524b"
+      },
+      {
+        "name": "2400_ae_background_agent_registry.sql",
+        "sha256": "sha256:44eb96ce453aad68c005ad2e354f442e5a23cc754ef952f5411ccff440d73537"
+      },
+      {
+        "name": "2401_ae_claimed_work_execution.sql",
+        "sha256": "sha256:1b44f340c78d75f4e7d82e704eb158c8af4c73c59457ac96862ca5df5665bb0d"
+      },
+      {
+        "name": "2402_ae_wait_registration.sql",
+        "sha256": "sha256:cb19777a575c3bccce236aea8c40179f57fef9be59568bc387faa9885fec9c77"
+      },
+      {
+        "name": "2403_ae_delegate_work_activation.sql",
+        "sha256": "sha256:f18e81281ce7170a652b639914316e38930483ab297a13fa0265d43c7738aafc"
+      },
+      {
+        "name": "2404_ae_work_result_resume.sql",
+        "sha256": "sha256:270d951fdc7751ba597228a5bbe9b6a74d5f0b228a31c5241bae61e07c1777a4"
+      },
+      {
+        "name": "2405_ae_claimed_planning_source.sql",
+        "sha256": "sha256:a677ed2ec72d0fb69de3159ed782448f2aefcdeb44d9268a36e55f003b77121f"
+      },
+      {
+        "name": "2500_ae_nsl_approval_request.sql",
+        "sha256": "sha256:4b3fa4da43d7db65cbc8e299ba6688ae69260fa7de677b3cf31e2f1b8c56e698"
+      },
+      {
+        "name": "2501_ae_nsl_approval_request_body.sql",
+        "sha256": "sha256:7f84797e945fd9a3b7e799518c7d38d35e5dbef95587b4213955aabb4715ade5"
+      },
+      {
+        "name": "2502_ae_wait_registration_generalization.sql",
+        "sha256": "sha256:e6400425e484f9f034196c0ebae6556f4bc4268d3e398c26141c3e73cb19f556"
+      },
+      {
+        "name": "2503_ae_nsl_approval_wait_binding.sql",
+        "sha256": "sha256:366e64481ea4252633d19959e24efc6d3309a5142f8afba05485c2a3abeb0e41"
+      },
+      {
+        "name": "2504_ae_approval_evidence.sql",
+        "sha256": "sha256:48c6c44519346e307b1853020bfa4235ce53a708215d692c6f1386eb08210434"
+      },
+      {
+        "name": "2505_ae_nsl_approval_event_inbox.sql",
+        "sha256": "sha256:c33a4779ac2bb965e3bdb9a4a123a0e160e2789e891388056a60dcb5e470f823"
+      },
+      {
+        "name": "2506_ae_nsl_idempotency_evidence.sql",
+        "sha256": "sha256:7f7957cd1572d8c33598f80d64aef487cd7faa369707f0b38e3600f75942ff6a"
+      },
+      {
+        "name": "2507_ae_nsl_write_evidence.sql",
+        "sha256": "sha256:f77f93282923d0d5648b49c6829f33ac2d5c3abf6f867e1039d2b37750d9afd0"
+      },
+      {
+        "name": "2513_ae_voucher_attachment.sql",
+        "sha256": "sha256:c3418d0c2d52438200ae55f78ce0ab10f905d36f5491d24d79383a2ba263efa8"
+      },
+      {
+        "name": "2514_ae_nsl_v02_profile.sql",
+        "sha256": "sha256:e8fd710c88d1954e48e5f1cec70c7abd2b818b68c58505397145e19677b99b51"
+      },
+      {
+        "name": "2515_ae_project_agent_lifecycle.sql",
+        "sha256": "sha256:f0d2ed50862965bfd2c0fb6d0d1b80dec2c6351ab0052281780d23f652540bc6"
+      },
+      {
+        "name": "2516_ae_m1_work_intent.sql",
+        "sha256": "sha256:447845e146a36e5620bde9a6b456a3fb9f4b1c56e4dbd60ae9465adef0728cbc"
+      },
+      {
+        "name": "2517_ae_product_preparation_resume.sql",
+        "sha256": "sha256:5c6da15617d42fd99e5b76535c02546af29985ee7dc5af69058dfe9d145d9223"
+      }
+    ],
+    "head": "2517_ae_product_preparation_resume",
+    "inventory_hash": "sha256:ccbbeecf4a3657139f65c61a12bdadd78d006842093465fbb83c02a8c65fe010",
+    "service_id": "nex-ae-api"
+  },
+  "process_identities": [
+    "nex-ae-api",
+    "nex-ae-agent-runtime-worker"
+  ],
+  "product_capability_registry": {
+    "registry_hash": "sha256:1be6be5bdacbbb3c44af466c9b210f9c9054a05ff99e9e724b9bfc412870d152",
+    "registry_id": "ae-product-capabilities-mybee-m1",
+    "registry_version": 4
+  },
+  "rollback_receipt": {
+    "receipt_hash": "sha256:ca62f44052e7873a11b3d5cb98676dcf87172f8c28553b582e430eae169bbc06",
+    "receipt_ref": "deployment/locks/ae-mybee-m1-product-coordinator-rollback.v1.json"
+  },
+  "runtime_assignment_handlers": [
+    "EXECUTABLE_STEP",
+    "PRODUCT_COORDINATOR"
+  ],
+  "schema_version": "ae.product_coordinator_activation.v1",
+  "secret_included": false,
+  "skill_bundle_locks": [
+    {
+      "bundle_id": "nex-mybee-m1-d04-d12-checkpoint",
+      "bundle_manifest_ref": "deployment-lock://ae-mybee-m1-signed-skill-checkpoint.v1",
+      "capability_id": "FINANCE.VOUCHER.APPROVE_AND_POST",
+      "capability_registration_hash": "sha256:bd953dca55d34def7adb497c1f3fff89fabfd9f77dce56a7aceaf437ed37baef",
+      "capability_version": "1.0.0",
+      "exact_skill_version": "1.0.0",
+      "skill_id": "MYBEE.D04.JOURNAL_POSTING",
+      "skill_semantic_hash": "sha256:c9bfdb8bc5109b51001f63195752cf91e10fb9430d8ffa6db4001a58361bcf85"
+    },
+    {
+      "bundle_id": "nex-mybee-m1-d04-d12-checkpoint",
+      "bundle_manifest_ref": "deployment-lock://ae-mybee-m1-signed-skill-checkpoint.v1",
+      "capability_id": "PROJECT.WORK_CODE_SET.GET",
+      "capability_registration_hash": "sha256:1c99817add6d04b99b02ecbb4c197bc1ac1a831c9c0924f8cb544eeda1973843",
+      "capability_version": "1.0.0",
+      "exact_skill_version": "1.0.0",
+      "skill_id": "MYBEE.D12.PROJECT_WORK_CODE_CONTEXT",
+      "skill_semantic_hash": "sha256:a3f4e3d97e646f5e7c8f7957cb1981fbabdc019b379c565c9d7759bfcd8fd13e"
+    }
+  ]
+}
