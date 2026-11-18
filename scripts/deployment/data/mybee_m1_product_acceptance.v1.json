@@ -1,0 +1,75 @@
+{
+  "schema_version": "mybee_m1_product_acceptance.v1",
+  "tenant": {
+    "tenant_id": "M1A7",
+    "display_name": "MyBee M1 Product Acceptance"
+  },
+  "company": {
+    "company_id": "d2384589-b7d3-5626-a513-aca3a459a998",
+    "company_code": "M1CO",
+    "name": "MyBee M1 Acceptance Company",
+    "functional_currency": "KRW"
+  },
+  "principals": {
+    "requester": {
+      "employee_id": "8101",
+      "subject_id": "employee-8101",
+      "display_name": "M1 Requester"
+    },
+    "approver": {
+      "employee_id": "8201",
+      "subject_id": "employee-8201",
+      "display_name": "M1 Approver"
+    }
+  },
+  "projects": [
+    {
+      "project_id": "13355c9d-ebd1-59f1-8f7e-cdb20b47cafe",
+      "project_code": "M1A7D260001",
+      "project_request_code": "M1A7R260001",
+      "name": "M1 Primary Project",
+      "allocation_ratio": "0.400000000000"
+    },
+    {
+      "project_id": "69d9d543-92e6-543e-8112-aa3635dc40e2",
+      "project_code": "M1A7D260002",
+      "project_request_code": "M1A7R260002",
+      "name": "M1 Secondary Project",
+      "allocation_ratio": "0.600000000000"
+    }
+  ],
+  "recognition_date": "2026-11-18",
+  "transactions": [
+    {
+      "scenario_id": "m1-positive-a",
+      "amount": "10000.00",
+      "currency": "USD",
+      "counterparty": "ACME",
+      "document_subject": "M1 외화 용역비 품의"
+    },
+    {
+      "scenario_id": "m1-positive-b",
+      "amount": "12000.00",
+      "currency": "USD",
+      "counterparty": "BETA",
+      "document_subject": "M1 외화 컨설팅비 품의"
+    }
+  ],
+  "fx": {
+    "base_currency": "USD",
+    "quote_currency": "KRW",
+    "quote_unit": "1",
+    "published_rate": "1350.20",
+    "source_provider_id": "SMBS_TODAY_EXRATE",
+    "source_uri": "http://www.smbs.co.kr/ExRate/TodayExRate.jsp"
+  },
+  "expected_first_result": {
+    "functional_amount": "13502000.0000",
+    "allocated_amount": "13502000.0000",
+    "unallocated_amount": "0.0000",
+    "project_amounts": [
+      "5400800.0000",
+      "8101200.0000"
+    ]
+  }
+}

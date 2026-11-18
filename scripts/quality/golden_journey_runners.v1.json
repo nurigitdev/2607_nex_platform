@@ -8,6 +8,11 @@
     },
     {
       "path": "scripts/deployment/run_gb2_ca00_s18_installed_current_platform_golden_journey.py",
+      "evidence_class": "INSTALLED_PLATFORM",
+      "enforce_transition_boundary": false
+    },
+    {
+      "path": "scripts/deployment/run_mybee_w70_cp_m1_product_golden_journey.py",
       "evidence_class": "GOLDEN_JOURNEY",
       "enforce_transition_boundary": true
     },

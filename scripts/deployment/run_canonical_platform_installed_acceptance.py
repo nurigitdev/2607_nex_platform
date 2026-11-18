@@ -65,6 +65,7 @@ from nex_runtime.canonical_platform_trust import (
     configure_canonical_runtime_approles,
 )
 from nex_runtime.current_platform_installation import (
+    CURRENT_JOURNEY_WORKERS,
     admit_current_platform_installation,
 )
 from nex_runtime.demo_database import (
@@ -131,12 +132,13 @@ DEFAULT_TRAEFIK_DYNAMIC_FILE = (
     ROOT / "deployment/compose/traefik/canonical-platform-dynamic.yaml"
 )
 PROJECT_NAME = "nex-platform-canonical"
+CURRENT_DOMAIN_PROCESSES = tuple(CURRENT_JOURNEY_WORKERS)
 DOMAIN_SERVICES = (
     "nex-oa",
     "nex-ae-api",
     "nex-wc",
     "nex-eos",
-    *DEMO_DOMAIN_PROCESSES,
+    *CURRENT_DOMAIN_PROCESSES,
 )
 # Historical P8 acceptance imports this inventory name through the compatibility
 # wrapper. The active canonical runner uses the canonical inventory above.
@@ -215,9 +217,9 @@ def execute_canonical_platform_acceptance(
     ae_image_report_path: Path,
     additional_services: Sequence[str] = (),
     live_hook: Callable[..., Mapping[str, Any]] | None = None,
-    restart_services: Sequence[str] = DEMO_DOMAIN_PROCESSES,
+    restart_services: Sequence[str] = CURRENT_DOMAIN_PROCESSES,
     post_restart_hook: Callable[..., Mapping[str, Any]] | None = None,
-    worker_inventory: Mapping[str, tuple[str, str, str]] = DEMO_DOMAIN_WORKERS,
+    worker_inventory: Mapping[str, tuple[str, str, str]] = CURRENT_JOURNEY_WORKERS,
 ) -> dict[str, Any]:
     admitted_restart_services = tuple(dict.fromkeys(restart_services))
     if not admitted_restart_services:
@@ -460,7 +462,11 @@ def execute_canonical_platform_acceptance(
                     raise CanonicalPlatformInstalledAcceptanceError(
                         "post-restart installed acceptance did not pass"
                     )
-            bootstrap_counts = _bootstrap_log_counts(runtime_env, root=root)
+            bootstrap_counts = _bootstrap_log_counts(
+                runtime_env,
+                root=root,
+                worker_inventory=worker_inventory,
+            )
             domain = admit_demo_domain_runtime_evidence(
                 initial_heartbeats=initial_heartbeats,
                 restarted_heartbeats=restarted_heartbeats,
@@ -839,9 +845,14 @@ def _heartbeats(
     return result
 
 
-def _bootstrap_log_counts(env: Mapping[str, str], *, root: Path) -> dict[str, int]:
+def _bootstrap_log_counts(
+    env: Mapping[str, str],
+    *,
+    root: Path,
+    worker_inventory: Mapping[str, tuple[str, str, str]] = CURRENT_JOURNEY_WORKERS,
+) -> dict[str, int]:
     result = {}
-    for process_id in DEMO_DOMAIN_PROCESSES:
+    for process_id in worker_inventory:
         completed = _compose(
             env,
             root=root,
