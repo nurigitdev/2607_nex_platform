@@ -222,7 +222,7 @@ def test_startup_upgrades_existing_intent_v9_binding_with_history() -> None:
 
     after = store.get_binding(AE_INTENT_RESOLUTION_BINDING)
     version = store.get_template_version(after["prompt_template_version_id"])
-    assert version["version"] == "v10"
+    assert version["version"] == "v11"
     assert version["metadata"]["historical_scenario_dependency"] is False
     assert version["metadata"]["nvt_project_operations"] == ("create_get_list_update")
     assert version["metadata"]["employee_authority"] == "oa_only"

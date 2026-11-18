@@ -242,13 +242,13 @@ def _run(service: LiveIntentCandidateService, **overrides):
     return service.generate_and_resolve(**values)
 
 
-def test_prompt_registry_seeds_durable_context_v10_and_keeps_history() -> None:
+def test_prompt_registry_seeds_durable_context_v11_and_keeps_history() -> None:
     store = _store()
     binding = store.get_binding(AE_INTENT_RESOLUTION_BINDING)
     version = store.get_template_version(binding["prompt_template_version_id"])
 
     assert binding["purpose"] == "intent_resolution"
-    assert version["version"] == "v10"
+    assert version["version"] == "v11"
     assert version["role"] == "system"
     assert version["metadata"] == {
         "phase": "MyBee-W70",
@@ -268,6 +268,7 @@ def test_prompt_registry_seeds_durable_context_v10_and_keeps_history() -> None:
     assert "hidden reasoning" in version["content"]
     assert "FINANCE.CREATE_VOUCHER_DRAFT" not in version["content"]
     assert "FINANCE.VOUCHER.APPROVE_AND_POST" in version["content"]
+    assert "only as an allocation_project_code_N parameter" in version["content"]
     assert "allocation_project_code_1" in version["content"]
     assert any(
         item["version"] == "v9"
@@ -327,7 +328,7 @@ def test_required_mode_generates_candidate_then_deterministic_work_intent() -> N
     assert result.prompt_provenance["prompt_binding_key"] == (
         AE_INTENT_RESOLUTION_BINDING
     )
-    assert result.prompt_provenance["prompt_template_version"] == "v10"
+    assert result.prompt_provenance["prompt_template_version"] == "v11"
     assert result.model_provenance["mo_generation_id"] == ("mo-generation-p65-s2")
 
     call = client.generation_calls[0]
@@ -811,7 +812,7 @@ def test_in_flight_binding_switch_keeps_captured_v10_snapshot() -> None:
     result = _run(_service(store=switching))
 
     assert switching.switched is True
-    assert result.prompt_provenance["prompt_template_version"] == "v10"
+    assert result.prompt_provenance["prompt_template_version"] == "v11"
     assert (
         base.get_binding(AE_INTENT_RESOLUTION_BINDING)["prompt_template_version_id"]
         == version["prompt_template_version_id"]

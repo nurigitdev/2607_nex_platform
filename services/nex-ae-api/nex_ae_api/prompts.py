@@ -163,7 +163,7 @@ _MYBEE_M1_PROJECT_DELEGATION_INTENT_CANDIDATE_V9_CONTENT = (
     "FX rates, Journal lines, Skill versions, or controlled-WRITE authority."
 )
 
-_MYBEE_M1_DURABLE_BUSINESS_CONTEXT_INTENT_CANDIDATE_V10_CONTENT = (
+_MYBEE_M1_DURABLE_BUSINESS_CONTEXT_INTENT_CANDIDATE_V11_CONTENT = (
     _MYBEE_M1_PROJECT_DELEGATION_INTENT_CANDIDATE_V9_CONTENT
     + " For FINANCE.VOUCHER.APPROVE_AND_POST, emit exactly these required scalar "
     "business parameter candidates: company_selector, document_subject, "
@@ -173,7 +173,10 @@ _MYBEE_M1_DURABLE_BUSINESS_CONTEXT_INTENT_CANDIDATE_V10_CONTENT = (
     "one or more contiguous allocation_project_code_1 and allocation_ratio_1 "
     "pairs, then _2 pairs and so on when needed. Ratios must be positive decimal "
     "candidates totaling exactly 1.000000 and the delegated Project Code must be "
-    "one allocation target. These values remain untrusted user-input candidates. "
+    "one allocation target. Put only the single explicitly delegated primary "
+    "Project Code in entity_selectors. Every other allocation target must appear "
+    "only as an allocation_project_code_N parameter and must never be repeated as "
+    "an entity selector. These values remain untrusted user-input candidates. "
     "Never emit tenant, requester, Project UUID, membership, OA decision, account "
     "ID, FX rate, period status, approval proof, Candidate identity, Posting result, "
     "allocation result, P&L authority, credentials, payroll detail, or hidden "
@@ -487,10 +490,10 @@ AE_PROMPT_SEEDS = [
         name="p65_default_intent_candidate_system",
         owner_domain="agent-experience",
         binding_key=AE_INTENT_RESOLUTION_BINDING,
-        version="v10",
+        version="v11",
         role="system",
         segment_order=0,
-        content=_MYBEE_M1_DURABLE_BUSINESS_CONTEXT_INTENT_CANDIDATE_V10_CONTENT,
+        content=_MYBEE_M1_DURABLE_BUSINESS_CONTEXT_INTENT_CANDIDATE_V11_CONTENT,
         model_capability="generation",
         metadata={
             "phase": "MyBee-W70",

@@ -539,7 +539,7 @@ def test_active_intent_prompt_is_v10_and_delegation_prompt_is_separate():
     source = Path("services/nex-ae-api/nex_ae_api/prompts.py").read_text(
         encoding="utf-8"
     )
-    assert 'version="v10"' in source
+    assert 'version="v11"' in source
     assert "allocation_project_code_1" in source
     assert '"ae.plan_builder.project_delegation.v1"' in source
     assert "p7.plan_candidate.v1" in source
