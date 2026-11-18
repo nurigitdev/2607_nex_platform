@@ -64,6 +64,7 @@ PROCESS_SCHEMA_VERSION = "wc_event_delivery_process.v1"
 PROCESS_READINESS_SCHEMA_VERSION = "wc_event_delivery_readiness.v1"
 PROCESS_RUN_SCHEMA_VERSION = "wc_event_delivery_run.v1"
 DEFAULT_WORKER_ID = "wc-event-delivery-worker-1"
+MAX_AE_DELIVERY_TIMEOUT_SECONDS = 300.0
 SUPPORTED_PROFILES = ("local_mock", "test", "staging_live", "production")
 DATABASE_ENVIRONMENTS = {
     "test": "NEX_WC_TEST_DATABASE_URL",
@@ -298,10 +299,16 @@ def build_installed_wc_event_delivery_process(
         env.get("NEX_WC_AE_DELIVERY_TIMEOUT_SECONDS", "15"),
         "NEX_WC_AE_DELIVERY_TIMEOUT_SECONDS",
         minimum=0.001,
+        maximum=MAX_AE_DELIVERY_TIMEOUT_SECONDS,
+    )
+    result_timeout_seconds = _bounded_float(
+        env.get("NEX_WC_AE_RESULT_TIMEOUT_SECONDS", "15"),
+        "NEX_WC_AE_RESULT_TIMEOUT_SECONDS",
+        minimum=0.001,
         maximum=120,
     )
     approval_timeout_seconds = _bounded_float(
-        env.get("NEX_WC_AE_APPROVAL_TIMEOUT_SECONDS", str(timeout_seconds)),
+        env.get("NEX_WC_AE_APPROVAL_TIMEOUT_SECONDS", "15"),
         "NEX_WC_AE_APPROVAL_TIMEOUT_SECONDS",
         minimum=0.001,
         maximum=120,
@@ -355,7 +362,7 @@ def build_installed_wc_event_delivery_process(
             result_client=HttpWorkResultEventClient(
                 base_url=base_url,
                 service_token=service_token,
-                timeout_seconds=timeout_seconds,
+                timeout_seconds=result_timeout_seconds,
             ),
             approval_client=HttpAeApprovalEventClient(
                 base_url=base_url,

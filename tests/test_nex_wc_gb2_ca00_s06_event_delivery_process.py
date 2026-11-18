@@ -162,6 +162,9 @@ def test_builder_assembles_existing_components_and_disposes_on_check_failure() -
         "NEX_WC_AE_BASE_URL": "http://ae.local",
         "NEX_WC_TO_AE_SERVICE_TOKEN": "signed-token",
         "NEX_WC_EVENT_DELIVERY_WORKER_ID": "worker-s06",
+        "NEX_WC_AE_DELIVERY_TIMEOUT_SECONDS": "240",
+        "NEX_WC_AE_RESULT_TIMEOUT_SECONDS": "15",
+        "NEX_WC_AE_APPROVAL_TIMEOUT_SECONDS": "15",
         "NEX_WC_EVENT_DELIVERY_POLL_SECONDS": "0.5",
     }
     installed = process.build_installed_wc_event_delivery_process(
@@ -172,8 +175,22 @@ def test_builder_assembles_existing_components_and_disposes_on_check_failure() -
     )
     assert installed.worker_id == "worker-s06"
     assert installed.poll_interval_seconds == 0.5
+    assert installed.handoff_client._timeout_seconds == 240.0
+    assert installed.result_client._timeout_seconds == 15.0
+    assert installed.approval_client._timeout_seconds == 15.0
     assert installed.queue.__class__.__name__ == "SqlAlchemyJobQueue"
     installed.close()
+
+    with pytest.raises(process.WcEventDeliveryProcessError, match="TIMEOUT"):
+        process.build_installed_wc_event_delivery_process(
+            "test",
+            environ={
+                **env,
+                "NEX_WC_AE_DELIVERY_TIMEOUT_SECONDS": "301",
+            },
+            engine_factory=lambda *_args, **_kwargs: engine,
+            engine_checker=lambda _engine: True,
+        )
 
     rejected = _Engine()
     with pytest.raises(process.WcEventDeliveryProcessError, match="readiness failed"):

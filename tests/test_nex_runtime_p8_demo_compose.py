@@ -155,6 +155,11 @@ def _canonical_rendered() -> dict:
 
 def test_demo_compose_sources_are_exact_and_secret_free() -> None:
     result = admit_demo_compose_sources(ROOT)
+    overlay = yaml.safe_load(
+        (ROOT / "deployment/compose/canonical-platform.override.yaml").read_text(
+            encoding="utf-8"
+        )
+    )
 
     assert result["status"] == "ADMITTED"
     assert result["added_service_count"] == len(DEMO_ADDED_SERVICE_IDS)
@@ -162,6 +167,24 @@ def test_demo_compose_sources_are_exact_and_secret_free() -> None:
     assert result["route_count"] == len(DEMO_ROUTE_IDS)
     assert result["wc_eos_tls_routes"] is True
     assert result["raw_secret_included"] is False
+    assert (
+        overlay["services"]["nex-wc-event-delivery-worker"]["environment"][
+            "NEX_WC_AE_DELIVERY_TIMEOUT_SECONDS"
+        ]
+        == "240"
+    )
+    assert (
+        overlay["services"]["nex-wc-event-delivery-worker"]["environment"][
+            "NEX_WC_AE_RESULT_TIMEOUT_SECONDS"
+        ]
+        == "15"
+    )
+    assert (
+        overlay["services"]["nex-wc-event-delivery-worker"]["environment"][
+            "NEX_WC_AE_APPROVAL_TIMEOUT_SECONDS"
+        ]
+        == "15"
+    )
 
 
 def test_rendered_compose_and_release_report_admission() -> None:
