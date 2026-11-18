@@ -4,6 +4,7 @@ import hashlib
 import json
 import logging
 import os
+import re
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any, Mapping, Protocol
@@ -2521,9 +2522,14 @@ def _admit_semantic_candidate_pipeline(
     except Exception as exc:
         if getattr(runtime, "mode", None) == "shadow":
             return None
+        exception_code = str(getattr(exc, "error_code", "UNCLASSIFIED"))
+        if not re.fullmatch(r"[A-Za-z][A-Za-z0-9_.-]{0,95}", exception_code):
+            exception_code = "UNCLASSIFIED"
         LOGGER.exception(
-            "Unexpected semantic candidate admission failure; exception_type=%s",
+            "Unexpected semantic candidate admission failure; "
+            "exception_type=%s error_code=%s",
             type(exc).__name__,
+            exception_code,
         )
         raise ChatInteractionError(
             status_code=409,

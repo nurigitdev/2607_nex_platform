@@ -497,7 +497,17 @@ def _semantic_runtime_failure(log_output: str) -> str:
         log_output,
     )
     if match:
-        return match.group(1)
+        exception_type = match.group(1)
+        error_code = re.search(
+            r"error_code(?:=|[\"']?\s*:\s*[\"']?)"
+            r"([A-Za-z][A-Za-z0-9_.-]{0,95})",
+            log_output[match.start() : match.start() + 512],
+        )
+        return (
+            f"{exception_type}:{error_code.group(1)}"
+            if error_code
+            else exception_type
+        )
     traceback_types = re.findall(
         r"(?m)^.*\|\s*(?:[A-Za-z_][A-Za-z0-9_.]*\.)?"
         r"([A-Za-z][A-Za-z0-9_]{0,87}(?:Error|Exception)):\s",

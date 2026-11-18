@@ -183,7 +183,15 @@ def test_product_semantic_runtime_failure_keeps_only_exception_type() -> None:
         "nex-ae-api | protected prompt and token must-not-be-projected\n"
     )
 
-    assert acceptance._semantic_runtime_failure(logs) == "GenerationResponseError"
+    assert (
+        acceptance._semantic_runtime_failure(
+            logs.replace(
+                "exception_type=GenerationResponseError",
+                "exception_type=GenerationResponseError error_code=CANDIDATE_PLAN_INVALID",
+            )
+        )
+        == "GenerationResponseError:CANDIDATE_PLAN_INVALID"
+    )
     assert (
         acceptance._semantic_runtime_failure(
             'nex-ae-api | {"exception_type":"CandidateSchemaError"}'
