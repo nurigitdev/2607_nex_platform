@@ -124,6 +124,7 @@ def audit_product_runtime_deployment(root: Path = ROOT) -> dict[str, Any]:
         "DETERMINISTIC_REPORT",
         "LOCAL_SKILL",
         "P4_CHAT_RAG_COMPATIBILITY",
+        "WC_DELEGATE_WORK",
     ]:
         issues.append("AE worker product executor profile is incomplete")
 

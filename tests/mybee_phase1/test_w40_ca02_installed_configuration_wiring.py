@@ -130,6 +130,10 @@ def test_canonical_signed_trust_and_process_wiring_are_reused() -> None:
         "staging_live",
     ]
     assert "NEX_AE_TO_EOS_SERVICE_TOKEN_REF" in worker["environment"]
+    assert (
+        "WC_DELEGATE_WORK"
+        in worker["environment"]["NEX_AE_AGENT_WORKER_EXECUTOR_KINDS"]
+    )
     publisher = compose["services"]["nex-eos-outbox-publisher"]
     assert "NEX_EOS_TO_OA_SERVICE_TOKEN_REF" in publisher["environment"]
 

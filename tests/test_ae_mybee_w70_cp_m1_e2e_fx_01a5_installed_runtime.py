@@ -52,8 +52,10 @@ def _environment() -> dict[str, str]:
         ),
         "NEX_OA_BASE_URL": "https://oa.example",
         "NEX_EOS_BASE_URL": "https://eos.example",
+        "NEX_WC_BASE_URL": "https://wc.example",
         "NEX_AE_TO_OA_SERVICE_TOKEN": "oa-token",
         "NEX_AE_TO_EOS_SERVICE_TOKEN": "eos-token",
+        "NEX_AE_TO_WC_SERVICE_TOKEN": "wc-token",
         "NEX_AE_NSL_STATE_ROOT": "/tmp/nex-ae-m1-runtime-test",
     }
 
@@ -76,6 +78,14 @@ def test_verified_product_release_profile_is_fail_closed_and_ready(
 ) -> None:
     profile = build_product_runtime_executor_profile(_sessions(), _environment())
 
+    assert profile.executor_kinds == (
+        "DETERMINISTIC_AGGREGATE",
+        "DETERMINISTIC_REPORT",
+        "LOCAL_SKILL",
+        "P4_CHAT_RAG_COMPATIBILITY",
+        "WC_DELEGATE_WORK",
+    )
+    assert profile.executor_backends["WC_DELEGATE_WORK"] == "NSL_V02_IN_PROCESS"
     assert profile.package_readiness == {
         "status": "READY",
         "backend_profile": "NSL_V02_IN_PROCESS",

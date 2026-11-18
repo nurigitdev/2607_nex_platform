@@ -140,8 +140,8 @@ def run_gate(root: Path = ROOT) -> dict[str, Any]:
             and NEUTRAL_CONTROLLED_RUNTIME.as_posix() in active_import_graph
             and not (forbidden_historical_sources & active_import_graph)
         ),
-        "active_prompt_is_v10_and_scenario_free": (
-            prompt.version == "v10"
+        "active_prompt_is_v11_and_scenario_free": (
+            prompt.version == "v11"
             and "FINANCE.CREATE_VOUCHER_DRAFT" not in prompt.content
             and "golden_a" not in json.dumps(prompt.metadata, sort_keys=True).lower()
             and "FINANCE.VOUCHER.APPROVE_AND_POST" in prompt.content

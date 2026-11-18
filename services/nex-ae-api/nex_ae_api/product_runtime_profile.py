@@ -5,10 +5,16 @@ import json
 from collections.abc import Mapping
 from pathlib import Path
 
+from nex_runtime import resolve_service_endpoint
 from sqlalchemy.orm import Session, sessionmaker
 
 from nex_ae_api.allocation_plan_resolution_runtime import (
     build_installed_allocation_plan_resolution,
+)
+from nex_ae_api.delegated_work import (
+    HttpWcWorkItemClient,
+    SqlAlchemyDelegationRuntimeRepository,
+    SqlAlchemyWaitRegistrationRepository,
 )
 from nex_ae_api.m1_installed_skill_runtime import (
     M1InstalledSkillRuntime,
@@ -22,7 +28,11 @@ from nex_ae_api.mybee_m1_skill_runtime import (
     build_mybee_m1_verified_skill_catalog,
 )
 from nex_ae_api.runtime_composition import RuntimeExecutorProfile
-from nex_ae_api.step_executors import default_p6_executor_registry
+from nex_ae_api.service_auth import resolve_ae_outbound_service_token
+from nex_ae_api.step_executors import (
+    DelegateWorkExecutorDependencies,
+    default_p7_executor_registry,
+)
 
 ROOT = Path(__file__).resolve().parents[3]
 VERIFIED_PRODUCT_RELEASE_PROFILE = "VERIFIED_PRODUCT_RELEASE"
@@ -57,11 +67,27 @@ def _build_verified_product_release_profile(
 ) -> RuntimeExecutorProfile:
     expected_admission, activation = _admit_verified_product_release(environ)
     installed = runtime or _build_installed_product_skill_runtime(sessions, environ)
-    registry = default_p6_executor_registry(
+    wc_endpoint = resolve_service_endpoint("nex-wc", environ=environ)
+    registry = default_p7_executor_registry(
         lambda _context: {},
         local_skill_dependencies=installed.dependencies,
         local_skill_handler=installed.initial,
         local_skill_continuation_handler=installed.resume,
+        delegate_work_dependencies=DelegateWorkExecutorDependencies(
+            runtime_repository=SqlAlchemyDelegationRuntimeRepository(sessions),
+            wait_repository=SqlAlchemyWaitRegistrationRepository(sessions),
+            work_item_client=HttpWcWorkItemClient(
+                base_url=str(environ.get("NEX_WC_BASE_URL") or wc_endpoint.base_url),
+                service_token=resolve_ae_outbound_service_token(
+                    environ.get("NEX_AE_TO_WC_SERVICE_TOKEN"),
+                    audience="nex-wc",
+                    environ=environ,
+                ),
+                timeout_seconds=float(
+                    environ.get("NEX_AE_TO_WC_TIMEOUT_SECONDS", "15")
+                ),
+            ),
+        ),
     )
     readiness = {
         **dict(installed.package_readiness),

@@ -790,6 +790,11 @@ def default_p7_executor_registry(
     local_skill_handler: Callable[
         [StepExecutionContext, LocalSkillExecutorDependencies], P5ExecutorOutcome
     ],
+    local_skill_continuation_handler: Callable[
+        [StepExecutionContext, LocalSkillExecutorDependencies, Any],
+        P5ExecutorOutcome,
+    ]
+    | None = None,
     delegate_work_dependencies: DelegateWorkExecutorDependencies,
     clock: Callable[[], datetime] | None = None,
 ) -> P5StepExecutorRegistry:
@@ -802,6 +807,7 @@ def default_p7_executor_registry(
             LOCAL_SKILL_EXECUTOR_KIND: P6LocalSkillExecutor(
                 dependencies=local_skill_dependencies,
                 handler=local_skill_handler,
+                continuation_handler=local_skill_continuation_handler,
             ),
             WC_DELEGATE_WORK_EXECUTOR_KIND: P7DelegateWorkExecutor(
                 dependencies=delegate_work_dependencies,
