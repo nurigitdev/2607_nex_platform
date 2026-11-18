@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import subprocess
 import sys
 from pathlib import Path
 
@@ -206,6 +207,36 @@ def test_product_semantic_runtime_failure_summary_is_bounded() -> None:
         )
         == "not_observed(rc=17,lines=2)"
     )
+
+
+def test_product_runtime_log_collection_uses_running_container(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        acceptance.installed,
+        "_compose",
+        lambda *_args, **_kwargs: subprocess.CompletedProcess(
+            args=[], returncode=0, stdout="a" * 64 + "\n", stderr=None
+        ),
+    )
+    calls: list[tuple[str, ...]] = []
+
+    def run(command: tuple[str, ...], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        calls.append(command)
+        return subprocess.CompletedProcess(
+            args=command,
+            returncode=0,
+            stdout="exception_type=CandidateSchemaError\n",
+            stderr=None,
+        )
+
+    monkeypatch.setattr(acceptance.subprocess, "run", run)
+
+    output, returncode = acceptance._collect_ae_runtime_logs({}, root=ROOT)
+
+    assert returncode == 0
+    assert output == "exception_type=CandidateSchemaError\n"
+    assert calls == [("docker", "logs", "--tail", "2000", "a" * 64)]
 
 
 def test_product_baseline_rejects_duplicate_projects_and_one_transaction(

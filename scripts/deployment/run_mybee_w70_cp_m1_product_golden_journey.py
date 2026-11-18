@@ -217,21 +217,12 @@ def execute_m1_product_golden_journey(
             runtime.get("transactions") if isinstance(runtime, Mapping) else None
         )
         if browser.get("status") != "PASS" or not isinstance(transactions, list):
-            diagnostic = installed._compose(
-                runtime_env,
-                root=root,
-                arguments=(
-                    "logs",
-                    "--no-color",
-                    "--tail",
-                    "2000",
-                    "nex-ae-api",
-                ),
-                check=False,
+            log_output, diagnostic_returncode = _collect_ae_runtime_logs(
+                runtime_env, root=root
             )
             runtime_failure = _semantic_runtime_failure_summary(
-                f"{diagnostic.stdout}\n{diagnostic.stderr}",
-                returncode=diagnostic.returncode,
+                log_output,
+                returncode=diagnostic_returncode,
             )
             raise M1ProductGoldenJourneyError(
                 "M1 product browser journey failed: "
@@ -523,6 +514,35 @@ def _semantic_runtime_failure_summary(
         return failure
     line_count = sum(1 for line in log_output.splitlines() if line.strip())
     return f"not_observed(rc={returncode},lines={line_count})"
+
+
+def _collect_ae_runtime_logs(
+    env: Mapping[str, str], *, root: Path
+) -> tuple[str, int]:
+    lookup = installed._compose(
+        env,
+        root=root,
+        arguments=("ps", "-q", "nex-ae-api"),
+        check=False,
+    )
+    container_ids = [
+        line.strip()
+        for line in lookup.stdout.splitlines()
+        if re.fullmatch(r"[a-f0-9]{12,64}", line.strip())
+    ]
+    if not container_ids:
+        return lookup.stdout, lookup.returncode
+    completed = subprocess.run(
+        ("docker", "logs", "--tail", "2000", container_ids[0]),
+        cwd=root,
+        env=dict(env),
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        check=False,
+        timeout=60,
+    )
+    return completed.stdout, completed.returncode
 
 
 def _run_playwright(
