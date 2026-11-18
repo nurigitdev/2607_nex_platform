@@ -4,10 +4,10 @@ from typing import Any
 
 from fastapi import FastAPI, Header, Request
 from fastapi.responses import JSONResponse
+from nex_runtime import problem_response
 
-from nex_runtime import DEFAULT_SERVICE_SCOPE, problem_response
-from nex_runtime.auth import validate_authorization_header
 from nex_wc.coordination import CoordinationError, WorkCoordinationService
+from nex_wc.route_auth import authorize_wc_service_request
 
 
 def register_coordination_routes(
@@ -55,21 +55,11 @@ def register_coordination_routes(
 
 
 def _authorize(request: Request, authorization: str | None) -> JSONResponse | None:
-    result = validate_authorization_header(
-        authorization,
-        expected_audience="nex-wc",
-        required_scopes=(DEFAULT_SERVICE_SCOPE,),
-    )
-    if result.ok:
-        return None
-    return problem_response(
+    admitted = authorize_wc_service_request(
         request,
-        status_code=401,
-        error_code=result.error_code or "WC_COORDINATION_AUTH_FAILED",
-        title="WC coordination authorization failed",
-        detail=result.detail or "WC coordination authorization failed.",
-        retryable=False,
+        authorization,
     )
+    return admitted if isinstance(admitted, JSONResponse) else None
 
 
 def _problem(request: Request, exc: CoordinationError) -> JSONResponse:
