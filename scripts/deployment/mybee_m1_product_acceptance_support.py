@@ -54,6 +54,7 @@ from nex_eos import (
 )
 from nex_eos.project_entitlement_events import append_project_entitlement_snapshot
 from nex_eos.project_lifecycle_events import append_project_lifecycle_event
+from nex_eos.project_applications import PROJECT_REFERENCE_RESOLVE_SCOPE
 from nex_oa.credentials import SqlAlchemyOaCredentialRegistry
 from nex_oa.memberships import SqlAlchemyOaTenantMembershipRegistry
 from nex_oa.subjects import SqlAlchemyOaSubjectRegistry
@@ -77,7 +78,7 @@ HASH_E = "sha256:" + "e" * 64
 _OA_SCOPES = {
     "requester": (
         "workspace:use",
-        "project:reference:resolve",
+        PROJECT_REFERENCE_RESOLVE_SCOPE,
         "finance:voucher-candidate:create",
         "finance:journal:request-approval",
         "finance:report:read",
