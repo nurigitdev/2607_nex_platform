@@ -1,11 +1,21 @@
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Protocol
 from uuid import NAMESPACE_URL, uuid5
 
-from nex_runtime import build_common_job, build_subject_ref, validate_common_job
+from nex_runtime import (
+    JobQueue,
+    WorkerHeartbeatEmitter,
+    WorkerJobExecution,
+    WorkerRunnerConfig,
+    build_common_job,
+    build_job_error,
+    build_subject_ref,
+    run_worker_once,
+    validate_common_job,
+)
 from nex_runtime.semantic_hashes import semantic_sha256_hash_ref
 
 WC_ASSIGNMENT_DISPATCH_JOB_TYPE = "WC_ASSIGNMENT_DISPATCH"
@@ -25,6 +35,7 @@ ASSIGNMENT_DISPATCH_DISPOSITIONS = frozenset({RETRY, RELOAD, TERMINAL})
 
 DEFAULT_DISPATCH_MAX_ATTEMPTS = 5
 MAX_CLAIMABLE_SCAN_LIMIT = 500
+WC_ASSIGNMENT_DISPATCH_WORKER_TYPE = "wc.assignment.dispatch.worker"
 
 NO_ELIGIBLE_AGENT_ERROR = "wc.assignment_no_eligible_agent"
 STALE_DISPATCH_ERRORS = frozenset(
@@ -44,6 +55,44 @@ class AssignmentDispatchContractError(Exception):
 
     def __str__(self) -> str:
         return self.detail
+
+
+@dataclass(frozen=True)
+class AssignmentDispatchExecutionError(Exception):
+    error_code: str
+    detail: str
+    disposition: str
+
+    def __str__(self) -> str:
+        return self.detail
+
+
+class AssignmentDispatchRepository(Protocol):
+    def list_claimable_work_items(
+        self,
+        *,
+        state: str,
+        limit: int,
+        after: Mapping[str, Any] | None = None,
+    ) -> list[dict[str, Any]]: ...
+
+    def get_work_item(
+        self, *, tenant_id: str, work_item_id: str
+    ) -> dict[str, Any] | None: ...
+
+    def get_current_assignment_authority(
+        self, *, tenant_id: str, work_item_id: str
+    ) -> dict[str, Any] | None: ...
+
+
+class AssignmentDispatchService(Protocol):
+    def route(
+        self, *, tenant_id: str, work_item_id: str, expected_version: int
+    ) -> dict[str, Any]: ...
+
+    def claim(
+        self, *, tenant_id: str, work_item_id: str, expected_version: int
+    ) -> dict[str, Any]: ...
 
 
 def validate_claimable_scan(
@@ -303,6 +352,257 @@ def classify_assignment_dispatch_failure(
     if normalized in STALE_DISPATCH_ERRORS:
         return RELOAD
     return TERMINAL
+
+
+def enqueue_claimable_assignment_jobs(
+    *,
+    repository: AssignmentDispatchRepository,
+    queue: JobQueue,
+    state: str,
+    limit: int,
+    after: Mapping[str, Any] | None = None,
+    created_at: str | None = None,
+) -> dict[str, Any]:
+    normalized_state, normalized_limit, cursor = validate_claimable_scan(
+        state=state,
+        limit=limit,
+        after=after,
+    )
+    candidates = repository.list_claimable_work_items(
+        state=normalized_state,
+        limit=normalized_limit,
+        after=cursor,
+    )
+    jobs = [
+        queue.enqueue(
+            build_assignment_dispatch_job(candidate, created_at=created_at)
+        )
+        for candidate in candidates
+    ]
+    return {
+        "schema_version": ASSIGNMENT_DISPATCH_SCHEMA_VERSION,
+        "state": normalized_state,
+        "action": ACTION_BY_STATE[normalized_state],
+        "scanned_count": len(candidates),
+        "enqueued_count": len(jobs),
+        "job_ids": [str(job["job_id"]) for job in jobs],
+        "next_cursor": claimable_cursor(candidates[-1]) if candidates else cursor,
+    }
+
+
+def run_assignment_dispatch_job(
+    job: Mapping[str, Any],
+    *,
+    repository: AssignmentDispatchRepository,
+    service: AssignmentDispatchService,
+) -> dict[str, Any]:
+    try:
+        normalized = validate_assignment_dispatch_job(job)
+        payload = normalized["payload"]
+        tenant_id = str(payload["tenant_id"])
+        work_item_id = str(payload["work_item_id"])
+        expected_version = int(payload["expected_version"])
+        action = str(payload["action"])
+        record = repository.get_work_item(
+            tenant_id=tenant_id,
+            work_item_id=work_item_id,
+        )
+        if record is None:
+            raise AssignmentDispatchExecutionError(
+                "wc.work_item_not_found",
+                "WorkItem was not found while executing assignment dispatch.",
+                TERMINAL,
+            )
+        if action == ROUTE:
+            return _run_route(
+                service=service,
+                record=record,
+                tenant_id=tenant_id,
+                work_item_id=work_item_id,
+                expected_version=expected_version,
+            )
+        return _run_claim(
+            repository=repository,
+            service=service,
+            record=record,
+            tenant_id=tenant_id,
+            work_item_id=work_item_id,
+            expected_version=expected_version,
+        )
+    except AssignmentDispatchExecutionError:
+        raise
+    except AssignmentDispatchContractError as exc:
+        raise AssignmentDispatchExecutionError(
+            exc.error_code,
+            exc.detail,
+            TERMINAL,
+        ) from exc
+    except Exception as exc:
+        error_code = str(
+            getattr(exc, "error_code", "wc.assignment_dispatch_execution_failed")
+        )
+        detail = str(getattr(exc, "detail", exc.__class__.__name__))
+        retryable = bool(getattr(exc, "retryable", False))
+        raise AssignmentDispatchExecutionError(
+            error_code,
+            detail,
+            classify_assignment_dispatch_failure(
+                error_code=error_code,
+                retryable=retryable,
+            ),
+        ) from exc
+
+
+def run_assignment_dispatch_worker_once(
+    *,
+    queue: JobQueue,
+    heartbeat_emitter: WorkerHeartbeatEmitter,
+    repository: AssignmentDispatchRepository,
+    service: AssignmentDispatchService,
+    worker_id: str,
+    clock: Callable[[], str] | None = None,
+) -> WorkerJobExecution:
+    def handler(job: dict[str, Any]) -> dict[str, Any]:
+        try:
+            return run_assignment_dispatch_job(
+                job,
+                repository=repository,
+                service=service,
+            )
+        except AssignmentDispatchExecutionError as exc:
+            resolved = exc
+            if exc.disposition == RELOAD:
+                try:
+                    return run_assignment_dispatch_job(
+                        job,
+                        repository=repository,
+                        service=service,
+                    )
+                except AssignmentDispatchExecutionError as reload_exc:
+                    resolved = reload_exc
+                    if reload_exc.disposition == RELOAD:
+                        resolved = AssignmentDispatchExecutionError(
+                            "wc.assignment_dispatch_stale_unresolved",
+                            "Assignment dispatch remained stale after an authority reload.",
+                            TERMINAL,
+                        )
+            if resolved.disposition == TERMINAL:
+                queue.dead_letter_job(
+                    str(job["job_id"]),
+                    error=build_job_error(
+                        error_code=resolved.error_code,
+                        detail=resolved.detail,
+                        retryable=False,
+                    ),
+                    failed_at=clock() if clock is not None else None,
+                )
+            raise resolved
+
+    return run_worker_once(
+        config=WorkerRunnerConfig(
+            service_id="nex-wc",
+            worker_id=worker_id,
+            worker_type=WC_ASSIGNMENT_DISPATCH_WORKER_TYPE,
+            job_type=WC_ASSIGNMENT_DISPATCH_JOB_TYPE,
+        ),
+        queue=queue,
+        heartbeat_emitter=heartbeat_emitter,
+        handler=handler,
+        clock=clock,
+    )
+
+
+def _run_route(
+    *,
+    service: AssignmentDispatchService,
+    record: Mapping[str, Any],
+    tenant_id: str,
+    work_item_id: str,
+    expected_version: int,
+) -> dict[str, Any]:
+    state = str(record.get("state"))
+    version = int(record.get("version", 0))
+    route = record.get("latest_routing_decision")
+    if (
+        state == "ROUTED"
+        and version == expected_version + 1
+        and isinstance(route, Mapping)
+        and route.get("decision") == "ROUTED"
+    ):
+        return _route_result(route, replayed=True)
+    if state != "CREATED" or version != expected_version:
+        raise AssignmentDispatchExecutionError(
+            "wc.work_item_route_conflict",
+            "WorkItem is not at the expected CREATED version.",
+            RELOAD,
+        )
+    result = service.route(
+        tenant_id=tenant_id,
+        work_item_id=work_item_id,
+        expected_version=expected_version,
+    )
+    if result.get("decision") != "ROUTED":
+        raise AssignmentDispatchExecutionError(
+            NO_ELIGIBLE_AGENT_ERROR,
+            "No eligible Agent is currently available for the WorkItem.",
+            RETRY,
+        )
+    return _route_result(result, replayed=False)
+
+
+def _run_claim(
+    *,
+    repository: AssignmentDispatchRepository,
+    service: AssignmentDispatchService,
+    record: Mapping[str, Any],
+    tenant_id: str,
+    work_item_id: str,
+    expected_version: int,
+) -> dict[str, Any]:
+    state = str(record.get("state"))
+    version = int(record.get("version", 0))
+    if state == "ASSIGNED" and version == expected_version + 1:
+        authority = repository.get_current_assignment_authority(
+            tenant_id=tenant_id,
+            work_item_id=work_item_id,
+        )
+        if authority is not None:
+            return _claim_result(authority, replayed=True)
+    if state != "ROUTED" or version != expected_version:
+        raise AssignmentDispatchExecutionError(
+            "wc.work_item_claim_conflict",
+            "WorkItem is not at the expected ROUTED version.",
+            RELOAD,
+        )
+    result = service.claim(
+        tenant_id=tenant_id,
+        work_item_id=work_item_id,
+        expected_version=expected_version,
+    )
+    return _claim_result(result, replayed=False)
+
+
+def _route_result(route: Mapping[str, Any], *, replayed: bool) -> dict[str, Any]:
+    return {
+        "outcome": "ROUTE_REPLAYED" if replayed else "ROUTED",
+        "routing_decision_id": str(route["routing_decision_id"]),
+        "target_agent_id": str(route["target_ref"]),
+        "policy_version": str(route["policy_version"]),
+    }
+
+
+def _claim_result(result: Mapping[str, Any], *, replayed: bool) -> dict[str, Any]:
+    assignment = result["assignment"]
+    claim = result["claim"]
+    return {
+        "outcome": "CLAIM_REPLAYED" if replayed else "CLAIMED",
+        "assignment_id": str(assignment["assignment_id"]),
+        "claim_id": str(claim["claim_id"]),
+        "claim_generation": int(claim["claim_generation"]),
+        "agent_id": str(assignment["agent_id"]),
+        "outbox_id": str(result["outbox_id"]),
+        "event_id": str(result["event_id"]),
+    }
 
 
 def _dispatch_identity(candidate: Mapping[str, Any]) -> dict[str, Any]:

@@ -73,6 +73,10 @@ class CoordinationRepository(Protocol):
         self, *, tenant_id: str, work_item_id: str
     ) -> dict[str, Any] | None: ...
 
+    def get_current_assignment_authority(
+        self, *, tenant_id: str, work_item_id: str
+    ) -> dict[str, Any] | None: ...
+
     def save_routing_decision(
         self,
         *,
@@ -381,6 +385,41 @@ class InMemoryCoordinationRepository:
             **record,
             "latest_routing_decision": copy.deepcopy(routes[-1]) if routes else None,
         }
+
+    def get_current_assignment_authority(
+        self, *, tenant_id: str, work_item_id: str
+    ) -> dict[str, Any] | None:
+        with self._lock:
+            key = (tenant_id, work_item_id)
+            assignment = self._assignments.get(key)
+            if assignment is None or assignment["status"] != "ACTIVE":
+                return None
+            claim = next(
+                (
+                    item
+                    for item in reversed(self._claims.get(key, []))
+                    if item["state"] == "ACTIVE"
+                    and item["assignment_id"] == assignment["assignment_id"]
+                    and item["claim_generation"] == assignment["claim_generation"]
+                ),
+                None,
+            )
+            if claim is None:
+                return None
+            outbox = next(
+                (
+                    item
+                    for item in self._outbox.values()
+                    if item["tenant_id"] == tenant_id
+                    and item["work_item_id"] == work_item_id
+                    and item["event_type"] == "CLAIM_EXECUTION_HANDOFF"
+                    and item["event_payload"].get("claim_ref") == claim["claim_id"]
+                ),
+                None,
+            )
+            if outbox is None:
+                return None
+            return _assignment_authority(assignment, claim, outbox)
 
     def list_claimable_work_items(
         self,
@@ -756,6 +795,80 @@ class SqlAlchemyCoordinationRepository:
         try:
             with self._session_factory() as session:
                 return _load_work_item(session, tenant_id, work_item_id)
+        except SQLAlchemyError as exc:
+            raise _store_unavailable() from exc
+
+    def get_current_assignment_authority(
+        self, *, tenant_id: str, work_item_id: str
+    ) -> dict[str, Any] | None:
+        try:
+            with self._session_factory() as session:
+                row = session.execute(
+                    text(
+                        """
+                        SELECT a.assignment_id, a.work_item_id, a.agent_id,
+                               a.agent_type, a.project_id, a.claim_generation,
+                               a.status, a.agent_execution_id,
+                               c.claim_id, c.state AS claim_state,
+                               c.assignment_id AS claim_assignment_id,
+                               c.claim_generation AS claim_claim_generation,
+                               c.lease_verifier, c.lease_expires_at,
+                               c.authorization_revision_hash,
+                               o.outbox_id, o.event_id
+                        FROM wc_assignment AS a
+                        JOIN wc_claim AS c
+                          ON c.tenant_id = a.tenant_id
+                         AND c.assignment_id = a.assignment_id
+                         AND c.claim_generation = a.claim_generation
+                         AND c.state = 'ACTIVE'
+                        JOIN wc_event_outbox AS o
+                          ON o.tenant_id = a.tenant_id
+                         AND o.work_item_id = a.work_item_id
+                         AND o.event_type = 'CLAIM_EXECUTION_HANDOFF'
+                         AND o.event_payload ->> 'claim_ref' = c.claim_id::text
+                        WHERE a.tenant_id = :tenant_id
+                          AND a.work_item_id = :work_item_id
+                          AND a.status = 'ACTIVE'
+                        ORDER BY a.claim_generation DESC, o.created_at DESC
+                        LIMIT 1
+                        """
+                    ),
+                    {"tenant_id": tenant_id, "work_item_id": work_item_id},
+                ).mappings().first()
+                if row is None:
+                    return None
+                return _assignment_authority(
+                    {
+                        "assignment_id": str(row["assignment_id"]),
+                        "work_item_id": str(row["work_item_id"]),
+                        "agent_id": str(row["agent_id"]),
+                        "agent_type": row["agent_type"],
+                        "project_id": row["project_id"],
+                        "claim_generation": int(row["claim_generation"]),
+                        "status": row["status"],
+                        "agent_execution_id": (
+                            None
+                            if row["agent_execution_id"] is None
+                            else str(row["agent_execution_id"])
+                        ),
+                    },
+                    {
+                        "claim_id": str(row["claim_id"]),
+                        "work_item_id": str(row["work_item_id"]),
+                        "assignment_id": str(row["claim_assignment_id"]),
+                        "claim_generation": int(row["claim_claim_generation"]),
+                        "state": row["claim_state"],
+                        "lease_verifier": row["lease_verifier"],
+                        "lease_expires_at": _time_value(row["lease_expires_at"]),
+                        "authorization_revision_hash": row[
+                            "authorization_revision_hash"
+                        ],
+                    },
+                    {
+                        "outbox_id": str(row["outbox_id"]),
+                        "event_id": str(row["event_id"]),
+                    },
+                )
         except SQLAlchemyError as exc:
             raise _store_unavailable() from exc
 
@@ -1222,6 +1335,19 @@ def _load_work_item(session: Session, tenant_id: str, work_item_id: str) -> dict
         "state": row["state"],
         "version": int(row["version"]),
         "latest_routing_decision": route,
+    }
+
+
+def _assignment_authority(
+    assignment: Mapping[str, Any],
+    claim: Mapping[str, Any],
+    outbox: Mapping[str, Any],
+) -> dict[str, Any]:
+    return {
+        "assignment": copy.deepcopy(dict(assignment)),
+        "claim": copy.deepcopy(dict(claim)),
+        "outbox_id": str(outbox["outbox_id"]),
+        "event_id": str(outbox["event_id"]),
     }
 
 

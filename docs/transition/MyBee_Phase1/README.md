@@ -391,6 +391,17 @@ and a content-minimal, deterministic `WC_ASSIGNMENT_DISPATCH` job contract
 with explicit retry, authority-reload, and terminal dispositions. No job is
 enqueued or executed yet; `.5B.2` owns the generic scheduler and handler.
 
+`CP-M1-E2E-FX-01B.6B.5B.2` implementation evidence is recorded in
+[`mybee_phase1_w70_cp_m1_e2e_fx_01b6b5b2_scheduler_handler.md`](../../slices/mybee_phase1_w70_cp_m1_e2e_fx_01b6b5b2_scheduler_handler.md).
+The WC-local scheduler now creates deterministic route and claim jobs through
+the shared JobQueue, and the generic handler executes them through
+`run_worker_once()` while preserving `WorkCoordinationService.route()` and
+`claim()` as the only transition authority. Retry, one-time authority reload,
+terminal dead-letter, route replay, and claim replay are explicit. Actual
+`nex_wc_test` evidence covers route, claim, repository restart, exact replay,
+and zero residue without a migration or remote provider. Installed daemon,
+liveness, service-log, and dependency composition remain assigned to `.5B.3`.
+
 `CP-M1-E2E-FX-01B.6A.1` implementation evidence is recorded in
 [`mybee_phase1_w70_cp_m1_e2e_fx_01b6a1_refresh_contract_source_resolver.md`](../../slices/mybee_phase1_w70_cp_m1_e2e_fx_01b6a1_refresh_contract_source_resolver.md).
 It closes the canonical protected contract and the mutation-free EOS source
