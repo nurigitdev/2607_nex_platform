@@ -7,6 +7,7 @@ from uuid import NAMESPACE_URL, uuid5
 
 from nex_runtime import (
     JobQueue,
+    ServiceLogEmitter,
     WorkerHeartbeatEmitter,
     WorkerJobExecution,
     WorkerRunnerConfig,
@@ -460,6 +461,7 @@ def run_assignment_dispatch_worker_once(
     repository: AssignmentDispatchRepository,
     service: AssignmentDispatchService,
     worker_id: str,
+    service_log_emitter: ServiceLogEmitter | None = None,
     clock: Callable[[], str] | None = None,
 ) -> WorkerJobExecution:
     def handler(job: dict[str, Any]) -> dict[str, Any]:
@@ -508,6 +510,7 @@ def run_assignment_dispatch_worker_once(
         queue=queue,
         heartbeat_emitter=heartbeat_emitter,
         handler=handler,
+        service_log_emitter=service_log_emitter,
         clock=clock,
     )
 

@@ -402,6 +402,17 @@ terminal dead-letter, route replay, and claim replay are explicit. Actual
 and zero residue without a migration or remote provider. Installed daemon,
 liveness, service-log, and dependency composition remain assigned to `.5B.3`.
 
+`CP-M1-E2E-FX-01B.6B.5B.3` implementation evidence is recorded in
+[`mybee_phase1_w70_cp_m1_e2e_fx_01b6b5b3_installed_process_liveness.md`](../../slices/mybee_phase1_w70_cp_m1_e2e_fx_01b6b5b3_installed_process_liveness.md).
+WC now has a package-checkable and continuously runnable assignment-dispatch
+process that composes the existing coordination authority, AE Agent Registry,
+fresh OA authorization, shared JobQueue, heartbeat, and service-log stores.
+Actual `nex_wc_test` evidence proves current migrations, one-cycle liveness,
+and recovery from a route commit followed by process/engine restart before
+claim. The restarted generic scan converges the WorkItem to one authoritative
+Assignment and Claim without fixture transitions. Compose, OCI, healthcheck,
+and installed topology activation remain assigned to `.5B.4`.
+
 `CP-M1-E2E-FX-01B.6A.1` implementation evidence is recorded in
 [`mybee_phase1_w70_cp_m1_e2e_fx_01b6a1_refresh_contract_source_resolver.md`](../../slices/mybee_phase1_w70_cp_m1_e2e_fx_01b6a1_refresh_contract_source_resolver.md).
 It closes the canonical protected contract and the mutation-free EOS source
