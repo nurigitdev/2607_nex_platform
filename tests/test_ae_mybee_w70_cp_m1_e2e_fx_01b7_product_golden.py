@@ -29,6 +29,9 @@ def test_product_golden_source_admission_uses_installed_m1_registry() -> None:
     assert result["post_request_direct_transition_allowed"] is False
     assert result["isolated_eight_database_schema_required"] is True
     assert support.PROJECT_REFERENCE_RESOLVE_SCOPE in support._OA_SCOPES["requester"]
+    assert {"approval:read", "approval:decide"}.issubset(
+        support._OA_SCOPES["approver"]
+    )
 
 
 def test_product_seed_cannot_delete_public_authority_or_bypass_protection() -> None:

@@ -86,6 +86,7 @@ _OA_SCOPES = {
     ),
     "approver": (
         "workspace:use",
+        "approval:read",
         "approval:decide",
         "finance:journal:approve",
         "finance:cost-allocation-plan:approve",

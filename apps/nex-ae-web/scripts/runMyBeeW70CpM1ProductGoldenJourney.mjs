@@ -361,7 +361,9 @@ async function driveApprovalsUntilResult({
       return { ...current, approvalDomains, replayStatuses };
     }
     const gates = await browserJson(approver, "/ae-api/api/v1/approval-gates?limit=100");
-    if (gates.status !== 200) throw new Error(`ApprovalGateListStatus${gates.status}`);
+    if (gates.status !== 200) {
+      throw new Error(apiFailureCode(gates, `ApprovalGateListStatus${gates.status}`));
+    }
     const pending = (gates.payload?.gates || []).filter(
       item => item.state === "PENDING" && !decidedGateIds.has(item.gate_id)
     );
