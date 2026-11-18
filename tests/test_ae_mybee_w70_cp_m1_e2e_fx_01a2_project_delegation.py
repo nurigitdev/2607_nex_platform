@@ -535,7 +535,46 @@ def test_http_project_sources_fail_closed_on_malformed_and_network(monkeypatch):
     assert unavailable.value.retryable is True
 
 
-def test_active_intent_prompt_is_v10_and_delegation_prompt_is_separate():
+@pytest.mark.parametrize(
+    ("status_code", "error_code", "retryable"),
+    [
+        (403, "PROJECT_RESOLUTION_DENIED", False),
+        (404, "PROJECT_NOT_FOUND", False),
+        (422, "PROJECT_RESOLUTION_REJECTED", False),
+        (503, "PROJECT_RESOLUTION_UNAVAILABLE", True),
+    ],
+)
+def test_eos_project_resolution_preserves_bounded_http_failure_category(
+    monkeypatch,
+    status_code,
+    error_code,
+    retryable,
+):
+    monkeypatch.setattr(
+        delegation_module,
+        "resolve_ae_outbound_service_token",
+        lambda _token, *, audience: audience,
+    )
+    client = httpx.Client(
+        transport=httpx.MockTransport(
+            lambda _request: httpx.Response(status_code, json={"detail": "redacted"})
+        )
+    )
+
+    with pytest.raises(ProjectDelegationPlanningError) as raised:
+        HttpEosProjectResolutionSource(
+            "https://eos.test", "token", client
+        ).resolve_active_project(
+            tenant_id=TENANT,
+            subject_id=SUBJECT,
+            project_code=PROJECT_CODE,
+        )
+
+    assert raised.value.error_code == error_code
+    assert raised.value.retryable is retryable
+
+
+def test_active_intent_prompt_is_v11_and_delegation_prompt_is_separate():
     source = Path("services/nex-ae-api/nex_ae_api/prompts.py").read_text(
         encoding="utf-8"
     )

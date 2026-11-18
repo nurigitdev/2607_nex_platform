@@ -88,6 +88,27 @@ class HttpEosProjectResolutionSource:
             )
             response.raise_for_status()
             body = response.json()
+        except httpx.HTTPStatusError as exc:
+            status_code = exc.response.status_code
+            if status_code in {401, 403}:
+                error_code = "PROJECT_RESOLUTION_DENIED"
+                detail = "EOS denied the Project resolution request."
+                retryable = False
+            elif status_code == 404:
+                error_code = "PROJECT_NOT_FOUND"
+                detail = "EOS could not find the requested active Project."
+                retryable = False
+            elif status_code in {409, 422}:
+                error_code = "PROJECT_RESOLUTION_REJECTED"
+                detail = "EOS rejected the Project resolution request."
+                retryable = False
+            else:
+                error_code = "PROJECT_RESOLUTION_UNAVAILABLE"
+                detail = "EOS Project resolution is unavailable."
+                retryable = status_code >= 500
+            raise ProjectDelegationPlanningError(
+                error_code, detail, retryable=retryable
+            ) from exc
         except (httpx.HTTPError, ValueError) as exc:
             raise ProjectDelegationPlanningError(
                 "PROJECT_RESOLUTION_UNAVAILABLE",
