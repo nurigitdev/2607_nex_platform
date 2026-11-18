@@ -444,6 +444,20 @@ non-root with unique manifests, all twelve background/package checks passed,
 and the release set is complete. The `.5B.5` PostgreSQL and authoritative
 claim-handoff Gate may therefore resume.
 
+`CP-M1-E2E-FX-01B.6B.5B.5` implementation evidence is recorded in
+[`mybee_phase1_w70_cp_m1_e2e_fx_01b6b5b5_protected_postgres_gate.md`](../../slices/mybee_phase1_w70_cp_m1_e2e_fx_01b6b5b5_protected_postgres_gate.md).
+The protected Gate applies current WC, AE, and OA migrations, creates the
+WorkItem through the public WC API, and drives route and claim only through
+concurrent installed assignment-dispatch processes. The first actual run found
+and closed a deterministic Job enqueue race by accepting only exact immutable
+job replay while rejecting semantic conflicts. The existing event-delivery
+worker then delivered one signed authoritative handoff to AE; dispatcher and
+delivery restart were idle, fresh OA claim denial was fail-closed, heartbeats
+were persisted, and all tenant-scoped rows were removed. The actual PostgreSQL
+Gate passed all 15 checks, the WC Slice Gate passed with statement `98.16%`
+and branch `95.95%`, and no remote provider was contacted. The `.5B` boundary
+is closed and `CP-M1-E2E-FX-01B.7` may resume with decision `GO`.
+
 `CP-M1-E2E-FX-01B.6A.1` implementation evidence is recorded in
 [`mybee_phase1_w70_cp_m1_e2e_fx_01b6a1_refresh_contract_source_resolver.md`](../../slices/mybee_phase1_w70_cp_m1_e2e_fx_01b6a1_refresh_contract_source_resolver.md).
 It closes the canonical protected contract and the mutation-free EOS source

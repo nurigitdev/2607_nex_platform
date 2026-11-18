@@ -13,6 +13,7 @@ from nex_runtime import (
     SUCCEEDED,
     InMemoryJobQueue,
     InMemoryWorkerHeartbeatStore,
+    JobQueueError,
     SqlAlchemyJobQueue,
     WorkerHeartbeatEmitter,
 )
@@ -202,6 +203,56 @@ def test_scheduler_is_state_bounded_idempotent_and_content_free() -> None:
     )
     assert empty["scanned_count"] == empty["enqueued_count"] == 0
     assert empty["next_cursor"] == first["next_cursor"]
+
+
+def test_scheduler_concurrent_duplicate_reuses_only_exact_job_semantics() -> None:
+    _, repository, _, _ = _runtime()
+    expected = enqueue_claimable_assignment_jobs(
+        repository=repository,
+        queue=InMemoryJobQueue(),
+        state="CREATED",
+        limit=1,
+        created_at=NOW,
+    )
+    exact_job = InMemoryJobQueue()
+    enqueue_claimable_assignment_jobs(
+        repository=repository,
+        queue=exact_job,
+        state="CREATED",
+        limit=1,
+        created_at=NOW,
+    )
+    saved = next(iter(exact_job.jobs.values()))
+
+    class _ConcurrentDuplicateQueue:
+        def __init__(self, existing):
+            self.existing = existing
+
+        def enqueue(self, _job):
+            raise JobQueueError("job.duplicate_id", "already exists", 409)
+
+        def get_job(self, _job_id):
+            return self.existing
+
+    replay = enqueue_claimable_assignment_jobs(
+        repository=repository,
+        queue=_ConcurrentDuplicateQueue(saved),
+        state="CREATED",
+        limit=1,
+        created_at="2026-11-18T02:00:01Z",
+    )
+    assert replay["job_ids"] == expected["job_ids"]
+
+    conflicting = {**saved, "payload": {**saved["payload"], "expected_version": 99}}
+    with pytest.raises(AssignmentDispatchContractError) as error:
+        enqueue_claimable_assignment_jobs(
+            repository=repository,
+            queue=_ConcurrentDuplicateQueue(conflicting),
+            state="CREATED",
+            limit=1,
+            created_at=NOW,
+        )
+    assert error.value.error_code == "wc.assignment_dispatch_job_conflict"
 
 
 def test_handler_routes_claims_and_replays_without_exposing_lease_token() -> None:

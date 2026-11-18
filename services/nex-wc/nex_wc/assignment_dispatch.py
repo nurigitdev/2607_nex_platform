@@ -7,6 +7,7 @@ from uuid import NAMESPACE_URL, uuid5
 
 from nex_runtime import (
     JobQueue,
+    JobQueueError,
     ServiceLogEmitter,
     WorkerHeartbeatEmitter,
     WorkerJobExecution,
@@ -374,12 +375,21 @@ def enqueue_claimable_assignment_jobs(
         limit=normalized_limit,
         after=cursor,
     )
-    jobs = [
-        queue.enqueue(
-            build_assignment_dispatch_job(candidate, created_at=created_at)
-        )
-        for candidate in candidates
-    ]
+    jobs = []
+    for candidate in candidates:
+        job = build_assignment_dispatch_job(candidate, created_at=created_at)
+        try:
+            jobs.append(queue.enqueue(job))
+        except JobQueueError as exc:
+            if exc.error_code != "job.duplicate_id":
+                raise
+            existing = queue.get_job(str(job["job_id"]))
+            if existing is None or not _same_dispatch_job(existing, job):
+                raise AssignmentDispatchContractError(
+                    "wc.assignment_dispatch_job_conflict",
+                    "existing assignment dispatch job has different semantics",
+                ) from exc
+            jobs.append(existing)
     return {
         "schema_version": ASSIGNMENT_DISPATCH_SCHEMA_VERSION,
         "state": normalized_state,
@@ -389,6 +399,25 @@ def enqueue_claimable_assignment_jobs(
         "job_ids": [str(job["job_id"]) for job in jobs],
         "next_cursor": claimable_cursor(candidates[-1]) if candidates else cursor,
     }
+
+
+def _same_dispatch_job(
+    existing: Mapping[str, Any], expected: Mapping[str, Any]
+) -> bool:
+    immutable_fields = (
+        "job_schema_version",
+        "job_id",
+        "job_type",
+        "trace_id",
+        "request_id",
+        "subject_ref",
+        "idempotency_key",
+        "max_attempts",
+        "retryable",
+        "links",
+        "payload",
+    )
+    return all(existing.get(field) == expected.get(field) for field in immutable_fields)
 
 
 def run_assignment_dispatch_job(
