@@ -170,7 +170,7 @@ export async function runMyBeeM1ProductGoldenJourney({
         admitted.payload?.generation?.semantic_planning?.status !== "COMPILED" ||
         !admitted.payload?.interaction_id
       ) {
-        throw new Error(`ProductAdmissionStatus${admitted.status}`);
+        throw new Error(apiFailureCode(admitted, `ProductAdmissionStatus${admitted.status}`));
       }
       const interactionId = admitted.payload.interaction_id;
       stage = `transaction_${index + 1}_approval_and_result`;
@@ -585,11 +585,16 @@ function positiveTimeout(value) {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_TIMEOUT_MS;
 }
 
+export function apiFailureCode(response, fallback) {
+  const candidate = String(response?.payload?.error_code || "");
+  return /^[A-Za-z][A-Za-z0-9_.-]{0,95}$/.test(candidate) ? candidate : fallback;
+}
+
 function safeFailureCode(error) {
   const value = String(error?.message || error?.constructor?.name || "playwright_failed");
-  if (/^[A-Za-z][A-Za-z0-9]{0,95}$/.test(value)) return value;
+  if (/^[A-Za-z][A-Za-z0-9_.-]{0,95}$/.test(value)) return value;
   const name = String(error?.name || error?.constructor?.name || "playwright_failed");
-  return /^[A-Za-z][A-Za-z0-9]{0,95}$/.test(name) ? name : "playwright_failed";
+  return /^[A-Za-z][A-Za-z0-9_.-]{0,95}$/.test(name) ? name : "playwright_failed";
 }
 
 function failure(failureCode, observations = {}) {

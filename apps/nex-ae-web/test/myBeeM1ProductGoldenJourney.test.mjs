@@ -2,12 +2,21 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  apiFailureCode,
   myBeeM1RuntimeConfig,
   myBeeM1ProductJourneyUiContract,
   parseProductPrompts,
   runMyBeeM1ProductGoldenJourney,
   runMyBeeM1ProductPostRestartRecovery
 } from "../scripts/runMyBeeW70CpM1ProductGoldenJourney.mjs";
+
+test("M1 product journey preserves bounded API failure codes", () => {
+  assert.equal(
+    apiFailureCode({ payload: { error_code: "SEMANTIC_ADMISSION_BLOCKED" } }, "fallback"),
+    "SEMANTIC_ADMISSION_BLOCKED"
+  );
+  assert.equal(apiFailureCode({ payload: { error_code: "unsafe value" } }, "fallback"), "fallback");
+});
 
 test("M1 product journey binds to the authenticated React accessibility contract", () => {
   assert.deepEqual(myBeeM1ProductJourneyUiContract(), {
