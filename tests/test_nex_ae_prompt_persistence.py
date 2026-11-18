@@ -168,9 +168,9 @@ def test_registry_seeds_configured_bindings_idempotently_and_survives_restart() 
     delegation_version = restarted.get_template_version(
         delegation_binding["prompt_template_version_id"]
     )
-    assert delegation_version["version"] == "v2"
+    assert delegation_version["version"] == "v3"
     assert delegation_version["metadata"]["hardening"] == (
-        "direct_plan_kind_exact_enum"
+        "exact_delegation_step_shape"
     )
     assert restarted.get_binding("missing") is None
     assert restarted.get_template_version("missing") is None
@@ -238,7 +238,7 @@ def test_startup_upgrades_project_delegation_v1_binding_with_history() -> None:
     after = store.get_binding(AE_PROJECT_DELEGATION_PLAN_BUILDER_BINDING)
     assert (
         store.get_template_version(after["prompt_template_version_id"])["version"]
-        == "v2"
+        == "v3"
     )
     with factory() as session:
         history = (
@@ -248,7 +248,7 @@ def test_startup_upgrades_project_delegation_v1_binding_with_history() -> None:
                     "new_prompt_template_version_id, correlation_id "
                     "FROM ae_prompt_binding_history "
                     "WHERE correlation_id = "
-                    "'cp-m1-project-delegation-prompt-v2'"
+                    "'cp-m1-project-delegation-prompt-v3'"
                 )
             )
             .mappings()

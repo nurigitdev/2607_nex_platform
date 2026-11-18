@@ -276,6 +276,21 @@ _MYBEE_PROJECT_DELEGATION_PLAN_V2_CONTENT = (
     "one logical step and suggested_plan_kind equals DIRECT."
 )
 
+_MYBEE_PROJECT_DELEGATION_PLAN_V3_CONTENT = (
+    _MYBEE_PROJECT_DELEGATION_PLAN_V2_CONTENT
+    + " The sole logical_steps item must contain exactly step_id, step_type, "
+    "title, objective, depends_on, capability_hint, completion_criteria, and "
+    "delegation. Use step_id S1, step_type DELEGATE_WORK, depends_on as an empty "
+    "JSON array, capability_hint copied exactly from capability_catalog, and "
+    "completion_criteria as a non-empty JSON array of plain strings. The "
+    "delegation object must contain exactly work_class, required_agent_type, "
+    "project_scope_ref, result_contract_ref, and completion_policy. Every "
+    "completion_mapping item must contain exactly criterion_id and "
+    "terminal_step_refs, where terminal_step_refs is the JSON array [\"S1\"]. "
+    "Do not add id, name, status, input, output, parameters, metadata, or any "
+    "other field to the logical step or delegation object."
+)
+
 AE_HISTORICAL_PROMPT_SEEDS = [
     PromptSeed(
         service_id="nex-ae-api",
@@ -492,6 +507,26 @@ AE_HISTORICAL_PROMPT_SEEDS = [
             "profile": "project_delegation",
         },
     ),
+    PromptSeed(
+        service_id="nex-ae-api",
+        purpose="plan_builder",
+        name="mybee_m1_project_delegation_plan_candidate_system",
+        owner_domain="agent-experience",
+        binding_key=AE_PROJECT_DELEGATION_PLAN_BUILDER_BINDING,
+        version="v2",
+        role="system",
+        segment_order=0,
+        content=_MYBEE_PROJECT_DELEGATION_PLAN_V2_CONTENT,
+        model_capability="generation",
+        metadata={
+            "phase": "MyBee-W70",
+            "slice": "CP-M1-E2E-FX-01B.7",
+            "candidate_schema": "p7.plan_candidate.v1",
+            "authority": "untrusted_candidate_only",
+            "profile": "project_delegation",
+            "hardening": "direct_plan_kind_exact_enum",
+        },
+    ),
 ]
 
 AE_PROMPT_SEEDS = [
@@ -654,10 +689,10 @@ AE_PROMPT_SEEDS = [
         name="mybee_m1_project_delegation_plan_candidate_system",
         owner_domain="agent-experience",
         binding_key=AE_PROJECT_DELEGATION_PLAN_BUILDER_BINDING,
-        version="v2",
+        version="v3",
         role="system",
         segment_order=0,
-        content=_MYBEE_PROJECT_DELEGATION_PLAN_V2_CONTENT,
+        content=_MYBEE_PROJECT_DELEGATION_PLAN_V3_CONTENT,
         model_capability="generation",
         metadata={
             "phase": "MyBee-W70",
@@ -665,7 +700,7 @@ AE_PROMPT_SEEDS = [
             "candidate_schema": "p7.plan_candidate.v1",
             "authority": "untrusted_candidate_only",
             "profile": "project_delegation",
-            "hardening": "direct_plan_kind_exact_enum",
+            "hardening": "exact_delegation_step_shape",
         },
     ),
 ]
@@ -737,8 +772,8 @@ def _activate_current_project_delegation_plan_prompt(store: Any) -> None:
         new_prompt_template_version_id=target["prompt_template_version_id"],
         expected_prompt_template_version_id=current["prompt_template_version_id"],
         changed_by="nex-ae-api-bootstrap",
-        reason="CP-M1 project delegation DIRECT plan kind hardening",
-        correlation_id="cp-m1-project-delegation-prompt-v2",
+        reason="CP-M1 project delegation exact step shape hardening",
+        correlation_id="cp-m1-project-delegation-prompt-v3",
     )
 
 
