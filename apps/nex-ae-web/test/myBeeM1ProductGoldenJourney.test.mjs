@@ -3,10 +3,31 @@ import test from "node:test";
 
 import {
   myBeeM1RuntimeConfig,
+  myBeeM1ProductJourneyUiContract,
   parseProductPrompts,
   runMyBeeM1ProductGoldenJourney,
   runMyBeeM1ProductPostRestartRecovery
 } from "../scripts/runMyBeeW70CpM1ProductGoldenJourney.mjs";
+
+test("M1 product journey binds to the authenticated React accessibility contract", () => {
+  assert.deepEqual(myBeeM1ProductJourneyUiContract(), {
+    loginHeading: "사번 로그인",
+    employeeLabel: "사번",
+    passwordLabel: "비밀번호",
+    loginButton: "로그인",
+    primaryNavigation: "주요 탐색",
+    workspaceHeading: "작업 공간",
+    promptLabel: "업무 요청",
+    evidenceLabel: "근거 사용",
+    submitButton: "보내기",
+    approvalLink: "승인함",
+    approvalHeading: "승인함",
+    approveButton: "승인",
+    confirmApprovalButton: "승인 확정",
+    decisionRecordedHeading: "결정이 기록되었습니다",
+    logoutButton: "로그아웃"
+  });
+});
 
 test("M1 product runtime config keeps authenticated fetch approval mode", () => {
   const config = myBeeM1RuntimeConfig();

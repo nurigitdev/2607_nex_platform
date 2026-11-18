@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-import { randomUUID } from "node:crypto";
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -39,6 +38,28 @@ const RECOVERY_REQUIRED = [
 ];
 const SENSITIVE = [ENV.requesterPassword, ENV.approverPassword, ENV.promptsJson];
 const DEFAULT_TIMEOUT_MS = 900_000;
+
+const UI = Object.freeze({
+  loginHeading: "사번 로그인",
+  employeeLabel: "사번",
+  passwordLabel: "비밀번호",
+  loginButton: "로그인",
+  primaryNavigation: "주요 탐색",
+  workspaceHeading: "작업 공간",
+  promptLabel: "업무 요청",
+  evidenceLabel: "근거 사용",
+  submitButton: "보내기",
+  approvalLink: "승인함",
+  approvalHeading: "승인함",
+  approveButton: "승인",
+  confirmApprovalButton: "승인 확정",
+  decisionRecordedHeading: "결정이 기록되었습니다",
+  logoutButton: "로그아웃"
+});
+
+export function myBeeM1ProductJourneyUiContract() {
+  return UI;
+}
 
 export function myBeeM1RuntimeConfig() {
   return {
@@ -105,9 +126,10 @@ export async function runMyBeeM1ProductGoldenJourney({
 
     stage = "anonymous_boundary";
     await requester.goto(environ[ENV.webUrl], { waitUntil: "domcontentloaded", timeout });
+    await requester.getByRole("heading", { name: UI.loginHeading }).waitFor({ timeout });
     const anonymousProtectedSurfaceHidden =
-      (await requester.isHidden("#authenticated-shell")) &&
-      (await requester.isHidden("#approval-panel"));
+      (await requester.getByRole("navigation", { name: UI.primaryNavigation }).count()) === 0 &&
+      (await requester.getByRole("heading", { name: UI.approvalHeading }).count()) === 0;
     await captures.capture(requester, "login");
 
     stage = "requester_login";
@@ -117,10 +139,6 @@ export async function runMyBeeM1ProductGoldenJourney({
       password: environ[ENV.requesterPassword],
       timeout
     });
-    const workspace = await createWorkspace(requester);
-    await installWorkspaceBootstrap(requester, workspace);
-    await requester.reload({ waitUntil: "domcontentloaded", timeout });
-    await requester.waitForSelector("#authenticated-shell:not([hidden])", { timeout });
     await captures.capture(requester, "requester-workspace");
 
     stage = "approver_login";
@@ -133,9 +151,18 @@ export async function runMyBeeM1ProductGoldenJourney({
     });
     await captures.capture(approver, "approver-workspace");
 
+    let workspace = null;
     for (let index = 0; index < prompts.length; index += 1) {
       stage = `transaction_${index + 1}_submit`;
-      const admitted = await submitPrompt(requester, prompts[index], timeout);
+      const admitted = await submitPrompt(requester, prompts[index], timeout, {
+        observeWorkspace: index === 0
+      });
+      if (index === 0) {
+        workspace = admitted.workspace;
+        if (!workspace?.workspace_id || !workspace?.chat_document_id) {
+          throw new Error("ProductWorkspaceObservationMissing");
+        }
+      }
       await captures.capture(requester, `transaction-${index + 1}-submitted`);
       if (
         admitted.status !== 202 ||
@@ -199,9 +226,9 @@ export async function runMyBeeM1ProductGoldenJourney({
         item.result_projection.result?.delivery?.state === "ACKNOWLEDGED"
       ),
       requester_logout_returned_to_login:
-        await requester.isVisible("#credential-login-panel"),
+        await requester.getByRole("heading", { name: UI.loginHeading }).isVisible(),
       approver_logout_returned_to_login:
-        await approver.isVisible("#credential-login-panel")
+        await approver.getByRole("heading", { name: UI.loginHeading }).isVisible()
     };
     const evidence = {
       smoke_schema_version: MYBEE_M1_PRODUCT_GOLDEN_SCHEMA_VERSION,
@@ -221,8 +248,8 @@ export async function runMyBeeM1ProductGoldenJourney({
       screen_capture: captures.evidence(),
       checks,
       runtime: {
-        workspace_id: workspace.workspace_id,
-        chat_document_id: workspace.chat_document_id,
+        workspace_id: workspace?.workspace_id,
+        chat_document_id: workspace?.chat_document_id,
         transactions
       }
     };
@@ -358,14 +385,17 @@ async function decideGateInUi(page, gate, timeout, comment) {
   };
   page.on("request", observe);
   try {
-    await page.click('[data-shell-view="approvals"]');
-    await page.waitForSelector('.approval-feedback[data-phase="READY"]', { timeout });
-    await page.waitForSelector(`[data-approval-gate-id="${gate.gate_id}"]`, { timeout });
-    await page.click(`[data-approval-gate-id="${gate.gate_id}"]`);
-    await page.waitForSelector('.approval-feedback[data-phase="DETAIL_READY"]', { timeout });
-    await page.fill("#approval-decision-comment", comment);
-    await page.click('[data-approval-decision="APPROVE"]');
-    await page.waitForSelector('.approval-feedback[data-phase="DECIDED"]', { timeout });
+    void comment;
+    await page.getByRole("link", { name: UI.approvalLink, exact: true }).click();
+    await page.getByRole("heading", { name: UI.approvalHeading, exact: true }).waitFor({ timeout });
+    const pendingList = page.getByLabel("대기 중인 승인 요청");
+    const gateButton = pendingList.getByRole("button").filter({ hasText: gate.title });
+    await gateButton.waitFor({ timeout });
+    await gateButton.click();
+    await page.getByRole("heading", { name: gate.title, exact: true }).waitFor({ timeout });
+    await page.getByRole("button", { name: UI.approveButton, exact: true }).click();
+    await page.getByRole("button", { name: UI.confirmApprovalButton, exact: true }).click();
+    await page.getByRole("heading", { name: UI.decisionRecordedHeading }).waitFor({ timeout });
     if (!decisionRequest) throw new Error("ApprovalDecisionRequestMissing");
     const replay = await browserJson(page, decisionRequest.route, {
       method: "POST",
@@ -377,32 +407,31 @@ async function decideGateInUi(page, gate, timeout, comment) {
   }
 }
 
-async function submitPrompt(page, prompt, timeout) {
-  await page.uncheck("#retrieval-toggle");
-  await page.fill("#prompt", prompt);
+async function submitPrompt(page, prompt, timeout, { observeWorkspace = false } = {}) {
+  const workspaceResponsePromise = observeWorkspace
+    ? page.waitForResponse(response => {
+        const route = new URL(response.url()).pathname;
+        return response.request().method() === "POST" && route === "/ae-api/api/v1/workspaces";
+      }, { timeout })
+    : null;
+  const evidenceToggle = page.getByLabel(UI.evidenceLabel, { exact: true });
+  if (await evidenceToggle.isChecked()) await evidenceToggle.uncheck();
+  await page.getByLabel(UI.promptLabel, { exact: true }).fill(prompt);
   const responsePromise = page.waitForResponse(response => {
     const route = new URL(response.url()).pathname;
     return response.request().method() === "POST" && route === "/ae-api/api/v1/chat/interactions";
   }, { timeout });
-  await page.click("#composer button[type='submit']");
+  await page.getByRole("button", { name: UI.submitButton, exact: true }).click();
   const response = await responsePromise;
-  return { status: response.status(), payload: await response.json() };
-}
-
-async function createWorkspace(page) {
-  const response = await browserJson(page, "/ae-api/api/v1/workspaces", {
-    method: "POST",
-    body: {
-      title: `MyBee M1 ${randomUUID().slice(0, 8)}`,
-      runtime_defaults: {
-        locale: "ko-KR",
-        execution_mode: "GENERAL_ANSWER",
-        generation_alias: "general-llm-default"
-      }
+  let workspace = null;
+  if (workspaceResponsePromise) {
+    const workspaceResponse = await workspaceResponsePromise;
+    if (workspaceResponse.status() !== 200) {
+      throw new Error(`WorkspaceCreateStatus${workspaceResponse.status()}`);
     }
-  });
-  if (response.status !== 200) throw new Error(`WorkspaceCreateStatus${response.status}`);
-  return response.payload;
+    workspace = await workspaceResponse.json();
+  }
+  return { status: response.status(), payload: await response.json(), workspace };
 }
 
 async function readResult(page, interactionId) {
@@ -424,16 +453,14 @@ async function waitForResult(page, interactionId, timeout) {
 }
 
 async function login(page, { tenantId, employeeId, password, timeout }) {
-  if (await page.locator("#credential-tenant-id").count()) {
-    await page.fill("#credential-tenant-id", tenantId);
-  }
-  await page.fill("#credential-employee-id", employeeId);
-  await page.fill("#credential-password", password);
+  void tenantId;
+  await page.getByLabel(UI.employeeLabel, { exact: true }).fill(employeeId);
+  await page.getByLabel(UI.passwordLabel, { exact: true }).fill(password);
   const responsePromise = page.waitForResponse(response =>
     response.request().method() === "POST" &&
     new URL(response.url()).pathname === "/ae-api/api/v1/auth/session/login",
   { timeout });
-  await page.click("#credential-login-submit-button");
+  await page.getByRole("button", { name: UI.loginButton, exact: true }).click();
   const response = await responsePromise;
   if (response.status() !== 200) {
     let payload = null;
@@ -449,7 +476,8 @@ async function login(page, { tenantId, employeeId, password, timeout }) {
         : `CredentialLoginStatus${response.status()}`
     );
   }
-  await page.waitForSelector("#authenticated-shell:not([hidden])", { timeout });
+  await page.getByRole("navigation", { name: UI.primaryNavigation }).waitFor({ timeout });
+  await page.getByRole("heading", { name: UI.workspaceHeading, exact: true }).waitFor({ timeout });
 }
 
 async function logout(page, timeout) {
@@ -457,10 +485,10 @@ async function logout(page, timeout) {
     response.request().method() === "POST" &&
     new URL(response.url()).pathname === "/ae-api/api/v1/auth/session/logout",
   { timeout });
-  await page.click("#credential-logout-button", { timeout });
+  await page.getByRole("button", { name: UI.logoutButton, exact: true }).click({ timeout });
   const response = await responsePromise;
   if (response.status() !== 200) throw new Error(`CredentialLogoutStatus${response.status()}`);
-  await page.waitForSelector("#authentication-shell:not([hidden])", { timeout });
+  await page.getByRole("heading", { name: UI.loginHeading }).waitFor({ timeout });
 }
 
 async function launchBrowser(playwright, environ) {
@@ -483,16 +511,6 @@ async function configuredPage(context) {
     globalThis.__NEX_AE_WEB_CONFIG__ = config;
   }, myBeeM1RuntimeConfig());
   return page;
-}
-
-async function installWorkspaceBootstrap(page, workspace) {
-  await page.addInitScript(value => {
-    globalThis.__NEX_AE_WEB_WORKSPACE_BOOTSTRAP__ = value;
-  }, {
-    schema_version: "ae_web_workspace_bootstrap.v1",
-    workspace_id: workspace.workspace_id,
-    chat_document_id: workspace.chat_document_id
-  });
 }
 
 function observeResponses(page, responses) {
