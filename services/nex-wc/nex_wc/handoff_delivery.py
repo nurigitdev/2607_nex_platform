@@ -235,9 +235,10 @@ class HttpClaimHandoffClient:
             with urlopen(request, timeout=self._timeout_seconds) as response:
                 payload = json.loads(response.read().decode("utf-8"))
         except HTTPError as exc:
+            remote_detail = _problem_detail(exc)
             raise HandoffDeliveryError(
                 "wc.handoff_delivery_http_failed",
-                f"AE handoff delivery failed with HTTP {exc.code}.",
+                f"AE handoff delivery failed with HTTP {exc.code}.{remote_detail}",
                 exc.code >= 500,
             ) from exc
         except (URLError, TimeoutError, json.JSONDecodeError) as exc:
@@ -252,6 +253,23 @@ class HttpClaimHandoffClient:
                 False,
             )
         return {"agent_execution_id": str(execution["agent_execution_id"])}
+
+
+def _problem_detail(error: HTTPError) -> str:
+    try:
+        payload = json.loads(error.read().decode("utf-8"))
+    except (AttributeError, UnicodeDecodeError, json.JSONDecodeError):
+        return ""
+    if not isinstance(payload, Mapping):
+        return ""
+    error_code = payload.get("error_code")
+    detail = payload.get("detail")
+    parts = []
+    if isinstance(error_code, str) and error_code.strip():
+        parts.append(f" error_code={error_code.strip()[:160]}")
+    if isinstance(detail, str) and detail.strip():
+        parts.append(f" detail={detail.strip()[:500]}")
+    return "".join(parts)
 
 
 def _job_id(event_id: str) -> str:

@@ -1,17 +1,15 @@
 from __future__ import annotations
 
 import copy
+import io
 import json
 from datetime import UTC, datetime
 from urllib.error import HTTPError, URLError
 
+import nex_ae_api.agent_execution as execution_module
+import nex_wc.handoff_delivery as delivery_module
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine, text
-from sqlalchemy.orm import sessionmaker
-
-import nex_wc.handoff_delivery as delivery_module
-import nex_ae_api.agent_execution as execution_module
 from nex_ae_api.agent_execution import (
     AgentExecutionAdmissionService,
     AgentExecutionError,
@@ -22,9 +20,9 @@ from nex_ae_api.agent_execution import (
 from nex_ae_api.agent_identity import SqlAlchemyAgentIdentityRegistry
 from nex_ae_api.claim_handoff_api import register_claim_handoff_routes
 from nex_runtime import (
+    SERVICE_SPECS,
     InMemoryJobQueue,
     InMemoryWorkerHeartbeatStore,
-    SERVICE_SPECS,
     WorkerHeartbeatEmitter,
     build_service_app,
     issue_mock_service_token,
@@ -43,7 +41,8 @@ from nex_wc.handoff_delivery import (
     run_handoff_delivery_worker_once,
 )
 from nex_wc.work_items import InMemoryWorkItemRepository, WorkItemService
-
+from sqlalchemy import create_engine, text
+from sqlalchemy.orm import sessionmaker
 
 NOW_DT = datetime(2026, 10, 18, 7, 0, tzinfo=UTC)
 NOW = "2026-10-18T07:00:00Z"
@@ -738,6 +737,30 @@ def test_s4_http_delivery_failures_and_store_failures(monkeypatch):
     with pytest.raises(HandoffDeliveryError) as http_error:
         client.deliver({"event_id": "event"})
     assert http_error.value.retryable is False
+
+    problem = {
+        "error_code": "AE_CLAIM_HANDOFF_REJECTED",
+        "detail": "The admitted planning route is invalid.",
+        "sensitive": "must-not-be-projected",
+    }
+    monkeypatch.setattr(
+        delivery_module,
+        "urlopen",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            HTTPError(
+                "http://ae",
+                409,
+                "conflict",
+                {},
+                io.BytesIO(json.dumps(problem).encode()),
+            )
+        ),
+    )
+    with pytest.raises(HandoffDeliveryError) as projected:
+        client.deliver({"event_id": "event"})
+    assert "error_code=AE_CLAIM_HANDOFF_REJECTED" in projected.value.detail
+    assert "detail=The admitted planning route is invalid." in projected.value.detail
+    assert "sensitive" not in projected.value.detail
 
     monkeypatch.setattr(
         delivery_module,
