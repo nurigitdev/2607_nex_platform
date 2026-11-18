@@ -89,3 +89,33 @@ test("M1 product journey reports a bounded launch failure without secrets", asyn
   assert.equal(evidence.failure_code, "LaunchUnavailable");
   assert.equal(JSON.stringify(evidence).includes("private-password"), false);
 });
+
+test("M1 product journey falls back to a bounded Playwright error name", async () => {
+  const evidence = await runMyBeeM1ProductGoldenJourney({
+    environ: {
+      NEX_MYBEE_M1_GOLDEN_WEB_URL: "https://ae.nex-staging.test:8443",
+      NEX_MYBEE_M1_GOLDEN_TENANT_ID: "M1A7",
+      NEX_MYBEE_M1_GOLDEN_REQUESTER_EMPLOYEE_ID: "8101",
+      NEX_MYBEE_M1_GOLDEN_REQUESTER_PASSWORD: "requester-private-password",
+      NEX_MYBEE_M1_GOLDEN_APPROVER_EMPLOYEE_ID: "8201",
+      NEX_MYBEE_M1_GOLDEN_APPROVER_PASSWORD: "approver-private-password",
+      NEX_MYBEE_M1_GOLDEN_PROMPTS_JSON: JSON.stringify([
+        "첫 번째 제품 전표 처리 요청은 충분히 긴 업무 문장입니다.",
+        "두 번째 제품 전표 처리 요청도 서로 다른 충분히 긴 업무 문장입니다."
+      ])
+    },
+    importPlaywright: async () => ({
+      chromium: {
+        launch: async () => {
+          const error = new Error("Timeout 1000ms exceeded while opening a page");
+          error.name = "TimeoutError";
+          throw error;
+        }
+      }
+    })
+  });
+
+  assert.equal(evidence.status, "FAIL");
+  assert.equal(evidence.failure_code, "TimeoutError");
+  assert.equal(evidence.observations.stage, "launch");
+});

@@ -151,6 +151,29 @@ def test_product_semantic_calibration_is_exact_revision_scoped() -> None:
     }
 
 
+def test_product_browser_failure_summary_is_bounded_and_body_free() -> None:
+    summary = acceptance._browser_failure_summary(
+        {
+            "failure_code": "TimeoutError",
+            "observations": {
+                "stage": "requester_login",
+                "recent_api_responses": [
+                    {
+                        "route": "auth_session",
+                        "status": 401,
+                        "body": "must-not-be-projected",
+                    }
+                ],
+            },
+        }
+    )
+
+    assert summary == (
+        "TimeoutError stage=requester_login responses=auth_session:401"
+    )
+    assert "must-not-be-projected" not in summary
+
+
 def test_product_baseline_rejects_duplicate_projects_and_one_transaction(
     tmp_path: Path,
 ) -> None:

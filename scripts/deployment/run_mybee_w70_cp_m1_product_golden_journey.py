@@ -50,6 +50,9 @@ SCHEMA_VERSION = "mybee_w70_cp_m1_product_golden_journey.v1"
 DEFAULT_REPORT = (
     ROOT / "reports/deployment/mybee-w70-cp-m1-product-golden-journey.json"
 )
+DEFAULT_BROWSER_REPORT = (
+    ROOT / "reports/deployment/mybee-w70-cp-m1-product-browser-evidence.json"
+)
 PLAYWRIGHT_RUNNER = (
     ROOT
     / "apps/nex-ae-web/scripts/runMyBeeW70CpM1ProductGoldenJourney.mjs"
@@ -204,13 +207,17 @@ def execute_m1_product_golden_journey(
             requester_password=requester_password,
             approver_password=approver_password,
         )
+        installed._write_report(
+            DEFAULT_BROWSER_REPORT, _public_browser_evidence(browser)
+        )
         runtime = browser.get("runtime")
         transactions = (
             runtime.get("transactions") if isinstance(runtime, Mapping) else None
         )
         if browser.get("status") != "PASS" or not isinstance(transactions, list):
             raise M1ProductGoldenJourneyError(
-                f"M1 product browser journey failed: {browser.get('failure_code', 'unknown')}"
+                "M1 product browser journey failed: "
+                + _browser_failure_summary(browser)
             )
         interaction_ids = tuple(
             str(item.get("interaction_id") or "") for item in transactions
@@ -689,6 +696,26 @@ def _prepare_screenshot_directory(directory: Path) -> None:
 
 def _public_browser_evidence(evidence: Mapping[str, Any]) -> dict[str, Any]:
     return {key: value for key, value in evidence.items() if key != "runtime"}
+
+
+def _browser_failure_summary(evidence: Mapping[str, Any]) -> str:
+    observations = evidence.get("observations")
+    safe_observations = observations if isinstance(observations, Mapping) else {}
+    stage = str(safe_observations.get("stage") or "unknown")
+    recent = safe_observations.get("recent_api_responses")
+    statuses = []
+    if isinstance(recent, list):
+        for item in recent[-8:]:
+            if not isinstance(item, Mapping):
+                continue
+            route = item.get("route") or item.get("route_class") or "other"
+            statuses.append(
+                f"{route}:{item.get('status', 'unknown')}"
+            )
+    return (
+        f"{evidence.get('failure_code', 'unknown')} "
+        f"stage={stage} responses={','.join(statuses) or 'none'}"
+    )
 
 
 def summary_line(result: Mapping[str, Any]) -> str:

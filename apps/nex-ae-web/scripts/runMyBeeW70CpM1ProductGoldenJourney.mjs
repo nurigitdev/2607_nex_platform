@@ -545,7 +545,9 @@ function positiveTimeout(value) {
 
 function safeFailureCode(error) {
   const value = String(error?.message || error?.constructor?.name || "playwright_failed");
-  return /^[A-Za-z][A-Za-z0-9]{0,95}$/.test(value) ? value : "playwright_failed";
+  if (/^[A-Za-z][A-Za-z0-9]{0,95}$/.test(value)) return value;
+  const name = String(error?.name || error?.constructor?.name || "playwright_failed");
+  return /^[A-Za-z][A-Za-z0-9]{0,95}$/.test(name) ? name : "playwright_failed";
 }
 
 function failure(failureCode, observations = {}) {
