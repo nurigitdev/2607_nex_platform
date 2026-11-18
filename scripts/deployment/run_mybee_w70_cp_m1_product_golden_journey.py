@@ -224,13 +224,14 @@ def execute_m1_product_golden_journey(
                     "logs",
                     "--no-color",
                     "--tail",
-                    "240",
+                    "2000",
                     "nex-ae-api",
                 ),
                 check=False,
             )
-            runtime_failure = _semantic_runtime_failure(
-                f"{diagnostic.stdout}\n{diagnostic.stderr}"
+            runtime_failure = _semantic_runtime_failure_summary(
+                f"{diagnostic.stdout}\n{diagnostic.stderr}",
+                returncode=diagnostic.returncode,
             )
             raise M1ProductGoldenJourneyError(
                 "M1 product browser journey failed: "
@@ -512,6 +513,16 @@ def _semantic_runtime_failure(log_output: str) -> str:
         log_output,
     )
     return traceback_types[-1] if traceback_types else "not_observed"
+
+
+def _semantic_runtime_failure_summary(
+    log_output: str, *, returncode: int
+) -> str:
+    failure = _semantic_runtime_failure(log_output)
+    if failure != "not_observed":
+        return failure
+    line_count = sum(1 for line in log_output.splitlines() if line.strip())
+    return f"not_observed(rc={returncode},lines={line_count})"
 
 
 def _run_playwright(

@@ -199,6 +199,15 @@ def test_product_semantic_runtime_failure_keeps_only_exception_type() -> None:
     assert acceptance._semantic_runtime_failure("unrelated logs") == "not_observed"
 
 
+def test_product_semantic_runtime_failure_summary_is_bounded() -> None:
+    assert (
+        acceptance._semantic_runtime_failure_summary(
+            "first line\nsecret-bearing line\n", returncode=17
+        )
+        == "not_observed(rc=17,lines=2)"
+    )
+
+
 def test_product_baseline_rejects_duplicate_projects_and_one_transaction(
     tmp_path: Path,
 ) -> None:
