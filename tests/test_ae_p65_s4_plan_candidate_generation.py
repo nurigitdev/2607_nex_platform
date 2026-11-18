@@ -426,6 +426,15 @@ def test_candidate_top_level_fail_closed_matrix(output: str, error_code: str) ->
     assert raised.value.error_code == error_code
 
 
+def test_candidate_schema_error_exposes_only_bounded_structural_diagnostic() -> None:
+    with pytest.raises(PlanCandidateStageError) as raised:
+        parse_plan_candidate(
+            canonical_json(_candidate(suggested_plan_kind="CERTIFIED"))
+        )
+
+    assert raised.value.diagnostic_code == "PLAN_CANDIDATE_PLAN_KIND_IS_INVALID"
+
+
 @pytest.mark.parametrize(
     ("logical_steps", "error_code"),
     [

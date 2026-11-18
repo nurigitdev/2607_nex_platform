@@ -492,6 +492,17 @@ def test_candidate_top_level_fail_closed_matrix(output: str, error_code: str) ->
     assert raised.value.error_code == error_code
 
 
+def test_candidate_schema_error_exposes_only_bounded_structural_diagnostic() -> None:
+    with pytest.raises(IntentCandidateStageError) as raised:
+        parse_intent_candidate(
+            canonical_json(_candidate(suggested_execution_mode="WRITE"))
+        )
+
+    assert raised.value.diagnostic_code == (
+        "INTENT_CANDIDATE_EXECUTION_MODE_IS_UNSUPPORTED"
+    )
+
+
 @pytest.mark.parametrize(
     ("selectors", "error_code"),
     [

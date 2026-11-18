@@ -39,6 +39,7 @@ from nex_ae_api.semantic_candidates import (
     SemanticCalibrationPolicy,
     SemanticCalibrationRegistry,
     SemanticCandidateStageError,
+    semantic_candidate_diagnostic_code,
 )
 from nex_ae_api.voucher_attachment_manifest import work_intent_manifest_binding
 
@@ -1346,7 +1347,15 @@ def _raise_json_constant(value: str) -> None:
 
 
 def _schema_error(detail: str) -> PlanCandidateStageError:
-    return PlanCandidateStageError(422, "CANDIDATE_SCHEMA_INVALID", detail)
+    return PlanCandidateStageError(
+        422,
+        "CANDIDATE_SCHEMA_INVALID",
+        detail,
+        diagnostic_code=semantic_candidate_diagnostic_code(
+            detail,
+            semantic_stage="PLAN",
+        ),
+    )
 
 
 def _capability_error(detail: str) -> PlanCandidateStageError:
@@ -1358,7 +1367,15 @@ def _dependency_error(detail: str) -> PlanCandidateStageError:
 
 
 def _bounds_error(detail: str) -> PlanCandidateStageError:
-    return PlanCandidateStageError(422, "CANDIDATE_BOUNDS_EXCEEDED", detail)
+    return PlanCandidateStageError(
+        422,
+        "CANDIDATE_BOUNDS_EXCEEDED",
+        detail,
+        diagnostic_code=semantic_candidate_diagnostic_code(
+            detail,
+            semantic_stage="PLAN",
+        ),
+    )
 
 
 def _request_error(detail: str) -> PlanCandidateStageError:

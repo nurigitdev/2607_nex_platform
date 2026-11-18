@@ -796,6 +796,12 @@ def _browser_failure_summary(evidence: Mapping[str, Any]) -> str:
     observations = evidence.get("observations")
     safe_observations = observations if isinstance(observations, Mapping) else {}
     stage = str(safe_observations.get("stage") or "unknown")
+    semantic_stage = str(safe_observations.get("semantic_stage") or "")
+    semantic_stage = (
+        semantic_stage
+        if semantic_stage in {"INTENT", "CONTEXT", "PLAN"}
+        else ""
+    )
     recent = safe_observations.get("recent_api_responses")
     statuses = []
     if isinstance(recent, list):
@@ -808,7 +814,9 @@ def _browser_failure_summary(evidence: Mapping[str, Any]) -> str:
             )
     return (
         f"{evidence.get('failure_code', 'unknown')} "
-        f"stage={stage} responses={','.join(statuses) or 'none'}"
+        f"stage={stage} "
+        + (f"semantic_stage={semantic_stage} " if semantic_stage else "")
+        + f"responses={','.join(statuses) or 'none'}"
     )
 
 

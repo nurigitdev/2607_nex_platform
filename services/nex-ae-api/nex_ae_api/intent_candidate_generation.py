@@ -28,6 +28,7 @@ from nex_ae_api.semantic_candidates import (
     SemanticCalibrationPolicy,
     SemanticCalibrationRegistry,
     SemanticCandidateStageError,
+    semantic_candidate_diagnostic_code,
 )
 from nex_ae_api.work_intent import build_work_intent_from_decision
 
@@ -671,11 +672,27 @@ def _raise_json_constant(value: str) -> None:
 
 
 def _schema_error(detail: str) -> IntentCandidateStageError:
-    return IntentCandidateStageError(422, "CANDIDATE_SCHEMA_INVALID", detail)
+    return IntentCandidateStageError(
+        422,
+        "CANDIDATE_SCHEMA_INVALID",
+        detail,
+        diagnostic_code=semantic_candidate_diagnostic_code(
+            detail,
+            semantic_stage="INTENT",
+        ),
+    )
 
 
 def _bounds_error(detail: str) -> IntentCandidateStageError:
-    return IntentCandidateStageError(422, "CANDIDATE_BOUNDS_EXCEEDED", detail)
+    return IntentCandidateStageError(
+        422,
+        "CANDIDATE_BOUNDS_EXCEEDED",
+        detail,
+        diagnostic_code=semantic_candidate_diagnostic_code(
+            detail,
+            semantic_stage="INTENT",
+        ),
+    )
 
 
 def _request_error(detail: str) -> IntentCandidateStageError:

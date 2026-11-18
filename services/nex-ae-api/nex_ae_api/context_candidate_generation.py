@@ -23,6 +23,7 @@ from nex_ae_api.semantic_candidates import (
     SemanticCalibrationPolicy,
     SemanticCalibrationRegistry,
     SemanticCandidateStageError,
+    semantic_candidate_diagnostic_code,
 )
 from nex_ae_api.work_intent import (
     BUSINESS_WORK_INTENT_SCHEMA_VERSION,
@@ -833,7 +834,10 @@ def _schema_error(detail: str) -> ContextCandidateStageError:
         422,
         "CANDIDATE_SCHEMA_INVALID",
         detail,
-        diagnostic_code=_candidate_diagnostic_code(detail),
+        diagnostic_code=semantic_candidate_diagnostic_code(
+            detail,
+            semantic_stage="CONTEXT",
+        ),
     )
 
 
@@ -842,15 +846,11 @@ def _bounds_error(detail: str) -> ContextCandidateStageError:
         422,
         "CANDIDATE_BOUNDS_EXCEEDED",
         detail,
-        diagnostic_code=_candidate_diagnostic_code(detail),
+        diagnostic_code=semantic_candidate_diagnostic_code(
+            detail,
+            semantic_stage="CONTEXT",
+        ),
     )
-
-
-def _candidate_diagnostic_code(detail: str) -> str | None:
-    if re.fullmatch(r"CONTEXT [A-Za-z0-9 ]{1,120}\.", detail) is None:
-        return None
-    normalized = re.sub(r"[^A-Za-z0-9]+", "_", detail).strip("_").upper()
-    return normalized if len(normalized) <= 127 else None
 
 
 def _request_error(detail: str) -> ContextCandidateStageError:

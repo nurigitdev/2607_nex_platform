@@ -159,6 +159,7 @@ def test_product_browser_failure_summary_is_bounded_and_body_free() -> None:
             "failure_code": "TimeoutError",
             "observations": {
                 "stage": "requester_login",
+                "semantic_stage": "CONTEXT",
                 "recent_api_responses": [
                     {
                         "route": "auth_session",
@@ -171,7 +172,8 @@ def test_product_browser_failure_summary_is_bounded_and_body_free() -> None:
     )
 
     assert summary == (
-        "TimeoutError stage=requester_login responses=auth_session:401"
+        "TimeoutError stage=requester_login semantic_stage=CONTEXT "
+        "responses=auth_session:401"
     )
     assert "must-not-be-projected" not in summary
 

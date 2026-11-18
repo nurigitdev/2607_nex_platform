@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   apiFailureCode,
+  apiSemanticFailureStage,
   myBeeM1RuntimeConfig,
   myBeeM1ProductJourneyUiContract,
   parseProductPrompts,
@@ -16,6 +17,17 @@ test("M1 product journey preserves bounded API failure codes", () => {
     "SEMANTIC_ADMISSION_BLOCKED"
   );
   assert.equal(apiFailureCode({ payload: { error_code: "unsafe value" } }, "fallback"), "fallback");
+});
+
+test("M1 product journey preserves only bounded semantic failure stages", () => {
+  assert.equal(
+    apiSemanticFailureStage({ payload: { details: { semantic_stage: "CONTEXT" } } }),
+    "CONTEXT"
+  );
+  assert.equal(
+    apiSemanticFailureStage({ payload: { details: { semantic_stage: "private-value" } } }),
+    null
+  );
 });
 
 test("M1 product journey binds to the authenticated React accessibility contract", () => {

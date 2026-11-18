@@ -113,6 +113,7 @@ export async function runMyBeeM1ProductGoldenJourney({
   let requesterPage;
   let approverPage;
   let stage = "launch";
+  let semanticFailureStage = null;
   const responses = [];
   const transactions = [];
   try {
@@ -170,6 +171,7 @@ export async function runMyBeeM1ProductGoldenJourney({
         admitted.payload?.generation?.semantic_planning?.status !== "COMPILED" ||
         !admitted.payload?.interaction_id
       ) {
+        semanticFailureStage = apiSemanticFailureStage(admitted);
         throw new Error(apiFailureCode(admitted, `ProductAdmissionStatus${admitted.status}`));
       }
       const interactionId = admitted.payload.interaction_id;
@@ -265,11 +267,13 @@ export async function runMyBeeM1ProductGoldenJourney({
         // The original bounded failure remains authoritative if capture also fails.
       }
     }
-    const evidence = failure(safeFailureCode(error), {
+    const observations = {
       stage,
       response_count: responses.length,
       recent_api_responses: responses.slice(-8)
-    });
+    };
+    if (semanticFailureStage) observations.semantic_stage = semanticFailureStage;
+    const evidence = failure(safeFailureCode(error), observations);
     evidence.screen_capture = captures.evidence();
     assertRedacted(evidence, environ);
     return evidence;
@@ -588,6 +592,11 @@ function positiveTimeout(value) {
 export function apiFailureCode(response, fallback) {
   const candidate = String(response?.payload?.error_code || "");
   return /^[A-Za-z][A-Za-z0-9_.-]{0,95}$/.test(candidate) ? candidate : fallback;
+}
+
+export function apiSemanticFailureStage(response) {
+  const candidate = String(response?.payload?.details?.semantic_stage || "");
+  return ["INTENT", "CONTEXT", "PLAN"].includes(candidate) ? candidate : null;
 }
 
 function safeFailureCode(error) {
