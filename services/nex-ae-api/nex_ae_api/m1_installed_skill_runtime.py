@@ -191,12 +191,12 @@ class M1InstalledSkillRuntime:
                 authority_resolver=self.resolve_allocation_plan_authority,
                 registration=transaction_preparation.adapter.registration,
             )
-        self.public_api = load_nsl_v02_public_api(
-            inspect_installed_nsl_package(
-                _json_object(config.wheel_lock_path),
-                platform_lock_path=config.platform_lock_path,
-            )
+        nsl_package_readiness = inspect_installed_nsl_package(
+            _json_object(config.wheel_lock_path),
+            platform_lock_path=config.platform_lock_path,
         )
+        self.nsl_package_readiness = MappingProxyType(dict(nsl_package_readiness))
+        self.public_api = load_nsl_v02_public_api(nsl_package_readiness)
         self._writers = {
             selection.capability.capability_id: _M1JournalControlledRuntime(
                 sessions,

@@ -75,6 +75,7 @@ def _build_verified_product_release_profile(
             kind: installed.backend_profile for kind in registry.registered_kinds
         },
         package_readiness=readiness,
+        in_process_package_readiness=installed.nsl_package_readiness,
     )
 
 

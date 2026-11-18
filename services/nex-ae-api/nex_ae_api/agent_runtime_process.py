@@ -126,7 +126,7 @@ class InstalledAgentRuntimeProcess:
                 self.composition.executor_profile.backend_profiles
             ),
             in_process_package_readiness=(
-                self.composition.executor_profile.package_readiness
+                self.composition.executor_profile.worker_package_readiness
             ),
         )
         checks = {

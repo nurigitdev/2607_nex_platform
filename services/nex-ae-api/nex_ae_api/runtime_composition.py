@@ -49,6 +49,7 @@ class RuntimeExecutorProfile:
     registry: P5StepExecutorRegistry
     executor_backends: Mapping[str, str]
     package_readiness: Mapping[str, Any] | None = None
+    in_process_package_readiness: Mapping[str, Any] | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.registry, P5StepExecutorRegistry):
@@ -72,6 +73,10 @@ class RuntimeExecutorProfile:
             self.package_readiness, Mapping
         ):
             raise TypeError("package_readiness must be an object")
+        if self.in_process_package_readiness is not None and not isinstance(
+            self.in_process_package_readiness, Mapping
+        ):
+            raise TypeError("in_process_package_readiness must be an object")
         object.__setattr__(
             self, "executor_backends", MappingProxyType(dict(normalized))
         )
@@ -81,6 +86,12 @@ class RuntimeExecutorProfile:
                 "package_readiness",
                 MappingProxyType(dict(self.package_readiness)),
             )
+        if self.in_process_package_readiness is not None:
+            object.__setattr__(
+                self,
+                "in_process_package_readiness",
+                MappingProxyType(dict(self.in_process_package_readiness)),
+            )
 
     @property
     def executor_kinds(self) -> tuple[str, ...]:
@@ -89,6 +100,14 @@ class RuntimeExecutorProfile:
     @property
     def backend_profiles(self) -> tuple[str, ...]:
         return tuple(sorted(set(self.executor_backends.values())))
+
+    @property
+    def worker_package_readiness(self) -> Mapping[str, Any] | None:
+        return (
+            self.in_process_package_readiness
+            if self.in_process_package_readiness is not None
+            else self.package_readiness
+        )
 
 
 class InstalledStepAssignmentHandler:
@@ -163,7 +182,9 @@ class InstalledRuntimeComposition:
             lifecycle=lifecycle,
             available_executor_kinds=self.executor_profile.executor_kinds,
             available_backend_profiles=self.executor_profile.backend_profiles,
-            in_process_package_readiness=self.executor_profile.package_readiness,
+            in_process_package_readiness=(
+                self.executor_profile.worker_package_readiness
+            ),
             max_cycles=1,
             stop_on_failure=False,
             finalize_lifecycle=finalize_lifecycle,

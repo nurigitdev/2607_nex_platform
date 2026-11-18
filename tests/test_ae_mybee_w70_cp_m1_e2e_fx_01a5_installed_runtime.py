@@ -127,6 +127,13 @@ def test_verified_product_release_profile_is_fail_closed_and_ready(
             ),
         },
     }
+    assert profile.in_process_package_readiness is not None
+    assert profile.in_process_package_readiness["status"] == "PASS"
+    assert (
+        profile.in_process_package_readiness["schema_version"]
+        == "nsl_installed_package_readiness.v2"
+    )
+    assert profile.in_process_package_readiness["package_version"] == "0.2.1"
 
     drifted = json.loads(
         (ROOT / "deployment/locks/ae-mybee-m1-runtime-activation.v2.json").read_text(

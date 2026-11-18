@@ -196,6 +196,21 @@ def test_executor_profile_accepts_no_package_readiness() -> None:
     )
 
     assert profile.package_readiness is None
+    assert profile.in_process_package_readiness is None
+    assert profile.worker_package_readiness is None
+
+
+def test_executor_profile_rejects_invalid_in_process_package_readiness() -> None:
+    with pytest.raises(TypeError, match="in_process_package_readiness"):
+        composition.RuntimeExecutorProfile(
+            registry=P5StepExecutorRegistry(
+                {"DETERMINISTIC_REPORT": _FakeExecutor()}
+            ),
+            executor_backends={
+                "DETERMINISTIC_REPORT": "NSL_V02_IN_PROCESS"
+            },
+            in_process_package_readiness="invalid",  # type: ignore[arg-type]
+        )
 
 
 def test_worker_environment_preserves_explicit_runtime_configuration() -> None:
