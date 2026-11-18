@@ -33,6 +33,7 @@ class SemanticCandidateStageError(Exception):
     detail: str
     directive: str = "BLOCKED"
     retryable: bool = False
+    diagnostic_code: str | None = None
 
     def __str__(self) -> str:
         return self.detail

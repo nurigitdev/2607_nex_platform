@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import os
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
@@ -91,6 +92,9 @@ from nex_ae_api.work_intent import (
     build_work_intent_from_decision,
     planning_mode,
 )
+
+
+LOGGER = logging.getLogger(__name__)
 
 _OPTIONAL_PRODUCT_FALLBACK_ERRORS = frozenset(
     {
@@ -956,6 +960,16 @@ class DeterministicCandidateAdmissionService:
             )
             if failure is None:
                 raise
+            diagnostic_code = getattr(exc, "diagnostic_code", None)
+            if isinstance(diagnostic_code, str):
+                LOGGER.warning(
+                    "Semantic candidate stage rejected; exception_type=%s "
+                    "error_code=%s diagnostic_code=%s semantic_stage=%s",
+                    type(exc).__name__,
+                    failure.error_code,
+                    diagnostic_code,
+                    semantic_stage,
+                )
             raise SemanticCandidateAdmissionError(
                 status_code=failure.status_code,
                 error_code=failure.error_code,

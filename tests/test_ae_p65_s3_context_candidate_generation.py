@@ -546,6 +546,28 @@ def test_resource_selector_fail_closed_matrix(selectors) -> None:
         )
 
 
+def test_context_schema_failure_exposes_only_bounded_structural_diagnostic() -> None:
+    with pytest.raises(ContextCandidateStageError) as raised:
+        parse_context_candidate_set(
+            canonical_json(
+                _candidate(
+                    resource_selectors=[
+                        {
+                            "resource_type": "PROJECT",
+                            "selector_kind": "ID",
+                            "selector_value": "private-value-must-not-appear",
+                            "confidence": 0.9,
+                        }
+                    ]
+                )
+            )
+        )
+
+    assert raised.value.error_code == "CANDIDATE_SCHEMA_INVALID"
+    assert raised.value.diagnostic_code == "CONTEXT_RESOURCE_TYPE_IS_INVALID"
+    assert "private-value" not in raised.value.diagnostic_code
+
+
 @pytest.mark.parametrize(
     "parameters",
     [

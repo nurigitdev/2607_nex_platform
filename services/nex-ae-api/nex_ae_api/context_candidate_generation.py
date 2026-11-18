@@ -829,11 +829,28 @@ def _raise_json_constant(value: str) -> None:
 
 
 def _schema_error(detail: str) -> ContextCandidateStageError:
-    return ContextCandidateStageError(422, "CANDIDATE_SCHEMA_INVALID", detail)
+    return ContextCandidateStageError(
+        422,
+        "CANDIDATE_SCHEMA_INVALID",
+        detail,
+        diagnostic_code=_candidate_diagnostic_code(detail),
+    )
 
 
 def _bounds_error(detail: str) -> ContextCandidateStageError:
-    return ContextCandidateStageError(422, "CANDIDATE_BOUNDS_EXCEEDED", detail)
+    return ContextCandidateStageError(
+        422,
+        "CANDIDATE_BOUNDS_EXCEEDED",
+        detail,
+        diagnostic_code=_candidate_diagnostic_code(detail),
+    )
+
+
+def _candidate_diagnostic_code(detail: str) -> str | None:
+    if re.fullmatch(r"CONTEXT [A-Za-z0-9 ]{1,120}\.", detail) is None:
+        return None
+    normalized = re.sub(r"[^A-Za-z0-9]+", "_", detail).strip("_").upper()
+    return normalized if len(normalized) <= 127 else None
 
 
 def _request_error(detail: str) -> ContextCandidateStageError:
