@@ -182,6 +182,12 @@ def test_product_semantic_runtime_failure_keeps_only_exception_type() -> None:
     )
 
     assert acceptance._semantic_runtime_failure(logs) == "GenerationResponseError"
+    assert (
+        acceptance._semantic_runtime_failure(
+            'nex-ae-api | {"exception_type":"CandidateSchemaError"}'
+        )
+        == "CandidateSchemaError"
+    )
     assert acceptance._semantic_runtime_failure("unrelated logs") == "not_observed"
 
 

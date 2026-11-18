@@ -229,7 +229,9 @@ def execute_m1_product_golden_journey(
                 ),
                 check=False,
             )
-            runtime_failure = _semantic_runtime_failure(diagnostic.stdout)
+            runtime_failure = _semantic_runtime_failure(
+                f"{diagnostic.stdout}\n{diagnostic.stderr}"
+            )
             raise M1ProductGoldenJourneyError(
                 "M1 product browser journey failed: "
                 + _browser_failure_summary(browser)
@@ -498,8 +500,8 @@ def _drop_isolated_database_schemas(
 
 def _semantic_runtime_failure(log_output: str) -> str:
     match = re.search(
-        r"Unexpected semantic candidate admission failure; "
-        r"exception_type=([A-Za-z][A-Za-z0-9_]{0,95})",
+        r"exception_type(?:=|[\"']?\s*:\s*[\"']?)"
+        r"([A-Za-z][A-Za-z0-9_]{0,95})",
         log_output,
     )
     return match.group(1) if match else "not_observed"
