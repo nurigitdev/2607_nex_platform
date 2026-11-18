@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+from hashlib import sha256
+
+import pytest
 from fastapi import FastAPI, Header, Request
 from fastapi.responses import JSONResponse
 from fastapi.testclient import TestClient
-from hashlib import sha256
-import pytest
-
+from nex_oa.identity_access import authorize_identity_request
+from nex_oa.identity_lifecycle_service import _authorize_lifecycle_request
 from nex_oa.service_auth import (
     _p8_demo_profile_enabled,
     authenticated_oa_service_claims,
@@ -21,14 +23,14 @@ from nex_runtime import (
     issue_mock_service_token,
 )
 
-
 NOW = 1_800_000_000
 REFERENCE = "memory://s134-oa-admission"
 
 
 class Introspector:
-    def __init__(self) -> None:
+    def __init__(self, token_scopes: tuple[str, ...] | None = None) -> None:
         self.calls: list[tuple[str, str, tuple[str, ...]]] = []
+        self.token_scopes = token_scopes
 
     def introspect(self, token, *, expected_audience, required_scopes):
         scopes = tuple(required_scopes)
@@ -39,7 +41,7 @@ class Introspector:
             "sub": "service:nex-ae-api",
             "aud": expected_audience,
             "service_id": "nex-ae-api",
-            "scope": " ".join(scopes),
+            "scope": " ".join(self.token_scopes or scopes),
             "token_use": "service_access",
             "credential_id": "cred-s134",
             "credential_revision": 1,
@@ -87,9 +89,7 @@ def _client(*, signed: bool) -> tuple[TestClient, Introspector | None]:
             rollout_profile="SIGNED_ONLY",
             signed_verifier=SignedServiceTokenVerifier(
                 BoundedJwksCache(
-                    StaticJwksSource(
-                        {"issuer": "urn:nex-platform:oa", "keys": [jwk]}
-                    ),
+                    StaticJwksSource({"issuer": "urn:nex-platform:oa", "keys": [jwk]}),
                     clock=lambda: NOW,
                 ),
                 clock=lambda: NOW,
@@ -104,7 +104,10 @@ def _client(*, signed: bool) -> tuple[TestClient, Introspector | None]:
         if isinstance(problem, JSONResponse):
             return problem
         claims = authenticated_oa_service_claims(request)
-        return {"service_id": claims.service_id, "introspection": claims.introspection_status}
+        return {
+            "service_id": claims.service_id,
+            "introspection": claims.introspection_status,
+        }
 
     return TestClient(app), introspector
 
@@ -119,6 +122,71 @@ def test_signed_oa_admission_requires_scope_and_introspection() -> None:
     assert accepted.json() == {"service_id": "nex-ae-api", "introspection": "ACTIVE"}
     assert introspector is not None
     assert introspector.calls == [(token, "nex-oa", ("service:call",))]
+
+
+def test_identity_boundaries_use_installed_signed_admission_runtime() -> None:
+    scopes = (
+        "service:call",
+        "identity:bootstrap:write",
+        "identity:lifecycle:write",
+    )
+    token, jwk = _signed_token(scopes)
+    introspector = Introspector(scopes)
+    app = FastAPI()
+    app.state.service_token_admission = ServiceTokenAdmissionRuntime(
+        expected_audience="nex-oa",
+        rollout_profile="SIGNED_ONLY",
+        signed_verifier=SignedServiceTokenVerifier(
+            BoundedJwksCache(
+                StaticJwksSource({"issuer": "urn:nex-platform:oa", "keys": [jwk]}),
+                clock=lambda: NOW,
+            ),
+            clock=lambda: NOW,
+        ),
+        introspector=introspector,
+        clock=lambda: NOW,
+    )
+
+    @app.get("/identity-read")
+    def identity_read(
+        request: Request, authorization: str | None = Header(default=None)
+    ):
+        problem = authorize_identity_request(request, authorization)
+        return problem or {"status": "PASS"}
+
+    @app.post("/identity-bootstrap")
+    def identity_bootstrap(
+        request: Request, authorization: str | None = Header(default=None)
+    ):
+        problem = authorize_identity_request(
+            request,
+            authorization,
+            required_scope="identity:bootstrap:write",
+        )
+        return problem or {"status": "PASS"}
+
+    @app.patch("/identity-lifecycle")
+    def identity_lifecycle(
+        request: Request, authorization: str | None = Header(default=None)
+    ):
+        claims, problem = _authorize_lifecycle_request(request, authorization)
+        if problem is not None:
+            return problem
+        return {"service_id": claims.service_id}
+
+    client = TestClient(app)
+    headers = {"Authorization": f"Bearer {token}"}
+
+    assert client.get("/identity-read", headers=headers).status_code == 200
+    assert client.post("/identity-bootstrap", headers=headers).status_code == 200
+    lifecycle = client.patch("/identity-lifecycle", headers=headers)
+
+    assert lifecycle.status_code == 200
+    assert lifecycle.json() == {"service_id": "nex-ae-api"}
+    assert introspector.calls == [
+        (token, "nex-oa", ("service:call", "identity:bootstrap:write")),
+        (token, "nex-oa", ("service:call", "identity:lifecycle:write")),
+    ]
 
 
 def test_signed_oa_admission_fails_closed_for_missing_token() -> None:
@@ -163,13 +231,9 @@ def test_demo_profile_activation_is_exact_and_test_mock_builder_is_unchanged() -
     assert _p8_demo_profile_enabled({}) is False
     assert _p8_demo_profile_enabled(exact) is True
     with pytest.raises(ValueError, match="unsupported"):
-        _p8_demo_profile_enabled(
-            {"NEX_P8_DEMO_SERVICE_TOKEN_PROFILE": "one-year"}
-        )
+        _p8_demo_profile_enabled({"NEX_P8_DEMO_SERVICE_TOKEN_PROFILE": "one-year"})
     with pytest.raises(ValueError, match="boundary"):
-        _p8_demo_profile_enabled(
-            {**exact, "NEX_DEPLOYMENT_BOUNDARY": "PRODUCTION"}
-        )
+        _p8_demo_profile_enabled({**exact, "NEX_DEPLOYMENT_BOUNDARY": "PRODUCTION"})
 
     runtime = build_oa_local_service_token_admission(
         signing_key_service=object(),  # type: ignore[arg-type]

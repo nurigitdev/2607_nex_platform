@@ -6,15 +6,6 @@ from typing import Any
 
 from fastapi import FastAPI, Header, Request
 from fastapi.responses import JSONResponse
-
-from nex_oa.identity_lifecycle import (
-    OaIdentityLifecycleError,
-    plan_membership_status_transition,
-    plan_subject_status_transition,
-)
-from nex_oa.identity_lifecycle_repository import OaIdentityLifecycleRepository
-from nex_oa.memberships import OaMembershipError, OaTenantMembershipRegistry
-from nex_oa.subjects import OaSubjectRegistry, SubjectRegistryError
 from nex_runtime import (
     DEFAULT_SERVICE_SCOPE,
     problem_response,
@@ -23,12 +14,22 @@ from nex_runtime import (
     validate_authorization_header,
 )
 
+from nex_oa.identity_lifecycle import (
+    OaIdentityLifecycleError,
+    plan_membership_status_transition,
+    plan_subject_status_transition,
+)
+from nex_oa.identity_lifecycle_repository import OaIdentityLifecycleRepository
+from nex_oa.memberships import OaMembershipError, OaTenantMembershipRegistry
+from nex_oa.service_auth import (
+    authenticated_oa_service_claims,
+    authorize_oa_service_request,
+)
+from nex_oa.subjects import OaSubjectRegistry, SubjectRegistryError
 
 OA_IDENTITY_LIFECYCLE_WRITE_SCOPE = "identity:lifecycle:write"
 OA_SUBJECT_LIFECYCLE_RESPONSE_SCHEMA_VERSION = "oa_subject_lifecycle_response.v1"
-OA_MEMBERSHIP_LIFECYCLE_RESPONSE_SCHEMA_VERSION = (
-    "oa_membership_lifecycle_response.v1"
-)
+OA_MEMBERSHIP_LIFECYCLE_RESPONSE_SCHEMA_VERSION = "oa_membership_lifecycle_response.v1"
 _SUBJECT_TRANSITION_FIELDS = frozenset(
     ("target_status", "expected_revision", "reason_code")
 )
@@ -202,7 +203,9 @@ def _normalize_subject_transition_payload(
             detail=f"unsupported lifecycle field: {unexpected[0]}",
         )
     missing = [
-        field for field in ("target_status", "expected_revision") if field not in payload
+        field
+        for field in ("target_status", "expected_revision")
+        if field not in payload
     ]
     if missing:
         raise OaIdentityLifecycleError(
@@ -216,22 +219,41 @@ def _normalize_subject_transition_payload(
 def _authorize_lifecycle_request(
     request: Request, authorization: str | None
 ) -> tuple[Any | None, JSONResponse | None]:
-    result = validate_authorization_header(
-        authorization,
-        expected_audience="nex-oa",
-        required_scopes=[DEFAULT_SERVICE_SCOPE, OA_IDENTITY_LIFECYCLE_WRITE_SCOPE],
-    )
-    if result.ok:
-        return result.claims, None
-    status_code = 403 if result.error_code == "TOKEN_SCOPE_MISSING" else 401
-    return None, problem_response(
+    required_scopes = (DEFAULT_SERVICE_SCOPE, OA_IDENTITY_LIFECYCLE_WRITE_SCOPE)
+    if getattr(request.app.state, "service_token_admission", None) is None:
+        result = validate_authorization_header(
+            authorization,
+            expected_audience="nex-oa",
+            required_scopes=required_scopes,
+        )
+        if not result.ok:
+            status_code = 403 if result.error_code == "TOKEN_SCOPE_MISSING" else 401
+            return None, problem_response(
+                request,
+                status_code=status_code,
+                error_code=result.error_code or "SERVICE_CLAIM_INVALID",
+                title=(
+                    "Authorization failed"
+                    if status_code == 403
+                    else "Authentication failed"
+                ),
+                detail=(
+                    result.detail or "OA lifecycle requires a valid service claim."
+                ),
+                type_uri=(
+                    "https://nex-platform.local/problems/"
+                    "identity-lifecycle-authorization"
+                ),
+            )
+    problem = authorize_oa_service_request(
         request,
-        status_code=status_code,
-        error_code=result.error_code or "SERVICE_CLAIM_INVALID",
-        title="Authorization failed" if status_code == 403 else "Authentication failed",
-        detail=result.detail or "OA lifecycle requires a valid service claim.",
-        type_uri="https://nex-platform.local/problems/identity-lifecycle-authorization",
+        authorization,
+        required_scopes=required_scopes,
+        route_class="WRITE",
     )
+    if problem is not None:
+        return None, problem
+    return authenticated_oa_service_claims(request), None
 
 
 def _lifecycle_problem_response(
