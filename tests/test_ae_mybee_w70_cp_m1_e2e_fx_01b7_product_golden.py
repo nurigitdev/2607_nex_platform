@@ -6,6 +6,7 @@ import sys
 from pathlib import Path
 
 import pytest
+from sqlalchemy import create_engine, text
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts/deployment"))
@@ -226,6 +227,46 @@ def test_product_semantic_runtime_failure_summary_is_bounded() -> None:
         )
         == "not_observed(rc=17,lines=2)"
     )
+
+
+def test_product_runtime_database_failure_summary_is_bounded(tmp_path: Path) -> None:
+    database = tmp_path / "runtime-diagnostic.sqlite"
+    engine = create_engine(f"sqlite+pysqlite:///{database}")
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                "CREATE TABLE ae_agent_execution ("
+                "tenant_id TEXT, state TEXT, phase TEXT, updated_at TEXT)"
+            )
+        )
+        connection.execute(
+            text(
+                "CREATE TABLE ae_runtime_job_attempt ("
+                "tenant_id TEXT, outcome TEXT, error_ref TEXT, started_at TEXT)"
+            )
+        )
+        connection.execute(
+            text(
+                "INSERT INTO ae_agent_execution VALUES "
+                "('V101','FAILED','FINALIZE','2026-11-18T00:00:00Z')"
+            )
+        )
+        connection.execute(
+            text(
+                "INSERT INTO ae_runtime_job_attempt VALUES "
+                "('V101','FAILED','ae.wc_work_item_http_failed',"
+                "'2026-11-18T00:00:00Z')"
+            )
+        )
+    engine.dispose()
+
+    assert acceptance._runtime_database_failure_summary(
+        f"sqlite+pysqlite:///{database}", tenant_id="V101"
+    ) == (
+        "execution=FAILED:FINALIZE,"
+        "attempt=FAILED:ae.wc_work_item_http_failed"
+    )
+    assert acceptance._diagnostic_token("secret value") == "invalid"
 
 
 def test_product_runtime_log_collection_uses_running_container(

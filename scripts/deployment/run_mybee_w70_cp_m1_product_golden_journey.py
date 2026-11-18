@@ -224,10 +224,15 @@ def execute_m1_product_golden_journey(
                 log_output,
                 returncode=diagnostic_returncode,
             )
+            database_failure = _runtime_database_failure_summary(
+                urls["nex-ae-api"],
+                tenant_id=str(baseline["tenant"]["tenant_id"]),
+            )
             raise M1ProductGoldenJourneyError(
                 "M1 product browser journey failed: "
                 + _browser_failure_summary(browser)
                 + f" runtime_exception={runtime_failure}"
+                + f" runtime_database={database_failure}"
             )
         interaction_ids = tuple(
             str(item.get("interaction_id") or "") for item in transactions
@@ -530,6 +535,58 @@ def _semantic_runtime_failure_summary(
         return failure
     line_count = sum(1 for line in log_output.splitlines() if line.strip())
     return f"not_observed(rc={returncode},lines={line_count})"
+
+
+def _runtime_database_failure_summary(
+    database_url: str, *, tenant_id: str
+) -> str:
+    engine = create_engine(database_url, poolclass=NullPool)
+    try:
+        with engine.connect() as connection:
+            execution = connection.execute(
+                text(
+                    "SELECT state, phase FROM ae_agent_execution "
+                    "WHERE tenant_id=:tenant ORDER BY updated_at DESC LIMIT 1"
+                ),
+                {"tenant": tenant_id},
+            ).first()
+            attempt = connection.execute(
+                text(
+                    "SELECT outcome, error_ref FROM ae_runtime_job_attempt "
+                    "WHERE tenant_id=:tenant ORDER BY started_at DESC LIMIT 1"
+                ),
+                {"tenant": tenant_id},
+            ).first()
+    except Exception:  # noqa: BLE001 - diagnostics must stay bounded and optional
+        return "unavailable"
+    finally:
+        engine.dispose()
+    execution_summary = (
+        "none"
+        if execution is None
+        else ":".join(
+            (
+                _diagnostic_token(execution[0]),
+                _diagnostic_token(execution[1]),
+            )
+        )
+    )
+    attempt_summary = (
+        "none"
+        if attempt is None
+        else ":".join(
+            (
+                _diagnostic_token(attempt[0]),
+                _diagnostic_token(attempt[1]),
+            )
+        )
+    )
+    return f"execution={execution_summary},attempt={attempt_summary}"
+
+
+def _diagnostic_token(value: object) -> str:
+    candidate = str(value or "none")
+    return candidate if re.fullmatch(r"[A-Za-z][A-Za-z0-9_.-]{0,95}", candidate) else "invalid"
 
 
 def _collect_ae_runtime_logs(
