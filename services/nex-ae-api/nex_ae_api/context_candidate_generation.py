@@ -24,6 +24,10 @@ from nex_ae_api.semantic_candidates import (
     SemanticCalibrationRegistry,
     SemanticCandidateStageError,
 )
+from nex_ae_api.work_intent import (
+    BUSINESS_WORK_INTENT_SCHEMA_VERSION,
+    WORK_INTENT_SCHEMA_VERSION,
+)
 from nex_runtime.prompts import PromptRegistryError, render_prompt_from_binding
 from nex_runtime.semantic_hashes import (
     canonical_json,
@@ -553,8 +557,15 @@ def _work_intent_projection(
     *,
     execution_id: str,
 ) -> dict[str, Any]:
-    if not isinstance(value, Mapping) or value.get("schema_version") != "1.1":
-        raise _request_error("work_intent must use schema version 1.1.")
+    supported_versions = {
+        WORK_INTENT_SCHEMA_VERSION,
+        BUSINESS_WORK_INTENT_SCHEMA_VERSION,
+    }
+    if (
+        not isinstance(value, Mapping)
+        or value.get("schema_version") not in supported_versions
+    ):
+        raise _request_error("work_intent must use schema version 1.1 or 1.2.")
     if value.get("execution_id") != execution_id:
         raise _request_error("work_intent execution does not match the CONTEXT stage.")
     try:

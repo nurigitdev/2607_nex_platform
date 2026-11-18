@@ -25,7 +25,10 @@ from nex_ae_api.semantic_candidates import (
     SemanticCalibrationPolicy,
     SemanticCalibrationRegistry,
 )
-from nex_ae_api.work_intent import build_work_intent_from_decision
+from nex_ae_api.work_intent import (
+    BUSINESS_WORK_INTENT_SCHEMA_VERSION,
+    build_work_intent_from_decision,
+)
 from nex_runtime.prompts import (
     PromptRegistryStore,
     build_prompt_binding,
@@ -341,6 +344,25 @@ def test_required_mode_passes_bounded_hints_to_trusted_resolver() -> None:
     assert "principal_id" not in canonical_json(generation_input)
     assert "raw_prompt" not in canonical_json(result.prompt_provenance)
     assert "provider_url" not in repr(result)
+
+
+def test_business_work_intent_v12_uses_the_same_bounded_context_projection() -> None:
+    client = FakeClient()
+    work_intent = _work_intent()
+    work_intent["schema_version"] = BUSINESS_WORK_INTENT_SCHEMA_VERSION
+
+    result = _run(_service(client), work_intent=work_intent)
+
+    assert result.directive == "CONTINUE"
+    generation_input = json.loads(client.generation_calls[0]["messages"][1]["content"])
+    assert generation_input["work_intent"] == {
+        "execution_mode": work_intent["compatibility_execution_mode"],
+        "goal": work_intent["goal"],
+        "intent_hash": work_intent["intent_hash"],
+        "intent_label": work_intent["intent_label"],
+        "retrieval_required": True,
+        "work_class": work_intent["work_class"],
+    }
 
 
 def test_cross_tenant_looking_selector_is_only_a_hint_and_grants_nothing() -> None:
