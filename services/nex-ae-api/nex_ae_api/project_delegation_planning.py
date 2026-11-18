@@ -90,7 +90,11 @@ class HttpEosProjectResolutionSource:
             body = response.json()
         except httpx.HTTPStatusError as exc:
             status_code = exc.response.status_code
-            if status_code in {401, 403}:
+            if status_code == 401:
+                error_code = "PROJECT_RESOLUTION_UNAUTHENTICATED"
+                detail = "EOS did not authenticate the Project resolution request."
+                retryable = False
+            elif status_code == 403:
                 error_code = "PROJECT_RESOLUTION_DENIED"
                 detail = "EOS denied the Project resolution request."
                 retryable = False

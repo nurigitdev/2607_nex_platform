@@ -538,6 +538,7 @@ def test_http_project_sources_fail_closed_on_malformed_and_network(monkeypatch):
 @pytest.mark.parametrize(
     ("status_code", "error_code", "retryable"),
     [
+        (401, "PROJECT_RESOLUTION_UNAUTHENTICATED", False),
         (403, "PROJECT_RESOLUTION_DENIED", False),
         (404, "PROJECT_NOT_FOUND", False),
         (422, "PROJECT_RESOLUTION_REJECTED", False),
