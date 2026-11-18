@@ -88,6 +88,15 @@ from nex_ae_api.work_intent import (
     planning_mode,
 )
 
+_OPTIONAL_PRODUCT_FALLBACK_ERRORS = frozenset(
+    {
+        "PROVIDER_NOT_READY",
+        "PROVIDER_TIMEOUT",
+        "PROVIDER_RATE_LIMIT",
+        "PROVIDER_SERVER_ERROR",
+    }
+)
+
 
 @dataclass(frozen=True)
 class SemanticCandidateAdmissionError(Exception):
@@ -592,64 +601,101 @@ class DeterministicCandidateAdmissionService:
                         capability_snapshot=capability_snapshot,
                     )
                 )
+                execution_projection = {
+                    **execution,
+                    "execution_id": execution_id,
+                }
+                product_replay = (
+                    self.product_planning_router.replay_if_registered(
+                        work_intent=work_intent,
+                        agent_context=agent_context,
+                        capability_snapshot=capability_snapshot,
+                        execution=execution_projection,
+                    )
+                    if product_registration is not None
+                    else None
+                )
+                if product_replay is not None:
+                    return SemanticCandidateAdmissionResult(
+                        mode=self.mode,
+                        status="PRODUCT_COORDINATION_STARTED",
+                        directive="WAIT_FOR_PRODUCT_COORDINATION",
+                        agent_execution_id=execution_id,
+                        work_intent_id=ids.work_intent,
+                        agent_context_id=ids.context,
+                        product_planning_admission=product_replay,
+                        stages=tuple(stages),
+                    )
                 planning_proposal = None
+                planning_fallback_ref = None
                 if (
                     product_registration is not None
                     and product_registration.planning_policy.mode
                     != "DETERMINISTIC_ONLY"
                 ):
-                    (
-                        plan_evidence,
-                        plan_candidate,
-                        _plan_result,
-                        resumed,
-                    ) = self._stage(
-                        request=request,
-                        execution_id=execution_id,
-                        semantic_stage="PLAN",
-                        candidate_id=ids.candidate("PLAN"),
-                        invoke=lambda: self.plan_stage.generate_proposal(
-                            work_intent=work_intent,
-                            agent_context=agent_context,
-                            capability_snapshot=capability_snapshot,
-                            request_id=request.request_id,
-                            trace_id=request.trace_id,
-                            planning_mode=self.mode,
-                        ),
-                        now=now,
-                    )
-                    stages.append(_stage_projection(plan_evidence, resumed=resumed))
-                    if plan_evidence["directive"] == "CONTINUE":
-                        planning_proposal = build_product_planning_proposal(
-                            evidence=plan_evidence,
-                            candidate=plan_candidate,
-                            work_intent=work_intent,
-                            agent_context=agent_context,
-                            registration=product_registration,
-                            admitted_capability_ids=tuple(
-                                binding.capability_id
-                                for binding in product_registration.required_capabilities
+                    try:
+                        (
+                            plan_evidence,
+                            plan_candidate,
+                            _plan_result,
+                            resumed,
+                        ) = self._stage(
+                            request=request,
+                            execution_id=execution_id,
+                            semantic_stage="PLAN",
+                            candidate_id=ids.candidate("PLAN"),
+                            invoke=lambda: self.plan_stage.generate_proposal(
+                                work_intent=work_intent,
+                                agent_context=agent_context,
+                                capability_snapshot=capability_snapshot,
+                                request_id=request.request_id,
+                                trace_id=request.trace_id,
+                                planning_mode=self.mode,
                             ),
+                            now=now,
                         )
-                    elif product_registration.planning_policy.mode == (
-                        "PROVIDER_ASSISTED_REQUIRED"
-                    ):
-                        return _stopped(
-                            self.mode,
-                            execution_id,
-                            stages,
-                            work_intent_id=ids.work_intent,
-                            agent_context_id=ids.context,
+                    except SemanticCandidateAdmissionError as exc:
+                        if not _is_optional_product_fallback(
+                            exc,
+                            mode=product_registration.planning_policy.mode,
+                        ):
+                            raise
+                        planning_fallback_ref = (
+                            product_registration.planning_policy.deterministic_fallback_ref
                         )
+                    else:
+                        stages.append(
+                            _stage_projection(plan_evidence, resumed=resumed)
+                        )
+                        if plan_evidence["directive"] == "CONTINUE":
+                            planning_proposal = build_product_planning_proposal(
+                                evidence=plan_evidence,
+                                candidate=plan_candidate,
+                                work_intent=work_intent,
+                                agent_context=agent_context,
+                                registration=product_registration,
+                                admitted_capability_ids=tuple(
+                                    binding.capability_id
+                                    for binding in (
+                                        product_registration.required_capabilities
+                                    )
+                                ),
+                            )
+                        else:
+                            return _stopped(
+                                self.mode,
+                                execution_id,
+                                stages,
+                                work_intent_id=ids.work_intent,
+                                agent_context_id=ids.context,
+                            )
                 product_admission = self.product_planning_router.begin_if_registered(
                     work_intent=work_intent,
                     agent_context=agent_context,
                     capability_snapshot=capability_snapshot,
-                    execution={
-                        **execution,
-                        "execution_id": execution_id,
-                    },
+                    execution=execution_projection,
                     planning_proposal=planning_proposal,
+                    planning_fallback_ref=planning_fallback_ref,
                 )
             except ProductPlanningProposalError as exc:
                 raise SemanticCandidateAdmissionError(
@@ -1334,3 +1380,15 @@ def _error(
     retryable: bool = False,
 ) -> SemanticCandidateAdmissionError:
     return SemanticCandidateAdmissionError(status_code, error_code, detail, retryable)
+
+
+def _is_optional_product_fallback(
+    error: SemanticCandidateAdmissionError,
+    *,
+    mode: str,
+) -> bool:
+    return (
+        mode == "PROVIDER_ASSISTED_OPTIONAL"
+        and error.retryable
+        and error.error_code in _OPTIONAL_PRODUCT_FALLBACK_ERRORS
+    )

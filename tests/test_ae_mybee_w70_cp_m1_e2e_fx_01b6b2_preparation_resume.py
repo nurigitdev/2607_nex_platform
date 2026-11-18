@@ -20,6 +20,8 @@ from nex_ae_api.m1_product_planning_coordinator import (
 from nex_ae_api.m1_product_preparation_coordinator import (
     InstalledM1ProductPlanningCoordinator,
     M1ProductPreparationCoordinatorError,
+    m1_product_planning_fallback_ref,
+    m1_product_planning_proposal_ref,
 )
 from nex_ae_api.planning_capabilities import build_capability_snapshot
 from nex_ae_api.product_capabilities import load_product_capability_registry
@@ -53,6 +55,14 @@ DETERMINISTIC_POLICY = ProductPlanningPolicy(
     admission_policy_ref="ae.product_planning_proposal.strict.v1",
     deterministic_fallback_ref=None,
     proposal_consumers=(),
+)
+OPTIONAL_POLICY = ProductPlanningPolicy(
+    mode="PROVIDER_ASSISTED_OPTIONAL",
+    proposal_schema_version="ae.product_planning_proposal.v1",
+    prompt_binding_key="ae.plan_builder.project_delegation.v1",
+    admission_policy_ref="ae.product_planning_proposal.strict.v1",
+    deterministic_fallback_ref="nex-ae:m1-deterministic-fallback:v1",
+    proposal_consumers=("PREPARATION",),
 )
 
 
@@ -529,6 +539,12 @@ def test_required_product_proposal_is_bounded_and_replayed_exactly() -> None:
     assert len(checkpoints.records) == 1
     assert adapter.calls == [("BEGIN", None)]
 
+    with pytest.raises(M1ProductPreparationCoordinatorError) as raised:
+        coordinator.begin(**{**values, "planning_fallback_ref": "drifted"})
+    assert raised.value.error_code == "ae.m1_product_preparation_invalid"
+    assert len(checkpoints.records) == 1
+    assert adapter.calls == [("BEGIN", None)]
+
     drifted = copy.deepcopy(proposal)
     drifted["candidate_ref"]["candidate_id"] = "42000000-0000-4000-8000-000000000002"
     drifted["proposal_hash"] = semantic_sha256_hash_ref(
@@ -540,6 +556,252 @@ def test_required_product_proposal_is_bounded_and_replayed_exactly() -> None:
     assert raised.value.error_code == "ae.m1_product_preparation_conflict"
     assert len(checkpoints.records) == 1
     assert adapter.calls == [("BEGIN", None)]
+
+
+def test_required_product_rejects_missing_proposal_before_mutation() -> None:
+    coordinator, adapter, _source, checkpoints, _waits = _coordinator(
+        planning_policy=M1_PRODUCT_PLANNING_POLICY
+    )
+    work_intent, context, snapshot, execution = _inputs()
+
+    with pytest.raises(M1ProductPreparationCoordinatorError) as raised:
+        coordinator.begin(
+            work_intent=work_intent,
+            agent_context=context,
+            capability_snapshot=snapshot,
+            execution=execution,
+        )
+
+    assert raised.value.error_code == "ae.m1_product_preparation_invalid"
+    assert checkpoints.records == {}
+    assert adapter.calls == []
+
+
+def test_optional_product_fallback_is_bounded_and_replayed_without_recall() -> None:
+    coordinator, adapter, _source, checkpoints, _waits = _coordinator(
+        planning_policy=OPTIONAL_POLICY
+    )
+    work_intent, context, snapshot, execution = _inputs()
+    values = {
+        "work_intent": work_intent,
+        "agent_context": context,
+        "capability_snapshot": snapshot,
+        "execution": execution,
+        "planning_fallback_ref": OPTIONAL_POLICY.deterministic_fallback_ref,
+    }
+
+    first = coordinator.begin(**values)
+    replay = coordinator.replay_begin(
+        work_intent=work_intent,
+        agent_context=context,
+        capability_snapshot=snapshot,
+        execution=execution,
+    )
+
+    assert replay is not None
+    assert replay["replayed"] is True
+    assert replay["checkpoint"] == first["checkpoint"]
+    assert replay["planning_proposal_ref"] is None
+    assert replay["planning_fallback_ref"] == (
+        OPTIONAL_POLICY.deterministic_fallback_ref
+    )
+    fallback_records = [
+        item
+        for item in first["checkpoint"]["authority_refs"]
+        if item.get("ref_kind") == "PRODUCT_PLANNING_FALLBACK"
+    ]
+    assert fallback_records == [
+        {
+            "ref_kind": "PRODUCT_PLANNING_FALLBACK",
+            "fallback_ref": OPTIONAL_POLICY.deterministic_fallback_ref,
+        }
+    ]
+    assert len(checkpoints.records) == 1
+    assert adapter.calls == [("BEGIN", None)]
+
+
+def test_product_planning_selection_and_replay_fail_closed_before_mutation() -> None:
+    deterministic, deterministic_adapter, *_ = _coordinator()
+    work_intent, context, snapshot, execution = _inputs()
+    with pytest.raises(M1ProductPreparationCoordinatorError):
+        deterministic.begin(
+            work_intent=work_intent,
+            agent_context=context,
+            capability_snapshot=snapshot,
+            execution=execution,
+            planning_fallback_ref="nex-ae:unadmitted-fallback:v1",
+        )
+
+    optional, optional_adapter, _source, checkpoints, _waits = _coordinator(
+        planning_policy=OPTIONAL_POLICY
+    )
+    assert (
+        optional.replay_begin(
+            work_intent=work_intent,
+            agent_context=context,
+            capability_snapshot=snapshot,
+            execution=execution,
+        )
+        is None
+    )
+    proposal = _planning_proposal(optional.registration, work_intent, context)
+    with pytest.raises(M1ProductPreparationCoordinatorError):
+        optional.begin(
+            work_intent=work_intent,
+            agent_context=context,
+            capability_snapshot=snapshot,
+            execution=execution,
+            planning_proposal=proposal,
+            planning_fallback_ref=OPTIONAL_POLICY.deterministic_fallback_ref,
+        )
+
+    first = optional.begin(
+        work_intent=work_intent,
+        agent_context=context,
+        capability_snapshot=snapshot,
+        execution=execution,
+        planning_fallback_ref=OPTIONAL_POLICY.deterministic_fallback_ref,
+    )
+    stored = checkpoints.records[first["checkpoint"]["checkpoint_id"]]
+    stored["checkpoint_version"] = 2
+    with pytest.raises(M1ProductPreparationCoordinatorError) as raised:
+        optional.replay_begin(
+            work_intent=work_intent,
+            agent_context=context,
+            capability_snapshot=snapshot,
+            execution=execution,
+        )
+
+    assert raised.value.error_code == "ae.m1_product_preparation_conflict"
+    assert deterministic_adapter.calls == []
+    assert optional_adapter.calls == [("BEGIN", None)]
+
+
+def test_product_planning_policy_guards_reject_invalid_proposal_paths() -> None:
+    work_intent, context, snapshot, execution = _inputs()
+    deterministic, deterministic_adapter, *_ = _coordinator()
+    deterministic_proposal = _planning_proposal(
+        deterministic.registration, work_intent, context
+    )
+    with pytest.raises(M1ProductPreparationCoordinatorError):
+        deterministic.begin(
+            work_intent=work_intent,
+            agent_context=context,
+            capability_snapshot=snapshot,
+            execution=execution,
+            planning_proposal=deterministic_proposal,
+        )
+
+    optional, optional_adapter, *_ = _coordinator(planning_policy=OPTIONAL_POLICY)
+    with pytest.raises(M1ProductPreparationCoordinatorError):
+        optional.begin(
+            work_intent=work_intent,
+            agent_context=context,
+            capability_snapshot=snapshot,
+            execution=execution,
+            planning_proposal={"schema_version": "invalid"},
+        )
+    with pytest.raises(M1ProductPreparationCoordinatorError):
+        optional.begin(
+            work_intent=work_intent,
+            agent_context=context,
+            capability_snapshot=snapshot,
+            execution=execution,
+        )
+
+    drifted = _planning_proposal(optional.registration, work_intent, context)
+    drifted["coordinator_ref"]["coordinator_registration_hash"] = HASH_C
+    drifted["proposal_hash"] = semantic_sha256_hash_ref(
+        {key: value for key, value in drifted.items() if key != "proposal_hash"}
+    )
+    with pytest.raises(M1ProductPreparationCoordinatorError):
+        optional.begin(
+            work_intent=work_intent,
+            agent_context=context,
+            capability_snapshot=snapshot,
+            execution=execution,
+            planning_proposal=drifted,
+        )
+
+    admitted = optional.begin(
+        work_intent=work_intent,
+        agent_context=context,
+        capability_snapshot=snapshot,
+        execution=execution,
+        planning_proposal=_planning_proposal(
+            optional.registration, work_intent, context
+        ),
+    )
+    assert admitted["planning_fallback_ref"] is None
+    assert deterministic_adapter.calls == []
+    assert optional_adapter.calls == [("BEGIN", None)]
+
+
+def test_product_planning_fallback_replay_rejects_stored_drift() -> None:
+    coordinator, adapter, _source, checkpoints, _waits = _coordinator(
+        planning_policy=OPTIONAL_POLICY
+    )
+    work_intent, context, snapshot, execution = _inputs()
+    values = {
+        "work_intent": work_intent,
+        "agent_context": context,
+        "capability_snapshot": snapshot,
+        "execution": execution,
+        "planning_fallback_ref": OPTIONAL_POLICY.deterministic_fallback_ref,
+    }
+    first = coordinator.begin(**values)
+    stored = checkpoints.records[first["checkpoint"]["checkpoint_id"]]
+    fallback_ref = next(
+        item
+        for item in stored["authority_refs"]
+        if item.get("ref_kind") == "PRODUCT_PLANNING_FALLBACK"
+    )
+    fallback_ref["fallback_ref"] = "nex-ae:drifted-fallback:v1"
+
+    with pytest.raises(M1ProductPreparationCoordinatorError) as raised:
+        coordinator.begin(**values)
+
+    assert raised.value.error_code == "ae.m1_product_preparation_conflict"
+    assert adapter.calls == [("BEGIN", None)]
+
+
+@pytest.mark.parametrize(
+    ("authority_refs", "reader"),
+    (
+        (
+            [
+                {"ref_kind": "PRODUCT_PLANNING_FALLBACK", "fallback_ref": "one"},
+                {"ref_kind": "PRODUCT_PLANNING_FALLBACK", "fallback_ref": "two"},
+            ],
+            m1_product_planning_fallback_ref,
+        ),
+        (
+            [{"ref_kind": "PRODUCT_PLANNING_FALLBACK", "fallback_ref": " "}],
+            m1_product_planning_fallback_ref,
+        ),
+        (
+            [
+                {
+                    "ref_kind": "PRODUCT_PLANNING_PROPOSAL",
+                    "projection": {"schema_version": "invalid"},
+                }
+            ],
+            m1_product_planning_proposal_ref,
+        ),
+        (
+            [
+                {"ref_kind": "PRODUCT_PLANNING_PROPOSAL", "projection": {}},
+                {"ref_kind": "PRODUCT_PLANNING_PROPOSAL", "projection": {}},
+            ],
+            m1_product_planning_proposal_ref,
+        ),
+    ),
+)
+def test_product_planning_checkpoint_references_reject_corruption(
+    authority_refs, reader
+) -> None:
+    with pytest.raises(M1ProductPreparationCoordinatorError):
+        reader({"authority_refs": authority_refs})
 
 
 def test_6b2_exact_begin_event_and_ack_loss_replays_without_provider_mutation() -> None:

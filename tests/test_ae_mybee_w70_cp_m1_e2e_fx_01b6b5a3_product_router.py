@@ -14,6 +14,7 @@ from nex_ae_api.agent_runtime_worker import AgentRuntimeAssignment
 from nex_ae_api.m1_product_planning_coordinator import (
     build_m1_product_planning_coordinator_registry,
 )
+from nex_ae_api.mo_generation_client import AeMoGenerationClientError
 from nex_ae_api.product_capabilities import load_product_capability_registry
 from nex_ae_api.product_planning_coordinators import (
     ProductPlanningCapabilityBinding,
@@ -41,7 +42,10 @@ from nex_ae_api.runtime_composition import (
 )
 from nex_ae_api.runtime_jobs import RuntimeJobClaim
 from nex_ae_api.runtime_resume import ResumeRoute
+from nex_ae_api.semantic_candidate_admission import SemanticCandidateAdmissionError
+from nex_ae_api.semantic_candidates import SemanticCandidateStageError
 from nex_ae_api.step_executors import P5StepExecutorRegistry
+from nex_runtime.semantic_hashes import semantic_sha256_hash_ref
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from test_ae_p65_s5_candidate_admission_compile import (
@@ -65,6 +69,19 @@ DETERMINISTIC_POLICY = ProductPlanningPolicy(
     deterministic_fallback_ref=None,
     proposal_consumers=(),
 )
+OPTIONAL_POLICY = ProductPlanningPolicy(
+    mode="PROVIDER_ASSISTED_OPTIONAL",
+    proposal_schema_version="ae.product_planning_proposal.v1",
+    prompt_binding_key=AE_PLAN_BUILDER_BINDING,
+    admission_policy_ref="ae.product_planning_proposal.strict.v1",
+    deterministic_fallback_ref="nex-ae:test-product-fallback:v1",
+    proposal_consumers=("PREPARATION",),
+)
+REQUIRED_POLICY = replace(
+    OPTIONAL_POLICY,
+    mode="PROVIDER_ASSISTED_REQUIRED",
+    deterministic_fallback_ref=None,
+)
 
 
 class _Coordinator:
@@ -74,10 +91,11 @@ class _Coordinator:
         self.begin_calls = []
         self.event_calls = []
         self.resume_calls = []
+        self.started = None
 
     def begin(self, **values):
         self.begin_calls.append(values)
-        return {
+        result = {
             "checkpoint": {
                 "checkpoint_id": CHECKPOINT_ID,
                 "checkpoint_hash": CHECKPOINT_HASH,
@@ -85,7 +103,22 @@ class _Coordinator:
             },
             "ready": False,
             "replayed": False,
+            "planning_proposal_ref": (
+                None
+                if values.get("planning_proposal") is None
+                else {
+                    "proposal_hash": values["planning_proposal"]["proposal_hash"]
+                }
+            ),
+            "planning_fallback_ref": values.get("planning_fallback_ref"),
         }
+        self.started = result
+        return result
+
+    def replay_begin(self, **_values):
+        if self.started is None:
+            return None
+        return {**self.started, "replayed": True}
 
     def resume_approval(self, **values):
         self.resume_calls.append(values)
@@ -177,14 +210,20 @@ class _FailingAdmission:
 
 
 class _ProductRouterSpy:
-    def __init__(self, registration=None) -> None:
+    def __init__(self, registration=None, *, replay_result=None) -> None:
         self.calls = []
+        self.replay_calls = []
         self.registration = registration
+        self.replay_result = replay_result
 
     def resolve_registration(self, **_values):
         return self.registration or SimpleNamespace(
             planning_policy=DETERMINISTIC_POLICY
         )
+
+    def replay_if_registered(self, **values):
+        self.replay_calls.append(values)
+        return self.replay_result
 
     def begin_if_registered(self, **values):
         self.calls.append(values)
@@ -192,7 +231,18 @@ class _ProductRouterSpy:
             "checkpoint_id": CHECKPOINT_ID,
             "checkpoint_hash": CHECKPOINT_HASH,
             "provider_plan_authoritative": False,
+            "planning_fallback_ref": values.get("planning_fallback_ref"),
         }
+
+
+class _FailingPlanStage:
+    def __init__(self, error) -> None:
+        self.error = error
+        self.calls = 0
+
+    def generate_proposal(self, **_values):
+        self.calls += 1
+        raise self.error
 
 
 class _ClaimedResolver:
@@ -223,7 +273,74 @@ class _ClaimedResolver:
         )
 
 
-def _registry(*, active: bool):
+def _claimed_product_request(service):
+    service.executions.record.update(
+        {
+            "tenant_id": "tenant-a",
+            "agent_execution_id": EXECUTION_ID,
+            "agent_id": "20000000-0000-4000-8000-000000000656",
+            "agent_type": "PA",
+            "project_id": "project-product-router",
+            "source_type": "CLAIMED_WORKITEM",
+            "source_ref": "work-item-product-router",
+            "work_item_ref": "work-item-product-router",
+            "requester_ref": "user-a",
+            "received_at": "2026-10-17T02:00:00Z",
+        }
+    )
+    return replace(
+        _semantic_request(),
+        planning_source_type="CLAIMED_WORKITEM",
+        existing_execution_id=EXECUTION_ID,
+        agent_type="PA",
+        project_id="project-product-router",
+        source_ref="work-item-product-router",
+        planning_source={
+            "schema_version": "p7.claimed_work_planning_source.v1",
+            "source_type": "CLAIMED_WORKITEM",
+            "source_ref": "work-item-product-router",
+            "goal": "Prepare the admitted Product operation.",
+            "work_class": "ANALYSIS",
+            "required_capability": "AE.CHAT.COMPATIBILITY",
+            "project_ref": {
+                "entity_type": "PROJECT",
+                "entity_id": "project-product-router",
+            },
+            "artifact_refs": [],
+            "evidence_refs": [],
+            "completion_policy": "OWNER_SUBMITS",
+            "result_contract_ref": "contract://product/result/v1",
+        },
+        context_resolver=_ClaimedResolver(),
+    )
+
+
+def _provider_registration(mode: str):
+    registration = _runtime()[1]
+    chat_binding = ProductPlanningCapabilityBinding(
+        capability_id="AE.CHAT.COMPATIBILITY",
+        capability_version="1.0.0",
+        capability_registration_hash="sha256:" + "7" * 64,
+    )
+    return replace(
+        registration,
+        planning_policy=ProductPlanningPolicy(
+            mode=mode,
+            proposal_schema_version="ae.product_planning_proposal.v1",
+            prompt_binding_key=AE_PLAN_BUILDER_BINDING,
+            admission_policy_ref="ae.product_planning_proposal.strict.v1",
+            deterministic_fallback_ref=(
+                "nex-ae:test-product-fallback:v1"
+                if mode == "PROVIDER_ASSISTED_OPTIONAL"
+                else None
+            ),
+            proposal_consumers=("PREPARATION",),
+        ),
+        required_capabilities=(chat_binding,),
+    )
+
+
+def _registry(*, active: bool, planning_policy=DETERMINISTIC_POLICY):
     capabilities = load_product_capability_registry(
         {
             "NEX_AE_PRODUCT_CAPABILITY_REGISTRY_PATH": str(
@@ -236,16 +353,21 @@ def _registry(*, active: bool):
         product_capabilities=capabilities,
         preparation_registration=load_m1_transaction_preparation_registration(),
         activation_status="ACTIVE" if active else "CONTRACT_ONLY",
-        planning_policy=DETERMINISTIC_POLICY,
+        planning_policy=planning_policy,
     )
 
 
 def _inputs(registration):
     return {
         "work_intent": {
+            "work_intent_id": WORK_INTENT_ID,
+            "intent_hash": "sha256:" + "1" * 64,
             "required_capability_hints": [registration.capability_id],
         },
-        "agent_context": {"context_id": "context-1"},
+        "agent_context": {
+            "context_id": "context-1",
+            "context_hash": "sha256:" + "2" * 64,
+        },
         "capability_snapshot": {
             "capabilities": [
                 {
@@ -258,8 +380,44 @@ def _inputs(registration):
     }
 
 
-def _runtime(*, ready=False):
-    registry = _registry(active=True)
+def _planning_proposal(registration, inputs):
+    proposal = {
+        "schema_version": "ae.product_planning_proposal.v1",
+        "tenant_id": TENANT,
+        "owner_subject_id": "employee-100",
+        "execution_id": EXECUTION_ID,
+        "work_intent_ref": {
+            "work_intent_id": inputs["work_intent"]["work_intent_id"],
+            "intent_hash": inputs["work_intent"]["intent_hash"],
+        },
+        "agent_context_ref": {
+            "context_id": inputs["agent_context"]["context_id"],
+            "context_hash": inputs["agent_context"]["context_hash"],
+        },
+        "coordinator_ref": {
+            "coordinator_id": registration.coordinator_id,
+            "coordinator_version": registration.coordinator_version,
+            "coordinator_registration_hash": registration.registration_hash,
+        },
+        "planning_policy": registration.planning_policy.projection(),
+        "candidate_ref": {
+            "candidate_id": "candidate-product-plan-1",
+            "candidate_hash": "sha256:" + "4" * 64,
+            "storage_ref": "private://semantic-candidates/product-plan-1",
+            "size_bytes": 128,
+        },
+        "suggested_capability_ids": [registration.capability_id],
+        "provider_provenance": {"model_ref": "provider-test"},
+        "created_at": "2026-11-18T01:00:00Z",
+        "content_included": False,
+        "provider_plan_authoritative": False,
+    }
+    proposal["proposal_hash"] = semantic_sha256_hash_ref(proposal)
+    return proposal
+
+
+def _runtime(*, ready=False, planning_policy=DETERMINISTIC_POLICY):
+    registry = _registry(active=True, planning_policy=planning_policy)
     registration = registry.registrations[0]
     coordinator = _Coordinator(registration, ready=ready)
     activation = _Activation(registration)
@@ -324,6 +482,194 @@ def test_public_router_selects_exact_active_capability_and_begins_product() -> N
     assert result["provider_plan_authoritative"] is False
     assert result["coordinator_registration_hash"] == registration.registration_hash
     assert len(coordinator.begin_calls) == 1
+
+
+def test_public_router_records_and_replays_exact_optional_fallback() -> None:
+    registry, registration, coordinator, _activation, runtime = _runtime(
+        planning_policy=OPTIONAL_POLICY
+    )
+    router = PublicProductPlanningRouter(
+        registry,
+        InstalledProductCoordinatorRuntimeRegistry(registry, (runtime,)),
+    )
+    inputs = _inputs(registration)
+
+    assert router.replay_if_registered(**inputs) is None
+    first = router.begin_if_registered(
+        **inputs,
+        planning_fallback_ref=OPTIONAL_POLICY.deterministic_fallback_ref,
+    )
+    replay = router.replay_if_registered(**inputs)
+
+    assert first["planning_proposal_hash"] is None
+    assert first["planning_fallback_ref"] == (
+        OPTIONAL_POLICY.deterministic_fallback_ref
+    )
+    assert replay["admission_hash"] != first["admission_hash"]
+    assert replay["replayed"] is True
+    assert replay["planning_fallback_ref"] == first["planning_fallback_ref"]
+    assert len(coordinator.begin_calls) == 1
+
+
+def test_public_router_replay_preserves_non_product_and_legacy_runtime() -> None:
+    registry, registration, _coordinator, activation, runtime = _runtime()
+    router = PublicProductPlanningRouter(
+        registry,
+        InstalledProductCoordinatorRuntimeRegistry(registry, (runtime,)),
+    )
+    non_product = _inputs(registration)
+    non_product["work_intent"] = {"required_capability_hints": ["REPORT.GENERATE"]}
+    assert router.replay_if_registered(**non_product) is None
+
+    legacy_runtime = InstalledProductCoordinatorRuntime(
+        registration=registration,
+        coordinator=SimpleNamespace(
+            registration=registration,
+            begin=lambda **_values: {},
+            accept_approval_notification=lambda **_values: {},
+            resume_approval=lambda **_values: {},
+        ),
+        activation=activation,
+    )
+    legacy_router = PublicProductPlanningRouter(
+        registry,
+        InstalledProductCoordinatorRuntimeRegistry(registry, (legacy_runtime,)),
+    )
+    assert legacy_router.replay_if_registered(**_inputs(registration)) is None
+
+
+@pytest.mark.parametrize(
+    ("policy", "proposal_kind", "fallback_ref", "error_code", "retryable"),
+    (
+        (
+            DETERMINISTIC_POLICY,
+            "VALID",
+            None,
+            "ae.product_planning_runtime_invalid",
+            False,
+        ),
+        (
+            DETERMINISTIC_POLICY,
+            None,
+            "nex-ae:unadmitted-fallback:v1",
+            "ae.product_planning_runtime_invalid",
+            False,
+        ),
+        (
+            OPTIONAL_POLICY,
+            None,
+            "nex-ae:drifted-fallback:v1",
+            "ae.product_planning_runtime_unavailable",
+            True,
+        ),
+        (
+            REQUIRED_POLICY,
+            None,
+            None,
+            "ae.product_planning_runtime_unavailable",
+            True,
+        ),
+        (
+            OPTIONAL_POLICY,
+            "MALFORMED",
+            None,
+            "ae.product_planning_runtime_conflict",
+            False,
+        ),
+    ),
+)
+def test_public_router_rejects_unadmitted_product_planning_selection(
+    policy,
+    proposal_kind,
+    fallback_ref,
+    error_code,
+    retryable,
+) -> None:
+    registry, registration, coordinator, _activation, runtime = _runtime(
+        planning_policy=policy
+    )
+    router = PublicProductPlanningRouter(
+        registry,
+        InstalledProductCoordinatorRuntimeRegistry(registry, (runtime,)),
+    )
+    inputs = _inputs(registration)
+    proposal = (
+        _planning_proposal(registration, inputs)
+        if proposal_kind == "VALID"
+        else ({"schema_version": "invalid"} if proposal_kind == "MALFORMED" else None)
+    )
+
+    with pytest.raises(ProductPlanningRuntimeError) as raised:
+        router.begin_if_registered(
+            **inputs,
+            planning_proposal=proposal,
+            planning_fallback_ref=fallback_ref,
+        )
+
+    assert raised.value.error_code == error_code
+    assert raised.value.retryable is retryable
+    assert coordinator.begin_calls == []
+
+
+def test_public_router_rejects_ambiguous_optional_selection() -> None:
+    registry, registration, coordinator, _activation, runtime = _runtime(
+        planning_policy=OPTIONAL_POLICY
+    )
+    router = PublicProductPlanningRouter(
+        registry,
+        InstalledProductCoordinatorRuntimeRegistry(registry, (runtime,)),
+    )
+    inputs = _inputs(registration)
+
+    with pytest.raises(ProductPlanningRuntimeError) as raised:
+        router.begin_if_registered(
+            **inputs,
+            planning_proposal=_planning_proposal(registration, inputs),
+            planning_fallback_ref=OPTIONAL_POLICY.deterministic_fallback_ref,
+        )
+
+    assert raised.value.error_code == "ae.product_planning_runtime_invalid"
+    assert coordinator.begin_calls == []
+
+
+def test_public_router_accepts_exact_optional_proposal_without_fallback() -> None:
+    registry, registration, coordinator, _activation, runtime = _runtime(
+        planning_policy=OPTIONAL_POLICY
+    )
+    router = PublicProductPlanningRouter(
+        registry,
+        InstalledProductCoordinatorRuntimeRegistry(registry, (runtime,)),
+    )
+    inputs = _inputs(registration)
+    proposal = _planning_proposal(registration, inputs)
+
+    result = router.begin_if_registered(**inputs, planning_proposal=proposal)
+
+    assert result["planning_proposal_hash"] == proposal["proposal_hash"]
+    assert result["planning_fallback_ref"] is None
+    assert len(coordinator.begin_calls) == 1
+
+
+def test_public_router_rejects_drifted_proposal_lineage() -> None:
+    registry, registration, coordinator, _activation, runtime = _runtime(
+        planning_policy=OPTIONAL_POLICY
+    )
+    router = PublicProductPlanningRouter(
+        registry,
+        InstalledProductCoordinatorRuntimeRegistry(registry, (runtime,)),
+    )
+    inputs = _inputs(registration)
+    proposal = _planning_proposal(registration, inputs)
+    proposal["work_intent_ref"]["work_intent_id"] = "drifted-work-intent"
+    proposal["proposal_hash"] = semantic_sha256_hash_ref(
+        {key: value for key, value in proposal.items() if key != "proposal_hash"}
+    )
+
+    with pytest.raises(ProductPlanningRuntimeError) as raised:
+        router.begin_if_registered(**inputs, planning_proposal=proposal)
+
+    assert raised.value.error_code == "ae.product_planning_runtime_conflict"
+    assert coordinator.begin_calls == []
 
 
 def test_claimed_semantic_pipeline_keeps_intent_context_evidence_but_skips_plan() -> (
@@ -457,6 +803,142 @@ def test_claimed_product_route_generates_advisory_plan_before_coordinator() -> N
     proposal = router.calls[0]["planning_proposal"]
     assert proposal["provider_plan_authoritative"] is False
     assert proposal["suggested_capability_ids"] == ["AE.CHAT.COMPATIBILITY"]
+    assert service.plans.records == {}
+
+
+def test_optional_provider_unavailable_uses_named_fallback_and_replays() -> None:
+    service, client, *_ = _semantic_components()
+    registration = _provider_registration("PROVIDER_ASSISTED_OPTIONAL")
+    router = _ProductRouterSpy(registration)
+    failure = _FailingPlanStage(
+        AeMoGenerationClientError(
+            503,
+            "PROVIDER_NOT_READY",
+            "provider is unavailable",
+            True,
+        )
+    )
+    service = replace(
+        service,
+        plan_stage=failure,
+        product_planning_router=router,
+    )
+    request = _claimed_product_request(service)
+
+    first = service.admit_and_compile(request)
+    router.replay_result = {
+        **first.product_planning_admission,
+        "replayed": True,
+    }
+    client.calls.clear()
+    replay = service.admit_and_compile(request)
+
+    fallback_ref = registration.planning_policy.deterministic_fallback_ref
+    assert first.status == replay.status == "PRODUCT_COORDINATION_STARTED"
+    assert first.product_planning_admission["planning_fallback_ref"] == fallback_ref
+    assert router.calls[0]["planning_fallback_ref"] == fallback_ref
+    assert failure.calls == 1
+    assert client.calls == []
+    assert len(router.calls) == 1
+    assert len(router.replay_calls) == 2
+
+
+def test_optional_provider_admitted_proposal_wins_over_fallback() -> None:
+    service, client, *_ = _semantic_components()
+    registration = _provider_registration("PROVIDER_ASSISTED_OPTIONAL")
+    router = _ProductRouterSpy(registration)
+    service = replace(service, product_planning_router=router)
+
+    result = service.admit_and_compile(_claimed_product_request(service))
+
+    assert result.status == "PRODUCT_COORDINATION_STARTED"
+    assert client.calls == ["INTENT", "CONTEXT", "PLAN"]
+    assert router.calls[0]["planning_proposal"] is not None
+    assert router.calls[0]["planning_fallback_ref"] is None
+
+
+@pytest.mark.parametrize(
+    "error",
+    (
+        AeMoGenerationClientError(
+            502,
+            "PROVIDER_RESPONSE_INVALID",
+            "provider response is malformed",
+            True,
+        ),
+        SemanticCandidateStageError(
+            422,
+            "CANDIDATE_AUTHORITY_VIOLATION",
+            "provider candidate contains authority",
+        ),
+        SemanticCandidateStageError(
+            422,
+            "CANDIDATE_PRIVATE_DATA_VIOLATION",
+            "provider candidate contains private data",
+        ),
+    ),
+)
+def test_optional_product_does_not_fallback_on_malformed_or_authority_failure(
+    error,
+) -> None:
+    service, _client, *_ = _semantic_components()
+    router = _ProductRouterSpy(
+        _provider_registration("PROVIDER_ASSISTED_OPTIONAL")
+    )
+    failure = _FailingPlanStage(error)
+    service = replace(
+        service,
+        plan_stage=failure,
+        product_planning_router=router,
+    )
+
+    with pytest.raises(SemanticCandidateAdmissionError):
+        service.admit_and_compile(_claimed_product_request(service))
+
+    assert router.calls == []
+    assert service.plans.records == {}
+
+
+def test_required_product_provider_unavailable_fails_without_mutation() -> None:
+    service, _client, *_ = _semantic_components()
+    router = _ProductRouterSpy(
+        _provider_registration("PROVIDER_ASSISTED_REQUIRED")
+    )
+    failure = _FailingPlanStage(
+        AeMoGenerationClientError(
+            504,
+            "PROVIDER_TIMEOUT",
+            "provider timed out",
+            True,
+        )
+    )
+    service = replace(
+        service,
+        plan_stage=failure,
+        product_planning_router=router,
+    )
+
+    with pytest.raises(SemanticCandidateAdmissionError) as raised:
+        service.admit_and_compile(_claimed_product_request(service))
+
+    assert raised.value.error_code == "PROVIDER_TIMEOUT"
+    assert router.calls == []
+    assert service.plans.records == {}
+
+
+def test_optional_low_confidence_stops_without_fallback_or_product_mutation() -> None:
+    service, client, *_ = _semantic_components(plan_confidence=0.49)
+    router = _ProductRouterSpy(
+        _provider_registration("PROVIDER_ASSISTED_OPTIONAL")
+    )
+    service = replace(service, product_planning_router=router)
+
+    result = service.admit_and_compile(_claimed_product_request(service))
+
+    assert result.status == "CANDIDATE_BLOCKED"
+    assert result.directive == "REPLAN_REQUIRED"
+    assert client.calls == ["INTENT", "CONTEXT", "PLAN"]
+    assert router.calls == []
     assert service.plans.records == {}
 
 

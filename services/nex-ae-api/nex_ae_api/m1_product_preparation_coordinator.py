@@ -45,6 +45,7 @@ M1_PRODUCT_PREPARATION_NOTIFICATION_SCHEMA_VERSION = (
 )
 _PREPARATION_REF_KIND = "M1_PREPARATION_CHECKPOINT"
 _PROPOSAL_REF_KIND = "PRODUCT_PLANNING_PROPOSAL"
+_FALLBACK_REF_KIND = "PRODUCT_PLANNING_FALLBACK"
 _STAGES = {
     "WAITING_BUSINESS_APPROVAL": (
         "BUSINESS_FORMAL",
@@ -120,6 +121,7 @@ class InstalledM1ProductPlanningCoordinator:
         capability_snapshot: Mapping[str, Any],
         execution: Mapping[str, Any],
         planning_proposal: Mapping[str, Any] | None = None,
+        planning_fallback_ref: str | None = None,
     ) -> dict[str, Any]:
         lineage = self._lineage(
             work_intent=work_intent,
@@ -129,10 +131,16 @@ class InstalledM1ProductPlanningCoordinator:
         )
         latest = self._latest(lineage)
         proposal_ref = self._proposal_reference(planning_proposal)
+        fallback_ref = self._fallback_reference(
+            planning_fallback_ref,
+            proposal_ref=proposal_ref,
+        )
         if latest is not None:
             self._require_checkpoint_lineage(latest, lineage)
             if m1_product_planning_proposal_ref(latest) != proposal_ref:
                 raise _conflict("M1 Product planning proposal replay has drifted.")
+            if m1_product_planning_fallback_ref(latest) != fallback_ref:
+                raise _conflict("M1 Product planning fallback replay has drifted.")
             if latest["checkpoint_version"] != 1:
                 raise _conflict("M1 preparation has already advanced beyond begin.")
             return self._result(latest, replayed=True)
@@ -155,8 +163,32 @@ class InstalledM1ProductPlanningCoordinator:
             previous=None,
             causation_id=work_intent["source"]["source_ref"],
             proposal_ref=proposal_ref,
+            fallback_ref=fallback_ref,
         )
         return self._result(checkpoint, replayed=False)
+
+    def replay_begin(
+        self,
+        *,
+        work_intent: Mapping[str, Any],
+        agent_context: Mapping[str, Any],
+        capability_snapshot: Mapping[str, Any],
+        execution: Mapping[str, Any],
+    ) -> dict[str, Any] | None:
+        """Return an exact started Product preparation without recalling a provider."""
+        lineage = self._lineage(
+            work_intent=work_intent,
+            agent_context=agent_context,
+            capability_snapshot=capability_snapshot,
+            execution=execution,
+        )
+        latest = self._latest(lineage)
+        if latest is None:
+            return None
+        self._require_checkpoint_lineage(latest, lineage)
+        if latest["checkpoint_version"] != 1:
+            raise _conflict("M1 preparation has already advanced beyond begin.")
+        return self._result(latest, replayed=True)
 
     def accept_approval_notification(
         self,
@@ -301,6 +333,7 @@ class InstalledM1ProductPlanningCoordinator:
             previous=previous,
             causation_id=event_id,
             proposal_ref=m1_product_planning_proposal_ref(previous),
+            fallback_ref=m1_product_planning_fallback_ref(previous),
         )
         return self._result(checkpoint, replayed=False)
 
@@ -332,6 +365,7 @@ class InstalledM1ProductPlanningCoordinator:
             "checkpoint": dict(checkpoint),
             "preparation": m1_preparation_projection(checkpoint),
             "planning_proposal_ref": m1_product_planning_proposal_ref(checkpoint),
+            "planning_fallback_ref": m1_product_planning_fallback_ref(checkpoint),
         }
 
     def _persist_checkpoint(
@@ -342,6 +376,7 @@ class InstalledM1ProductPlanningCoordinator:
         previous: Mapping[str, Any] | None,
         causation_id: str | None,
         proposal_ref: Mapping[str, Any] | None = None,
+        fallback_ref: str | None = None,
     ) -> dict[str, Any]:
         stage = str(preparation.get("stage") or "")
         if stage not in {*_STAGES, self.registration.ready_state}:
@@ -372,6 +407,13 @@ class InstalledM1ProductPlanningCoordinator:
                     "projection": validate_product_planning_proposal_reference(
                         proposal_ref
                     ),
+                }
+            )
+        if fallback_ref is not None:
+            authority_refs.append(
+                {
+                    "ref_kind": _FALLBACK_REF_KIND,
+                    "fallback_ref": fallback_ref,
                 }
             )
         if stage in _STAGES:
@@ -477,6 +519,8 @@ class InstalledM1ProductPlanningCoordinator:
             "wait": wait,
             "replayed": replayed,
             "ready": checkpoint["stage"] == self.registration.ready_state,
+            "planning_proposal_ref": m1_product_planning_proposal_ref(checkpoint),
+            "planning_fallback_ref": m1_product_planning_fallback_ref(checkpoint),
         }
 
     def _latest(self, lineage: Mapping[str, Any]) -> dict[str, Any] | None:
@@ -650,6 +694,25 @@ class InstalledM1ProductPlanningCoordinator:
             raise _conflict("M1 Product planning proposal registration has drifted.")
         return product_planning_proposal_reference(proposal)
 
+    def _fallback_reference(
+        self,
+        value: str | None,
+        *,
+        proposal_ref: Mapping[str, Any] | None,
+    ) -> str | None:
+        policy = self.registration.planning_policy
+        if policy.mode != "PROVIDER_ASSISTED_OPTIONAL":
+            if value is not None:
+                raise _invalid("M1 Product planning fallback is not admitted.")
+            return None
+        if proposal_ref is not None:
+            if value is not None:
+                raise _invalid("M1 Product planning selection is ambiguous.")
+            return None
+        if value != policy.deterministic_fallback_ref:
+            raise _invalid("M1 Product planning fallback is unavailable or drifted.")
+        return value
+
 
 def m1_preparation_projection(checkpoint: Mapping[str, Any]) -> dict[str, Any]:
     matches = [
@@ -685,6 +748,24 @@ def m1_product_planning_proposal_ref(
         return validate_product_planning_proposal_reference(matches[0]["projection"])
     except ValueError as exc:
         raise _conflict("M1 Product planning proposal reference has drifted.") from exc
+
+
+def m1_product_planning_fallback_ref(
+    checkpoint: Mapping[str, Any],
+) -> str | None:
+    matches = [
+        item
+        for item in checkpoint.get("authority_refs", ())
+        if isinstance(item, Mapping) and item.get("ref_kind") == _FALLBACK_REF_KIND
+    ]
+    if not matches:
+        return None
+    if len(matches) != 1:
+        raise _conflict("M1 Product planning fallback reference is invalid.")
+    fallback_ref = matches[0].get("fallback_ref")
+    if not isinstance(fallback_ref, str) or not fallback_ref.strip():
+        raise _conflict("M1 Product planning fallback reference has drifted.")
+    return fallback_ref.strip()
 
 
 _preparation_projection = m1_preparation_projection

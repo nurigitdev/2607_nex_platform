@@ -178,6 +178,7 @@ class PublicProductPlanningRouter:
         capability_snapshot: Mapping[str, Any],
         execution: Mapping[str, Any],
         planning_proposal: Mapping[str, Any] | None = None,
+        planning_fallback_ref: str | None = None,
     ) -> dict[str, Any] | None:
         registration = self.resolve_registration(
             work_intent=work_intent,
@@ -192,6 +193,11 @@ class PublicProductPlanningRouter:
             work_intent=work_intent,
             agent_context=agent_context,
         )
+        fallback_ref = _fallback_for_registration(
+            planning_fallback_ref,
+            registration=registration,
+            proposal=proposal,
+        )
         result = _invoke_product_boundary(
             runtime.coordinator.begin,
             work_intent=work_intent,
@@ -199,29 +205,55 @@ class PublicProductPlanningRouter:
             capability_snapshot=capability_snapshot,
             execution=execution,
             planning_proposal=proposal,
+            planning_fallback_ref=fallback_ref,
         )
-        checkpoint = _mapping(result.get("checkpoint"), "Product checkpoint")
-        projection = {
-            "schema_version": PRODUCT_PLANNING_ADMISSION_SCHEMA_VERSION,
-            "coordinator_id": registration.coordinator_id,
-            "coordinator_version": registration.coordinator_version,
-            "coordinator_registration_hash": registration.registration_hash,
-            "capability_id": registration.capability_id,
-            "capability_version": registration.capability_version,
-            "checkpoint_id": checkpoint.get("checkpoint_id"),
-            "checkpoint_hash": checkpoint.get("checkpoint_hash"),
-            "stage": checkpoint.get("stage"),
-            "ready": bool(result.get("ready")),
-            "replayed": bool(result.get("replayed")),
-            "provider_plan_authoritative": False,
-            "planning_mode": registration.planning_policy.mode,
-            "planning_proposal_hash": (
+        return _admission_projection(
+            result,
+            registration=registration,
+            planning_proposal_hash=(
                 None if proposal is None else proposal["proposal_hash"]
             ),
-            "content_included": False,
-        }
-        projection["admission_hash"] = semantic_sha256_hash_ref(projection)
-        return projection
+            planning_fallback_ref=fallback_ref,
+        )
+
+    def replay_if_registered(
+        self,
+        *,
+        work_intent: Mapping[str, Any],
+        agent_context: Mapping[str, Any],
+        capability_snapshot: Mapping[str, Any],
+        execution: Mapping[str, Any],
+    ) -> dict[str, Any] | None:
+        registration = self.resolve_registration(
+            work_intent=work_intent,
+            capability_snapshot=capability_snapshot,
+        )
+        if registration is None:
+            return None
+        runtime = self.runtimes.resolve_registration(registration)
+        replay = getattr(runtime.coordinator, "replay_begin", None)
+        if replay is None:
+            return None
+        result = _call_product_boundary(
+            replay,
+            work_intent=work_intent,
+            agent_context=agent_context,
+            capability_snapshot=capability_snapshot,
+            execution=execution,
+        )
+        if result is None:
+            return None
+        proposal_ref = result.get("planning_proposal_ref")
+        return _admission_projection(
+            result,
+            registration=registration,
+            planning_proposal_hash=(
+                proposal_ref.get("proposal_hash")
+                if isinstance(proposal_ref, Mapping)
+                else None
+            ),
+            planning_fallback_ref=result.get("planning_fallback_ref"),
+        )
 
     def resolve_registration(
         self,
@@ -273,6 +305,36 @@ class PublicProductPlanningRouter:
             if registration is not None and registration not in matches:
                 matches.append(registration)
         return tuple(matches)
+
+
+def _admission_projection(
+    result: Mapping[str, Any],
+    *,
+    registration: ProductPlanningCoordinatorRegistration,
+    planning_proposal_hash: str | None,
+    planning_fallback_ref: str | None,
+) -> dict[str, Any]:
+    checkpoint = _mapping(result.get("checkpoint"), "Product checkpoint")
+    projection = {
+        "schema_version": PRODUCT_PLANNING_ADMISSION_SCHEMA_VERSION,
+        "coordinator_id": registration.coordinator_id,
+        "coordinator_version": registration.coordinator_version,
+        "coordinator_registration_hash": registration.registration_hash,
+        "capability_id": registration.capability_id,
+        "capability_version": registration.capability_version,
+        "checkpoint_id": checkpoint.get("checkpoint_id"),
+        "checkpoint_hash": checkpoint.get("checkpoint_hash"),
+        "stage": checkpoint.get("stage"),
+        "ready": bool(result.get("ready")),
+        "replayed": bool(result.get("replayed")),
+        "provider_plan_authoritative": False,
+        "planning_mode": registration.planning_policy.mode,
+        "planning_proposal_hash": planning_proposal_hash,
+        "planning_fallback_ref": planning_fallback_ref,
+        "content_included": False,
+    }
+    projection["admission_hash"] = semantic_sha256_hash_ref(projection)
+    return projection
 
 
 class SqlAlchemyProductPlanningLineageSource:
@@ -605,6 +667,26 @@ def _proposal_for_registration(
     return proposal
 
 
+def _fallback_for_registration(
+    value: str | None,
+    *,
+    registration: ProductPlanningCoordinatorRegistration,
+    proposal: Mapping[str, Any] | None,
+) -> str | None:
+    policy = registration.planning_policy
+    if policy.mode != "PROVIDER_ASSISTED_OPTIONAL":
+        if value is not None:
+            raise _invalid("Product planning fallback is not admitted.")
+        return None
+    if proposal is not None:
+        if value is not None:
+            raise _invalid("Product planning selection is ambiguous.")
+        return None
+    if value != policy.deterministic_fallback_ref:
+        raise _unavailable("Product planning fallback is unavailable or drifted.")
+    return value
+
+
 def _mapping(value: object, label: str) -> Mapping[str, Any]:
     if not isinstance(value, Mapping):
         raise _invalid(f"{label} is unavailable.")
@@ -612,8 +694,15 @@ def _mapping(value: object, label: str) -> Mapping[str, Any]:
 
 
 def _invoke_product_boundary(operation: Any, **values: Any) -> Mapping[str, Any]:
+    return _mapping(
+        _call_product_boundary(operation, **values),
+        "Product runtime result",
+    )
+
+
+def _call_product_boundary(operation: Any, **values: Any) -> Any:
     try:
-        result = operation(**values)
+        return operation(**values)
     except ProductPlanningRuntimeError:
         raise
     except Exception as exc:
@@ -626,7 +715,6 @@ def _invoke_product_boundary(operation: Any, **values: Any) -> Mapping[str, Any]
                 retryable=bool(getattr(exc, "retryable", False)),
             ) from exc
         raise
-    return _mapping(result, "Product runtime result")
 
 
 def _text(value: object, field: str) -> str:
