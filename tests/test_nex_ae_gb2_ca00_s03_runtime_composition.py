@@ -99,6 +99,9 @@ def test_generic_composition_builds_from_non_demo_executor_profile() -> None:
     assert isinstance(runtime.worker, P5StepExecutionWorker)
     assert isinstance(runtime.assignment_source, SqlAlchemyAgentRuntimeAssignmentSource)
     assert isinstance(runtime.handler, composition.InstalledStepAssignmentHandler)
+    assert runtime.assignment_handlers is not None
+    assert runtime.assignment_handlers.registered_kinds == ("EXECUTABLE_STEP",)
+    assert runtime.dispatcher.assignment_kinds == ("EXECUTABLE_STEP",)
     assert isinstance(runtime.result_publisher, SqlAlchemyWorkspaceResultPublisher)
     assert isinstance(runtime.result_closer, SqlAlchemyInstalledIaResultCloser)
     assert runtime.worker_config.mode == "enabled"

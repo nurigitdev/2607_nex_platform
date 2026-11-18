@@ -23,6 +23,7 @@ from nex_ae_api.agent_runtime_worker import (
 )
 from nex_ae_api.multi_step_engine import SqlAlchemyMultiStepEngine
 from nex_ae_api.nsl_approval_resume import SqlAlchemyNslApprovalResumeSource
+from nex_ae_api.runtime_assignment_handlers import RuntimeAssignmentHandlerRegistry
 from nex_ae_api.runtime_jobs import SqlAlchemyRuntimeJobQueue
 from nex_ae_api.step_executors import (
     P5StepExecutionWorker,
@@ -145,6 +146,7 @@ class InstalledRuntimeComposition:
     result_publisher: SqlAlchemyWorkspaceResultPublisher
     result_closer: SqlAlchemyInstalledIaResultCloser
     background_result_closer: SqlAlchemyInstalledBackgroundResultCloser | None = None
+    assignment_handlers: RuntimeAssignmentHandlerRegistry | None = None
 
     def run_cycle(self, *, finalize_lifecycle: bool = True) -> dict[str, Any]:
         lifecycle = AgentRuntimeWorkerLifecycle(
@@ -155,7 +157,7 @@ class InstalledRuntimeComposition:
         result = run_bounded_agent_runtime_worker(
             config=self.worker_config,
             assignment_source=self.assignment_source,
-            handler=self.handler,
+            handler=self.assignment_handlers or self.handler,
             lifecycle=lifecycle,
             available_executor_kinds=self.executor_profile.executor_kinds,
             available_backend_profiles=self.executor_profile.backend_profiles,
@@ -208,8 +210,7 @@ def build_installed_runtime_composition(
     environ: Mapping[str, str],
     executor_profile: RuntimeExecutorProfile | None,
     completion_notifier: AgentResultCompletionNotifier | None = None,
-    background_result_closer: SqlAlchemyInstalledBackgroundResultCloser
-    | None = None,
+    background_result_closer: SqlAlchemyInstalledBackgroundResultCloser | None = None,
     declared_at: str | None = None,
 ) -> InstalledRuntimeComposition:
     if executor_profile is None:
@@ -224,11 +225,16 @@ def build_installed_runtime_composition(
         executors=executor_profile.registry,
         continuation_source=continuation_source,
     )
+    step_handler = InstalledStepAssignmentHandler(worker, engine)
+    assignment_handlers = RuntimeAssignmentHandlerRegistry(
+        {"EXECUTABLE_STEP": step_handler}
+    )
     dispatcher = SqlAlchemyAgentRuntimeDispatcher(
         sessions,
         config=load_agent_runtime_dispatcher_config(environ),
         queue=runtime_jobs,
         executor_backends=executor_profile.executor_backends,
+        assignment_kinds=assignment_handlers.registered_kinds,
     )
     worker_config = load_agent_runtime_worker_config(
         _worker_environment(environ, worker_id=identity, profile=executor_profile),
@@ -245,7 +251,8 @@ def build_installed_runtime_composition(
         continuation_source=continuation_source,
         worker=worker,
         assignment_source=SqlAlchemyAgentRuntimeAssignmentSource(dispatcher),
-        handler=InstalledStepAssignmentHandler(worker, engine),
+        handler=step_handler,
+        assignment_handlers=assignment_handlers,
         worker_config=worker_config,
         heartbeat_emitter=heartbeat_emitter,
         executor_profile=executor_profile,
