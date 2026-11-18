@@ -189,20 +189,25 @@ class InstalledClaimHandoffAdmission:
                 request_id=f"claim-handoff:{event_id}",
                 trace_id=_trace_id(execution),
             )
-            if (
-                planned.status != "COMPILED"
-                or planned.agent_execution_id != execution_id
-                or not planned.executable_plan_id
+            if planned.agent_execution_id != execution_id:
+                raise AgentExecutionError(
+                    "ae.claim_handoff_plan_not_compiled",
+                    "Claim handoff planning lineage differs from its execution.",
+                )
+            if planned.status == "COMPILED" and planned.executable_plan_id:
+                self.scheduler.schedule_next(
+                    tenant_id=tenant_id,
+                    execution_id=execution_id,
+                    now=self.clock(),
+                )
+            elif (
+                planned.status != "PRODUCT_COORDINATION_STARTED"
+                or planned.product_planning_admission is None
             ):
                 raise AgentExecutionError(
                     "ae.claim_handoff_plan_not_compiled",
-                    "Claim handoff did not produce an executable plan.",
+                    "Claim handoff did not produce an admitted planning route.",
                 )
-            self.scheduler.schedule_next(
-                tenant_id=tenant_id,
-                execution_id=execution_id,
-                now=self.clock(),
-            )
         except BackgroundPlanningError as exc:
             raise AgentExecutionError(
                 exc.error_code, exc.detail, exc.retryable

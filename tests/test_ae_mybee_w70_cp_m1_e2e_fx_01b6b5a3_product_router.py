@@ -1,0 +1,802 @@
+from __future__ import annotations
+
+from dataclasses import replace
+from pathlib import Path
+from types import SimpleNamespace
+
+import pytest
+from fastapi import FastAPI
+from fastapi.responses import JSONResponse
+from fastapi.testclient import TestClient
+from mybee_ax.orchestration import load_m1_transaction_preparation_registration
+from nex_ae_api.agent_context import TrustedContextResolution
+from nex_ae_api.agent_runtime_worker import AgentRuntimeAssignment
+from nex_ae_api.m1_product_planning_coordinator import (
+    build_m1_product_planning_coordinator_registry,
+)
+from nex_ae_api.product_capabilities import load_product_capability_registry
+from nex_ae_api.product_planning_event_api import (
+    register_product_planning_event_routes,
+)
+from nex_ae_api.product_planning_runtime import (
+    InstalledProductCoordinatorAssignmentHandler,
+    InstalledProductCoordinatorRuntime,
+    InstalledProductCoordinatorRuntimeRegistry,
+    InstalledProductPlanningEventAdmission,
+    ProductPlanningRuntimeError,
+    PublicProductPlanningRouter,
+    SqlAlchemyProductPlanningLineageSource,
+    build_contract_m1_product_planning_composition,
+    build_installed_m1_product_coordinator_runtime,
+    build_installed_product_planning_composition,
+)
+from nex_ae_api.runtime_composition import (
+    RuntimeExecutorProfile,
+    build_installed_runtime_composition,
+)
+from nex_ae_api.runtime_jobs import RuntimeJobClaim
+from nex_ae_api.runtime_resume import ResumeRoute
+from nex_ae_api.step_executors import P5StepExecutorRegistry
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from test_ae_p65_s5_candidate_admission_compile import (
+    _components as _semantic_components,
+)
+from test_ae_p65_s5_candidate_admission_compile import (
+    _request as _semantic_request,
+)
+
+ROOT = Path(__file__).resolve().parents[1]
+TENANT = "VO00"
+EXECUTION_ID = "11111111-1111-4111-8111-111111111153"
+WORK_INTENT_ID = "22222222-2222-4222-8222-222222222253"
+CHECKPOINT_ID = "33333333-3333-4333-8333-333333333353"
+CHECKPOINT_HASH = "sha256:" + "3" * 64
+
+
+class _Coordinator:
+    def __init__(self, registration, *, ready=False) -> None:
+        self.registration = registration
+        self.ready = ready
+        self.begin_calls = []
+        self.event_calls = []
+        self.resume_calls = []
+
+    def begin(self, **values):
+        self.begin_calls.append(values)
+        return {
+            "checkpoint": {
+                "checkpoint_id": CHECKPOINT_ID,
+                "checkpoint_hash": CHECKPOINT_HASH,
+                "stage": "WAITING_BUSINESS_APPROVAL",
+            },
+            "ready": False,
+            "replayed": False,
+        }
+
+    def resume_approval(self, **values):
+        self.resume_calls.append(values)
+        return {
+            "checkpoint": {
+                "checkpoint_id": CHECKPOINT_ID,
+                "checkpoint_hash": CHECKPOINT_HASH,
+                "stage": "READY_FOR_D04"
+                if self.ready
+                else "WAITING_ACCOUNTING_APPROVAL",
+            },
+            "ready": self.ready,
+            "replayed": False,
+        }
+
+    def accept_approval_notification(self, **values):
+        self.event_calls.append(values)
+        return {"replayed": False}
+
+
+class _Activation:
+    def __init__(self, registration) -> None:
+        self.registration = registration
+        self.calls = []
+
+    def activate(self, **values):
+        self.calls.append(values)
+        return {
+            "executable_plan_id": "44444444-4444-4444-8444-444444444453",
+            "runtime_job": {"runtime_job_id": "job-d04"},
+        }
+
+
+class _RouteSource:
+    def __init__(self, route) -> None:
+        self.route = route
+        self.calls = []
+
+    def resolve(self, **values):
+        self.calls.append(values)
+        return self.route
+
+
+class _LineageSource:
+    def __init__(self, values) -> None:
+        self.values = values
+        self.calls = []
+
+    def load(self, route):
+        self.calls.append(route)
+        return self.values
+
+
+class _ResumeService:
+    def __init__(self) -> None:
+        self.calls = []
+
+    def reconcile(self, **values):
+        self.calls.append(values)
+        return {
+            "event_state": "MATCHED",
+            "wait_state": "RESUME_QUEUED",
+            "resume_runtime_job_id": "runtime-job-product",
+        }
+
+
+class _StepExecutor:
+    def execute(self, _context, *, continuation_result=None):
+        return continuation_result
+
+
+class _StoredRepository:
+    def __init__(self, value) -> None:
+        self.value = value
+
+    def get(self, *_args, **_values):
+        return self.value
+
+    def get_latest(self, **_values):
+        return self.value
+
+
+class _FailingAdmission:
+    def __init__(self, error) -> None:
+        self.error = error
+
+    def ingest(self, _payload):
+        raise self.error
+
+
+class _ProductRouterSpy:
+    def __init__(self) -> None:
+        self.calls = []
+
+    def begin_if_registered(self, **values):
+        self.calls.append(values)
+        return {
+            "checkpoint_id": CHECKPOINT_ID,
+            "checkpoint_hash": CHECKPOINT_HASH,
+            "provider_plan_authoritative": False,
+        }
+
+
+class _ClaimedResolver:
+    def resolve(self, request):
+        return TrustedContextResolution(
+            project_ref={
+                "system": "nex-wc",
+                "resource_type": "PROJECT",
+                "resource_id": "project-product-router",
+            },
+            authority_ref="WC:WORK_ITEM:work-item-product-router",
+            resolved_entities=(),
+            retrieval_refs=(),
+            evidence_refs=(),
+            conflicts=(),
+            degradations=(),
+            context_manifest=(
+                {
+                    "kind": "CLAIMED_WORKITEM_REF",
+                    "source_ref": "WC:WORK_ITEM:work-item-product-router",
+                    "source_version": "1",
+                    "content_hash": "sha256:" + "5" * 64,
+                    "as_of": "2026-10-17T02:00:00Z",
+                },
+            ),
+            budget_tokens=4096,
+            estimated_used_tokens=128,
+        )
+
+
+def _registry(*, active: bool):
+    capabilities = load_product_capability_registry(
+        {
+            "NEX_AE_PRODUCT_CAPABILITY_REGISTRY_PATH": str(
+                ROOT
+                / "deployment/environments/ae-product-capability-registry.mybee-m1.v2.json"
+            )
+        }
+    )
+    return build_m1_product_planning_coordinator_registry(
+        product_capabilities=capabilities,
+        preparation_registration=load_m1_transaction_preparation_registration(),
+        activation_status="ACTIVE" if active else "CONTRACT_ONLY",
+    )
+
+
+def _inputs(registration):
+    return {
+        "work_intent": {
+            "required_capability_hints": [registration.capability_id],
+        },
+        "agent_context": {"context_id": "context-1"},
+        "capability_snapshot": {
+            "capabilities": [
+                {
+                    "capability_id": registration.capability_id,
+                    "capability_version": registration.capability_version,
+                }
+            ]
+        },
+        "execution": {"execution_id": EXECUTION_ID},
+    }
+
+
+def _runtime(*, ready=False):
+    registry = _registry(active=True)
+    registration = registry.registrations[0]
+    coordinator = _Coordinator(registration, ready=ready)
+    activation = _Activation(registration)
+    runtime = InstalledProductCoordinatorRuntime(
+        registration=registration,
+        coordinator=coordinator,
+        activation=activation,
+    )
+    return registry, registration, coordinator, activation, runtime
+
+
+def _route(registration):
+    return ResumeRoute(
+        tenant_id=TENANT,
+        runtime_job_id="runtime-job-product",
+        execution_id=EXECUTION_ID,
+        wait_id="wait-product",
+        event_id="approval-event",
+        resume_target_kind="PRODUCT_COORDINATOR",
+        executable_step_id=None,
+        payload={},
+        product_context={
+            "checkpoint_id": CHECKPOINT_ID,
+            "checkpoint_hash": CHECKPOINT_HASH,
+            "coordinator_id": registration.coordinator_id,
+            "coordinator_version": registration.coordinator_version,
+            "coordinator_registration_hash": registration.registration_hash,
+            "work_intent_id": WORK_INTENT_ID,
+        },
+    )
+
+
+def _assignment():
+    return AgentRuntimeAssignment(
+        tenant_id=TENANT,
+        executor_kind=None,
+        backend_profile=None,
+        assignment_kind="PRODUCT_COORDINATOR",
+        claim=RuntimeJobClaim(
+            job={
+                "tenant_id": TENANT,
+                "runtime_job_id": "runtime-job-product",
+                "execution_id": EXECUTION_ID,
+                "state": "RUNNING",
+                "lease_owner": "worker-1",
+                "lease_token": "lease-1",
+            },
+            attempt={"attempt_no": 1},
+            assignment_kind="PRODUCT_COORDINATOR",
+        ),
+    )
+
+
+def test_public_router_selects_exact_active_capability_and_begins_product() -> None:
+    registry, registration, coordinator, _activation, runtime = _runtime()
+    runtimes = InstalledProductCoordinatorRuntimeRegistry(registry, (runtime,))
+    router = PublicProductPlanningRouter(registry, runtimes)
+
+    result = router.begin_if_registered(**_inputs(registration))
+
+    assert result["stage"] == "WAITING_BUSINESS_APPROVAL"
+    assert result["provider_plan_authoritative"] is False
+    assert result["coordinator_registration_hash"] == registration.registration_hash
+    assert len(coordinator.begin_calls) == 1
+
+
+def test_claimed_semantic_pipeline_keeps_intent_context_evidence_but_skips_plan() -> (
+    None
+):
+    service, client, *_ = _semantic_components()
+    router = _ProductRouterSpy()
+    service = replace(service, product_planning_router=router)
+    service.executions.record.update(
+        {
+            "tenant_id": "tenant-a",
+            "agent_execution_id": EXECUTION_ID,
+            "agent_id": "20000000-0000-4000-8000-000000000656",
+            "agent_type": "PA",
+            "project_id": "project-product-router",
+            "source_type": "CLAIMED_WORKITEM",
+            "source_ref": "work-item-product-router",
+            "work_item_ref": "work-item-product-router",
+            "requester_ref": "user-a",
+            "received_at": "2026-10-17T02:00:00Z",
+        }
+    )
+    planning_source = {
+        "schema_version": "p7.claimed_work_planning_source.v1",
+        "source_type": "CLAIMED_WORKITEM",
+        "source_ref": "work-item-product-router",
+        "goal": "Prepare the admitted Product operation.",
+        "work_class": "ANALYSIS",
+        "required_capability": "AE.CHAT.COMPATIBILITY",
+        "project_ref": {
+            "entity_type": "PROJECT",
+            "entity_id": "project-product-router",
+        },
+        "artifact_refs": [],
+        "evidence_refs": [],
+        "completion_policy": "OWNER_SUBMITS",
+        "result_contract_ref": "contract://product/result/v1",
+    }
+    request = replace(
+        _semantic_request(),
+        planning_source_type="CLAIMED_WORKITEM",
+        existing_execution_id=EXECUTION_ID,
+        agent_type="PA",
+        project_id="project-product-router",
+        source_ref="work-item-product-router",
+        planning_source=planning_source,
+        context_resolver=_ClaimedResolver(),
+    )
+
+    result = service.admit_and_compile(request)
+
+    assert result.status == "PRODUCT_COORDINATION_STARTED"
+    assert result.directive == "WAIT_FOR_PRODUCT_COORDINATION"
+    assert [stage.semantic_stage for stage in result.stages] == ["INTENT", "CONTEXT"]
+    assert client.calls == ["INTENT", "CONTEXT"]
+    assert result.product_planning_admission["provider_plan_authoritative"] is False
+    assert len(router.calls) == 1
+
+
+def test_public_router_preserves_non_product_and_fails_closed_before_activation() -> (
+    None
+):
+    registry, registration, *_ = _runtime()
+    router = PublicProductPlanningRouter(
+        registry,
+        InstalledProductCoordinatorRuntimeRegistry(registry, (_runtime()[-1],)),
+    )
+    inputs = _inputs(registration)
+    inputs["work_intent"] = {"required_capability_hints": ["REPORT.GENERATE"]}
+    assert router.begin_if_registered(**inputs) is None
+
+    contract = _registry(active=False)
+    contract_router = PublicProductPlanningRouter(
+        contract, InstalledProductCoordinatorRuntimeRegistry(contract)
+    )
+    with pytest.raises(ProductPlanningRuntimeError) as captured:
+        contract_router.begin_if_registered(**_inputs(contract.registrations[0]))
+    assert captured.value.error_code == "ae.product_planning_runtime_unavailable"
+    assert captured.value.retryable is True
+
+
+@pytest.mark.parametrize("ready", (False, True))
+def test_product_assignment_resumes_and_only_activates_exact_ready_state(ready) -> None:
+    registry, registration, coordinator, activation, runtime = _runtime(ready=ready)
+    route = _route(registration)
+    inputs = _inputs(registration)
+    handler = InstalledProductCoordinatorAssignmentHandler(
+        route_source=_RouteSource(route),
+        lineage_source=_LineageSource(inputs),
+        runtimes=InstalledProductCoordinatorRuntimeRegistry(registry, (runtime,)),
+    )
+
+    result = handler(_assignment())
+
+    assert result["ready"] is ready
+    assert len(coordinator.resume_calls) == 1
+    assert len(activation.calls) == int(ready)
+    assert (result["activation"] is not None) is ready
+
+
+def test_product_event_admission_persists_then_schedules_generalized_resume() -> None:
+    registry, registration, coordinator, _activation, runtime = _runtime()
+    resume = _ResumeService()
+    admission = InstalledProductPlanningEventAdmission(
+        runtimes=InstalledProductCoordinatorRuntimeRegistry(registry, (runtime,)),
+        resume_service=resume,
+    )
+
+    result = admission.ingest(
+        {
+            "tenant_id": TENANT,
+            "coordinator_id": registration.coordinator_id,
+            "coordinator_version": registration.coordinator_version,
+            "coordinator_registration_hash": registration.registration_hash,
+            "checkpoint_id": CHECKPOINT_ID,
+            "event_id": "approval-event",
+            "notification_ref": "eos-event://approval-event",
+            "authority_evidence_ref": "eos-evidence://approval-event",
+            "received_at": "2026-11-18T01:00:00Z",
+        }
+    )
+
+    assert result["event_state"] == "MATCHED"
+    assert result["wait_state"] == "RESUME_QUEUED"
+    assert len(coordinator.event_calls) == 1
+    assert resume.calls == [{"tenant_id": TENANT, "event_id": "approval-event"}]
+
+
+def test_one_factory_installs_same_product_handler_in_generic_worker() -> None:
+    registry, _registration, _coordinator, _activation, runtime = _runtime()
+    sessions = sessionmaker(create_engine("sqlite+pysqlite:///:memory:"))
+    product = build_installed_product_planning_composition(
+        sessions=sessions,
+        coordinator_registry=registry,
+        runtimes=(runtime,),
+    )
+    executor_registry = P5StepExecutorRegistry(
+        {"DETERMINISTIC_REPORT": _StepExecutor()}
+    )
+    installed = build_installed_runtime_composition(
+        sessions=sessions,
+        heartbeat_emitter=SimpleNamespace(store=object()),
+        worker_id="worker-product-router",
+        environ={},
+        executor_profile=RuntimeExecutorProfile(
+            registry=executor_registry,
+            executor_backends={"DETERMINISTIC_REPORT": "NSL_V02_IN_PROCESS"},
+        ),
+        product_planning=product,
+        declared_at="2026-11-18T00:00:00Z",
+    )
+
+    assert installed.product_planning is product
+    assert installed.assignment_handlers.registered_kinds == (
+        "EXECUTABLE_STEP",
+        "PRODUCT_COORDINATOR",
+    )
+    assert installed.dispatcher.assignment_kinds == (
+        "EXECUTABLE_STEP",
+        "PRODUCT_COORDINATOR",
+    )
+
+
+def test_m1_runtime_builder_reuses_existing_plan_and_runtime_stores() -> None:
+    registry = _registry(active=True)
+    registration = registry.registrations[0]
+    preparation_registration = load_m1_transaction_preparation_registration()
+    sessions = sessionmaker(create_engine("sqlite+pysqlite:///:memory:"))
+    runtime = build_installed_m1_product_coordinator_runtime(
+        sessions=sessions,
+        registration=registration,
+        transaction_preparation=SimpleNamespace(
+            adapter=SimpleNamespace(registration=preparation_registration)
+        ),
+        authority_source=SimpleNamespace(resolve=lambda **_values: None),
+        materializer=SimpleNamespace(
+            materialize_transaction_plan=lambda **_values: None
+        ),
+    )
+
+    assert runtime.registration is registration
+    assert runtime.coordinator.registration is registration
+    assert runtime.activation.registration is registration
+
+
+def test_runtime_registry_rejects_missing_or_contract_only_implementation() -> None:
+    active = _registry(active=True)
+    with pytest.raises(ProductPlanningRuntimeError):
+        InstalledProductCoordinatorRuntimeRegistry(active)
+
+    contract = _registry(active=False)
+    registration = contract.registrations[0]
+    with pytest.raises(ProductPlanningRuntimeError):
+        InstalledProductCoordinatorRuntimeRegistry(
+            contract,
+            (
+                InstalledProductCoordinatorRuntime(
+                    registration=registration,
+                    coordinator=_Coordinator(registration),
+                    activation=_Activation(registration),
+                ),
+            ),
+        )
+
+
+def test_runtime_registry_rejects_invalid_duplicate_and_drifted_runtime() -> None:
+    registry, registration, coordinator, activation, runtime = _runtime()
+    with pytest.raises(ProductPlanningRuntimeError, match="dependencies differ"):
+        InstalledProductCoordinatorRuntime(
+            registration=registration,
+            coordinator=SimpleNamespace(registration=registration),
+            activation=activation,
+        )
+    with pytest.raises(ProductPlanningRuntimeError, match="duplicated"):
+        InstalledProductCoordinatorRuntimeRegistry(registry, (runtime, runtime))
+
+    runtimes = InstalledProductCoordinatorRuntimeRegistry(registry, (runtime,))
+    assert runtimes.identities == (runtime.identity,)
+    with pytest.raises(ProductPlanningRuntimeError, match="not installed"):
+        runtimes.resolve_registration(
+            replace(registration, activation_status="CONTRACT_ONLY")
+        )
+    with pytest.raises(ProductPlanningRuntimeError, match="has drifted"):
+        runtimes.resolve_identity(
+            coordinator_id=registration.coordinator_id,
+            coordinator_version=registration.coordinator_version,
+            coordinator_registration_hash="sha256:" + "0" * 64,
+        )
+    with pytest.raises(ProductPlanningRuntimeError, match="not installed"):
+        runtimes.resolve_identity(
+            coordinator_id="missing",
+            coordinator_version="v1",
+            coordinator_registration_hash=registration.registration_hash,
+        )
+    with pytest.raises(ProductPlanningRuntimeError, match="not a Product"):
+        runtimes.resolve_route(replace(_route(registration), product_context=None))
+
+    missing = _route(registration)
+    missing.product_context["coordinator_id"] = "missing"
+    with pytest.raises(ProductPlanningRuntimeError, match="not installed"):
+        runtimes.resolve_route(missing)
+
+    drifted = _route(registration)
+    drifted.product_context["coordinator_registration_hash"] = "sha256:" + "0" * 64
+    with pytest.raises(ProductPlanningRuntimeError, match="resume registration"):
+        runtimes.resolve_route(drifted)
+
+    assert str(ProductPlanningRuntimeError("code", "detail")) == "detail"
+    assert coordinator.registration is registration
+
+
+def test_router_and_handler_reject_invalid_product_shapes() -> None:
+    registry, registration, coordinator, _activation, runtime = _runtime()
+    runtimes = InstalledProductCoordinatorRuntimeRegistry(registry, (runtime,))
+    router = PublicProductPlanningRouter(registry, runtimes)
+
+    invalid = _inputs(registration)
+    invalid["work_intent"] = {"required_capability_hints": "not-a-list"}
+    with pytest.raises(ProductPlanningRuntimeError, match="inputs are invalid"):
+        router.begin_if_registered(**invalid)
+
+    coordinator.begin = lambda **_values: {"checkpoint": "invalid"}
+    with pytest.raises(ProductPlanningRuntimeError, match="checkpoint is unavailable"):
+        router.begin_if_registered(**_inputs(registration))
+
+    coordinator.begin = lambda **_values: (_ for _ in ()).throw(
+        ProductPlanningRuntimeError("owner.invalid", "owner invalid")
+    )
+    with pytest.raises(ProductPlanningRuntimeError, match="owner invalid"):
+        router.begin_if_registered(**_inputs(registration))
+
+    coordinator.begin = lambda **_values: (_ for _ in ()).throw(
+        ValueError("unexpected product bug")
+    )
+    with pytest.raises(ValueError, match="unexpected product bug"):
+        router.begin_if_registered(**_inputs(registration))
+
+    with pytest.raises(ProductPlanningRuntimeError, match="coordinator_id is required"):
+        runtimes.resolve_identity(
+            coordinator_id=" ",
+            coordinator_version=registration.coordinator_version,
+            coordinator_registration_hash=registration.registration_hash,
+        )
+
+    handler = InstalledProductCoordinatorAssignmentHandler(
+        route_source=_RouteSource(_route(registration)),
+        lineage_source=_LineageSource(_inputs(registration)),
+        runtimes=runtimes,
+    )
+    with pytest.raises(ProductPlanningRuntimeError, match="another assignment kind"):
+        handler(replace(_assignment(), assignment_kind="EXECUTABLE_STEP"))
+
+
+def test_router_rejects_multiple_registered_capabilities_without_scenario_choice() -> (
+    None
+):
+    _registry_value, registration, *_ = _runtime()
+    second_binding = replace(
+        registration.trigger_capability,
+        capability_id="FINANCE.PROJECT_PNL.GET",
+    )
+    second = replace(
+        registration,
+        coordinator_id="nex-ae:another-product-coordinator",
+        coordinator_version="v1",
+        trigger_capability=second_binding,
+    )
+    by_capability = {
+        registration.capability_id: registration,
+        second.capability_id: second,
+    }
+    fake_registry = SimpleNamespace(
+        resolve=lambda capability_id, _version, required=False: by_capability.get(
+            capability_id
+        )
+    )
+    router = PublicProductPlanningRouter(fake_registry, SimpleNamespace())
+    inputs = _inputs(registration)
+    inputs["work_intent"]["required_capability_hints"] = [
+        registration.capability_id,
+        registration.capability_id,
+        second.capability_id,
+    ]
+    inputs["capability_snapshot"]["capabilities"].append(
+        {
+            "capability_id": second.capability_id,
+            "capability_version": second.capability_version,
+        }
+    )
+
+    with pytest.raises(ProductPlanningRuntimeError, match="multiple Product"):
+        router.begin_if_registered(**inputs)
+
+
+def test_lineage_source_validates_missing_incomplete_and_drifted_authority() -> None:
+    _registry_value, registration, *_ = _runtime()
+    route = _route(registration)
+
+    source = SqlAlchemyProductPlanningLineageSource.__new__(
+        SqlAlchemyProductPlanningLineageSource
+    )
+    source._checkpoints = _StoredRepository(None)
+    with pytest.raises(ProductPlanningRuntimeError, match="not found"):
+        source.load(route)
+
+    checkpoint = {
+        "checkpoint_hash": CHECKPOINT_HASH,
+        "agent_execution_id": EXECUTION_ID,
+        "work_intent_id": WORK_INTENT_ID,
+        "agent_context_id": "context-1",
+        "work_intent_hash": "sha256:" + "1" * 64,
+        "context_hash": "sha256:" + "2" * 64,
+    }
+    source._checkpoints = _StoredRepository({**checkpoint, "checkpoint_hash": "bad"})
+    with pytest.raises(ProductPlanningRuntimeError, match="lineage differs"):
+        source.load(route)
+
+    source._checkpoints = _StoredRepository(checkpoint)
+    source._work_intents = _StoredRepository(None)
+    source._contexts = _StoredRepository({"context_hash": checkpoint["context_hash"]})
+    source._capabilities = _StoredRepository({"tenant_id": TENANT})
+    source._executions = _StoredRepository({"agent_execution_id": EXECUTION_ID})
+    with pytest.raises(ProductPlanningRuntimeError, match="lineage is incomplete"):
+        source.load(route)
+
+    source._work_intents = _StoredRepository({"intent_hash": "bad"})
+    with pytest.raises(ProductPlanningRuntimeError, match="authority has drifted"):
+        source.load(route)
+
+    source._work_intents = _StoredRepository(
+        {"intent_hash": checkpoint["work_intent_hash"]}
+    )
+    loaded = source.load(route)
+    assert loaded["execution"]["execution_id"] == EXECUTION_ID
+
+    with pytest.raises(ProductPlanningRuntimeError, match="binding is unavailable"):
+        source.load(replace(route, product_context=None))
+
+
+def test_event_admission_rejects_malformed_payload_and_preserves_typed_error() -> None:
+    registry, registration, coordinator, _activation, runtime = _runtime()
+    admission = InstalledProductPlanningEventAdmission(
+        runtimes=InstalledProductCoordinatorRuntimeRegistry(registry, (runtime,)),
+        resume_service=_ResumeService(),
+    )
+    with pytest.raises(ProductPlanningRuntimeError, match="fields are invalid"):
+        admission.ingest({"tenant_id": TENANT})
+
+    class _TypedFailure(Exception):
+        error_code = "owner.conflict"
+        detail = "owner rejected the event"
+        retryable = True
+
+    coordinator.accept_approval_notification = lambda **_values: (_ for _ in ()).throw(
+        _TypedFailure()
+    )
+    payload = {
+        "tenant_id": TENANT,
+        "coordinator_id": registration.coordinator_id,
+        "coordinator_version": registration.coordinator_version,
+        "coordinator_registration_hash": registration.registration_hash,
+        "checkpoint_id": CHECKPOINT_ID,
+        "event_id": "approval-event",
+        "notification_ref": "eos-event://approval-event",
+        "authority_evidence_ref": "eos-evidence://approval-event",
+        "received_at": "2026-11-18T01:00:00Z",
+    }
+    with pytest.raises(ProductPlanningRuntimeError) as captured:
+        admission.ingest(payload)
+    assert captured.value.error_code == "owner.conflict"
+    assert captured.value.retryable is True
+
+
+def test_product_planning_event_api_protects_unavailable_and_error_paths(
+    monkeypatch,
+) -> None:
+    from nex_ae_api import product_planning_event_api as api
+
+    monkeypatch.setattr(
+        api,
+        "authorize_ae_internal_service_request",
+        lambda *_args, **_values: SimpleNamespace(service_id="nex-eos"),
+    )
+    app = FastAPI()
+    register_product_planning_event_routes(app, admission=None)
+    unavailable = TestClient(app).post("/internal/v1/product-planning-events", json={})
+    assert unavailable.status_code == 503
+
+    failed_app = FastAPI()
+    register_product_planning_event_routes(
+        failed_app,
+        admission=_FailingAdmission(
+            ProductPlanningRuntimeError("owner.conflict", "conflict", False)
+        ),
+    )
+    failed = TestClient(failed_app).post(
+        "/internal/v1/product-planning-events", json={}
+    )
+    assert failed.status_code == 409
+    assert failed.json()["error_code"] == "owner.conflict"
+
+    retrying_app = FastAPI()
+    register_product_planning_event_routes(
+        retrying_app,
+        admission=_FailingAdmission(
+            ProductPlanningRuntimeError("owner.unavailable", "retry", True)
+        ),
+    )
+    retrying = TestClient(retrying_app).post(
+        "/internal/v1/product-planning-events", json={}
+    )
+    assert retrying.status_code == 503
+
+    success_app = FastAPI()
+    register_product_planning_event_routes(
+        success_app,
+        admission=SimpleNamespace(ingest=lambda _payload: {"accepted": True}),
+    )
+    success = TestClient(success_app).post(
+        "/internal/v1/product-planning-events", json={}
+    )
+    assert success.status_code == 202
+    assert success.json() == {"accepted": True}
+
+    denied_app = FastAPI()
+    monkeypatch.setattr(
+        api,
+        "authorize_ae_internal_service_request",
+        lambda *_args, **_values: JSONResponse({"denied": True}, status_code=403),
+    )
+    register_product_planning_event_routes(denied_app, admission=None)
+    denied = TestClient(denied_app).post(
+        "/internal/v1/product-planning-events", json={}
+    )
+    assert denied.status_code == 403
+
+
+def test_contract_factory_exposes_router_without_active_worker() -> None:
+    capabilities = load_product_capability_registry(
+        {
+            "NEX_AE_PRODUCT_CAPABILITY_REGISTRY_PATH": str(
+                ROOT
+                / "deployment/environments/ae-product-capability-registry.mybee-m1.v2.json"
+            )
+        }
+    )
+    sessions = sessionmaker(create_engine("sqlite+pysqlite:///:memory:"))
+    composition = build_contract_m1_product_planning_composition(
+        sessions=sessions,
+        product_capabilities=capabilities,
+    )
+
+    assert composition.public_router is not None
+    assert composition.runtime_registry.identities == ()
+    assert composition.assignment_handler is None
+    assert composition.event_admission is None

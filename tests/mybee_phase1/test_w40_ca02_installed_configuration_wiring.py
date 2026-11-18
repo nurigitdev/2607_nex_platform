@@ -18,7 +18,8 @@ from sqlalchemy.orm import sessionmaker
 
 ROOT = Path(__file__).resolve().parents[2]
 CAPABILITY_REGISTRY = (
-    ROOT / "deployment/environments/ae-product-capability-registry.v1.json"
+    ROOT
+    / "deployment/environments/ae-product-capability-registry.mybee-m1.v2.json"
 )
 AUTHORITY_PROFILE = ROOT / "deployment/environments/finance-golden-a-vo00.v1.json"
 

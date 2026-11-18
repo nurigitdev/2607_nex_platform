@@ -60,6 +60,7 @@ from nex_ae_api.product_capability_retirements import (
     ProductCapabilityRetirementProjection,
     load_product_capability_retirement_projection,
 )
+from nex_ae_api.product_planning_runtime import ProductPlanningRuntimeError
 from nex_ae_api.semantic_candidate_evidence import (
     InMemorySemanticCandidateStorage,
     SemanticCandidateStorage,
@@ -165,6 +166,7 @@ class SemanticCandidateAdmissionResult:
     validation_status: str | None = None
     executable_plan_id: str | None = None
     executable_plan_hash: str | None = None
+    product_planning_admission: Mapping[str, Any] | None = None
     stages: tuple[SemanticStageProjection, ...] = ()
     shadow_error_code: str | None = None
 
@@ -182,6 +184,11 @@ class SemanticCandidateAdmissionResult:
             "validation_status": self.validation_status,
             "executable_plan_id": self.executable_plan_id,
             "executable_plan_hash": self.executable_plan_hash,
+            "product_planning_admission": (
+                None
+                if self.product_planning_admission is None
+                else dict(self.product_planning_admission)
+            ),
             "stages": [stage.to_wire() for stage in self.stages],
             "shadow_error_code": self.shadow_error_code,
             "raw_prompt_included": False,
@@ -334,6 +341,7 @@ class DeterministicCandidateAdmissionService:
     product_capability_retirements: ProductCapabilityRetirementProjection = field(
         default_factory=ProductCapabilityRetirementProjection, repr=False
     )
+    product_planning_router: Any | None = field(default=None, repr=False)
     clock: Callable[[], datetime] = field(default=lambda: datetime.now(UTC), repr=False)
 
     def __post_init__(self) -> None:
@@ -569,6 +577,40 @@ class DeterministicCandidateAdmissionService:
             )
 
         capability_snapshot = self.capabilities.save(request.capability_snapshot)
+        if (
+            request.planning_source_type == "CLAIMED_WORKITEM"
+            and self.product_planning_router is not None
+        ):
+            try:
+                product_admission = self.product_planning_router.begin_if_registered(
+                    work_intent=work_intent,
+                    agent_context=agent_context,
+                    capability_snapshot=capability_snapshot,
+                    execution={
+                        **execution,
+                        "execution_id": execution_id,
+                    },
+                )
+            except ProductPlanningRuntimeError as exc:
+                status_code = 503 if exc.retryable else 409
+                raise SemanticCandidateAdmissionError(
+                    status_code,
+                    exc.error_code,
+                    exc.detail,
+                    exc.retryable,
+                    semantic_stage="PLAN",
+                ) from exc
+            if product_admission is not None:
+                return SemanticCandidateAdmissionResult(
+                    mode=self.mode,
+                    status="PRODUCT_COORDINATION_STARTED",
+                    directive="WAIT_FOR_PRODUCT_COORDINATION",
+                    agent_execution_id=execution_id,
+                    work_intent_id=ids.work_intent,
+                    agent_context_id=ids.context,
+                    product_planning_admission=product_admission,
+                    stages=tuple(stages),
+                )
         plan_evidence, plan_candidate, plan_result, resumed = self._stage(
             request=request,
             execution_id=execution_id,

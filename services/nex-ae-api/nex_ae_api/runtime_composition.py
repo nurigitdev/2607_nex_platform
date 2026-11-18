@@ -23,6 +23,7 @@ from nex_ae_api.agent_runtime_worker import (
 )
 from nex_ae_api.multi_step_engine import SqlAlchemyMultiStepEngine
 from nex_ae_api.nsl_approval_resume import SqlAlchemyNslApprovalResumeSource
+from nex_ae_api.product_planning_runtime import InstalledProductPlanningComposition
 from nex_ae_api.runtime_assignment_handlers import RuntimeAssignmentHandlerRegistry
 from nex_ae_api.runtime_jobs import SqlAlchemyRuntimeJobQueue
 from nex_ae_api.step_executors import (
@@ -147,6 +148,7 @@ class InstalledRuntimeComposition:
     result_closer: SqlAlchemyInstalledIaResultCloser
     background_result_closer: SqlAlchemyInstalledBackgroundResultCloser | None = None
     assignment_handlers: RuntimeAssignmentHandlerRegistry | None = None
+    product_planning: InstalledProductPlanningComposition | None = None
 
     def run_cycle(self, *, finalize_lifecycle: bool = True) -> dict[str, Any]:
         lifecycle = AgentRuntimeWorkerLifecycle(
@@ -211,6 +213,7 @@ def build_installed_runtime_composition(
     executor_profile: RuntimeExecutorProfile | None,
     completion_notifier: AgentResultCompletionNotifier | None = None,
     background_result_closer: SqlAlchemyInstalledBackgroundResultCloser | None = None,
+    product_planning: InstalledProductPlanningComposition | None = None,
     declared_at: str | None = None,
 ) -> InstalledRuntimeComposition:
     if executor_profile is None:
@@ -226,9 +229,10 @@ def build_installed_runtime_composition(
         continuation_source=continuation_source,
     )
     step_handler = InstalledStepAssignmentHandler(worker, engine)
-    assignment_handlers = RuntimeAssignmentHandlerRegistry(
-        {"EXECUTABLE_STEP": step_handler}
-    )
+    handlers = {"EXECUTABLE_STEP": step_handler}
+    if product_planning is not None and product_planning.assignment_handler is not None:
+        handlers["PRODUCT_COORDINATOR"] = product_planning.assignment_handler
+    assignment_handlers = RuntimeAssignmentHandlerRegistry(handlers)
     dispatcher = SqlAlchemyAgentRuntimeDispatcher(
         sessions,
         config=load_agent_runtime_dispatcher_config(environ),
@@ -262,6 +266,7 @@ def build_installed_runtime_composition(
             publisher=publisher,
         ),
         background_result_closer=background_result_closer,
+        product_planning=product_planning,
     )
 
 

@@ -43,6 +43,10 @@ from nex_ae_api.mybee_product_admission import (
     require_mybee_product_package,
 )
 from nex_ae_api.nsl_backend_profiles import NSL_V01_PROCESS_ISOLATED_BACKEND
+from nex_ae_api.product_capabilities import load_product_capability_registry
+from nex_ae_api.product_planning_runtime import (
+    build_contract_m1_product_planning_composition,
+)
 from nex_ae_api.product_runtime_profile import (
     build_product_runtime_executor_profile,
 )
@@ -266,7 +270,12 @@ def build_installed_agent_runtime_process(
             )
         completion_notifier = None
         background_result_closer = None
+        product_planning = None
         if selected in {"staging_live", "production"}:
+            product_planning = build_contract_m1_product_planning_composition(
+                sessions=sessions,
+                product_capabilities=load_product_capability_registry(env),
+            )
             completion_notifier = build_ae_wa_post_completion_notifier(
                 agent_results=SqlAlchemyAgentResultWaProjectionSource(
                     SqlAlchemyAgentResultRepository(sessions)
@@ -281,9 +290,7 @@ def build_installed_agent_runtime_process(
                     audience="nex-wc",
                     environ=env,
                 ),
-                timeout_seconds=float(
-                    env.get("NEX_AE_TO_WC_TIMEOUT_SECONDS", "15")
-                ),
+                timeout_seconds=float(env.get("NEX_AE_TO_WC_TIMEOUT_SECONDS", "15")),
             )
             background_result_closer = SqlAlchemyInstalledBackgroundResultCloser(
                 sessions,
@@ -301,6 +308,7 @@ def build_installed_agent_runtime_process(
             executor_profile=selected_executor_profile,
             completion_notifier=completion_notifier,
             background_result_closer=background_result_closer,
+            product_planning=product_planning,
         )
         return InstalledAgentRuntimeProcess(
             profile=selected,

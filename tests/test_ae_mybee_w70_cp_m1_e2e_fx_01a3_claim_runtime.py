@@ -118,6 +118,25 @@ def test_installed_claim_handoff_replay_reuses_durable_execution_path() -> None:
     )
 
 
+def test_installed_claim_handoff_accepts_product_coordination_without_step_schedule() -> (
+    None
+):
+    scheduler = _Scheduler()
+    planning = _Planning(
+        result=SimpleNamespace(
+            status="PRODUCT_COORDINATION_STARTED",
+            agent_execution_id=EXECUTION_ID,
+            executable_plan_id=None,
+            product_planning_admission={"checkpoint_id": "checkpoint-1"},
+        )
+    )
+
+    result = _admit(_service(planning=planning, scheduler=scheduler))
+
+    assert result.execution["agent_execution_id"] == EXECUTION_ID
+    assert scheduler.calls == []
+
+
 def test_installed_claim_handoff_rejects_missing_execution() -> None:
     admission = _Admission()
     admission.execution = None

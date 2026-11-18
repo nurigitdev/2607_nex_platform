@@ -81,7 +81,8 @@ def audit_storage_fit(root: Path = ROOT) -> dict[str, Any]:
         token in texts[M1_REGISTRATION]
         for token in (
             "build_m1_product_planning_coordinator_registration",
-            'activation_status="CONTRACT_ONLY"',
+            'activation_status: str = "CONTRACT_ONLY"',
+            "activation_status=activation_status",
             '"WAITING_BUSINESS_APPROVAL"',
             '"WAITING_ACCOUNTING_APPROVAL"',
             'ready_state="READY_FOR_D04"',

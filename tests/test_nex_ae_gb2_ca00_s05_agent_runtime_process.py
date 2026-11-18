@@ -186,7 +186,13 @@ def test_protected_profile_selects_product_executor_composition(monkeypatch) -> 
     )
     installed = process.build_installed_agent_runtime_process(
         "staging_live",
-        environ={"NEX_AE_DATABASE_URL": "sqlite+pysqlite:///:memory:"},
+        environ={
+            "NEX_AE_DATABASE_URL": "sqlite+pysqlite:///:memory:",
+            "NEX_AE_PRODUCT_CAPABILITY_REGISTRY_PATH": str(
+                process.ROOT
+                / "deployment/environments/ae-product-capability-registry.mybee-m1.v2.json"
+            ),
+        },
         engine_factory=lambda *_args, **_kwargs: engine,
         engine_checker=lambda _engine: True,
         session_factory_builder=lambda value: sessionmaker(bind=value),
@@ -195,6 +201,8 @@ def test_protected_profile_selects_product_executor_composition(monkeypatch) -> 
         assert installed.profile == "staging_live"
         assert installed.database_environment == "NEX_AE_DATABASE_URL"
         assert installed.composition.executor_profile is product_profile
+        assert installed.composition.product_planning is not None
+        assert installed.composition.product_planning.assignment_handler is None
         assert not hasattr(installed, "mybee_product_consumer")
         assert len(observed) == 1
     finally:

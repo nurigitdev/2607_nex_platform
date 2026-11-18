@@ -1,4 +1,5 @@
 import os
+from dataclasses import replace
 
 from nex_runtime import (
     SERVICE_SPECS,
@@ -51,6 +52,12 @@ from nex_ae_api.nsl_approval_events import SqlAlchemyNslApprovalEventService
 from nex_ae_api.private_object_store import (
     AePrivateObjectStorageError,
     build_ae_private_object_store,
+)
+from nex_ae_api.product_planning_event_api import (
+    register_product_planning_event_routes,
+)
+from nex_ae_api.product_planning_runtime import (
+    build_contract_m1_product_planning_composition,
 )
 from nex_ae_api.project_agent_lifecycle import (
     AdmittedProjectAgentProfilePolicy,
@@ -258,6 +265,32 @@ AE_SEMANTIC_CANDIDATE_ADMISSION = attach_semantic_candidate_admission(
     SERVICE_PERSISTENCE,
     AE_AGENT_RUNTIME,
     prompt_store=AE_PROMPT_STORE,
+)
+AE_PRODUCT_PLANNING = None
+if (
+    SERVICE_PERSISTENCE.api_session_factory is not None
+    and AE_SEMANTIC_CANDIDATE_ADMISSION.service is not None
+):
+    AE_PRODUCT_PLANNING = build_contract_m1_product_planning_composition(
+        sessions=SERVICE_PERSISTENCE.api_session_factory,
+        product_capabilities=(
+            AE_SEMANTIC_CANDIDATE_ADMISSION.service.product_capability_registry
+        ),
+    )
+    AE_SEMANTIC_CANDIDATE_ADMISSION = replace(
+        AE_SEMANTIC_CANDIDATE_ADMISSION,
+        service=replace(
+            AE_SEMANTIC_CANDIDATE_ADMISSION.service,
+            product_planning_router=AE_PRODUCT_PLANNING.public_router,
+        ),
+    )
+    app.state.ae_semantic_candidate_admission = AE_SEMANTIC_CANDIDATE_ADMISSION
+app.state.ae_product_planning = AE_PRODUCT_PLANNING
+register_product_planning_event_routes(
+    app,
+    admission=(
+        None if AE_PRODUCT_PLANNING is None else AE_PRODUCT_PLANNING.event_admission
+    ),
 )
 AE_INSTALLED_CLAIM_HANDOFF = build_installed_claim_handoff_admission(
     agent_runtime=AE_AGENT_RUNTIME,

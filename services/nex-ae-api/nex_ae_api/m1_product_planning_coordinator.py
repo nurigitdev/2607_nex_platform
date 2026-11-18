@@ -21,9 +21,7 @@ from nex_ae_api.product_preparation_persistence import (
 M1_PRODUCT_COORDINATOR_ID = "MYBEE.M1.TRANSACTION_PREPARATION"
 M1_PRODUCT_COORDINATOR_VERSION = "1.1.0"
 M1_PRODUCT_COORDINATOR_REGISTRY_ID = "ae-product-coordinators-mybee-m1"
-M1_PRODUCT_COORDINATOR_IMPLEMENTATION_REF = (
-    "nex_ae_api.m1_product_planning_coordinator:InstalledM1ProductPlanningCoordinator"
-)
+M1_PRODUCT_COORDINATOR_IMPLEMENTATION_REF = "nex_ae_api.m1_product_preparation_coordinator:InstalledM1ProductPlanningCoordinator"
 M1_PLAN_MATERIALIZER_SOURCE_IDENTITY = (
     "nex-ae:m1-plan-materializer:ae.m1_plan_materialization.v1"
 )
@@ -40,6 +38,7 @@ def build_m1_product_planning_coordinator_registration(
     *,
     product_capabilities: ProductCapabilityRegistry,
     preparation_registration: M1PreparationRegistration,
+    activation_status: str = "CONTRACT_ONLY",
 ) -> ProductPlanningCoordinatorRegistration:
     d04 = product_capabilities.resolve(M1_D04_CAPABILITY_ID, required=True)
     d12 = product_capabilities.resolve(M1_D12_CAPABILITY_ID, required=True)
@@ -64,7 +63,7 @@ def build_m1_product_planning_coordinator_registration(
     return build_product_planning_coordinator_registration(
         coordinator_id=M1_PRODUCT_COORDINATOR_ID,
         coordinator_version=M1_PRODUCT_COORDINATOR_VERSION,
-        activation_status="CONTRACT_ONLY",
+        activation_status=activation_status,
         implementation_ref=M1_PRODUCT_COORDINATOR_IMPLEMENTATION_REF,
         trigger_capability=capability_binding(d04),
         required_capabilities=(capability_binding(d04), capability_binding(d12)),
@@ -92,10 +91,12 @@ def build_m1_product_planning_coordinator_registry(
     *,
     product_capabilities: ProductCapabilityRegistry,
     preparation_registration: M1PreparationRegistration,
+    activation_status: str = "CONTRACT_ONLY",
 ) -> ProductPlanningCoordinatorRegistry:
     registration = build_m1_product_planning_coordinator_registration(
         product_capabilities=product_capabilities,
         preparation_registration=preparation_registration,
+        activation_status=activation_status,
     )
     registry = ProductPlanningCoordinatorRegistry(
         (registration,),
