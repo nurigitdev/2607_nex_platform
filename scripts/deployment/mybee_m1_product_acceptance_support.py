@@ -77,6 +77,7 @@ HASH_E = "sha256:" + "e" * 64
 _OA_SCOPES = {
     "requester": (
         "workspace:use",
+        "project:reference:resolve",
         "finance:voucher-candidate:create",
         "finance:journal:request-approval",
         "finance:report:read",

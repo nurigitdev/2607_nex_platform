@@ -28,6 +28,7 @@ def test_product_golden_source_admission_uses_installed_m1_registry() -> None:
     assert result["non_identical_positive_request_count"] == 2
     assert result["post_request_direct_transition_allowed"] is False
     assert result["isolated_eight_database_schema_required"] is True
+    assert "project:reference:resolve" in support._OA_SCOPES["requester"]
 
 
 def test_product_seed_cannot_delete_public_authority_or_bypass_protection() -> None:
