@@ -145,6 +145,7 @@ services:
       NEX_SERVICE_TOKEN_BOOTSTRAP_PROFILE: STARTUP_24H
       NEX_STARTUP_SERVICE_TOKEN_BOOTSTRAP: "true"
       NEX_AE_AGENT_RUNTIME_MODE: required
+      NEX_AE_AGENT_AUTHORITY_SYNC_MODE: required
       NEX_AE_PLANNING_MODE: required
       NEX_AE_PRODUCT_CAPABILITY_REGISTRY_PATH: /app/deployment/product/repository/deployment/environments/ae-product-capability-registry.mybee-m1.v2.json
       NEX_AE_PRODUCT_COORDINATOR_ACTIVATION_PATH: /app/deployment/product/repository/deployment/locks/ae-mybee-m1-product-coordinator-activation.v1.json

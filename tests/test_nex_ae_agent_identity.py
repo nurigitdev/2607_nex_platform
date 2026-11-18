@@ -10,6 +10,7 @@ from threading import Lock
 import nex_ae_api.agent_identity as identity_module
 import pytest
 from jsonschema import Draft202012Validator
+from nex_ae_api.agent_authority import AgentAuthoritySyncError
 from nex_ae_api.agent_identity import (
     AgentIdentityRepositoryError,
     ResolvedIaIdentity,
@@ -36,7 +37,8 @@ def _session_factory(url: str = "sqlite+pysqlite://"):
     )
     with engine.begin() as connection:
         connection.execute(text("PRAGMA foreign_keys = ON"))
-        connection.execute(text("""
+        connection.execute(
+            text("""
             CREATE TABLE ae_agent_identity (
                 tenant_id TEXT NOT NULL,
                 agent_id TEXT NOT NULL,
@@ -49,8 +51,10 @@ def _session_factory(url: str = "sqlite+pysqlite://"):
                 version INTEGER NOT NULL,
                 PRIMARY KEY (tenant_id, agent_id)
             )
-        """))
-        connection.execute(text("""
+        """)
+        )
+        connection.execute(
+            text("""
             CREATE TABLE ae_ia_principal_assignment (
                 assignment_id TEXT PRIMARY KEY,
                 tenant_id TEXT NOT NULL,
@@ -65,7 +69,8 @@ def _session_factory(url: str = "sqlite+pysqlite://"):
                 FOREIGN KEY (tenant_id, agent_id)
                     REFERENCES ae_agent_identity (tenant_id, agent_id)
             )
-        """))
+        """)
+        )
     return sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
 
 
@@ -78,6 +83,18 @@ def _ids(*values: str):
             return next(items)
 
     return factory
+
+
+class _AuthoritySynchronizer:
+    def __init__(self, *, failure: AgentAuthoritySyncError | None = None) -> None:
+        self.failure = failure
+        self.calls: list[dict[str, str]] = []
+
+    def synchronize(self, **identity):
+        self.calls.append(identity)
+        if self.failure is not None:
+            raise self.failure
+        return {"status": identity["status"]}
 
 
 def test_lazy_provisioning_is_idempotent_and_matches_frozen_contract() -> None:
@@ -114,20 +131,88 @@ def test_lazy_provisioning_is_idempotent_and_matches_frozen_contract() -> None:
         "created_at": "2026-10-13T01:02:03Z",
         "version": 1,
     }
-    Draft202012Validator(json.loads(FROZEN_SCHEMA.read_text())).validate(
-        first.identity
+    Draft202012Validator(json.loads(FROZEN_SCHEMA.read_text())).validate(first.identity)
+    assert (
+        registry.resolve_ia(tenant_id="tenant-a", principal_id="principal-a") == first
     )
-    assert registry.resolve_ia(
-        tenant_id="tenant-a", principal_id="principal-a"
-    ) == first
-    assert registry.resolve_ia(
-        tenant_id="tenant-a", principal_id="missing"
-    ) is None
+    assert registry.resolve_ia(tenant_id="tenant-a", principal_id="missing") is None
     with sessions() as session:
-        assert session.execute(text("SELECT count(*) FROM ae_agent_identity")).scalar() == 1
-        assert session.execute(
-            text("SELECT count(*) FROM ae_ia_principal_assignment")
-        ).scalar() == 1
+        assert (
+            session.execute(text("SELECT count(*) FROM ae_agent_identity")).scalar()
+            == 1
+        )
+        assert (
+            session.execute(
+                text("SELECT count(*) FROM ae_ia_principal_assignment")
+            ).scalar()
+            == 1
+        )
+
+
+def test_ia_provision_and_replay_synchronize_current_oa_authority() -> None:
+    authority = _AuthoritySynchronizer()
+    registry = SqlAlchemyAgentIdentityRegistry(
+        _session_factory(),
+        id_factory=_ids(
+            "11111111-1111-4111-8111-111111111111",
+            "22222222-2222-4222-8222-222222222222",
+        ),
+        clock=lambda: NOW,
+        authority_synchronizer=authority,
+    )
+
+    registry.resolve_or_provision_ia(
+        tenant_id="tenant-a",
+        principal_id="principal-a",
+        profile_ref="urn:nex:agent-profile:ia:default:v1",
+    )
+    registry.resolve_or_provision_ia(
+        tenant_id="tenant-a",
+        principal_id="principal-a",
+        profile_ref="ignored-on-replay",
+    )
+
+    assert authority.calls == [
+        {
+            "tenant_id": "tenant-a",
+            "agent_id": "11111111-1111-4111-8111-111111111111",
+            "agent_type": "IA",
+            "status": "ACTIVE",
+        },
+        {
+            "tenant_id": "tenant-a",
+            "agent_id": "11111111-1111-4111-8111-111111111111",
+            "agent_type": "IA",
+            "status": "ACTIVE",
+        },
+    ]
+
+
+def test_agent_authority_failure_is_a_retryable_identity_boundary() -> None:
+    registry = SqlAlchemyAgentIdentityRegistry(
+        _session_factory(),
+        id_factory=_ids(
+            "11111111-1111-4111-8111-111111111111",
+            "22222222-2222-4222-8222-222222222222",
+        ),
+        clock=lambda: NOW,
+        authority_synchronizer=_AuthoritySynchronizer(
+            failure=AgentAuthoritySyncError(
+                "ae.agent_authority_sync_unavailable",
+                "authority unavailable",
+                True,
+            )
+        ),
+    )
+
+    with pytest.raises(AgentIdentityRepositoryError) as raised:
+        registry.resolve_or_provision_ia(
+            tenant_id="tenant-a",
+            principal_id="principal-a",
+            profile_ref="urn:nex:agent-profile:ia:default:v1",
+        )
+    assert raised.value.error_code == "ae.agent_authority_sync_unavailable"
+    assert raised.value.retryable is True
 
 
 def test_concurrent_lazy_provisioning_keeps_one_identity(tmp_path: Path) -> None:
@@ -146,10 +231,16 @@ def test_concurrent_lazy_provisioning_keeps_one_identity(tmp_path: Path) -> None
 
     assert len(set(resolved_ids)) == 1
     with sessions() as session:
-        assert session.execute(text("SELECT count(*) FROM ae_agent_identity")).scalar() == 1
-        assert session.execute(
-            text("SELECT count(*) FROM ae_ia_principal_assignment")
-        ).scalar() == 1
+        assert (
+            session.execute(text("SELECT count(*) FROM ae_agent_identity")).scalar()
+            == 1
+        )
+        assert (
+            session.execute(
+                text("SELECT count(*) FROM ae_ia_principal_assignment")
+            ).scalar()
+            == 1
+        )
 
 
 @pytest.mark.parametrize(
@@ -277,7 +368,10 @@ def test_assignment_race_discards_candidate_and_reloads_winner(monkeypatch) -> N
 
     assert resolved == winner
     with sessions() as session:
-        assert session.execute(text("SELECT count(*) FROM ae_agent_identity")).scalar() == 1
+        assert (
+            session.execute(text("SELECT count(*) FROM ae_agent_identity")).scalar()
+            == 1
+        )
 
 
 def test_provisioning_preserves_typed_identity_validation_failure(monkeypatch) -> None:

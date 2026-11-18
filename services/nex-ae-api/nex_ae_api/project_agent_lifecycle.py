@@ -24,6 +24,11 @@ from sqlalchemy import (
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
 
+from nex_ae_api.agent_authority import (
+    AgentAuthoritySyncError,
+    AgentAuthoritySynchronizer,
+)
+
 PROJECT_LIFECYCLE_EVENT_TYPE = "PROJECT_LIFECYCLE_CHANGED"
 PROJECT_AGENT_PROFILE_POLICY_PATH_ENV = "NEX_AE_PROJECT_AGENT_PROFILE_POLICY_PATH"
 
@@ -150,10 +155,12 @@ class SqlAlchemyProjectAgentLifecycleService:
         *,
         profile_policy: AdmittedProjectAgentProfilePolicy,
         clock=None,
+        authority_synchronizer: AgentAuthoritySynchronizer | None = None,
     ) -> None:
         self._session_factory = session_factory
         self._profile_policy = profile_policy
         self._clock = clock or (lambda: datetime.now(UTC))
+        self._authority_synchronizer = authority_synchronizer
 
     def ingest(self, envelope: object) -> tuple[dict[str, Any], bool]:
         event = _normalize_envelope(envelope)
@@ -188,7 +195,13 @@ class SqlAlchemyProjectAgentLifecycleService:
                         raise _conflict(
                             "Project lifecycle event identity changed immutable semantics"
                         )
-                    return _receipt(event, str(existing_event["agent_id"])), False
+                    agent_id = str(existing_event["agent_id"])
+                    self._synchronize_authority(
+                        tenant_id=str(event["tenant_id"]),
+                        agent_id=agent_id,
+                        project_state=str(payload["current_state"]),
+                    )
+                    return _receipt(event, agent_id), False
 
                 projection = (
                     session.execute(
@@ -263,6 +276,11 @@ class SqlAlchemyProjectAgentLifecycleService:
                         received_at=now,
                     )
                 )
+            self._synchronize_authority(
+                tenant_id=str(event["tenant_id"]),
+                agent_id=agent_id,
+                project_state=str(payload["current_state"]),
+            )
             return _receipt(event, agent_id), True
         except ProjectAgentLifecycleError:
             raise
@@ -274,6 +292,27 @@ class SqlAlchemyProjectAgentLifecycleService:
                 "Project Agent lifecycle persistence is unavailable",
                 status_code=503,
                 retryable=True,
+            ) from exc
+
+    def _synchronize_authority(
+        self, *, tenant_id: str, agent_id: str, project_state: str
+    ) -> None:
+        if self._authority_synchronizer is None:
+            return
+        status = _STATE_PROJECTION[project_state][0]
+        try:
+            self._authority_synchronizer.synchronize(
+                tenant_id=tenant_id,
+                agent_id=agent_id,
+                agent_type="PA",
+                status=status,
+            )
+        except AgentAuthoritySyncError as exc:
+            raise ProjectAgentLifecycleError(
+                exc.error_code,
+                exc.detail,
+                status_code=503 if exc.retryable else 409,
+                retryable=exc.retryable,
             ) from exc
 
     def _synchronize_agent(

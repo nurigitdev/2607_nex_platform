@@ -7,9 +7,13 @@ from typing import Any
 from uuid import uuid4
 
 from sqlalchemy import text
-from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
+
+from nex_ae_api.agent_authority import (
+    AgentAuthoritySyncError,
+    AgentAuthoritySynchronizer,
+)
 
 
 @dataclass(frozen=True)
@@ -37,10 +41,12 @@ class SqlAlchemyAgentIdentityRegistry:
         *,
         id_factory: Callable[[], str] | None = None,
         clock: Callable[[], datetime] | None = None,
+        authority_synchronizer: AgentAuthoritySynchronizer | None = None,
     ) -> None:
         self._session_factory = session_factory
         self._id_factory = id_factory or (lambda: str(uuid4()))
         self._clock = clock or (lambda: datetime.now(UTC))
+        self._authority_synchronizer = authority_synchronizer
 
     def resolve_or_provision_ia(
         self,
@@ -56,7 +62,9 @@ class SqlAlchemyAgentIdentityRegistry:
             with self._session_factory() as session:
                 existing = _load_resolution(session, tenant_id, principal_id)
                 if existing is not None:
-                    return _require_active_ia(existing)
+                    resolved = _require_active_ia(existing)
+                    self._synchronize_authority(resolved.identity)
+                    return resolved
 
                 now = self._clock().astimezone(UTC).isoformat().replace("+00:00", "Z")
                 candidate_agent_id = self._id_factory()
@@ -99,7 +107,9 @@ class SqlAlchemyAgentIdentityRegistry:
                         True,
                     )
                 session.commit()
-                return _require_active_ia(resolved)
+                active = _require_active_ia(resolved)
+                self._synchronize_authority(active.identity)
+                return active
         except AgentIdentityRepositoryError:
             raise
         except SQLAlchemyError as exc:
@@ -120,7 +130,11 @@ class SqlAlchemyAgentIdentityRegistry:
         try:
             with self._session_factory() as session:
                 resolved = _load_resolution(session, tenant_id, principal_id)
-                return None if resolved is None else _require_active_ia(resolved)
+                if resolved is None:
+                    return None
+                active = _require_active_ia(resolved)
+                self._synchronize_authority(active.identity)
+                return active
         except AgentIdentityRepositoryError:
             raise
         except SQLAlchemyError as exc:
@@ -172,6 +186,7 @@ class SqlAlchemyAgentIdentityRegistry:
                         True,
                     )
                 session.commit()
+                self._synchronize_authority(saved)
                 return saved
         except AgentIdentityRepositoryError:
             raise
@@ -185,6 +200,23 @@ class SqlAlchemyAgentIdentityRegistry:
                 "ae.agent_identity_store_unavailable",
                 "AE agent identity store is unavailable.",
                 True,
+            ) from exc
+
+    def _synchronize_authority(self, identity: dict[str, Any]) -> None:
+        if self._authority_synchronizer is None:
+            return
+        try:
+            self._authority_synchronizer.synchronize(
+                tenant_id=str(identity["tenant_id"]),
+                agent_id=str(identity["agent_id"]),
+                agent_type=str(identity["agent_type"]),
+                status=str(identity["status"]),
+            )
+        except AgentAuthoritySyncError as exc:
+            raise AgentIdentityRepositoryError(
+                exc.error_code,
+                exc.detail,
+                exc.retryable,
             ) from exc
 
     def get_agent(self, *, tenant_id: str, agent_id: str) -> dict[str, Any] | None:
@@ -220,7 +252,11 @@ class SqlAlchemyAgentIdentityRegistry:
             )
         if project_id is not None:
             _require_text("project_id", project_id)
-        if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 500:
+        if (
+            isinstance(limit, bool)
+            or not isinstance(limit, int)
+            or not 1 <= limit <= 500
+        ):
             raise AgentIdentityRepositoryError(
                 "ae.agent_identity_input_invalid", "limit must be between 1 and 500."
             )
@@ -238,7 +274,7 @@ class SqlAlchemyAgentIdentityRegistry:
         query = f"""
             SELECT {_IDENTITY_COLUMNS}
             FROM ae_agent_identity
-            WHERE {' AND '.join(clauses)}
+            WHERE {" AND ".join(clauses)}
             ORDER BY created_at ASC, agent_id ASC
             LIMIT :limit
         """

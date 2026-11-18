@@ -9,6 +9,7 @@ from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
+from nex_ae_api.agent_authority import AgentAuthoritySyncError
 from nex_ae_api.project_agent_lifecycle import (
     AE_PROJECT_AGENT_METADATA,
     AE_PROJECT_AGENT_SYNC_TABLE,
@@ -186,6 +187,22 @@ class DirectAeTransport:
         )
 
 
+class _AuthoritySynchronizer:
+    def __init__(self, *, fail: bool = False) -> None:
+        self.fail = fail
+        self.calls: list[dict[str, str]] = []
+
+    def synchronize(self, **identity):
+        self.calls.append(identity)
+        if self.fail:
+            raise AgentAuthoritySyncError(
+                "ae.agent_authority_sync_unavailable",
+                "authority unavailable",
+                True,
+            )
+        return {"status": identity["status"]}
+
+
 def _initial_envelope(eos_sessions) -> dict:
     with eos_sessions() as session:
         row = session.execute(select(EOS_OUTBOX_TABLE)).mappings().one()
@@ -290,6 +307,45 @@ def test_direct_lifecycle_sync_reuses_one_pa_and_acknowledges_eos(
             )
             is None
         )
+
+
+def test_project_agent_authority_sync_is_retryable_after_committed_lifecycle(
+    lifecycle_runtime,
+) -> None:
+    eos_sessions, ae_sessions, _, _ = lifecycle_runtime
+    envelope = _initial_envelope(eos_sessions)
+    failing = _AuthoritySynchronizer(fail=True)
+    service = SqlAlchemyProjectAgentLifecycleService(
+        ae_sessions,
+        profile_policy=AdmittedProjectAgentProfilePolicy.from_path(POLICY_PATH),
+        clock=lambda: NOW,
+        authority_synchronizer=failing,
+    )
+
+    with pytest.raises(ProjectAgentLifecycleError) as raised:
+        service.ingest(envelope)
+    assert raised.value.retryable is True
+    with ae_sessions() as session:
+        assert session.scalar(select(AE_PROJECT_LIFECYCLE_INBOX_TABLE.c.event_id))
+
+    recovered = _AuthoritySynchronizer()
+    restarted = SqlAlchemyProjectAgentLifecycleService(
+        ae_sessions,
+        profile_policy=AdmittedProjectAgentProfilePolicy.from_path(POLICY_PATH),
+        clock=lambda: NOW,
+        authority_synchronizer=recovered,
+    )
+    receipt, created = restarted.ingest(envelope)
+
+    assert created is False
+    assert recovered.calls == [
+        {
+            "tenant_id": TENANT,
+            "agent_id": receipt["agent_id"],
+            "agent_type": "PA",
+            "status": "ACTIVE",
+        }
+    ]
 
 
 def test_lifecycle_consumer_fails_closed_on_drift_and_noncontiguous_state(

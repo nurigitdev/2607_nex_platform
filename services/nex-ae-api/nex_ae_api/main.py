@@ -13,6 +13,7 @@ from nex_runtime.compatibility import register_generation_compatibility_routes
 from nex_runtime.prompts import register_prompt_registry_routes
 from nex_runtime.recovery import register_generation_recovery_policy_routes
 
+from nex_ae_api.agent_authority import build_agent_authority_synchronizer
 from nex_ae_api.agent_identity import SqlAlchemyAgentIdentityRegistry
 from nex_ae_api.agent_registry_api import register_agent_registry_routes
 from nex_ae_api.agent_results import SqlAlchemyAgentResultRepository
@@ -196,10 +197,12 @@ register_wa_artifact_source_routes(
         else None
     ),
 )
+AE_AGENT_AUTHORITY = build_agent_authority_synchronizer()
 AE_AGENT_RUNTIME = attach_agent_runtime_foundation(
     app,
     SERVICE_PERSISTENCE,
     application=app.state.ae_chat_application_service,
+    authority_synchronizer=AE_AGENT_AUTHORITY,
 )
 AE_WORK_RESULT_EVENTS = (
     SqlAlchemyWorkResultEventService(
@@ -250,6 +253,7 @@ if SERVICE_PERSISTENCE.api_session_factory is not None and _project_agent_policy
         profile_policy=AdmittedProjectAgentProfilePolicy.from_path(
             _project_agent_policy_path
         ),
+        authority_synchronizer=AE_AGENT_AUTHORITY,
     )
 register_project_agent_lifecycle_routes(
     app,
@@ -258,7 +262,10 @@ register_project_agent_lifecycle_routes(
 register_agent_registry_routes(
     app,
     registry=(
-        SqlAlchemyAgentIdentityRegistry(SERVICE_PERSISTENCE.api_session_factory)
+        SqlAlchemyAgentIdentityRegistry(
+            SERVICE_PERSISTENCE.api_session_factory,
+            authority_synchronizer=AE_AGENT_AUTHORITY,
+        )
         if SERVICE_PERSISTENCE.api_session_factory is not None
         else None
     ),
