@@ -53,10 +53,15 @@ readiness, isolation status, or wheel context path drifts.
 | actual admitted wheel | `nex_skill_language-0.2.1`, SHA-256 `a89ce5fd...507cb` |
 | build-time Product Runtime import/admission | PASS |
 | isolated AE worker container package check | `package_ready=true`, `runtime_ready=false`, `secret_included=false` |
+| committed canonical image build | PASS; source `130c173af7814300c5f60e75c319294f5033e80c` |
+| complete canonical release set | 9 artifacts, 9 manifests, 9 non-root images |
+| background/package matrix | 12/12 PASS |
+| release-set digest | `sha256:5094cea6432ca0b83cbc671b0e627b6b74ff6bb79cdbdd2c6db4cc786eb80ada` |
+| AE manifest/context digest | `sha256:6aaef098...c2d89` / `sha256:2b1a461b...2507` |
 | remote provider | not required and not contacted |
 
 The clean-tree canonical nine-image release build and complete twelve-process
-background/package matrix are executed from the committed Slice revision. Their
+background/package matrix passed from the committed Slice revision. Their
 machine-readable evidence is written to
 `reports/deployment/canonical-platform-oci-image-build.json`; the report and
 build logs remain local operational evidence and are not registry-pushed.
@@ -64,5 +69,5 @@ build logs remain local operational evidence and are not registry-pushed.
 ## Decision
 
 The missing NSL wheel is no longer an AE package blocker in the canonical image
-definition. `CP-M1-E2E-FX-01B.6B.5B.5` may resume only after the committed
-nine-image build records a complete release set and all package checks pass.
+definition. The committed nine-image build records a complete release set and
+all package checks pass. `CP-M1-E2E-FX-01B.6B.5B.5` may now resume.

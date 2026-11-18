@@ -439,6 +439,10 @@ non-root boundary, and rejects wheel, Platform lock, target, package inventory,
 or isolation drift. An actual AE image build and isolated worker package check
 pass without database or provider contact. `.5B.5` remains gated on the final
 clean-tree nine-image release-set matrix from the committed Slice revision.
+That matrix subsequently passed from commit `130c173a`: all nine images are
+non-root with unique manifests, all twelve background/package checks passed,
+and the release set is complete. The `.5B.5` PostgreSQL and authoritative
+claim-handoff Gate may therefore resume.
 
 `CP-M1-E2E-FX-01B.6A.1` implementation evidence is recorded in
 [`mybee_phase1_w70_cp_m1_e2e_fx_01b6a1_refresh_contract_source_resolver.md`](../../slices/mybee_phase1_w70_cp_m1_e2e_fx_01b6a1_refresh_contract_source_resolver.md).
