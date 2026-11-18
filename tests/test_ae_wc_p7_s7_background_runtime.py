@@ -259,6 +259,7 @@ def test_claimed_work_intent_keeps_wc_authority_over_provider_candidate() -> Non
     }
     assert intent["goal"] == _planning_source()["goal"]
     assert intent["project_ref"]["resource_id"] == PROJECT_ID
+    assert intent["intent_label"] == "FINANCE.PROJECT_BUDGET_CHECK"
     assert intent["required_capability_hints"] == [
         "FINANCE.PROJECT_BUDGET_CHECK"
     ]

@@ -289,6 +289,7 @@ def build_work_intent_from_claimed_work(
     compatibility_mode = intent_decision.get("execution_mode")
     if compatibility_mode not in _MODE_PROFILE:
         raise _invalid("IntentDecision execution_mode is unsupported.")
+    _require_text("intent_label", intent_decision.get("intent_label"), maximum=160)
     confidence = intent_decision.get("confidence")
     if isinstance(confidence, bool) or not isinstance(confidence, (int, float)):
         raise _invalid("IntentDecision confidence must be numeric.")
@@ -325,9 +326,7 @@ def build_work_intent_from_claimed_work(
             "resource_type": "PROJECT",
             "resource_id": source["project_ref"]["entity_id"],
         },
-        "intent_label": _require_text(
-            "intent_label", intent_decision.get("intent_label"), maximum=160
-        ),
+        "intent_label": source["required_capability"],
         "goal": source["goal"],
         "work_class": source["work_class"],
         "required_capability_hints": [source["required_capability"]],
@@ -359,10 +358,6 @@ def build_work_intent_from_claimed_work(
         "provenance": provenance,
     }
     if source["schema_version"] == "p7.claimed_work_planning_source.v2":
-        if result["intent_label"] != BUSINESS_TRANSACTION_INTENT_LABEL:
-            raise _invalid(
-                "Claimed business context requires the M1 finance intent."
-            )
         result.update(
             {
                 "constraints": [

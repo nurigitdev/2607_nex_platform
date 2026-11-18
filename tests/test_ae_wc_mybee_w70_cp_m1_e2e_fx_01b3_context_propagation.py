@@ -188,7 +188,7 @@ def test_01b3_exact_context_crosses_compile_wc_claim_and_pa_work_intent() -> Non
 
     decision = resolve_validated_intent_candidate(
         {
-            "intent_label": "FINANCE.VOUCHER.APPROVE_AND_POST",
+            "intent_label": "provider_selected_untrusted_label",
             "suggested_execution_mode": "GENERAL_ANSWER",
             "confidence": 0.96,
         }
@@ -204,6 +204,7 @@ def test_01b3_exact_context_crosses_compile_wc_claim_and_pa_work_intent() -> Non
     )
     assert background["schema_version"] == "1.2"
     assert background["source"]["source_type"] == "CLAIMED_WORKITEM"
+    assert background["intent_label"] == "FINANCE.VOUCHER.APPROVE_AND_POST"
     assert background["business_request_context"] == context
     assert background["business_context_hash"] == context["context_hash"]
 
