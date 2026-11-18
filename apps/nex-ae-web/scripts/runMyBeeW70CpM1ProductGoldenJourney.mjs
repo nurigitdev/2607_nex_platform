@@ -41,9 +41,8 @@ const DEFAULT_TIMEOUT_MS = 900_000;
 
 const UI = Object.freeze({
   loginHeading: "사번 로그인",
-  employeeLabel: "사번",
-  passwordLabel: "비밀번호",
-  loginButton: "로그인",
+  employeeInputName: "employee_id",
+  passwordInputName: "password",
   primaryNavigation: "주요 탐색",
   workspaceHeading: "작업 공간",
   promptLabel: "업무 요청",
@@ -111,6 +110,8 @@ export async function runMyBeeM1ProductGoldenJourney({
   let browser;
   let requesterContext;
   let approverContext;
+  let requesterPage;
+  let approverPage;
   let stage = "launch";
   const responses = [];
   const transactions = [];
@@ -119,8 +120,8 @@ export async function runMyBeeM1ProductGoldenJourney({
     browser = await launchBrowser(playwright, environ);
     requesterContext = await browser.newContext(contextOptions());
     approverContext = await browser.newContext(contextOptions());
-    const requester = await configuredPage(requesterContext);
-    const approver = await configuredPage(approverContext);
+    const requester = requesterPage = await configuredPage(requesterContext);
+    const approver = approverPage = await configuredPage(approverContext);
     observeResponses(requester, responses);
     observeResponses(approver, responses);
 
@@ -256,6 +257,14 @@ export async function runMyBeeM1ProductGoldenJourney({
     assertRedacted(evidence, environ);
     return evidence;
   } catch (error) {
+    const failedPage = stage.startsWith("approver") ? approverPage : requesterPage;
+    if (failedPage) {
+      try {
+        await captures.capture(failedPage, `${stage}-failure`);
+      } catch {
+        // The original bounded failure remains authoritative if capture also fails.
+      }
+    }
     const evidence = failure(safeFailureCode(error), {
       stage,
       response_count: responses.length,
@@ -454,13 +463,13 @@ async function waitForResult(page, interactionId, timeout) {
 
 async function login(page, { tenantId, employeeId, password, timeout }) {
   void tenantId;
-  await page.getByLabel(UI.employeeLabel, { exact: true }).fill(employeeId);
-  await page.getByLabel(UI.passwordLabel, { exact: true }).fill(password);
+  await page.locator(`input[name="${UI.employeeInputName}"]`).fill(employeeId);
+  await page.locator(`input[name="${UI.passwordInputName}"]`).fill(password);
   const responsePromise = page.waitForResponse(response =>
     response.request().method() === "POST" &&
     new URL(response.url()).pathname === "/ae-api/api/v1/auth/session/login",
   { timeout });
-  await page.getByRole("button", { name: UI.loginButton, exact: true }).click();
+  await page.locator('form button[type="submit"]').click();
   const response = await responsePromise;
   if (response.status() !== 200) {
     let payload = null;

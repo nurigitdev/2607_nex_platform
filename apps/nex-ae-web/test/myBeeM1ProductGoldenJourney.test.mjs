@@ -12,9 +12,8 @@ import {
 test("M1 product journey binds to the authenticated React accessibility contract", () => {
   assert.deepEqual(myBeeM1ProductJourneyUiContract(), {
     loginHeading: "사번 로그인",
-    employeeLabel: "사번",
-    passwordLabel: "비밀번호",
-    loginButton: "로그인",
+    employeeInputName: "employee_id",
+    passwordInputName: "password",
     primaryNavigation: "주요 탐색",
     workspaceHeading: "작업 공간",
     promptLabel: "업무 요청",
