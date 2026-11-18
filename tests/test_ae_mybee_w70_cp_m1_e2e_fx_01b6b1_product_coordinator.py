@@ -11,6 +11,7 @@ from nex_ae_api.m1_product_planning_coordinator import (
     M1_PRODUCT_COORDINATOR_ID,
     M1_PRODUCT_COORDINATOR_REPLAY_POLICY,
     M1_PRODUCT_COORDINATOR_VERSION,
+    M1_PRODUCT_PLANNING_POLICY,
     build_m1_product_planning_coordinator_registration,
     build_m1_product_planning_coordinator_registry,
 )
@@ -23,6 +24,7 @@ from nex_ae_api.product_planning_coordinators import (
     ProductPlanningCapabilityBinding,
     ProductPlanningCoordinatorError,
     ProductPlanningCoordinatorRegistry,
+    ProductPlanningPolicy,
     ProductPlanningReplayPolicy,
     ProductPlanningSkillBundleLock,
     build_product_planning_coordinator_registration,
@@ -86,6 +88,23 @@ def _skill_lock(
     )
 
 
+def _planning_policy(
+    mode: str = "PROVIDER_ASSISTED_REQUIRED",
+) -> ProductPlanningPolicy:
+    return ProductPlanningPolicy(
+        mode=mode,
+        proposal_schema_version="ae.product_planning_proposal.v1",
+        prompt_binding_key="ae.plan_builder.test.v1",
+        admission_policy_ref="ae.product_planning_proposal.test.v1",
+        deterministic_fallback_ref=(
+            "nex-ae:test-deterministic-fallback:v1"
+            if mode == "PROVIDER_ASSISTED_OPTIONAL"
+            else None
+        ),
+        proposal_consumers=(() if mode == "DETERMINISTIC_ONLY" else ("PREPARATION",)),
+    )
+
+
 def _registration(
     *,
     capability_id: str = "DOMAIN.OBJECT.ACTION",
@@ -110,6 +129,7 @@ def _registration(
         required_operations=("DOMAIN.OBJECT.READ", "DOMAIN.OBJECT.WRITE"),
         checkpoint_schema_version="ae.product_preparation_checkpoint.test.v1",
         replay_policy=_replay_policy(),
+        planning_policy=_planning_policy(),
         supported_executor_kinds=("LOCAL_SKILL",),
         installed_skill_bundle_locks=(_skill_lock(capability_id, capability_version),),
     )
@@ -147,6 +167,8 @@ def test_m1_registration_is_exact_capability_bound_and_contract_only() -> None:
         PRODUCT_PREPARATION_CHECKPOINT_SCHEMA_VERSION
     )
     assert first.replay_policy == M1_PRODUCT_COORDINATOR_REPLAY_POLICY
+    assert first.planning_policy == M1_PRODUCT_PLANNING_POLICY
+    assert first.planning_policy.mode == "PROVIDER_ASSISTED_REQUIRED"
     assert first.supported_executor_kinds == (LOCAL_SKILL_EXECUTOR_KIND,)
     assert {item.capability_id for item in first.required_capabilities} == {
         "FINANCE.VOUCHER.APPROVE_AND_POST",
@@ -163,7 +185,7 @@ def test_m1_registration_is_exact_capability_bound_and_contract_only() -> None:
         == "deployment-lock://ae-mybee-m1-signed-skill-checkpoint.v1"
         for item in first.installed_skill_bundle_locks
     )
-    assert registry.registry_version == 2
+    assert registry.registry_version == 3
     assert (
         registry.resolve(
             first.capability_id,
@@ -329,6 +351,7 @@ def test_registration_contract_rejects_inconsistent_or_ambiguous_inputs() -> Non
         "required_operations": ("DOMAIN.OBJECT.READ",),
         "checkpoint_schema_version": "ae.product_preparation_checkpoint.test.v1",
         "replay_policy": _replay_policy(),
+        "planning_policy": _planning_policy(),
         "supported_executor_kinds": ("LOCAL_SKILL",),
         "installed_skill_bundle_locks": (_skill_lock(),),
     }
@@ -387,6 +410,77 @@ def test_registration_contract_rejects_inconsistent_or_ambiguous_inputs() -> Non
                 "replay_policy": replace(_replay_policy(), semantic_drift="IGNORE"),
             }
         )
+    with pytest.raises(ProductPlanningCoordinatorError, match="planning policy"):
+        build_product_planning_coordinator_registration(
+            **{**common, "planning_policy": object()}
+        )
+    with pytest.raises(ProductPlanningCoordinatorError, match="mode"):
+        build_product_planning_coordinator_registration(
+            **{
+                **common,
+                "planning_policy": replace(_planning_policy(), mode="MODEL_DECIDES"),
+            }
+        )
+    with pytest.raises(ProductPlanningCoordinatorError, match="fallback"):
+        build_product_planning_coordinator_registration(
+            **{
+                **common,
+                "planning_policy": ProductPlanningPolicy(
+                    mode="PROVIDER_ASSISTED_OPTIONAL",
+                    proposal_schema_version="ae.product_planning_proposal.v1",
+                    prompt_binding_key="ae.plan_builder.test.v1",
+                    admission_policy_ref="ae.product_planning_proposal.test.v1",
+                    deterministic_fallback_ref=None,
+                    proposal_consumers=("PREPARATION",),
+                ),
+            }
+        )
+    for policy, message in (
+        (
+            replace(
+                _planning_policy(),
+                deterministic_fallback_ref="nex-ae:unexpected-fallback:v1",
+            ),
+            "fallback is not admitted",
+        ),
+        (
+            replace(_planning_policy(), proposal_consumers="PREPARATION"),
+            "consumers are invalid",
+        ),
+        (
+            replace(
+                _planning_policy(),
+                proposal_consumers=("PREPARATION", "PREPARATION"),
+            ),
+            "consumers are invalid",
+        ),
+        (
+            replace(_planning_policy(), proposal_consumers=("EXECUTOR",)),
+            "consumer is invalid",
+        ),
+        (
+            replace(_planning_policy(), proposal_consumers=()),
+            "requires a proposal consumer",
+        ),
+        (
+            replace(
+                _planning_policy("DETERMINISTIC_ONLY"),
+                proposal_consumers=("PREPARATION",),
+            ),
+            "cannot consume",
+        ),
+    ):
+        with pytest.raises(ProductPlanningCoordinatorError, match=message):
+            build_product_planning_coordinator_registration(
+                **{**common, "planning_policy": policy}
+            )
+    deterministic = build_product_planning_coordinator_registration(
+        **{
+            **common,
+            "planning_policy": _planning_policy("DETERMINISTIC_ONLY"),
+        }
+    )
+    assert deterministic.planning_policy.mode == "DETERMINISTIC_ONLY"
     with pytest.raises(ProductPlanningCoordinatorError, match="executor"):
         build_product_planning_coordinator_registration(
             **{**common, "supported_executor_kinds": ()}

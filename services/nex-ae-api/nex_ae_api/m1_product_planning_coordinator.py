@@ -9,6 +9,7 @@ from nex_ae_api.product_planning_coordinators import (
     ProductPlanningCoordinatorError,
     ProductPlanningCoordinatorRegistration,
     ProductPlanningCoordinatorRegistry,
+    ProductPlanningPolicy,
     ProductPlanningReplayPolicy,
     build_product_planning_coordinator_registration,
     capability_binding,
@@ -17,6 +18,7 @@ from nex_ae_api.product_planning_coordinators import (
 from nex_ae_api.product_preparation_persistence import (
     PRODUCT_PREPARATION_CHECKPOINT_SCHEMA_VERSION,
 )
+from nex_ae_api.prompts import AE_PROJECT_DELEGATION_PLAN_BUILDER_BINDING
 
 M1_PRODUCT_COORDINATOR_ID = "MYBEE.M1.TRANSACTION_PREPARATION"
 M1_PRODUCT_COORDINATOR_VERSION = "1.1.0"
@@ -31,6 +33,14 @@ M1_PRODUCT_COORDINATOR_REPLAY_POLICY = ProductPlanningReplayPolicy(
     semantic_drift="FAIL_CLOSED_ZERO_MUTATION",
     stale_or_out_of_order="DENY",
     ack_loss_redelivery="CONVERGE",
+)
+M1_PRODUCT_PLANNING_POLICY = ProductPlanningPolicy(
+    mode="PROVIDER_ASSISTED_REQUIRED",
+    proposal_schema_version="ae.product_planning_proposal.v1",
+    prompt_binding_key=AE_PROJECT_DELEGATION_PLAN_BUILDER_BINDING,
+    admission_policy_ref="ae.product_planning_proposal.strict.v1",
+    deterministic_fallback_ref=None,
+    proposal_consumers=("MATERIALIZER", "PREPARATION"),
 )
 
 
@@ -79,6 +89,7 @@ def build_m1_product_planning_coordinator_registration(
         required_operations=operations,
         checkpoint_schema_version=(PRODUCT_PREPARATION_CHECKPOINT_SCHEMA_VERSION),
         replay_policy=M1_PRODUCT_COORDINATOR_REPLAY_POLICY,
+        planning_policy=M1_PRODUCT_PLANNING_POLICY,
         supported_executor_kinds=(LOCAL_SKILL_EXECUTOR_KIND,),
         installed_skill_bundle_locks=(
             skill_bundle_lock(d04),
@@ -101,7 +112,7 @@ def build_m1_product_planning_coordinator_registry(
     registry = ProductPlanningCoordinatorRegistry(
         (registration,),
         registry_id=M1_PRODUCT_COORDINATOR_REGISTRY_ID,
-        registry_version=2,
+        registry_version=3,
     )
     registry.require_product_capabilities(product_capabilities)
     return registry

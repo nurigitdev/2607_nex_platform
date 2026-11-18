@@ -7,12 +7,20 @@ from typing import Any, Protocol
 from nex_runtime.semantic_hashes import semantic_sha256_hash_ref, validate_hash_ref
 
 PRODUCT_PLANNING_COORDINATOR_REGISTRY_SCHEMA_VERSION = (
-    "ae.product_planning_coordinator_registry.v2"
+    "ae.product_planning_coordinator_registry.v3"
 )
 PRODUCT_PLANNING_COORDINATOR_REGISTRATION_SCHEMA_VERSION = (
-    "ae.product_planning_coordinator_registration.v2"
+    "ae.product_planning_coordinator_registration.v3"
 )
 PRODUCT_COORDINATOR_ACTIVATION_STATUSES = frozenset({"CONTRACT_ONLY", "ACTIVE"})
+PRODUCT_PLANNING_MODES = frozenset(
+    {
+        "DETERMINISTIC_ONLY",
+        "PROVIDER_ASSISTED_OPTIONAL",
+        "PROVIDER_ASSISTED_REQUIRED",
+    }
+)
+PRODUCT_PLANNING_PROPOSAL_CONSUMERS = frozenset({"PREPARATION", "MATERIALIZER"})
 PRODUCT_COORDINATOR_REPLAY_OUTCOMES = {
     "exact_event_replay": frozenset({"RETURN_ORIGINAL_RESUME"}),
     "semantic_drift": frozenset({"FAIL_CLOSED_ZERO_MUTATION"}),
@@ -63,6 +71,26 @@ class ProductPlanningReplayPolicy:
 
 
 @dataclass(frozen=True)
+class ProductPlanningPolicy:
+    mode: str
+    proposal_schema_version: str
+    prompt_binding_key: str
+    admission_policy_ref: str
+    deterministic_fallback_ref: str | None
+    proposal_consumers: tuple[str, ...]
+
+    def projection(self) -> dict[str, Any]:
+        return {
+            "mode": self.mode,
+            "proposal_schema_version": self.proposal_schema_version,
+            "prompt_binding_key": self.prompt_binding_key,
+            "admission_policy_ref": self.admission_policy_ref,
+            "deterministic_fallback_ref": self.deterministic_fallback_ref,
+            "proposal_consumers": list(self.proposal_consumers),
+        }
+
+
+@dataclass(frozen=True)
 class ProductPlanningSkillBundleLock:
     capability_id: str
     capability_version: str
@@ -103,6 +131,7 @@ class ProductPlanningCoordinatorRegistration:
     required_operations: tuple[str, ...]
     checkpoint_schema_version: str
     replay_policy: ProductPlanningReplayPolicy
+    planning_policy: ProductPlanningPolicy
     supported_executor_kinds: tuple[str, ...]
     installed_skill_bundle_locks: tuple[ProductPlanningSkillBundleLock, ...]
     registration_hash: str
@@ -139,6 +168,7 @@ class ProductPlanningCoordinatorRegistration:
             "required_operations": list(self.required_operations),
             "checkpoint_schema_version": self.checkpoint_schema_version,
             "replay_policy": self.replay_policy.projection(),
+            "planning_policy": self.planning_policy.projection(),
             "supported_executor_kinds": list(self.supported_executor_kinds),
             "installed_skill_bundle_locks": [
                 item.projection() for item in self.installed_skill_bundle_locks
@@ -351,6 +381,7 @@ def build_product_planning_coordinator_registration(
     required_operations: Sequence[str],
     checkpoint_schema_version: str,
     replay_policy: ProductPlanningReplayPolicy,
+    planning_policy: ProductPlanningPolicy,
     supported_executor_kinds: Sequence[str],
     installed_skill_bundle_locks: Sequence[ProductPlanningSkillBundleLock],
 ) -> ProductPlanningCoordinatorRegistration:
@@ -394,6 +425,7 @@ def build_product_planning_coordinator_registration(
         checkpoint_schema_version, "checkpoint_schema_version", 64
     )
     replay = _replay_policy(replay_policy)
+    planning = _planning_policy(planning_policy)
     executors = _upper_tokens(supported_executor_kinds, "supported_executor_kinds")
     skill_locks = _skill_bundle_locks(installed_skill_bundle_locks, required)
     projection = {
@@ -421,6 +453,7 @@ def build_product_planning_coordinator_registration(
         "required_operations": list(operations),
         "checkpoint_schema_version": checkpoint_schema,
         "replay_policy": replay.projection(),
+        "planning_policy": planning.projection(),
         "supported_executor_kinds": list(executors),
         "installed_skill_bundle_locks": [item.projection() for item in skill_locks],
     }
@@ -442,6 +475,7 @@ def build_product_planning_coordinator_registration(
         required_operations=operations,
         checkpoint_schema_version=checkpoint_schema,
         replay_policy=replay,
+        planning_policy=planning,
         supported_executor_kinds=executors,
         installed_skill_bundle_locks=skill_locks,
         registration_hash=semantic_sha256_hash_ref(projection),
@@ -496,6 +530,56 @@ def _replay_policy(value: object) -> ProductPlanningReplayPolicy:
         if projection[field] not in allowed:
             raise _invalid(f"Product coordinator replay policy {field} is invalid.")
     return value
+
+
+def _planning_policy(value: object) -> ProductPlanningPolicy:
+    if not isinstance(value, ProductPlanningPolicy):
+        raise _invalid("Product coordinator planning policy is invalid.")
+    mode = _state(value.mode, "planning_policy.mode")
+    if mode not in PRODUCT_PLANNING_MODES:
+        raise _invalid("Product coordinator planning policy mode is invalid.")
+    _text(
+        value.proposal_schema_version,
+        "planning_policy.proposal_schema_version",
+        128,
+    )
+    _text(value.prompt_binding_key, "planning_policy.prompt_binding_key", 200)
+    _text(value.admission_policy_ref, "planning_policy.admission_policy_ref", 256)
+    fallback = value.deterministic_fallback_ref
+    if fallback is not None:
+        _text(fallback, "planning_policy.deterministic_fallback_ref", 256)
+    if mode == "PROVIDER_ASSISTED_OPTIONAL" and fallback is None:
+        raise _invalid("Optional Product planning requires a deterministic fallback.")
+    if mode != "PROVIDER_ASSISTED_OPTIONAL" and fallback is not None:
+        raise _invalid("Product planning fallback is not admitted for this mode.")
+    if isinstance(value.proposal_consumers, (str, bytes)) or not isinstance(
+        value.proposal_consumers, Sequence
+    ):
+        raise _invalid("Product coordinator proposal consumers are invalid.")
+    consumers = tuple(
+        sorted(
+            _state(item, "planning_policy.proposal_consumers")
+            for item in value.proposal_consumers
+        )
+    )
+    if len(set(consumers)) != len(consumers):
+        raise _invalid("Product coordinator proposal consumers are invalid.")
+    if any(item not in PRODUCT_PLANNING_PROPOSAL_CONSUMERS for item in consumers):
+        raise _invalid("Product coordinator proposal consumer is invalid.")
+    if mode == "DETERMINISTIC_ONLY" and consumers:
+        raise _invalid("Deterministic-only Product planning cannot consume a proposal.")
+    if mode != "DETERMINISTIC_ONLY" and not consumers:
+        raise _invalid(
+            "Provider-assisted Product planning requires a proposal consumer."
+        )
+    return ProductPlanningPolicy(
+        mode=mode,
+        proposal_schema_version=value.proposal_schema_version,
+        prompt_binding_key=value.prompt_binding_key,
+        admission_policy_ref=value.admission_policy_ref,
+        deterministic_fallback_ref=fallback,
+        proposal_consumers=consumers,
+    )
 
 
 def _upper_tokens(values: Sequence[str], field: str) -> tuple[str, ...]:
