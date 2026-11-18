@@ -8,6 +8,7 @@ RUN python -m pip install --no-deps /app/deployment/product/wheel/nex_skill_lang
 
 COPY --chown=65532:65532 repository /app/deployment/product/repository
 COPY --chown=65532:65532 repository/contracts /app/contracts
+COPY --chown=65532:65532 repository/domains/mybee/config /app/domains/mybee/config
 COPY --chown=65532:65532 repository/domains/mybee/skills /app/domains/mybee/skills
 RUN install -d -o 65532 -g 65532 -m 0700 /var/lib/nex-platform/ae-runtime/nsl
 

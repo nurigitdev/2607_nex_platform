@@ -1,15 +1,12 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
-from types import SimpleNamespace
 from urllib.error import URLError
 
 import pytest
-
 from nex_runtime.openbao_secret_resolver import (
-    OpenBaoSecretResolver,
     OpenBaoClientSettings,
+    OpenBaoSecretResolver,
     OpenBaoSecretResolverError,
     UrllibOpenBaoTransport,
     build_openbao_secret_resolver,
@@ -69,6 +66,19 @@ def test_approle_kv_v2_resolution_and_token_revocation() -> None:
             "secret://openbao/nex-platform/staging/nex-oa/NEX_OA_DATABASE_URL@v1",
             context=_context(),
         )
+
+
+def test_wa_owner_secret_reference_is_admitted() -> None:
+    transport = Transport(({"data": {"data": {"value": "wa-private"}}},))
+    resolver = OpenBaoSecretResolver(transport, "token-12345678")
+
+    secret = resolver.resolve(
+        "secret://openbao/nex-platform/staging/nex-wa/NEX_WA_DATABASE_URL@v1",
+        context=_context(owner="nex-wa", target="NEX_WA_DATABASE_URL"),
+    )
+
+    assert secret.value == "wa-private"
+    assert transport.requests[0][1].endswith("NEX_WA_DATABASE_URL?version=1")
 
 
 @pytest.mark.parametrize(
