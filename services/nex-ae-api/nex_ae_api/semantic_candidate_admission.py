@@ -86,6 +86,7 @@ from nex_ae_api.semantic_candidates import (
 )
 from nex_ae_api.work_intent import (
     SqlAlchemyWorkIntentRepository,
+    WorkIntentError,
     build_work_intent_from_claimed_work,
     build_work_intent_from_decision,
     planning_mode,
@@ -452,43 +453,55 @@ class DeterministicCandidateAdmissionService:
             tenant_id=request.tenant_id, work_intent_id=ids.work_intent
         )
         persisted_work_intent = work_intent is not None
-        if not persisted_work_intent:
-            if request.planning_source_type == "CLAIMED_WORKITEM":
-                intent_decision = resolve_intent_candidate(
-                    intent_candidate,
-                    trusted_execution_mode=request.trusted_execution_mode,
-                    retrieval_enabled=request.retrieval_enabled,
-                )
-                work_intent = build_work_intent_from_claimed_work(
-                    execution_id=execution_id,
-                    actor_ref=f"OA:SUBJECT:{request.owner_subject_id}",
-                    received_at=str(execution["received_at"]),
-                    planning_source=request.planning_source or {},
-                    intent_decision=intent_decision,
-                    input_context_hash=intent_evidence["input_context_hash"],
-                    work_intent_id=ids.work_intent,
-                    prompt_provenance=_work_intent_provenance(intent_evidence),
-                )
-            elif intent_result is not None and intent_result.work_intent is not None:
-                work_intent = dict(intent_result.work_intent)
-            else:
-                intent_decision = resolve_intent_candidate(
-                    intent_candidate,
-                    trusted_execution_mode=request.trusted_execution_mode,
-                    retrieval_enabled=request.retrieval_enabled,
-                )
-                work_intent = build_work_intent_from_decision(
-                    execution_id=execution_id,
-                    source_ref=source_ref,
-                    actor_ref=f"OA:SUBJECT:{request.owner_subject_id}",
-                    received_at=str(execution["received_at"]),
-                    intent_decision=intent_decision,
-                    input_context_hash=intent_evidence["input_context_hash"],
-                    work_intent_id=ids.work_intent,
-                    prompt_provenance=_work_intent_provenance(intent_evidence),
-                    intent_candidate=intent_candidate,
-                    intent_candidate_hash=str(intent_evidence["candidate_hash"]),
-                )
+        try:
+            if not persisted_work_intent:
+                if request.planning_source_type == "CLAIMED_WORKITEM":
+                    intent_decision = resolve_intent_candidate(
+                        intent_candidate,
+                        trusted_execution_mode=request.trusted_execution_mode,
+                        retrieval_enabled=request.retrieval_enabled,
+                    )
+                    work_intent = build_work_intent_from_claimed_work(
+                        execution_id=execution_id,
+                        actor_ref=f"OA:SUBJECT:{request.owner_subject_id}",
+                        received_at=str(execution["received_at"]),
+                        planning_source=request.planning_source or {},
+                        intent_decision=intent_decision,
+                        input_context_hash=intent_evidence["input_context_hash"],
+                        work_intent_id=ids.work_intent,
+                        prompt_provenance=_work_intent_provenance(intent_evidence),
+                    )
+                elif (
+                    intent_result is not None
+                    and intent_result.work_intent is not None
+                ):
+                    work_intent = dict(intent_result.work_intent)
+                else:
+                    intent_decision = resolve_intent_candidate(
+                        intent_candidate,
+                        trusted_execution_mode=request.trusted_execution_mode,
+                        retrieval_enabled=request.retrieval_enabled,
+                    )
+                    work_intent = build_work_intent_from_decision(
+                        execution_id=execution_id,
+                        source_ref=source_ref,
+                        actor_ref=f"OA:SUBJECT:{request.owner_subject_id}",
+                        received_at=str(execution["received_at"]),
+                        intent_decision=intent_decision,
+                        input_context_hash=intent_evidence["input_context_hash"],
+                        work_intent_id=ids.work_intent,
+                        prompt_provenance=_work_intent_provenance(intent_evidence),
+                        intent_candidate=intent_candidate,
+                        intent_candidate_hash=str(intent_evidence["candidate_hash"]),
+                    )
+        except WorkIntentError as exc:
+            raise SemanticCandidateAdmissionError(
+                status_code=503 if exc.retryable else 422,
+                error_code=exc.error_code,
+                detail=exc.detail,
+                retryable=exc.retryable,
+                semantic_stage="INTENT",
+            ) from exc
         assert work_intent is not None
         context_resolver = request.context_resolver
         registration = self.domain_intent_activator_registry.resolve(
