@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import secrets
 import subprocess
 import sys
@@ -216,9 +217,23 @@ def execute_m1_product_golden_journey(
             runtime.get("transactions") if isinstance(runtime, Mapping) else None
         )
         if browser.get("status") != "PASS" or not isinstance(transactions, list):
+            diagnostic = installed._compose(
+                runtime_env,
+                root=root,
+                arguments=(
+                    "logs",
+                    "--no-color",
+                    "--tail",
+                    "240",
+                    "nex-ae-api",
+                ),
+                check=False,
+            )
+            runtime_failure = _semantic_runtime_failure(diagnostic.stdout)
             raise M1ProductGoldenJourneyError(
                 "M1 product browser journey failed: "
                 + _browser_failure_summary(browser)
+                + f" runtime_exception={runtime_failure}"
             )
         interaction_ids = tuple(
             str(item.get("interaction_id") or "") for item in transactions
@@ -479,6 +494,15 @@ def _drop_isolated_database_schemas(
         "residue_service_ids": sorted(residue),
         "zero_residue": not residue and len(dropped) == len(handles),
     }
+
+
+def _semantic_runtime_failure(log_output: str) -> str:
+    match = re.search(
+        r"Unexpected semantic candidate admission failure; "
+        r"exception_type=([A-Za-z][A-Za-z0-9_]{0,95})",
+        log_output,
+    )
+    return match.group(1) if match else "not_observed"
 
 
 def _run_playwright(

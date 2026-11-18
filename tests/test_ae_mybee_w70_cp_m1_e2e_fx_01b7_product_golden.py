@@ -174,6 +174,17 @@ def test_product_browser_failure_summary_is_bounded_and_body_free() -> None:
     assert "must-not-be-projected" not in summary
 
 
+def test_product_semantic_runtime_failure_keeps_only_exception_type() -> None:
+    logs = (
+        "nex-ae-api | Unexpected semantic candidate admission failure; "
+        "exception_type=GenerationResponseError\n"
+        "nex-ae-api | protected prompt and token must-not-be-projected\n"
+    )
+
+    assert acceptance._semantic_runtime_failure(logs) == "GenerationResponseError"
+    assert acceptance._semantic_runtime_failure("unrelated logs") == "not_observed"
+
+
 def test_product_baseline_rejects_duplicate_projects_and_one_transaction(
     tmp_path: Path,
 ) -> None:
