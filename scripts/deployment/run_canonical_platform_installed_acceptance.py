@@ -73,10 +73,7 @@ from nex_runtime.demo_database import (
     inspect_demo_database_targets,
     resolve_current_platform_database_targets,
 )
-from nex_runtime.demo_domain_activation import (
-    DEMO_DOMAIN_PROCESSES,
-    demo_domain_activation_projection,
-)
+from nex_runtime.demo_domain_activation import demo_domain_activation_projection
 from nex_runtime.demo_domain_installation import (
     DEMO_DOMAIN_WORKERS,
     admit_demo_domain_runtime_evidence,
@@ -133,6 +130,7 @@ DEFAULT_TRAEFIK_DYNAMIC_FILE = (
 )
 PROJECT_NAME = "nex-platform-canonical"
 CURRENT_DOMAIN_PROCESSES = tuple(CURRENT_JOURNEY_WORKERS)
+DEMO_DOMAIN_PROCESSES = tuple(DEMO_DOMAIN_WORKERS)
 DOMAIN_SERVICES = (
     "nex-oa",
     "nex-ae-api",
@@ -406,9 +404,27 @@ def execute_canonical_platform_acceptance(
                 object_credentials=object_credentials,
             )
             readiness = _service_readiness(runtime_dir)
-            initial_heartbeats = _wait_for_heartbeats(
-                urls, worker_inventory=worker_inventory
-            )
+            try:
+                initial_heartbeats = _wait_for_heartbeats(
+                    urls, worker_inventory=worker_inventory
+                )
+            except CanonicalPlatformInstalledAcceptanceError as exc:
+                diagnostic = _compose(
+                    runtime_env,
+                    root=root,
+                    arguments=(
+                        "logs",
+                        "--no-color",
+                        "--tail",
+                        "160",
+                        "nex-ae-agent-runtime-worker",
+                    ),
+                    check=False,
+                )
+                failure = _structured_process_failure(diagnostic.stdout)
+                raise CanonicalPlatformInstalledAcceptanceError(
+                    f"{exc}; ae_runtime_worker={failure}"
+                ) from exc
             materials = {item.owner: item for item in provisioned.materials}
             token_runtimes = _signed_token_runtime_acceptance(
                 runtime_dir, materials=materials
@@ -790,6 +806,7 @@ def _wait_for_heartbeats(
     worker_inventory: Mapping[str, tuple[str, str, str]] = DEMO_DOMAIN_WORKERS,
 ) -> dict[str, dict[str, Any]]:
     deadline = time.monotonic() + timeout_seconds
+    observed: dict[str, dict[str, Any]] = {}
     while time.monotonic() < deadline:
         observed = _heartbeats(urls, worker_inventory=worker_inventory)
         if (
@@ -805,9 +822,42 @@ def _wait_for_heartbeats(
         ):
             return observed
         time.sleep(0.5)
-    raise CanonicalPlatformInstalledAcceptanceError(
-        "Demo domain worker heartbeat timed out"
+    missing = sorted(set(worker_inventory) - set(observed))
+    non_idle = sorted(
+        f"{process_id}:{item.get('status', 'UNKNOWN')}"
+        for process_id, item in observed.items()
+        if item.get("status") != "IDLE"
     )
+    stale = sorted(
+        process_id
+        for process_id in worker_inventory
+        if previous is not None
+        and process_id in observed
+        and process_id in previous
+        and observed[process_id].get("observed_at")
+        == previous[process_id].get("observed_at")
+    )
+    raise CanonicalPlatformInstalledAcceptanceError(
+        "Demo domain worker heartbeat timed out: "
+        f"missing={','.join(missing) or 'none'} "
+        f"non_idle={','.join(non_idle) or 'none'} "
+        f"stale={','.join(stale) or 'none'}"
+    )
+
+
+def _structured_process_failure(output: str) -> str:
+    for line in reversed(output.splitlines()):
+        payload_text = line[line.find("{") :] if "{" in line else ""
+        try:
+            payload = json.loads(payload_text)
+        except (json.JSONDecodeError, TypeError):
+            continue
+        if not isinstance(payload, Mapping) or payload.get("status") != "BLOCKED":
+            continue
+        failure_code = str(payload.get("failure_code") or "unknown")
+        detail = str(payload.get("detail") or "unavailable")
+        return f"{failure_code}:{detail}"
+    return "structured_failure_unavailable"
 
 
 def _heartbeats(

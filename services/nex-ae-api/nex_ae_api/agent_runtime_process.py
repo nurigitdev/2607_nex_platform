@@ -385,7 +385,20 @@ def run_installed_agent_runtime_process(
         raise AgentRuntimeProcessError("max_cycles must be between 1 and 100000")
     readiness = process.readiness()
     if readiness["readiness_status"] != "READY":
-        raise AgentRuntimeProcessError("AE Agent Runtime process is not ready")
+        checks = readiness.get("checks")
+        failed_checks = (
+            sorted(
+                str(name)
+                for name, passed in checks.items()
+                if passed is not True
+            )
+            if isinstance(checks, Mapping)
+            else ["readiness_contract_unavailable"]
+        )
+        raise AgentRuntimeProcessError(
+            "AE Agent Runtime process is not ready; failed_checks="
+            + ",".join(failed_checks)
+        )
     stop = should_stop or (lambda: False)
     stream = out or sys.stdout
     completed_cycles = 0

@@ -523,6 +523,31 @@ def test_s20_installed_runtime_helpers_cover_network_queue_and_image_contracts(
         urls, timeout_seconds=0.1, worker_inventory=inventory
     ) == observed
 
+    monkeypatch.setattr(installed, "_heartbeats", lambda *_a, **_k: {})
+    with pytest.raises(
+        installed.CanonicalPlatformInstalledAcceptanceError,
+        match="missing=worker non_idle=none stale=none",
+    ):
+        installed._wait_for_heartbeats(
+            urls, timeout_seconds=0.01, worker_inventory=inventory
+        )
+
+    blocked_log = "\n".join(
+        (
+            "production_container_bootstrap=pass owner=nex-ae-api",
+            'worker | {"status":"BLOCKED","failure_code":'
+            '"ae.agent_runtime_process.unavailable","detail":'
+            '"failed_checks=package_readiness_satisfied"}',
+        )
+    )
+    assert installed._structured_process_failure(blocked_log) == (
+        "ae.agent_runtime_process.unavailable:"
+        "failed_checks=package_readiness_satisfied"
+    )
+    assert installed._structured_process_failure("unstructured") == (
+        "structured_failure_unavailable"
+    )
+
     monkeypatch.setattr(
         installed,
         "_compose",

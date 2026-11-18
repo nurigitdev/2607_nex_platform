@@ -274,9 +274,29 @@ def test_installed_loop_honors_shutdown_and_rejects_bad_bounds() -> None:
                 installed, max_cycles=value, out=StringIO()
             )
 
-    not_ready = SimpleNamespace(readiness=lambda: {"readiness_status": "NOT_READY"})
-    with pytest.raises(process.AgentRuntimeProcessError, match="not ready"):
+    not_ready = SimpleNamespace(
+        readiness=lambda: {
+            "readiness_status": "NOT_READY",
+            "checks": {
+                "database_connected": True,
+                "package_readiness_satisfied": False,
+            },
+        }
+    )
+    with pytest.raises(
+        process.AgentRuntimeProcessError,
+        match="failed_checks=package_readiness_satisfied",
+    ):
         process.run_installed_agent_runtime_process(not_ready, out=StringIO())
+
+    missing_contract = SimpleNamespace(
+        readiness=lambda: {"readiness_status": "NOT_READY"}
+    )
+    with pytest.raises(
+        process.AgentRuntimeProcessError,
+        match="failed_checks=readiness_contract_unavailable",
+    ):
+        process.run_installed_agent_runtime_process(missing_contract, out=StringIO())
 
 
 def test_builder_disposes_engine_and_sanitizes_database_failure() -> None:
