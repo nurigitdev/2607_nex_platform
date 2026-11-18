@@ -17,6 +17,12 @@ from report_ae_coverage_ownership import (
 )
 
 ROOT = Path(__file__).resolve().parents[1]
+ACTIVE_IMPORT_BASELINE = 103
+ACTIVE_IMPORT_PROMOTIONS = frozenset(
+    {
+        "services/nex-ae-api/nex_ae_api/product_planning_proposals.py",
+    }
+)
 
 
 def _json(path: Path) -> dict[str, object]:
@@ -63,7 +69,16 @@ def test_real_inventory_classifies_every_ae_module_and_freezes_baseline() -> Non
 
     assert report["status"] == "PASS"
     assert report["module_count"] == expected["module_count"]
-    assert report["active_import_module_count"] == 103
+    expected_active_import_count = ACTIVE_IMPORT_BASELINE + len(
+        ACTIVE_IMPORT_PROMOTIONS
+    )
+    active_product_paths = {
+        item["path"]
+        for item in report["modules"]
+        if item["scope"] == "ACTIVE_PRODUCT" and item["active_import"]
+    }
+    assert ACTIVE_IMPORT_PROMOTIONS <= active_product_paths
+    assert report["active_import_module_count"] == expected_active_import_count
     assert report["coverage_module_count"] == 0
     assert report["checks"] == {
         "manifest_hash_valid": True,
@@ -81,7 +96,9 @@ def test_real_inventory_classifies_every_ae_module_and_freezes_baseline() -> Non
         "ACTIVE_COMPATIBILITY": expected["compatibility_count"],
         "HISTORICAL_QUARANTINE": expected["historical_count"],
     }
-    assert report["scopes"]["ACTIVE_PRODUCT"]["active_import_module_count"] == 103
+    assert report["scopes"]["ACTIVE_PRODUCT"]["active_import_module_count"] == (
+        expected_active_import_count
+    )
     assert report["scopes"]["ACTIVE_COMPATIBILITY"]["active_import_module_count"] == 0
     assert report["scopes"]["HISTORICAL_QUARANTINE"]["active_import_module_count"] == 0
     assert report["current_coverage"] is None
@@ -103,7 +120,8 @@ def test_real_inventory_classifies_every_ae_module_and_freezes_baseline() -> Non
     assert len({item["path"] for item in report["modules"]}) == expected["module_count"]
     assert summary_line(report) == (
         f"ae_coverage_ownership=pass modules={expected['module_count']} "
-        f"active_graph=103 product={expected['product_count']} "
+        f"active_graph={expected_active_import_count} "
+        f"product={expected['product_count']} "
         f"compatibility={expected['compatibility_count']} "
         f"historical={expected['historical_count']} coverage=not-provided "
         "conflicts=0"

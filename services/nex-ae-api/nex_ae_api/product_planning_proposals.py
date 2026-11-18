@@ -14,6 +14,7 @@ from nex_ae_api.semantic_candidate_evidence import (
 )
 
 PRODUCT_PLANNING_PROPOSAL_SCHEMA_VERSION = "ae.product_planning_proposal.v1"
+PRODUCT_PLANNING_PROPOSAL_REF_SCHEMA_VERSION = "ae.product_planning_proposal_ref.v1"
 
 
 class ProductPlanningProposalError(ValueError):
@@ -50,8 +51,6 @@ def build_product_planning_proposal(
     if (
         normalized_evidence["prompt_binding_key"]
         != registration.planning_policy.prompt_binding_key
-        or normalized_evidence["admission_policy_ref"]
-        != registration.planning_policy.admission_policy_ref
     ):
         raise _conflict("Product proposal policy binding has drifted.")
     candidate_hash = semantic_sha256_hash_ref(normalized_candidate)
@@ -135,6 +134,49 @@ def build_product_planning_proposal(
     }
     proposal["proposal_hash"] = semantic_sha256_hash_ref(proposal)
     return validate_product_planning_proposal(proposal)
+
+
+def product_planning_proposal_reference(
+    value: Mapping[str, Any],
+) -> dict[str, Any]:
+    proposal = validate_product_planning_proposal(value)
+    candidate = proposal["candidate_ref"]
+    return validate_product_planning_proposal_reference(
+        {
+            "schema_version": PRODUCT_PLANNING_PROPOSAL_REF_SCHEMA_VERSION,
+            "proposal_hash": proposal["proposal_hash"],
+            "candidate_id": candidate["candidate_id"],
+            "candidate_hash": candidate["candidate_hash"],
+            "candidate_payload_storage_ref": candidate["storage_ref"],
+        }
+    )
+
+
+def validate_product_planning_proposal_reference(
+    value: Mapping[str, Any],
+) -> dict[str, Any]:
+    if not isinstance(value, Mapping):
+        raise _invalid("Product planning proposal reference must be an object.")
+    reference = dict(value)
+    if set(reference) != {
+        "schema_version",
+        "proposal_hash",
+        "candidate_id",
+        "candidate_hash",
+        "candidate_payload_storage_ref",
+    } or reference.get("schema_version") != (
+        PRODUCT_PLANNING_PROPOSAL_REF_SCHEMA_VERSION
+    ):
+        raise _invalid("Product planning proposal reference fields are invalid.")
+    _hash(reference["proposal_hash"], "proposal_hash")
+    _text(reference["candidate_id"], "candidate_id", 64)
+    _hash(reference["candidate_hash"], "candidate_hash")
+    _text(
+        reference["candidate_payload_storage_ref"],
+        "candidate_payload_storage_ref",
+        512,
+    )
+    return reference
 
 
 def validate_product_planning_proposal(value: Mapping[str, Any]) -> dict[str, Any]:

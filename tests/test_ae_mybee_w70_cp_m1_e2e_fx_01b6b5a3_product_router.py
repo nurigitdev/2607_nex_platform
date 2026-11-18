@@ -15,6 +15,10 @@ from nex_ae_api.m1_product_planning_coordinator import (
     build_m1_product_planning_coordinator_registry,
 )
 from nex_ae_api.product_capabilities import load_product_capability_registry
+from nex_ae_api.product_planning_coordinators import (
+    ProductPlanningCapabilityBinding,
+    ProductPlanningPolicy,
+)
 from nex_ae_api.product_planning_event_api import (
     register_product_planning_event_routes,
 )
@@ -30,6 +34,7 @@ from nex_ae_api.product_planning_runtime import (
     build_installed_m1_product_coordinator_runtime,
     build_installed_product_planning_composition,
 )
+from nex_ae_api.prompts import AE_PLAN_BUILDER_BINDING
 from nex_ae_api.runtime_composition import (
     RuntimeExecutorProfile,
     build_installed_runtime_composition,
@@ -52,6 +57,14 @@ EXECUTION_ID = "11111111-1111-4111-8111-111111111153"
 WORK_INTENT_ID = "22222222-2222-4222-8222-222222222253"
 CHECKPOINT_ID = "33333333-3333-4333-8333-333333333353"
 CHECKPOINT_HASH = "sha256:" + "3" * 64
+DETERMINISTIC_POLICY = ProductPlanningPolicy(
+    mode="DETERMINISTIC_ONLY",
+    proposal_schema_version="ae.product_planning_proposal.v1",
+    prompt_binding_key="ae.plan_builder.project_delegation.v1",
+    admission_policy_ref="ae.product_planning_proposal.strict.v1",
+    deterministic_fallback_ref=None,
+    proposal_consumers=(),
+)
 
 
 class _Coordinator:
@@ -164,8 +177,14 @@ class _FailingAdmission:
 
 
 class _ProductRouterSpy:
-    def __init__(self) -> None:
+    def __init__(self, registration=None) -> None:
         self.calls = []
+        self.registration = registration
+
+    def resolve_registration(self, **_values):
+        return self.registration or SimpleNamespace(
+            planning_policy=DETERMINISTIC_POLICY
+        )
 
     def begin_if_registered(self, **values):
         self.calls.append(values)
@@ -217,6 +236,7 @@ def _registry(*, active: bool):
         product_capabilities=capabilities,
         preparation_registration=load_m1_transaction_preparation_registration(),
         activation_status="ACTIVE" if active else "CONTRACT_ONLY",
+        planning_policy=DETERMINISTIC_POLICY,
     )
 
 
@@ -361,6 +381,83 @@ def test_claimed_semantic_pipeline_keeps_intent_context_evidence_but_skips_plan(
     assert client.calls == ["INTENT", "CONTEXT"]
     assert result.product_planning_admission["provider_plan_authoritative"] is False
     assert len(router.calls) == 1
+
+
+def test_claimed_product_route_generates_advisory_plan_before_coordinator() -> None:
+    service, client, *_ = _semantic_components()
+    registration = _runtime()[1]
+    chat_binding = ProductPlanningCapabilityBinding(
+        capability_id="AE.CHAT.COMPATIBILITY",
+        capability_version="1.0.0",
+        capability_registration_hash="sha256:" + "7" * 64,
+    )
+    registration = replace(
+        registration,
+        planning_policy=ProductPlanningPolicy(
+            mode="PROVIDER_ASSISTED_REQUIRED",
+            proposal_schema_version="ae.product_planning_proposal.v1",
+            prompt_binding_key=AE_PLAN_BUILDER_BINDING,
+            admission_policy_ref="ae.product_planning_proposal.strict.v1",
+            deterministic_fallback_ref=None,
+            proposal_consumers=("PREPARATION",),
+        ),
+        required_capabilities=(chat_binding,),
+    )
+    router = _ProductRouterSpy(registration)
+    service = replace(service, product_planning_router=router)
+    service.executions.record.update(
+        {
+            "tenant_id": "tenant-a",
+            "agent_execution_id": EXECUTION_ID,
+            "agent_id": "20000000-0000-4000-8000-000000000656",
+            "agent_type": "PA",
+            "project_id": "project-product-router",
+            "source_type": "CLAIMED_WORKITEM",
+            "source_ref": "work-item-product-router",
+            "work_item_ref": "work-item-product-router",
+            "requester_ref": "user-a",
+            "received_at": "2026-10-17T02:00:00Z",
+        }
+    )
+    request = replace(
+        _semantic_request(),
+        planning_source_type="CLAIMED_WORKITEM",
+        existing_execution_id=EXECUTION_ID,
+        agent_type="PA",
+        project_id="project-product-router",
+        source_ref="work-item-product-router",
+        planning_source={
+            "schema_version": "p7.claimed_work_planning_source.v1",
+            "source_type": "CLAIMED_WORKITEM",
+            "source_ref": "work-item-product-router",
+            "goal": "Prepare the admitted Product operation.",
+            "work_class": "ANALYSIS",
+            "required_capability": "AE.CHAT.COMPATIBILITY",
+            "project_ref": {
+                "entity_type": "PROJECT",
+                "entity_id": "project-product-router",
+            },
+            "artifact_refs": [],
+            "evidence_refs": [],
+            "completion_policy": "OWNER_SUBMITS",
+            "result_contract_ref": "contract://product/result/v1",
+        },
+        context_resolver=_ClaimedResolver(),
+    )
+
+    result = service.admit_and_compile(request)
+
+    assert result.status == "PRODUCT_COORDINATION_STARTED"
+    assert [stage.semantic_stage for stage in result.stages] == [
+        "INTENT",
+        "CONTEXT",
+        "PLAN",
+    ]
+    assert client.calls == ["INTENT", "CONTEXT", "PLAN"]
+    proposal = router.calls[0]["planning_proposal"]
+    assert proposal["provider_plan_authoritative"] is False
+    assert proposal["suggested_capability_ids"] == ["AE.CHAT.COMPATIBILITY"]
+    assert service.plans.records == {}
 
 
 def test_public_router_preserves_non_product_and_fails_closed_before_activation() -> (

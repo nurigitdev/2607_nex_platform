@@ -49,6 +49,7 @@ def build_m1_product_planning_coordinator_registration(
     product_capabilities: ProductCapabilityRegistry,
     preparation_registration: M1PreparationRegistration,
     activation_status: str = "CONTRACT_ONLY",
+    planning_policy: ProductPlanningPolicy = M1_PRODUCT_PLANNING_POLICY,
 ) -> ProductPlanningCoordinatorRegistration:
     d04 = product_capabilities.resolve(M1_D04_CAPABILITY_ID, required=True)
     d12 = product_capabilities.resolve(M1_D12_CAPABILITY_ID, required=True)
@@ -89,7 +90,7 @@ def build_m1_product_planning_coordinator_registration(
         required_operations=operations,
         checkpoint_schema_version=(PRODUCT_PREPARATION_CHECKPOINT_SCHEMA_VERSION),
         replay_policy=M1_PRODUCT_COORDINATOR_REPLAY_POLICY,
-        planning_policy=M1_PRODUCT_PLANNING_POLICY,
+        planning_policy=planning_policy,
         supported_executor_kinds=(LOCAL_SKILL_EXECUTOR_KIND,),
         installed_skill_bundle_locks=(
             skill_bundle_lock(d04),
@@ -103,11 +104,13 @@ def build_m1_product_planning_coordinator_registry(
     product_capabilities: ProductCapabilityRegistry,
     preparation_registration: M1PreparationRegistration,
     activation_status: str = "CONTRACT_ONLY",
+    planning_policy: ProductPlanningPolicy = M1_PRODUCT_PLANNING_POLICY,
 ) -> ProductPlanningCoordinatorRegistry:
     registration = build_m1_product_planning_coordinator_registration(
         product_capabilities=product_capabilities,
         preparation_registration=preparation_registration,
         activation_status=activation_status,
+        planning_policy=planning_policy,
     )
     registry = ProductPlanningCoordinatorRegistry(
         (registration,),

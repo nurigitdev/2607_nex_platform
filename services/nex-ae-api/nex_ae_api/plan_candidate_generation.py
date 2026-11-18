@@ -206,6 +206,52 @@ class LivePlanCandidateService:
         agent_plan_id: str,
         agent_plan_version: int = 1,
     ) -> PlanCandidateStageResult:
+        if agent_plan_id is None:
+            raise _request_error("agent_plan_id is invalid.")
+        return self._generate(
+            work_intent=work_intent,
+            agent_context=agent_context,
+            capability_snapshot=capability_snapshot,
+            request_id=request_id,
+            trace_id=trace_id,
+            planning_mode=planning_mode,
+            agent_plan_id=agent_plan_id,
+            agent_plan_version=agent_plan_version,
+        )
+
+    def generate_proposal(
+        self,
+        *,
+        work_intent: Mapping[str, Any],
+        agent_context: Mapping[str, Any],
+        capability_snapshot: Mapping[str, Any],
+        request_id: str,
+        trace_id: str,
+        planning_mode: str,
+    ) -> PlanCandidateStageResult:
+        return self._generate(
+            work_intent=work_intent,
+            agent_context=agent_context,
+            capability_snapshot=capability_snapshot,
+            request_id=request_id,
+            trace_id=trace_id,
+            planning_mode=planning_mode,
+            agent_plan_id=None,
+            agent_plan_version=1,
+        )
+
+    def _generate(
+        self,
+        *,
+        work_intent: Mapping[str, Any],
+        agent_context: Mapping[str, Any],
+        capability_snapshot: Mapping[str, Any],
+        request_id: str,
+        trace_id: str,
+        planning_mode: str,
+        agent_plan_id: str | None,
+        agent_plan_version: int,
+    ) -> PlanCandidateStageResult:
         selected_mode = _planning_mode(planning_mode)
         selected_request_id = _bounded_text(request_id, "request_id", 200)
         selected_trace_id = _trace_id_value(trace_id)
@@ -290,6 +336,19 @@ class LivePlanCandidateService:
         if selected_mode == "shadow":
             return _result(
                 directive="SHADOW_ONLY",
+                failure_code=None,
+                candidate=candidate,
+                candidate_hash=candidate_hash,
+                generation=generation,
+                input_context_hash=input_context_hash,
+                prompt_provenance=prompt_provenance,
+                model_provenance=model_provenance,
+                policy=policy,
+            )
+
+        if agent_plan_id is None:
+            return _result(
+                directive="CONTINUE",
                 failure_code=None,
                 candidate=candidate,
                 candidate_hash=candidate_hash,
@@ -1045,7 +1104,7 @@ def _resolve_prompt_snapshot(
             "prompt_binding_id": _bounded_text(
                 event.get("prompt_binding_id"), "prompt_binding_id", 64
             ),
-            "prompt_binding_key": AE_PLAN_BUILDER_BINDING,
+            "prompt_binding_key": binding_key,
             "prompt_template_version_id": _bounded_text(
                 event.get("prompt_template_version_id"),
                 "prompt_template_version_id",

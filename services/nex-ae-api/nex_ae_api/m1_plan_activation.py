@@ -13,6 +13,9 @@ from nex_ae_api.m1_product_planning_coordinator import (
 from nex_ae_api.product_planning_coordinators import (
     ProductPlanningCoordinatorRegistration,
 )
+from nex_ae_api.product_planning_proposals import (
+    validate_product_planning_proposal_reference,
+)
 
 M1_PLAN_ACTIVATION_SCHEMA_VERSION = "ae.m1_plan_activation.v1"
 
@@ -132,6 +135,21 @@ class InstalledM1PlanActivation:
         )
         checkpoint = _mapping(ready.get("checkpoint"), "READY checkpoint")
         preparation = _mapping(ready.get("preparation"), "M1 preparation")
+        proposal_ref = ready.get("planning_proposal_ref")
+        if proposal_ref is not None:
+            try:
+                proposal_ref = validate_product_planning_proposal_reference(
+                    proposal_ref
+                )
+            except ValueError as exc:
+                raise _conflict(
+                    "M1 Product planning proposal reference differs."
+                ) from exc
+        if (
+            self.registration.planning_policy.mode == "PROVIDER_ASSISTED_REQUIRED"
+            and proposal_ref is None
+        ):
+            raise _conflict("M1 Product planning proposal reference is unavailable.")
         if (
             checkpoint.get("stage") != self.registration.ready_state
             or checkpoint.get("stage_kind") != "READY"
@@ -148,6 +166,7 @@ class InstalledM1PlanActivation:
             agent_context=agent_context,
             capability_snapshot=capability_snapshot,
             preparation_checkpoint=preparation,
+            product_planning_proposal_ref=proposal_ref,
         )
         agent_plan = _mapping(getattr(materialized, "agent_plan", None), "M1 AgentPlan")
         validation = _mapping(

@@ -16,6 +16,9 @@ from nex_ae_api.product_planning_coordinators import (
     ProductPlanningCoordinatorRegistration,
     ProductPlanningCoordinatorRegistry,
 )
+from nex_ae_api.product_planning_proposals import (
+    validate_product_planning_proposal,
+)
 from nex_ae_api.product_preparation_persistence import (
     SqlAlchemyProductPreparationCheckpointRepository,
 )
@@ -174,27 +177,28 @@ class PublicProductPlanningRouter:
         agent_context: Mapping[str, Any],
         capability_snapshot: Mapping[str, Any],
         execution: Mapping[str, Any],
+        planning_proposal: Mapping[str, Any] | None = None,
     ) -> dict[str, Any] | None:
-        registrations = self._matching_registrations(
+        registration = self.resolve_registration(
             work_intent=work_intent,
             capability_snapshot=capability_snapshot,
         )
-        if not registrations:
+        if registration is None:
             return None
-        if len(registrations) != 1:
-            raise _conflict(
-                "WorkIntent resolves to multiple Product coordinator registrations."
-            )
-        registration = registrations[0]
-        if registration.activation_status != "ACTIVE":
-            raise _unavailable("Product planning coordinator is not active.")
         runtime = self.runtimes.resolve_registration(registration)
+        proposal = _proposal_for_registration(
+            planning_proposal,
+            registration=registration,
+            work_intent=work_intent,
+            agent_context=agent_context,
+        )
         result = _invoke_product_boundary(
             runtime.coordinator.begin,
             work_intent=work_intent,
             agent_context=agent_context,
             capability_snapshot=capability_snapshot,
             execution=execution,
+            planning_proposal=proposal,
         )
         checkpoint = _mapping(result.get("checkpoint"), "Product checkpoint")
         projection = {
@@ -210,10 +214,36 @@ class PublicProductPlanningRouter:
             "ready": bool(result.get("ready")),
             "replayed": bool(result.get("replayed")),
             "provider_plan_authoritative": False,
+            "planning_mode": registration.planning_policy.mode,
+            "planning_proposal_hash": (
+                None if proposal is None else proposal["proposal_hash"]
+            ),
             "content_included": False,
         }
         projection["admission_hash"] = semantic_sha256_hash_ref(projection)
         return projection
+
+    def resolve_registration(
+        self,
+        *,
+        work_intent: Mapping[str, Any],
+        capability_snapshot: Mapping[str, Any],
+    ) -> ProductPlanningCoordinatorRegistration | None:
+        registrations = self._matching_registrations(
+            work_intent=work_intent,
+            capability_snapshot=capability_snapshot,
+        )
+        if not registrations:
+            return None
+        if len(registrations) != 1:
+            raise _conflict(
+                "WorkIntent resolves to multiple Product coordinator registrations."
+            )
+        registration = registrations[0]
+        if registration.activation_status != "ACTIVE":
+            raise _unavailable("Product planning coordinator is not active.")
+        self.runtimes.resolve_registration(registration)
+        return registration
 
     def _matching_registrations(
         self,
@@ -537,6 +567,42 @@ def build_contract_m1_product_planning_composition(
         sessions=sessions,
         coordinator_registry=registry,
     )
+
+
+def _proposal_for_registration(
+    value: Mapping[str, Any] | None,
+    *,
+    registration: ProductPlanningCoordinatorRegistration,
+    work_intent: Mapping[str, Any],
+    agent_context: Mapping[str, Any],
+) -> dict[str, Any] | None:
+    mode = registration.planning_policy.mode
+    if value is None:
+        if mode == "PROVIDER_ASSISTED_REQUIRED":
+            raise _unavailable("Product planning proposal is required but unavailable.")
+        return None
+    if mode == "DETERMINISTIC_ONLY":
+        raise _invalid("Deterministic-only Product planning rejects a proposal.")
+    try:
+        proposal = validate_product_planning_proposal(value)
+    except ValueError as exc:
+        raise _conflict("Product planning proposal is invalid or drifted.") from exc
+    coordinator = proposal["coordinator_ref"]
+    work_ref = proposal["work_intent_ref"]
+    context_ref = proposal["agent_context_ref"]
+    if (
+        coordinator.get("coordinator_id") != registration.coordinator_id
+        or coordinator.get("coordinator_version") != registration.coordinator_version
+        or coordinator.get("coordinator_registration_hash")
+        != registration.registration_hash
+        or proposal.get("planning_policy") != registration.planning_policy.projection()
+        or work_ref.get("work_intent_id") != work_intent.get("work_intent_id")
+        or work_ref.get("intent_hash") != work_intent.get("intent_hash")
+        or context_ref.get("context_id") != agent_context.get("context_id")
+        or context_ref.get("context_hash") != agent_context.get("context_hash")
+    ):
+        raise _conflict("Product planning proposal lineage has drifted.")
+    return proposal
 
 
 def _mapping(value: object, label: str) -> Mapping[str, Any]:

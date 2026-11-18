@@ -15,7 +15,9 @@ from nex_ae_api.product_capabilities import load_product_capability_registry
 from nex_ae_api.product_planning_proposals import (
     ProductPlanningProposalError,
     build_product_planning_proposal,
+    product_planning_proposal_reference,
     validate_product_planning_proposal,
+    validate_product_planning_proposal_reference,
 )
 from nex_ae_api.semantic_candidate_evidence import (
     build_semantic_candidate_evidence,
@@ -114,7 +116,7 @@ def _lineage(candidate: dict[str, object]):
         },
         request_id="proposal-request-1",
         trace_id="d" * 32,
-        admission_policy_ref=policy.admission_policy_ref,
+        admission_policy_ref="semantic-admission://plan/qwen35-9b/revision-1",
         directive="CONTINUE",
         failure_code=None,
         created_at="2026-11-18T00:00:00Z",
@@ -147,6 +149,13 @@ def test_product_proposal_is_hash_bound_evidence_not_agent_plan() -> None:
     assert "agent_plan_id" not in proposal
     assert "executable_plan_id" not in proposal
     assert validate_product_planning_proposal(proposal) == proposal
+    reference = product_planning_proposal_reference(proposal)
+    assert reference["proposal_hash"] == proposal["proposal_hash"]
+    assert (
+        reference["candidate_payload_storage_ref"]
+        == (proposal["candidate_ref"]["storage_ref"])
+    )
+    assert validate_product_planning_proposal_reference(reference) == reference
 
 
 @pytest.mark.parametrize(

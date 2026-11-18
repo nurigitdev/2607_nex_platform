@@ -102,6 +102,12 @@ class ProfileAwarePlanCandidateService:
     registry: PlanCandidateProfileRegistry
 
     def generate_and_bind(self, **kwargs: Any) -> Any:
+        return self._service(kwargs).generate_and_bind(**kwargs)
+
+    def generate_proposal(self, **kwargs: Any) -> Any:
+        return self._service(kwargs).generate_proposal(**kwargs)
+
+    def _service(self, kwargs: Mapping[str, Any]) -> LivePlanCandidateService:
         work_intent = kwargs.get("work_intent")
         capability_id = (
             str(work_intent.get("intent_label"))
@@ -114,7 +120,7 @@ class ProfileAwarePlanCandidateService:
             service = replace(
                 service, prompt_binding_key=registration.prompt_binding_key
             )
-        return service.generate_and_bind(**kwargs)
+        return service
 
 
 def build_m1_plan_candidate_profile_registry(

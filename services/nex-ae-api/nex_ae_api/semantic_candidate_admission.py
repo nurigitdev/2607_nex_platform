@@ -60,6 +60,10 @@ from nex_ae_api.product_capability_retirements import (
     ProductCapabilityRetirementProjection,
     load_product_capability_retirement_projection,
 )
+from nex_ae_api.product_planning_proposals import (
+    ProductPlanningProposalError,
+    build_product_planning_proposal,
+)
 from nex_ae_api.product_planning_runtime import ProductPlanningRuntimeError
 from nex_ae_api.semantic_candidate_evidence import (
     InMemorySemanticCandidateStorage,
@@ -582,6 +586,61 @@ class DeterministicCandidateAdmissionService:
             and self.product_planning_router is not None
         ):
             try:
+                product_registration = (
+                    self.product_planning_router.resolve_registration(
+                        work_intent=work_intent,
+                        capability_snapshot=capability_snapshot,
+                    )
+                )
+                planning_proposal = None
+                if (
+                    product_registration is not None
+                    and product_registration.planning_policy.mode
+                    != "DETERMINISTIC_ONLY"
+                ):
+                    (
+                        plan_evidence,
+                        plan_candidate,
+                        _plan_result,
+                        resumed,
+                    ) = self._stage(
+                        request=request,
+                        execution_id=execution_id,
+                        semantic_stage="PLAN",
+                        candidate_id=ids.candidate("PLAN"),
+                        invoke=lambda: self.plan_stage.generate_proposal(
+                            work_intent=work_intent,
+                            agent_context=agent_context,
+                            capability_snapshot=capability_snapshot,
+                            request_id=request.request_id,
+                            trace_id=request.trace_id,
+                            planning_mode=self.mode,
+                        ),
+                        now=now,
+                    )
+                    stages.append(_stage_projection(plan_evidence, resumed=resumed))
+                    if plan_evidence["directive"] == "CONTINUE":
+                        planning_proposal = build_product_planning_proposal(
+                            evidence=plan_evidence,
+                            candidate=plan_candidate,
+                            work_intent=work_intent,
+                            agent_context=agent_context,
+                            registration=product_registration,
+                            admitted_capability_ids=tuple(
+                                binding.capability_id
+                                for binding in product_registration.required_capabilities
+                            ),
+                        )
+                    elif product_registration.planning_policy.mode == (
+                        "PROVIDER_ASSISTED_REQUIRED"
+                    ):
+                        return _stopped(
+                            self.mode,
+                            execution_id,
+                            stages,
+                            work_intent_id=ids.work_intent,
+                            agent_context_id=ids.context,
+                        )
                 product_admission = self.product_planning_router.begin_if_registered(
                     work_intent=work_intent,
                     agent_context=agent_context,
@@ -590,7 +649,16 @@ class DeterministicCandidateAdmissionService:
                         **execution,
                         "execution_id": execution_id,
                     },
+                    planning_proposal=planning_proposal,
                 )
+            except ProductPlanningProposalError as exc:
+                raise SemanticCandidateAdmissionError(
+                    409,
+                    exc.error_code,
+                    exc.detail,
+                    False,
+                    semantic_stage="PLAN",
+                ) from exc
             except ProductPlanningRuntimeError as exc:
                 status_code = 503 if exc.retryable else 409
                 raise SemanticCandidateAdmissionError(

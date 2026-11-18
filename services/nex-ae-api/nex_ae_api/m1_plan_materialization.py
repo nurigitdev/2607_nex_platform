@@ -20,6 +20,9 @@ from nex_ae_api.planning_capabilities import (
     capability_by_exact_version,
     validate_capability_snapshot_contract,
 )
+from nex_ae_api.product_planning_proposals import (
+    validate_product_planning_proposal_reference,
+)
 
 M1_PLAN_MATERIALIZATION_SCHEMA_VERSION = "ae.m1_plan_materialization.v1"
 M1_PREPARATION_SCHEMA_VERSION = "nex.mybee.m1-transaction-preparation.v1"
@@ -78,6 +81,7 @@ def materialize_m1_transaction_plan(
     capability_snapshot: Mapping[str, Any],
     preparation_checkpoint: Mapping[str, Any],
     installed_capabilities: Mapping[str, Mapping[str, Any]],
+    product_planning_proposal_ref: Mapping[str, Any] | None = None,
 ) -> M1MaterializedPlan:
     context = _work_intent_context(work_intent)
     preparation = _preparation(preparation_checkpoint)
@@ -87,6 +91,11 @@ def materialize_m1_transaction_plan(
     except CapabilitySnapshotError as exc:
         raise _invalid(exc.detail) from exc
     capabilities = _capabilities(snapshot, installed_capabilities)
+    proposal_ref = (
+        None
+        if product_planning_proposal_ref is None
+        else validate_product_planning_proposal_reference(product_planning_proposal_ref)
+    )
     _require_lineage(
         work_intent=work_intent,
         agent_context=agent_context,
@@ -119,6 +128,7 @@ def materialize_m1_transaction_plan(
         context=context,
         preparation=preparation,
         capabilities=capabilities,
+        proposal_ref=proposal_ref,
         agent_plan_id=identities["agent-plan"],
     )
     validation = validate_agent_plan(
@@ -152,6 +162,7 @@ def _agent_plan(
     context: Mapping[str, Any],
     preparation: Mapping[str, Any],
     capabilities: Mapping[str, Mapping[str, Any]],
+    proposal_ref: Mapping[str, Any] | None,
     agent_plan_id: str,
 ) -> dict[str, Any]:
     authority = preparation["authority"]
@@ -230,7 +241,11 @@ def _agent_plan(
         ],
         "planner_provenance": {
             "builder_type": "CERTIFIED_BINDER",
-            "route_decision_ref": "plan-profile://ae/mybee-m1-authoritative/p5.1",
+            "route_decision_ref": (
+                "plan-profile://ae/mybee-m1-authoritative/p5.1"
+                if proposal_ref is None
+                else f"product-planning-proposal://{proposal_ref['proposal_hash']}"
+            ),
             "template_ref": "plan-template://ae/mybee-m1-d12-d04/v1",
             "input_context_hash": agent_context["context_hash"],
             "prompt_binding_key": None,

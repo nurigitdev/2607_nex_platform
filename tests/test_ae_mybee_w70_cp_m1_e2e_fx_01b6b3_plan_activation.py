@@ -25,8 +25,10 @@ from test_ae_mybee_w70_cp_m1_e2e_fx_01b5_plan_materialization import (
     _work_intent,
 )
 from test_ae_mybee_w70_cp_m1_e2e_fx_01b6b2_preparation_resume import (
+    DETERMINISTIC_POLICY,
     ENVELOPE_ID,
     EVIDENCE_ID,
+    M1_PRODUCT_PLANNING_POLICY,
     TENANT,
     _coordinator,
     _inputs,
@@ -40,17 +42,21 @@ NOW_TEXT = "2026-11-17T02:00:00Z"
 
 
 class _ReadyCheckpointSource:
-    def __init__(self, registration, checkpoint, preparation, events) -> None:
+    def __init__(
+        self, registration, checkpoint, preparation, events, *, proposal_ref=None
+    ) -> None:
         self.registration = registration
         self.checkpoint = checkpoint
         self.preparation = preparation
         self.events = events
+        self.proposal_ref = proposal_ref
 
     def load_ready_checkpoint(self, **_values):
         self.events.append("ready")
         return {
             "checkpoint": copy.deepcopy(self.checkpoint),
             "preparation": copy.deepcopy(self.preparation),
+            "planning_proposal_ref": copy.deepcopy(self.proposal_ref),
         }
 
 
@@ -189,14 +195,19 @@ class _Scheduler:
         return copy.deepcopy(job)
 
 
-def _components(*, crash_after=None):
+def _components(
+    *,
+    crash_after=None,
+    planning_policy=DETERMINISTIC_POLICY,
+    proposal_ref=None,
+):
     events = []
     runtime = _runtime()
     intent = _work_intent()
     context = _agent_context(intent)
     snapshot = _snapshot(runtime)
     preparation = _preparation(intent)
-    registration = _coordinator()[0].registration
+    registration = _coordinator(planning_policy=planning_policy)[0].registration
     checkpoint = {
         "tenant_id": TENANT,
         "agent_execution_id": intent["execution_id"],
@@ -209,7 +220,13 @@ def _components(*, crash_after=None):
         "stage": "READY_FOR_D04",
         "stage_kind": "READY",
     }
-    ready = _ReadyCheckpointSource(registration, checkpoint, preparation, events)
+    ready = _ReadyCheckpointSource(
+        registration,
+        checkpoint,
+        preparation,
+        events,
+        proposal_ref=proposal_ref,
+    )
     materializer = _Materializer(runtime, events)
     executions = _ExecutionStore(intent["execution_id"])
     agent_plans = _AgentPlanStore(events, fail_after_save=crash_after == "agent_plan")
@@ -281,6 +298,28 @@ def test_6b3_persists_complete_plan_before_existing_scheduler() -> None:
         M1_D04_CAPABILITY_ID,
     ]
     assert executable["steps"][1]["depends_on_compiled_step_keys"] == ["E1"]
+
+
+def test_6b3_required_proposal_hash_is_bound_to_deterministic_plan() -> None:
+    proposal_ref = {
+        "schema_version": "ae.product_planning_proposal_ref.v1",
+        "proposal_hash": "sha256:" + "d" * 64,
+        "candidate_id": "52000000-0000-4000-8000-000000000001",
+        "candidate_hash": "sha256:" + "e" * 64,
+        "candidate_payload_storage_ref": "private://semantic-candidates/plan-1",
+    }
+    components = _components(
+        planning_policy=M1_PRODUCT_PLANNING_POLICY,
+        proposal_ref=proposal_ref,
+    )
+
+    result = components.service.activate(**components.values)
+
+    plan = next(iter(components.agent_plans.records.values()))
+    assert plan["planner_provenance"]["route_decision_ref"] == (
+        f"product-planning-proposal://{proposal_ref['proposal_hash']}"
+    )
+    assert result["runtime_job"]["job_type"] == "START_EXECUTION"
 
 
 def test_6b3_exact_replay_reuses_all_plan_artifacts_and_runtime_job() -> None:

@@ -21,6 +21,11 @@ from nex_ae_api.planning_capabilities import (
 from nex_ae_api.product_planning_coordinators import (
     ProductPlanningCoordinatorRegistration,
 )
+from nex_ae_api.product_planning_proposals import (
+    product_planning_proposal_reference,
+    validate_product_planning_proposal,
+    validate_product_planning_proposal_reference,
+)
 from nex_ae_api.product_preparation_persistence import (
     PRODUCT_PREPARATION_CHECKPOINT_SCHEMA_VERSION,
     SqlAlchemyGeneralizedWaitEventRepository,
@@ -39,6 +44,7 @@ M1_PRODUCT_PREPARATION_NOTIFICATION_SCHEMA_VERSION = (
     "ae.product_preparation_notification.v1"
 )
 _PREPARATION_REF_KIND = "M1_PREPARATION_CHECKPOINT"
+_PROPOSAL_REF_KIND = "PRODUCT_PLANNING_PROPOSAL"
 _STAGES = {
     "WAITING_BUSINESS_APPROVAL": (
         "BUSINESS_FORMAL",
@@ -113,6 +119,7 @@ class InstalledM1ProductPlanningCoordinator:
         agent_context: Mapping[str, Any],
         capability_snapshot: Mapping[str, Any],
         execution: Mapping[str, Any],
+        planning_proposal: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
         lineage = self._lineage(
             work_intent=work_intent,
@@ -121,8 +128,11 @@ class InstalledM1ProductPlanningCoordinator:
             execution=execution,
         )
         latest = self._latest(lineage)
+        proposal_ref = self._proposal_reference(planning_proposal)
         if latest is not None:
             self._require_checkpoint_lineage(latest, lineage)
+            if m1_product_planning_proposal_ref(latest) != proposal_ref:
+                raise _conflict("M1 Product planning proposal replay has drifted.")
             if latest["checkpoint_version"] != 1:
                 raise _conflict("M1 preparation has already advanced beyond begin.")
             return self._result(latest, replayed=True)
@@ -144,6 +154,7 @@ class InstalledM1ProductPlanningCoordinator:
             preparation=preparation,
             previous=None,
             causation_id=work_intent["source"]["source_ref"],
+            proposal_ref=proposal_ref,
         )
         return self._result(checkpoint, replayed=False)
 
@@ -289,6 +300,7 @@ class InstalledM1ProductPlanningCoordinator:
             preparation=advanced,
             previous=previous,
             causation_id=event_id,
+            proposal_ref=m1_product_planning_proposal_ref(previous),
         )
         return self._result(checkpoint, replayed=False)
 
@@ -319,6 +331,7 @@ class InstalledM1ProductPlanningCoordinator:
         return {
             "checkpoint": dict(checkpoint),
             "preparation": m1_preparation_projection(checkpoint),
+            "planning_proposal_ref": m1_product_planning_proposal_ref(checkpoint),
         }
 
     def _persist_checkpoint(
@@ -328,6 +341,7 @@ class InstalledM1ProductPlanningCoordinator:
         preparation: Mapping[str, Any],
         previous: Mapping[str, Any] | None,
         causation_id: str | None,
+        proposal_ref: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
         stage = str(preparation.get("stage") or "")
         if stage not in {*_STAGES, self.registration.ready_state}:
@@ -351,6 +365,15 @@ class InstalledM1ProductPlanningCoordinator:
                 "projection": dict(preparation),
             }
         ]
+        if proposal_ref is not None:
+            authority_refs.append(
+                {
+                    "ref_kind": _PROPOSAL_REF_KIND,
+                    "projection": validate_product_planning_proposal_reference(
+                        proposal_ref
+                    ),
+                }
+            )
         if stage in _STAGES:
             authority_kind, _event_type, authority_key = _STAGES[stage]
             authority_refs.append(
@@ -600,6 +623,33 @@ class InstalledM1ProductPlanningCoordinator:
             raise _invalid("M1 preparation authority source returned an invalid type.")
         return authority
 
+    def _proposal_reference(
+        self, value: Mapping[str, Any] | None
+    ) -> dict[str, Any] | None:
+        mode = self.registration.planning_policy.mode
+        if value is None:
+            if mode == "PROVIDER_ASSISTED_REQUIRED":
+                raise _invalid("M1 Product planning proposal is required.")
+            return None
+        if mode == "DETERMINISTIC_ONLY":
+            raise _invalid("M1 deterministic-only planning rejects a proposal.")
+        try:
+            proposal = validate_product_planning_proposal(value)
+        except ValueError as exc:
+            raise _invalid("M1 Product planning proposal is invalid.") from exc
+        coordinator = proposal["coordinator_ref"]
+        if (
+            coordinator.get("coordinator_id") != self.registration.coordinator_id
+            or coordinator.get("coordinator_version")
+            != self.registration.coordinator_version
+            or coordinator.get("coordinator_registration_hash")
+            != self.registration.registration_hash
+            or proposal.get("planning_policy")
+            != self.registration.planning_policy.projection()
+        ):
+            raise _conflict("M1 Product planning proposal registration has drifted.")
+        return product_planning_proposal_reference(proposal)
+
 
 def m1_preparation_projection(checkpoint: Mapping[str, Any]) -> dict[str, Any]:
     matches = [
@@ -617,6 +667,24 @@ def m1_preparation_projection(checkpoint: Mapping[str, Any]) -> dict[str, Any]:
     ):
         raise _conflict("M1 preparation projection differs from checkpoint lineage.")
     return projection
+
+
+def m1_product_planning_proposal_ref(
+    checkpoint: Mapping[str, Any],
+) -> dict[str, Any] | None:
+    matches = [
+        item
+        for item in checkpoint.get("authority_refs", ())
+        if isinstance(item, Mapping) and item.get("ref_kind") == _PROPOSAL_REF_KIND
+    ]
+    if not matches:
+        return None
+    if len(matches) != 1 or not isinstance(matches[0].get("projection"), Mapping):
+        raise _conflict("M1 Product planning proposal reference is invalid.")
+    try:
+        return validate_product_planning_proposal_reference(matches[0]["projection"])
+    except ValueError as exc:
+        raise _conflict("M1 Product planning proposal reference has drifted.") from exc
 
 
 _preparation_projection = m1_preparation_projection

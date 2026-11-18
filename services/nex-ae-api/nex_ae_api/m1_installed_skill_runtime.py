@@ -256,12 +256,14 @@ class M1InstalledSkillRuntime:
         agent_context: Mapping[str, Any],
         capability_snapshot: Mapping[str, Any],
         preparation_checkpoint: Mapping[str, Any],
+        product_planning_proposal_ref: Mapping[str, Any] | None = None,
     ):
         return materialize_m1_transaction_plan(
             work_intent=work_intent,
             agent_context=agent_context,
             capability_snapshot=capability_snapshot,
             preparation_checkpoint=preparation_checkpoint,
+            product_planning_proposal_ref=product_planning_proposal_ref,
             installed_capabilities={
                 item.capability.capability_id: item.capability.capability
                 for item in self._catalog.selections
@@ -653,9 +655,7 @@ class _M1JournalControlledRuntime(ControlledSkillRuntime):
         metadata = authority.runtime_metadata
         preparation = metadata.get("preparation_checkpoint")
         work_intent = metadata.get("work_intent")
-        if not isinstance(preparation, Mapping) or not isinstance(
-            work_intent, Mapping
-        ):
+        if not isinstance(preparation, Mapping) or not isinstance(work_intent, Mapping):
             raise ControlledSkillRuntimeError(
                 "M1 durable preparation lineage is unavailable."
             )

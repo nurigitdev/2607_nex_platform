@@ -14,6 +14,7 @@ from mybee_ax.orchestration import (
     load_m1_transaction_preparation_registration,
 )
 from nex_ae_api.m1_product_planning_coordinator import (
+    M1_PRODUCT_PLANNING_POLICY,
     build_m1_product_planning_coordinator_registration,
 )
 from nex_ae_api.m1_product_preparation_coordinator import (
@@ -22,6 +23,7 @@ from nex_ae_api.m1_product_preparation_coordinator import (
 )
 from nex_ae_api.planning_capabilities import build_capability_snapshot
 from nex_ae_api.product_capabilities import load_product_capability_registry
+from nex_ae_api.product_planning_coordinators import ProductPlanningPolicy
 from nex_runtime.semantic_hashes import semantic_sha256_hash_ref
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -44,6 +46,14 @@ NOW_TEXT = "2026-11-17T01:00:00Z"
 HASH_A = "sha256:" + "a" * 64
 HASH_B = "sha256:" + "b" * 64
 HASH_C = "sha256:" + "c" * 64
+DETERMINISTIC_POLICY = ProductPlanningPolicy(
+    mode="DETERMINISTIC_ONLY",
+    proposal_schema_version="ae.product_planning_proposal.v1",
+    prompt_binding_key="ae.plan_builder.project_delegation.v1",
+    admission_policy_ref="ae.product_planning_proposal.strict.v1",
+    deterministic_fallback_ref=None,
+    proposal_consumers=(),
+)
 
 
 class _CheckpointRepository:
@@ -320,7 +330,7 @@ def _inputs():
     return work_intent, context, snapshot, {"execution_id": EXECUTION_ID}
 
 
-def _coordinator(*, authority_source=None):
+def _coordinator(*, authority_source=None, planning_policy=DETERMINISTIC_POLICY):
     capabilities = load_product_capability_registry(
         {
             "NEX_AE_PRODUCT_CAPABILITY_REGISTRY_PATH": str(
@@ -333,6 +343,7 @@ def _coordinator(*, authority_source=None):
     registration = build_m1_product_planning_coordinator_registration(
         product_capabilities=capabilities,
         preparation_registration=adapter.registration,
+        planning_policy=planning_policy,
     )
     checkpoints = _CheckpointRepository()
     waits = _WaitEventRepository(checkpoints)
@@ -346,6 +357,45 @@ def _coordinator(*, authority_source=None):
         clock=lambda: NOW,
     )
     return coordinator, adapter, source, checkpoints, waits
+
+
+def _planning_proposal(registration, work_intent, context):
+    proposal = {
+        "schema_version": "ae.product_planning_proposal.v1",
+        "tenant_id": TENANT,
+        "owner_subject_id": SUBJECT,
+        "execution_id": work_intent["execution_id"],
+        "work_intent_ref": {
+            "work_intent_id": work_intent["work_intent_id"],
+            "intent_hash": work_intent["intent_hash"],
+        },
+        "agent_context_ref": {
+            "context_id": context["context_id"],
+            "context_hash": context["context_hash"],
+        },
+        "coordinator_ref": {
+            "coordinator_id": registration.coordinator_id,
+            "coordinator_version": registration.coordinator_version,
+            "coordinator_registration_hash": registration.registration_hash,
+        },
+        "planning_policy": registration.planning_policy.projection(),
+        "candidate_ref": {
+            "candidate_id": "42000000-0000-4000-8000-000000000001",
+            "candidate_hash": HASH_A,
+            "storage_ref": "private://semantic-candidates/plan-1",
+            "size_bytes": 128,
+        },
+        "suggested_capability_ids": [registration.capability_id],
+        "provider_provenance": {
+            "model_ref": "Qwen3.5-9B",
+            "admission_policy_ref": "semantic-admission://plan/revision-1",
+        },
+        "created_at": NOW_TEXT,
+        "content_included": False,
+        "provider_plan_authoritative": False,
+    }
+    proposal["proposal_hash"] = semantic_sha256_hash_ref(proposal)
+    return proposal
 
 
 def _notify(coordinator, checkpoint, *, event_id, evidence_ref):
@@ -435,6 +485,61 @@ def test_6b2_reaches_ready_through_two_fresh_authority_resumes() -> None:
         ("BUSINESS", ENVELOPE_ID),
         ("ACCOUNTING", EVIDENCE_ID),
     ]
+
+
+def test_required_product_proposal_is_bounded_and_replayed_exactly() -> None:
+    coordinator, adapter, _source, checkpoints, _waits = _coordinator(
+        planning_policy=M1_PRODUCT_PLANNING_POLICY
+    )
+    work_intent, context, snapshot, execution = _inputs()
+    proposal = _planning_proposal(coordinator.registration, work_intent, context)
+    values = {
+        "work_intent": work_intent,
+        "agent_context": context,
+        "capability_snapshot": snapshot,
+        "execution": execution,
+        "planning_proposal": proposal,
+    }
+
+    first = coordinator.begin(**values)
+    replay = coordinator.begin(**values)
+
+    assert replay["replayed"] is True
+    assert replay["checkpoint"] == first["checkpoint"]
+    proposal_records = [
+        item
+        for item in first["checkpoint"]["authority_refs"]
+        if item.get("ref_kind") == "PRODUCT_PLANNING_PROPOSAL"
+    ]
+    assert proposal_records == [
+        {
+            "ref_kind": "PRODUCT_PLANNING_PROPOSAL",
+            "projection": {
+                "schema_version": "ae.product_planning_proposal_ref.v1",
+                "proposal_hash": proposal["proposal_hash"],
+                "candidate_id": proposal["candidate_ref"]["candidate_id"],
+                "candidate_hash": proposal["candidate_ref"]["candidate_hash"],
+                "candidate_payload_storage_ref": proposal["candidate_ref"][
+                    "storage_ref"
+                ],
+            },
+        }
+    ]
+    assert "provider_provenance" not in proposal_records[0]["projection"]
+    assert len(checkpoints.records) == 1
+    assert adapter.calls == [("BEGIN", None)]
+
+    drifted = copy.deepcopy(proposal)
+    drifted["candidate_ref"]["candidate_id"] = "42000000-0000-4000-8000-000000000002"
+    drifted["proposal_hash"] = semantic_sha256_hash_ref(
+        {key: value for key, value in drifted.items() if key != "proposal_hash"}
+    )
+    with pytest.raises(M1ProductPreparationCoordinatorError) as raised:
+        coordinator.begin(**{**values, "planning_proposal": drifted})
+
+    assert raised.value.error_code == "ae.m1_product_preparation_conflict"
+    assert len(checkpoints.records) == 1
+    assert adapter.calls == [("BEGIN", None)]
 
 
 def test_6b2_exact_begin_event_and_ack_loss_replays_without_provider_mutation() -> None:
