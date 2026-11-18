@@ -504,7 +504,14 @@ def _semantic_runtime_failure(log_output: str) -> str:
         r"([A-Za-z][A-Za-z0-9_]{0,95})",
         log_output,
     )
-    return match.group(1) if match else "not_observed"
+    if match:
+        return match.group(1)
+    traceback_types = re.findall(
+        r"(?m)^.*\|\s*(?:[A-Za-z_][A-Za-z0-9_.]*\.)?"
+        r"([A-Za-z][A-Za-z0-9_]{0,87}(?:Error|Exception)):\s",
+        log_output,
+    )
+    return traceback_types[-1] if traceback_types else "not_observed"
 
 
 def _run_playwright(

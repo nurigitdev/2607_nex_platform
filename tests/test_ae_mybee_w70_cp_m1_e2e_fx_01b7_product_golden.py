@@ -188,6 +188,14 @@ def test_product_semantic_runtime_failure_keeps_only_exception_type() -> None:
         )
         == "CandidateSchemaError"
     )
+    assert (
+        acceptance._semantic_runtime_failure(
+            "nex-ae-api-1 | Traceback (most recent call last):\n"
+            "nex-ae-api-1 |   protected payload omitted\n"
+            "nex-ae-api-1 | TypeError: bounded message\n"
+        )
+        == "TypeError"
+    )
     assert acceptance._semantic_runtime_failure("unrelated logs") == "not_observed"
 
 
