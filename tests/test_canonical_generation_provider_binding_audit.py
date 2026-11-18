@@ -71,6 +71,34 @@ def test_audit_rejects_compose_or_relocation_drift(tmp_path: Path) -> None:
     )
 
 
+def test_audit_rejects_canonical_generation_timeout_budget_drift(
+    tmp_path: Path,
+) -> None:
+    root = _copy_audit_inputs(tmp_path)
+    env_path = root / ".env.example"
+    env_path.write_text(
+        env_path.read_text(encoding="utf-8").replace(
+            "NEX_MO_VLLM_TIMEOUT_SECONDS=125",
+            "NEX_MO_VLLM_TIMEOUT_SECONDS=60",
+        ),
+        encoding="utf-8",
+    )
+    compose_path = root / "deployment/compose/canonical-platform.override.yaml"
+    compose_path.write_text(
+        compose_path.read_text(encoding="utf-8").replace(
+            "${NEX_MO_VLLM_TIMEOUT_SECONDS:-125}",
+            "${NEX_MO_VLLM_TIMEOUT_SECONDS:-60}",
+        ),
+        encoding="utf-8",
+    )
+
+    result = audit.audit_canonical_generation_provider_binding(root)
+
+    assert result["status"] == "FAIL"
+    assert result["checks"]["environment_defaults_exact"] is False
+    assert result["checks"]["compose_generation_defaults_exact"] is False
+
+
 def test_main_writes_report_and_returns_failure(monkeypatch, tmp_path: Path, capsys) -> None:
     report = tmp_path / "binding.json"
     monkeypatch.setattr(
