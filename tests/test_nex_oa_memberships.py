@@ -5,31 +5,30 @@ from types import SimpleNamespace
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy.exc import IntegrityError, SQLAlchemyError
-from sqlalchemy import text
-
 from nex_oa.memberships import (
     DEFAULT_MEMBERSHIP_ROLES,
     DEFAULT_MEMBERSHIP_SCOPES,
-    InMemoryOaTenantMembershipRegistry,
+    OA_MEMBERSHIP_AUTHORITY_WRITE_SCOPE,
     OA_TENANT_MEMBERSHIP_SCHEMA_VERSION,
     OA_TENANT_MEMBERSHIP_SNAPSHOT_SCHEMA_VERSION,
+    InMemoryOaTenantMembershipRegistry,
     OaMembershipError,
     SqlAlchemyOaTenantMembershipRegistry,
+    _json_loads,
+    _json_sql_expression,
+    _membership_from_row,
     build_membership_record,
     build_membership_snapshot,
     build_tenant_membership_registry_for_runtime,
     normalize_membership_status,
     register_identity_membership_routes,
-    _json_loads,
-    _json_sql_expression,
-    _membership_from_row,
 )
 from nex_oa.subjects import (
-    InMemoryOaSubjectRegistry,
     OA_IDENTITY_BOOTSTRAP_WRITE_SCOPE,
-    build_subject_registry_snapshot,
+    InMemoryOaSubjectRegistry,
+    SubjectRegistryError,
     build_subject_record,
+    build_subject_registry_snapshot,
     build_tenant_record,
 )
 from nex_runtime import (
@@ -42,18 +41,24 @@ from nex_runtime import (
     build_session_factory,
     issue_mock_service_token,
 )
-
+from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 TRACE_ID = "4bf92f3577b34da6a3ce929d0e0e4736"
 REQUEST_ID = "0189f0ff-8f22-4f72-9b47-b481dc21bb21"
 
 
 def auth_headers(
-    *, audience: str = "nex-oa", bootstrap_scope: bool = True
+    *,
+    audience: str = "nex-oa",
+    bootstrap_scope: bool = True,
+    authority_scope: bool = False,
 ) -> dict[str, str]:
     scopes = [DEFAULT_SERVICE_SCOPE]
     if bootstrap_scope:
         scopes.append(OA_IDENTITY_BOOTSTRAP_WRITE_SCOPE)
+    if authority_scope:
+        scopes.append(OA_MEMBERSHIP_AUTHORITY_WRITE_SCOPE)
     issued = issue_mock_service_token(
         service_id="nex-ae-api", audience=audience, scopes=scopes
     )
@@ -199,6 +204,185 @@ def test_in_memory_membership_registry_is_idempotent_and_readable() -> None:
     assert first["membership"]["scopes"] == list(DEFAULT_MEMBERSHIP_SCOPES)
     assert registry.get_membership(tenant_id="tenant-a", subject_id="user-a") == first
     assert registry.get_membership(tenant_id="tenant-a", subject_id="missing") is None
+
+
+@pytest.mark.parametrize("registry_kind", ["memory", "sqlite"])
+def test_membership_authority_replacement_is_revision_guarded_and_replay_safe(
+    registry_kind,
+) -> None:
+    registry = (
+        InMemoryOaTenantMembershipRegistry()
+        if registry_kind == "memory"
+        else sqlite_membership_registry()[0]
+    )
+    created = registry.ensure_membership(
+        {
+            "tenant_id": "tenant-agent",
+            "subject_id": "agent-ia",
+            "roles": ["nex-agent", "nex-agent-ia"],
+            "scopes": ["work:delegate"],
+        }
+    )
+
+    updated = registry.replace_authority(
+        tenant_id="tenant-agent",
+        subject_id="agent-ia",
+        payload={
+            "expected_revision": created["membership"]["revision"],
+            "roles": ["nex-agent", "nex-agent-ia"],
+            "scopes": ["work:claim", "work:delegate"],
+        },
+    )
+    replayed = registry.replace_authority(
+        tenant_id="tenant-agent",
+        subject_id="agent-ia",
+        payload={
+            "expected_revision": updated["membership"]["revision"],
+            "roles": ["nex-agent", "nex-agent-ia"],
+            "scopes": ["work:claim", "work:delegate"],
+        },
+    )
+
+    assert updated["membership"]["revision"] == 2
+    assert updated["membership"]["scopes"] == ["work:claim", "work:delegate"]
+    assert replayed["membership"] == updated["membership"]
+
+    with pytest.raises(OaMembershipError) as conflict:
+        registry.replace_authority(
+            tenant_id="tenant-agent",
+            subject_id="agent-ia",
+            payload={
+                "expected_revision": 1,
+                "roles": ["nex-agent"],
+                "scopes": ["work:delegate"],
+            },
+        )
+    assert conflict.value.error_code == "oa.membership_authority_revision_conflict"
+
+
+@pytest.mark.parametrize("registry_kind", ["memory", "sqlite"])
+def test_membership_authority_replacement_rejects_missing_membership(
+    registry_kind,
+) -> None:
+    registry = (
+        InMemoryOaTenantMembershipRegistry()
+        if registry_kind == "memory"
+        else sqlite_membership_registry()[0]
+    )
+
+    with pytest.raises(OaMembershipError) as raised:
+        registry.replace_authority(
+            tenant_id="tenant-missing",
+            subject_id="agent-missing",
+            payload={
+                "expected_revision": 1,
+                "roles": ["nex-agent"],
+                "scopes": ["work:claim"],
+            },
+        )
+
+    assert raised.value.error_code == "oa.membership_not_found"
+
+
+def test_membership_authority_api_requires_lifecycle_scope_and_updates_profile() -> None:
+    client = build_client()
+    client.post(
+        "/internal/v1/identity/memberships/ensure",
+        headers=auth_headers(),
+        json={
+            "tenant_id": "tenant-authority",
+            "subject_id": "agent-authority",
+            "roles": ["nex-agent", "nex-agent-ia"],
+            "scopes": ["work:delegate"],
+        },
+    )
+    path = (
+        "/internal/v1/identity/memberships/tenants/tenant-authority/"
+        "subjects/agent-authority/authority"
+    )
+    payload = {
+        "expected_revision": 1,
+        "roles": ["nex-agent", "nex-agent-ia"],
+        "scopes": ["work:claim", "work:delegate"],
+    }
+
+    denied = client.put(path, headers=auth_headers(), json=payload)
+    updated = client.put(
+        path,
+        headers=auth_headers(authority_scope=True),
+        json=payload,
+    )
+
+    assert denied.status_code == 403
+    assert denied.json()["error_code"] == "TOKEN_SCOPE_MISSING"
+    assert updated.status_code == 200
+    assert updated.json()["membership"]["revision"] == 2
+    assert updated.json()["membership"]["scopes"] == [
+        "work:claim",
+        "work:delegate",
+    ]
+
+    conflict = client.put(
+        path,
+        headers=auth_headers(authority_scope=True),
+        json={**payload, "scopes": ["work:delegate"]},
+    )
+    assert conflict.status_code == 409
+    assert conflict.json()["error_code"] == (
+        "oa.membership_authority_revision_conflict"
+    )
+
+
+@pytest.mark.parametrize(
+    ("payload", "error_code"),
+    [
+        ({}, "oa.membership_authority_field_missing"),
+        (
+            {
+                "expected_revision": 1,
+                "roles": ["agent"],
+                "scopes": ["work"],
+                "unexpected": True,
+            },
+            "oa.membership_authority_field_invalid",
+        ),
+        (
+            {"expected_revision": True, "roles": ["agent"], "scopes": ["work"]},
+            "oa.membership_authority_revision_invalid",
+        ),
+        (
+            {"expected_revision": 0, "roles": ["agent"], "scopes": ["work"]},
+            "oa.membership_authority_revision_invalid",
+        ),
+        (
+            {"expected_revision": 1, "roles": [], "scopes": ["work"]},
+            "oa.membership_list_invalid",
+        ),
+        (
+            {
+                "expected_revision": 1,
+                "roles": ["agent", "agent"],
+                "scopes": ["work"],
+            },
+            "oa.membership_authority_duplicate",
+        ),
+    ],
+)
+def test_membership_authority_replacement_rejects_invalid_contract(
+    payload, error_code
+) -> None:
+    registry = InMemoryOaTenantMembershipRegistry()
+    registry.ensure_membership(
+        {"tenant_id": "tenant-a", "subject_id": "subject-a"}
+    )
+
+    with pytest.raises(OaMembershipError) as raised:
+        registry.replace_authority(
+            tenant_id="tenant-a",
+            subject_id="subject-a",
+            payload=payload,
+        )
+    assert raised.value.error_code == error_code
 
 
 def test_membership_validation_rejects_invalid_status_refs_and_private_payloads() -> None:
@@ -384,6 +568,38 @@ def test_membership_registry_handles_missing_subject_snapshots_and_sqlalchemy_fa
     with pytest.raises(OaMembershipError) as missing_subject:
         registry.get_membership(tenant_id="tenant-a", subject_id="user-a")
     assert missing_subject.value.error_code == "oa.membership_registry_unavailable"
+    with pytest.raises(OaMembershipError) as missing_authority_subject:
+        registry.replace_authority(
+            tenant_id="tenant-a",
+            subject_id="user-a",
+            payload={
+                "expected_revision": 1,
+                "roles": ["employee"],
+                "scopes": ["workspace:use"],
+            },
+        )
+    assert missing_authority_subject.value.error_code == (
+        "oa.membership_registry_unavailable"
+    )
+
+    monkeypatch.setattr(
+        registry.subject_registry,
+        "get_subject",
+        lambda **_kwargs: (_ for _ in ()).throw(
+            SubjectRegistryError(503, "oa.subject_registry_unavailable", "boom", True)
+        ),
+    )
+    with pytest.raises(OaMembershipError) as failed_authority_subject:
+        registry.replace_authority(
+            tenant_id="tenant-a",
+            subject_id="user-a",
+            payload={
+                "expected_revision": 1,
+                "roles": ["employee"],
+                "scopes": ["workspace:use"],
+            },
+        )
+    assert failed_authority_subject.value.retryable is True
 
     sql_registry, _engine = sqlite_membership_registry()
     sql_registry.ensure_membership({"tenant_id": "tenant-a", "subject_id": "user-a"})
@@ -391,6 +607,19 @@ def test_membership_registry_handles_missing_subject_snapshots_and_sqlalchemy_fa
     with pytest.raises(OaMembershipError) as sql_missing_subject:
         sql_registry.get_membership(tenant_id="tenant-a", subject_id="user-a")
     assert sql_missing_subject.value.error_code == "oa.membership_registry_unavailable"
+    with pytest.raises(OaMembershipError) as sql_missing_authority_subject:
+        sql_registry.replace_authority(
+            tenant_id="tenant-a",
+            subject_id="user-a",
+            payload={
+                "expected_revision": 1,
+                "roles": ["employee"],
+                "scopes": ["workspace:use"],
+            },
+        )
+    assert sql_missing_authority_subject.value.error_code == (
+        "oa.membership_registry_unavailable"
+    )
 
     failing_get = SqlAlchemyOaTenantMembershipRegistry(lambda: None)
     monkeypatch.setattr(
@@ -401,6 +630,61 @@ def test_membership_registry_handles_missing_subject_snapshots_and_sqlalchemy_fa
     with pytest.raises(OaMembershipError) as failed_get:
         failing_get.get_membership(tenant_id="tenant-a", subject_id="user-a")
     assert failed_get.value.error_code == "oa.membership_registry_unavailable"
+    monkeypatch.setattr(
+        failing_get,
+        "_run_in_transaction",
+        lambda operation: (_ for _ in ()).throw(SQLAlchemyError("boom")),
+    )
+    with pytest.raises(OaMembershipError) as failed_authority_update:
+        failing_get.replace_authority(
+            tenant_id="tenant-a",
+            subject_id="user-a",
+            payload={
+                "expected_revision": 1,
+                "roles": ["employee"],
+                "scopes": ["workspace:use"],
+            },
+        )
+    assert failed_authority_update.value.error_code == (
+        "oa.membership_registry_unavailable"
+    )
+
+
+def test_sqlalchemy_authority_update_fails_closed_on_concurrent_row_loss(
+    monkeypatch,
+) -> None:
+    registry = SqlAlchemyOaTenantMembershipRegistry(lambda: None)
+    existing = {
+        "tenant_ref": {"type": "oa.tenant", "id": "tenant-a"},
+        "subject_ref": {"type": "oa.user", "id": "user-a"},
+        "revision": 1,
+        "roles": ["employee"],
+        "scopes": ["workspace:use"],
+    }
+    monkeypatch.setattr(
+        registry,
+        "_select_membership",
+        lambda *_args, **_kwargs: existing,
+    )
+
+    class ConcurrentSession:
+        def get_bind(self):
+            return SimpleNamespace(dialect=SimpleNamespace(name="sqlite"))
+
+        def execute(self, *_args, **_kwargs):
+            return SimpleNamespace(rowcount=0)
+
+    with pytest.raises(OaMembershipError) as raised:
+        registry._replace_authority(
+            ConcurrentSession(),
+            tenant_id="tenant-a",
+            subject_id="user-a",
+            expected_revision=1,
+            roles=["nex-agent"],
+            scopes=["work:claim"],
+        )
+
+    assert raised.value.error_code == "oa.membership_registry_unavailable"
 
 
 def test_sqlalchemy_membership_integrity_fallbacks_and_rollback(monkeypatch) -> None:
@@ -478,9 +762,31 @@ def test_membership_json_and_timestamp_helpers_cover_storage_variants() -> None:
         "created_at": __import__("datetime").datetime(2026, 8, 12, 1, 2, 3),
         "updated_at": __import__("datetime").datetime(2026, 8, 12, 1, 2, 3),
     }
+    aware_datetime_row = {
+        **aware_row,
+        "created_at": __import__("datetime").datetime(
+            2026,
+            8,
+            12,
+            1,
+            2,
+            3,
+            tzinfo=__import__("datetime").UTC,
+        ),
+        "updated_at": __import__("datetime").datetime(
+            2026,
+            8,
+            12,
+            1,
+            2,
+            3,
+            tzinfo=__import__("datetime").UTC,
+        ),
+    }
 
     assert _membership_from_row(aware_row)["created_at"] == "2026-08-12T00:00:00Z"
     assert _membership_from_row(naive_row)["created_at"].endswith("Z")
+    assert _membership_from_row(aware_datetime_row)["created_at"].endswith("Z")
 
     class PostgresSession:
         def get_bind(self):
@@ -513,7 +819,7 @@ def test_membership_factory_selects_persistence_adapter() -> None:
 
 
 def test_nex_oa_entrypoint_registers_membership_routes() -> None:
-    import nex_oa.main as main
+    from nex_oa import main
 
     paths = {getattr(route, "path", "") for route in main.app.routes}
 

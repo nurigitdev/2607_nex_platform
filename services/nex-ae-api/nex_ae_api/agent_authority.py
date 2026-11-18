@@ -17,7 +17,7 @@ AGENT_AUTHORITY_SYNC_MODES = frozenset({"disabled", "required"})
 DEFAULT_AGENT_AUTHORITY_TIMEOUT_SECONDS = 10.0
 
 _AGENT_AUTHORITY_SCOPES = {
-    "IA": ("work:delegate",),
+    "IA": ("work:claim", "work:delegate"),
     "CA": ("work:claim", "work:delegate", "work:result:submit"),
     "PA": ("work:claim", "work:delegate", "work:result:submit"),
     "EA": ("work:claim", "work:delegate", "work:result:submit"),
@@ -68,18 +68,35 @@ class HttpOaAgentAuthoritySynchronizer:
         target_status = "ACTIVE" if status in {"ACTIVE", "CLOSING"} else "DISABLED"
         token = self._token()
         membership = self._membership(token, tenant_id=tenant, agent_id=agent)
+        authority_changed = False
         if membership is None:
             if target_status == "DISABLED":
                 return _receipt(tenant, agent, kind, target_status, changed=False)
             membership = self._ensure(
                 token, tenant_id=tenant, agent_id=agent, agent_type=kind
             )
+            authority_changed = True
 
         record = _membership_record(membership, tenant_id=tenant, agent_id=agent)
-        _require_authority_scopes(record, agent_type=kind)
+        if not _authority_profile_matches(record, agent_type=kind):
+            _require_managed_authority(record, agent_type=kind)
+            membership = self._replace_authority(
+                token,
+                tenant_id=tenant,
+                agent_id=agent,
+                agent_type=kind,
+                expected_revision=record["revision"],
+            )
+            record = _membership_record(
+                membership,
+                tenant_id=tenant,
+                agent_id=agent,
+            )
+            _require_authority_profile(record, agent_type=kind)
+            authority_changed = True
         current_status = str(record.get("status") or "")
-        changed = current_status != target_status
-        if changed:
+        lifecycle_changed = current_status != target_status
+        if lifecycle_changed:
             transition = self._transition(
                 token,
                 tenant_id=tenant,
@@ -94,7 +111,13 @@ class HttpOaAgentAuthoritySynchronizer:
                 or not isinstance(transition.get("revision"), int)
             ):
                 raise _invalid("OA Agent authority lifecycle response was not applied.")
-        return _receipt(tenant, agent, kind, target_status, changed=changed)
+        return _receipt(
+            tenant,
+            agent,
+            kind,
+            target_status,
+            changed=authority_changed or lifecycle_changed,
+        )
 
     def _membership(
         self, token: str, *, tenant_id: str, agent_id: str
@@ -121,7 +144,7 @@ class HttpOaAgentAuthoritySynchronizer:
                 "subject_id": agent_id,
                 "tenant_display_name": tenant_id,
                 "subject_display_name": f"NeX {agent_type} Agent",
-                "roles": ["nex-agent", f"nex-agent-{agent_type.lower()}"],
+                "roles": _authority_roles(agent_type),
                 "scopes": list(_AGENT_AUTHORITY_SCOPES[agent_type]),
                 "membership_metadata": {
                     "source": "nex-ae-agent-identity",
@@ -151,6 +174,28 @@ class HttpOaAgentAuthoritySynchronizer:
             },
         )
         return _response_object(response, operation="lifecycle")
+
+    def _replace_authority(
+        self,
+        token: str,
+        *,
+        tenant_id: str,
+        agent_id: str,
+        agent_type: str,
+        expected_revision: object,
+    ) -> dict[str, Any]:
+        response = self._request(
+            "PUT",
+            "/internal/v1/identity/memberships/tenants/"
+            f"{tenant_id}/subjects/{agent_id}/authority",
+            token=token,
+            json={
+                "expected_revision": expected_revision,
+                "roles": _authority_roles(agent_type),
+                "scopes": list(_AGENT_AUTHORITY_SCOPES[agent_type]),
+            },
+        )
+        return _response_object(response, operation="authority")
 
     def _request(
         self,
@@ -268,17 +313,41 @@ def _membership_record(
     return dict(record)
 
 
-def _require_authority_scopes(record: Mapping[str, Any], *, agent_type: str) -> None:
+def _authority_roles(agent_type: str) -> list[str]:
+    return ["nex-agent", f"nex-agent-{agent_type.lower()}"]
+
+
+def _authority_profile_matches(record: Mapping[str, Any], *, agent_type: str) -> bool:
+    roles = record.get("roles")
     scopes = record.get("scopes")
-    if not isinstance(scopes, list) or any(
-        not isinstance(item, str) for item in scopes
+    return (
+        isinstance(roles, list)
+        and all(isinstance(item, str) for item in roles)
+        and set(roles) == set(_authority_roles(agent_type))
+        and isinstance(scopes, list)
+        and all(isinstance(item, str) for item in scopes)
+        and set(scopes) == set(_AGENT_AUTHORITY_SCOPES[agent_type])
+    )
+
+
+def _require_managed_authority(record: Mapping[str, Any], *, agent_type: str) -> None:
+    metadata = record.get("metadata")
+    if (
+        not isinstance(metadata, Mapping)
+        or metadata.get("source") != "nex-ae-agent-identity"
+        or metadata.get("agent_type") != agent_type
     ):
-        raise _invalid("OA Agent authority scopes were malformed.")
-    missing = sorted(set(_AGENT_AUTHORITY_SCOPES[agent_type]) - set(scopes))
-    if missing:
         raise AgentAuthoritySyncError(
             "ae.agent_authority_scope_drift",
-            "OA Agent authority is missing its admitted capability scopes.",
+            "OA Agent authority profile drift is not managed by AE.",
+        )
+
+
+def _require_authority_profile(record: Mapping[str, Any], *, agent_type: str) -> None:
+    if not _authority_profile_matches(record, agent_type=agent_type):
+        raise AgentAuthoritySyncError(
+            "ae.agent_authority_scope_drift",
+            "OA Agent authority profile does not match its admitted capability.",
         )
 
 

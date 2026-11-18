@@ -12,15 +12,27 @@ TENANT_ID = "tenant-a"
 AGENT_ID = "agent-a"
 
 
-def _membership(*, status: str = "ACTIVE", scopes: list[str] | None = None):
+def _membership(
+    *,
+    status: str = "ACTIVE",
+    scopes: list[str] | None = None,
+    agent_type: str = "IA",
+    revision: int = 1,
+    managed: bool = True,
+):
     return {
         "membership": {
             "tenant_ref": {"type": "oa.tenant", "id": TENANT_ID},
             "subject_ref": {"type": "oa.user", "id": AGENT_ID},
             "status": status,
-            "revision": 1,
-            "roles": ["nex-agent", "nex-agent-ia"],
-            "scopes": scopes or ["work:delegate"],
+            "revision": revision,
+            "roles": ["nex-agent", f"nex-agent-{agent_type.lower()}"],
+            "scopes": scopes or ["work:claim", "work:delegate"],
+            "metadata": (
+                {"source": "nex-ae-agent-identity", "agent_type": agent_type}
+                if managed
+                else {}
+            ),
         }
     }
 
@@ -49,7 +61,7 @@ def test_missing_active_ia_authority_is_created_with_bounded_policy() -> None:
     assert [item[0] for item in calls] == ["GET", "POST"]
     payload = calls[1][2]["json"]
     assert payload["roles"] == ["nex-agent", "nex-agent-ia"]
-    assert payload["scopes"] == ["work:delegate"]
+    assert payload["scopes"] == ["work:claim", "work:delegate"]
     assert "M1" not in str(payload)
 
 
@@ -61,7 +73,8 @@ def test_existing_pa_authority_replays_without_mutation() -> None:
         return httpx.Response(
             200,
             json=_membership(
-                scopes=["work:claim", "work:delegate", "work:result:submit"]
+                scopes=["work:claim", "work:delegate", "work:result:submit"],
+                agent_type="PA",
             ),
         )
 
@@ -87,7 +100,8 @@ def test_inactive_agent_authority_is_revision_guarded_and_disabled() -> None:
             return httpx.Response(
                 200,
                 json=_membership(
-                    scopes=["work:claim", "work:delegate", "work:result:submit"]
+                    scopes=["work:claim", "work:delegate", "work:result:submit"],
+                    agent_type="PA",
                 ),
             )
         return httpx.Response(
@@ -141,6 +155,65 @@ def test_missing_inactive_authority_does_not_create_membership() -> None:
 
     assert calls == ["GET"]
     assert result["status"] == "DISABLED"
+
+
+def test_managed_legacy_ia_authority_is_revision_guarded_and_reconciled() -> None:
+    calls = []
+
+    def requester(method, url, **kwargs):
+        calls.append((method, url, kwargs.get("json")))
+        if method == "GET":
+            return httpx.Response(200, json=_membership(scopes=["work:delegate"]))
+        return httpx.Response(
+            200,
+            json=_membership(
+                scopes=["work:claim", "work:delegate"],
+                revision=2,
+            ),
+        )
+
+    result = HttpOaAgentAuthoritySynchronizer(
+        "https://oa.example", "signed-token", requester=requester
+    ).synchronize(
+        tenant_id=TENANT_ID,
+        agent_id=AGENT_ID,
+        agent_type="IA",
+        status="ACTIVE",
+    )
+
+    assert result["changed"] is True
+    assert [item[0] for item in calls] == ["GET", "PUT"]
+    assert calls[1][1].endswith(f"/tenants/{TENANT_ID}/subjects/{AGENT_ID}/authority")
+    assert calls[1][2] == {
+        "expected_revision": 1,
+        "roles": ["nex-agent", "nex-agent-ia"],
+        "scopes": ["work:claim", "work:delegate"],
+    }
+
+
+def test_unmanaged_authority_drift_is_not_overwritten() -> None:
+    calls = []
+
+    def requester(method, _url, **_kwargs):
+        calls.append(method)
+        return httpx.Response(
+            200,
+            json=_membership(scopes=["work:delegate"], managed=False),
+        )
+
+    synchronizer = HttpOaAgentAuthoritySynchronizer(
+        "https://oa.example", "signed-token", requester=requester
+    )
+    with pytest.raises(AgentAuthoritySyncError) as raised:
+        synchronizer.synchronize(
+            tenant_id=TENANT_ID,
+            agent_id=AGENT_ID,
+            agent_type="IA",
+            status="ACTIVE",
+        )
+
+    assert raised.value.error_code == "ae.agent_authority_scope_drift"
+    assert calls == ["GET"]
 
 
 @pytest.mark.parametrize(
@@ -285,7 +358,8 @@ def test_lifecycle_binding_and_input_validation_fail_closed() -> None:
             httpx.Response(
                 200,
                 json=_membership(
-                    scopes=["work:claim", "work:delegate", "work:result:submit"]
+                    scopes=["work:claim", "work:delegate", "work:result:submit"],
+                    agent_type="PA",
                 ),
             ),
             httpx.Response(
