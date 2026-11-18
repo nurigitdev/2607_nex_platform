@@ -121,6 +121,14 @@ def _canonical_rendered() -> dict:
                 "image": reference,
                 "restart": "unless-stopped",
             },
+            "nex-wc-assignment-dispatch-worker": {
+                "image": _references()["nex-wc-runtime"],
+                "restart": "unless-stopped",
+                "depends_on": {
+                    service_id: {"condition": "service_healthy"}
+                    for service_id in ("openbao", "nex-wc", "nex-ae-api", "nex-oa")
+                },
+            },
         }
     )
     for service_id in (
@@ -133,6 +141,7 @@ def _canonical_rendered() -> dict:
         "nex-eos",
         "nex-wa",
         "nex-ae-agent-runtime-worker",
+        "nex-wc-assignment-dispatch-worker",
         "nex-wc-event-delivery-worker",
         "nex-eos-outbox-publisher",
         "nex-wa-evidence-consumer",
@@ -468,7 +477,7 @@ def test_protected_render_runner_with_fake_compose(
 
     assert source["status"] == "SOURCE_ADMITTED"
     assert result["status"] == "PASS"
-    assert result["render"]["service_count"] == 17
+    assert result["render"]["service_count"] == 18
     assert result["secret_included"] is False
 
 

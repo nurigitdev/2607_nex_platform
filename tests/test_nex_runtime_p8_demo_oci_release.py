@@ -59,7 +59,7 @@ def test_canonical_catalog_and_packaged_entrypoints_cover_exact_release() -> Non
     entries = build_packaged_entrypoint_definitions(manifest, catalog)
 
     assert len(catalog.artifacts) == 9
-    assert len(entries) == 20
+    assert len(entries) == 21
     assert {
         item.process_id for item in entries if item.kind in {"worker", "daemon"}
     } == set(CURRENT_BACKGROUND_PROCESS_IDS)
@@ -235,7 +235,7 @@ def test_full_canonical_build_orchestration_with_fake_docker(
         "artifact_count": 9,
         "manifest_digest_count": 9,
         "non_root_image_count": 9,
-        "background_check_count": 11,
+        "background_check_count": 12,
         "release_set_ready": True,
     }
     assert result["excluded_untracked_count"] == 1
@@ -439,7 +439,7 @@ def test_runner_report_summary_and_main(
             "artifact_count": 9,
             "manifest_digest_count": 9,
             "non_root_image_count": 9,
-            "background_check_count": 11,
+            "background_check_count": 12,
             "release_set_ready": True,
         },
     }

@@ -48,7 +48,7 @@ def test_actual_postgres_current_topology_acceptance() -> None:
     assert result["evidence_classification"] == "PROTECTED_TOPOLOGY"
     assert result["actual_postgres"] is True
     assert result["artifact_count"] == 9
-    assert result["process_count"] == 20
+    assert result["process_count"] == 21
     assert result["database_count"] == 8
     assert result["cleanup_remaining"] == 0
     assert all(result["checks"].values())
@@ -73,7 +73,7 @@ def test_protected_topology_projects_sanitized_evidence(monkeypatch) -> None:
             "status": "PASS",
             "checks": {"closure": True, "postgres": True},
             "artifact_count": 9,
-            "process_count": 20,
+            "process_count": 21,
             "database_count": 8,
             "cleanup_remaining": 0,
         },
@@ -91,7 +91,7 @@ def test_protected_topology_projects_sanitized_evidence(monkeypatch) -> None:
     assert result["secret_included"] is False
     assert smoke.summary_line(result) == (
         "gb2_ca00_s08_topology=pass classification=PROTECTED_TOPOLOGY "
-        "checks=2/2 artifacts=9 processes=20 databases=8 remaining=0"
+        "checks=2/2 artifacts=9 processes=21 databases=8 remaining=0"
     )
 
 

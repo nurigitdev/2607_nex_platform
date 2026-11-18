@@ -174,8 +174,8 @@ def _execute_protected_topology(
         "all_migrations_current": all(item["current"] for item in migrations.values()),
         "closure_passed": closure["status"] == "PASS",
         "nine_artifacts": closure["artifact_count"] == 9,
-        "twenty_processes": closure["process_count"] == 20,
-        "eleven_background_checks_passed": len(background_checks) == 11
+        "twenty_one_processes": closure["process_count"] == 21,
+        "twelve_background_checks_passed": len(background_checks) == 12
         and all(item["passed"] for item in background_checks.values()),
         "eight_api_imports_passed": len(api_imports) == 8 and all(api_imports.values()),
         "three_promoted_work_loops_passed": all(
@@ -259,6 +259,7 @@ def _run_background_checks(manifest, environment: Mapping[str, str]) -> dict[str
             passed = payload.get("readiness_status") == "READY"
         elif process_id in {
             "nex-ae-agent-runtime-worker",
+            "nex-wc-assignment-dispatch-worker",
             "nex-wc-event-delivery-worker",
             "nex-eos-outbox-publisher",
         }:

@@ -413,6 +413,22 @@ claim. The restarted generic scan converges the WorkItem to one authoritative
 Assignment and Claim without fixture transitions. Compose, OCI, healthcheck,
 and installed topology activation remain assigned to `.5B.4`.
 
+`CP-M1-E2E-FX-01B.6B.5B.4` implementation evidence is recorded in
+[`mybee_phase1_w70_cp_m1_e2e_fx_01b6b5b4_compose_oci_topology.md`](../../slices/mybee_phase1_w70_cp_m1_e2e_fx_01b6b5b4_compose_oci_topology.md).
+The assignment dispatcher is now the canonical twenty-first process and
+reuses the existing non-root `nex-wc-runtime` image as a second WC entrypoint.
+Compose startup is gated on healthy OpenBao, WC, AE, and OA services; protected
+profiles fail closed without both assignment endpoints and signed trust edges.
+Source admission, actual Compose rendering, package-isolated OCI checking, and
+scenario-residue rollback guards pass without a migration or provider contact.
+The owner-scoped WC image and dispatcher check pass, but the complete canonical
+release-set package matrix exposes a pre-existing AE image gap: the generic AE
+image does not include the admitted NSL wheel and the AE worker exits with
+`ModuleNotFoundError: nsl`. Actual PostgreSQL concurrency and authoritative
+claim-handoff delivery remain assigned to `.5B.5`, which is paused until a
+short `.5B.4A` AE NSL packaging reconciliation restores the complete release
+set.
+
 `CP-M1-E2E-FX-01B.6A.1` implementation evidence is recorded in
 [`mybee_phase1_w70_cp_m1_e2e_fx_01b6a1_refresh_contract_source_resolver.md`](../../slices/mybee_phase1_w70_cp_m1_e2e_fx_01b6a1_refresh_contract_source_resolver.md).
 It closes the canonical protected contract and the mutation-free EOS source

@@ -40,6 +40,7 @@ CURRENT_BACKGROUND_PROCESS_IDS = (
     *BACKGROUND_PROCESS_IDS,
     "nex-wa-evidence-consumer",
     "nex-ae-agent-runtime-worker",
+    "nex-wc-assignment-dispatch-worker",
     "nex-wc-event-delivery-worker",
     "nex-eos-outbox-publisher",
 )
@@ -59,6 +60,17 @@ CURRENT_BACKGROUND_ENVIRONMENT_NAMES = {
         "NEX_AE_AGENT_WORKER_ID",
         "NEX_AE_AGENT_WORKER_EXECUTOR_KINDS",
         "NEX_AE_AGENT_WORKER_BACKEND_PROFILES",
+    ),
+    "nex-wc-assignment-dispatch-worker": (
+        "NEX_WC_AE_BASE_URL",
+        "NEX_WC_TO_AE_SERVICE_TOKEN",
+        "NEX_WC_OA_BASE_URL",
+        "NEX_WC_TO_OA_SERVICE_TOKEN",
+        "NEX_WC_ASSIGNMENT_DISPATCH_WORKER_ID",
+        "NEX_WC_ASSIGNMENT_AE_TIMEOUT_SECONDS",
+        "NEX_WC_ASSIGNMENT_OA_TIMEOUT_SECONDS",
+        "NEX_WC_ASSIGNMENT_DISPATCH_POLL_SECONDS",
+        "NEX_WC_ASSIGNMENT_DISPATCH_SCAN_LIMIT",
     ),
     "nex-wc-event-delivery-worker": (
         "NEX_WC_AE_BASE_URL",
@@ -365,6 +377,15 @@ def _background_process(
             ),
         ),
         "nex-wc-event-delivery-worker": (
+            "nex-wc",
+            "worker",
+            (
+                "nex-wc-api",
+                "nex-ae-api",
+                "nex-oa-api",
+            ),
+        ),
+        "nex-wc-assignment-dispatch-worker": (
             "nex-wc",
             "worker",
             (

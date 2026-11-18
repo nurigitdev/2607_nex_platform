@@ -351,6 +351,41 @@ services:
       nex-wc:
         condition: service_healthy
 
+  nex-wc-assignment-dispatch-worker:
+    <<: *canonical-platform-service
+    image: ${NEX_WC_RUNTIME_IMAGE:?immutable WC image is required}
+    entrypoint: [python, -m, nex_runtime.production_container_bootstrap, --owner, nex-wc, --]
+    command: [python, -m, nex_wc.assignment_dispatch_process, --profile, staging_live]
+    environment:
+      <<: *canonical-platform-wc-environment
+      NEX_WC_ASSIGNMENT_DISPATCH_WORKER_ID: wc-assignment-dispatch-worker-1
+      NEX_WC_ASSIGNMENT_AE_TIMEOUT_SECONDS: "15"
+      NEX_WC_ASSIGNMENT_OA_TIMEOUT_SECONDS: "15"
+      NEX_WC_ASSIGNMENT_DISPATCH_POLL_SECONDS: "1"
+      NEX_WC_ASSIGNMENT_DISPATCH_SCAN_LIMIT: "100"
+    secrets:
+      - openbao_ca
+      - platform_ca
+      - source: wc_role_id
+        target: openbao_role_id
+      - source: wc_secret_id
+        target: openbao_secret_id
+    depends_on:
+      openbao:
+        condition: service_healthy
+      nex-wc:
+        condition: service_healthy
+      nex-ae-api:
+        condition: service_healthy
+      nex-oa:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD, python, -c, "import os; os.kill(1, 0)"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 20s
+
   nex-eos-outbox-publisher:
     <<: *canonical-platform-service
     image: ${NEX_EOS_RUNTIME_IMAGE:?immutable EOS image is required}

@@ -184,6 +184,11 @@ CURRENT_PROCESS_ARTIFACT_BINDINGS = (
         "nex-ae-agent-runtime-worker", "nex-ae-runtime", "agent-runtime-worker"
     ),
     ProcessArtifactBinding(
+        "nex-wc-assignment-dispatch-worker",
+        "nex-wc-runtime",
+        "assignment-dispatch-worker",
+    ),
+    ProcessArtifactBinding(
         "nex-wc-event-delivery-worker", "nex-wc-runtime", "event-delivery-worker"
     ),
     ProcessArtifactBinding(
