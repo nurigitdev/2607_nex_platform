@@ -220,6 +220,16 @@ _P65_CONTEXT_CANDIDATE_V2_CONTENT = (
     "confidence; confidence is required even for language or formatting hints."
 )
 
+_P65_CONTEXT_CANDIDATE_V3_CONTENT = (
+    _P65_CONTEXT_CANDIDATE_V2_CONTENT
+    + " Never copy an entity selector_kind into resource_selectors. When the "
+    "request does not explicitly identify a DOCUMENT, CONVERSATION, or WORKSPACE "
+    "by ID or owner-visible label, resource_selectors must be an empty JSON array. "
+    "A valid empty-shape object uses entity_candidates: [], retrieval_hints: [], "
+    "resource_selectors: [], parameter_candidates: [], and confidence: 0.5, in "
+    "addition to the required schema_version."
+)
+
 _P65_CONTEXT_CANDIDATE_METADATA_V1 = {
     "phase": "P6.5",
     "slice": "P6.5-S3",
@@ -231,6 +241,12 @@ _P65_CONTEXT_CANDIDATE_METADATA_V2 = {
     **_P65_CONTEXT_CANDIDATE_METADATA_V1,
     "slice": "P6.5-S7",
     "hardening": "parameter_candidate_exact_shape",
+}
+
+_P65_CONTEXT_CANDIDATE_METADATA_V3 = {
+    **_P65_CONTEXT_CANDIDATE_METADATA_V2,
+    "slice": "CP-M1-E2E-FX-01B.7",
+    "hardening": "resource_selector_enum_and_empty_default",
 }
 
 AE_HISTORICAL_PROMPT_SEEDS = [
@@ -417,6 +433,19 @@ AE_HISTORICAL_PROMPT_SEEDS = [
         model_capability="generation",
         metadata=_P65_CONTEXT_CANDIDATE_METADATA_V1,
     ),
+    PromptSeed(
+        service_id="nex-ae-api",
+        purpose="context_candidate_extraction",
+        name="p65_default_context_candidate_system",
+        owner_domain="agent-experience",
+        binding_key=AE_CONTEXT_CANDIDATE_BINDING,
+        version="v2",
+        role="system",
+        segment_order=0,
+        content=_P65_CONTEXT_CANDIDATE_V2_CONTENT,
+        model_capability="generation",
+        metadata=_P65_CONTEXT_CANDIDATE_METADATA_V2,
+    ),
 ]
 
 AE_PROMPT_SEEDS = [
@@ -516,12 +545,12 @@ AE_PROMPT_SEEDS = [
         name="p65_default_context_candidate_system",
         owner_domain="agent-experience",
         binding_key=AE_CONTEXT_CANDIDATE_BINDING,
-        version="v2",
+        version="v3",
         role="system",
         segment_order=0,
-        content=_P65_CONTEXT_CANDIDATE_V2_CONTENT,
+        content=_P65_CONTEXT_CANDIDATE_V3_CONTENT,
         model_capability="generation",
-        metadata=_P65_CONTEXT_CANDIDATE_METADATA_V2,
+        metadata=_P65_CONTEXT_CANDIDATE_METADATA_V3,
     ),
     PromptSeed(
         service_id="nex-ae-api",
@@ -650,8 +679,8 @@ def _activate_current_context_candidate_prompt(store: Any) -> None:
         new_prompt_template_version_id=target["prompt_template_version_id"],
         expected_prompt_template_version_id=current["prompt_template_version_id"],
         changed_by="nex-ae-api-bootstrap",
-        reason="P6.5-S7 context parameter candidate shape hardening",
-        correlation_id="p65-s7-context-prompt-v2",
+        reason="CP-M1 context resource selector contract hardening",
+        correlation_id="cp-m1-context-prompt-v3",
     )
 
 

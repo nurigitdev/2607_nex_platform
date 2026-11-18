@@ -158,9 +158,9 @@ def test_registry_seeds_configured_bindings_idempotently_and_survives_restart() 
     context_version = restarted.get_template_version(
         context_binding["prompt_template_version_id"]
     )
-    assert context_version["version"] == "v2"
+    assert context_version["version"] == "v3"
     assert context_version["metadata"]["hardening"] == (
-        "parameter_candidate_exact_shape"
+        "resource_selector_enum_and_empty_default"
     )
     assert restarted.get_binding("missing") is None
     assert restarted.get_template_version("missing") is None
@@ -182,7 +182,7 @@ def test_startup_upgrades_existing_context_v1_binding_with_history() -> None:
     after = store.get_binding(AE_CONTEXT_CANDIDATE_BINDING)
     assert (
         store.get_template_version(after["prompt_template_version_id"])["version"]
-        == "v2"
+        == "v3"
     )
     with factory() as session:
         history = (
@@ -191,7 +191,7 @@ def test_startup_upgrades_existing_context_v1_binding_with_history() -> None:
                     "SELECT old_prompt_template_version_id, "
                     "new_prompt_template_version_id, correlation_id "
                     "FROM ae_prompt_binding_history "
-                    "WHERE correlation_id = 'p65-s7-context-prompt-v2'"
+                    "WHERE correlation_id = 'cp-m1-context-prompt-v3'"
                 )
             )
             .mappings()
@@ -204,7 +204,7 @@ def test_startup_upgrades_existing_context_v1_binding_with_history() -> None:
     assert (
         history["new_prompt_template_version_id"] == after["prompt_template_version_id"]
     )
-    assert history["correlation_id"] == "p65-s7-context-prompt-v2"
+    assert history["correlation_id"] == "cp-m1-context-prompt-v3"
 
 
 def test_startup_upgrades_existing_intent_v9_binding_with_history() -> None:
