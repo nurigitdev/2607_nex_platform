@@ -367,6 +367,30 @@ provider-assisted optional, and provider-assisted required policies and
 prohibits registered Product work from silently falling through to direct
 provider planning.
 
+After `CP-M1-E2E-FX-01B.6B.5A.5`, read
+[`NeX_MyBee_CP_M1_E2E_FX_01B_6B_5B_Installed_WC_Assignment_Dispatch_Closure_v1.0.md`](NeX_MyBee_CP_M1_E2E_FX_01B_6B_5B_Installed_WC_Assignment_Dispatch_Closure_v1.0.md)
+before resuming `CP-M1-E2E-FX-01B.7`. Source-backed review found that public
+delegation durably creates a WC WorkItem in `CREATED`, but the installed
+topology has no generic process that invokes the existing authoritative
+`CREATED -> ROUTED -> ASSIGNED` transitions. The amendment adds one WC-local
+assignment dispatcher that reuses the existing routing policy, AE Agent
+Registry, fresh OA authorization, coordination repository, shared JobQueue,
+worker runner, and heartbeat. It keeps claim-handoff transport in the existing
+WC event-delivery worker, prohibits M1/tenant/Project/fixture dispatch
+branches, requires actual WC/OA/AE PostgreSQL concurrency and restart
+evidence, and authorizes no migration by default. `01B.7` remains suspended
+until all five `6B.5B` Slices close the installed protected Gate.
+
+`CP-M1-E2E-FX-01B.6B.5B.1` implementation evidence is recorded in
+[`mybee_phase1_w70_cp_m1_e2e_fx_01b6b5b1_claimable_dispatch_contract.md`](../../slices/mybee_phase1_w70_cp_m1_e2e_fx_01b6b5b1_claimable_dispatch_contract.md).
+Actual PostgreSQL planning showed that the existing tenant-leading WorkItem
+index could not safely serve a generic cross-tenant dispatcher scan. The
+approved `1007_wc_assignment_dispatch_scan` migration adds only a partial
+`CREATED/ROUTED` index. WC now exposes state-specific bounded keyset discovery
+and a content-minimal, deterministic `WC_ASSIGNMENT_DISPATCH` job contract
+with explicit retry, authority-reload, and terminal dispositions. No job is
+enqueued or executed yet; `.5B.2` owns the generic scheduler and handler.
+
 `CP-M1-E2E-FX-01B.6A.1` implementation evidence is recorded in
 [`mybee_phase1_w70_cp_m1_e2e_fx_01b6a1_refresh_contract_source_resolver.md`](../../slices/mybee_phase1_w70_cp_m1_e2e_fx_01b6a1_refresh_contract_source_resolver.md).
 It closes the canonical protected contract and the mutation-free EOS source

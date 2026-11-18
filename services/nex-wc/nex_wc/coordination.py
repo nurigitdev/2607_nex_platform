@@ -15,6 +15,10 @@ from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
 
+from nex_wc.assignment_dispatch import (
+    project_claimable_work_item,
+    validate_claimable_scan,
+)
 from nex_wc.authorization import (
     AuthorizationSource,
     AuthorizationSubjectDenied,
@@ -57,6 +61,14 @@ class AgentCandidateSource(Protocol):
 
 
 class CoordinationRepository(Protocol):
+    def list_claimable_work_items(
+        self,
+        *,
+        state: str,
+        limit: int,
+        after: Mapping[str, Any] | None = None,
+    ) -> list[dict[str, Any]]: ...
+
     def get_work_item(
         self, *, tenant_id: str, work_item_id: str
     ) -> dict[str, Any] | None: ...
@@ -370,6 +382,35 @@ class InMemoryCoordinationRepository:
             "latest_routing_decision": copy.deepcopy(routes[-1]) if routes else None,
         }
 
+    def list_claimable_work_items(
+        self,
+        *,
+        state: str,
+        limit: int,
+        after: Mapping[str, Any] | None = None,
+    ) -> list[dict[str, Any]]:
+        normalized_state, normalized_limit, cursor = validate_claimable_scan(
+            state=state, limit=limit, after=after
+        )
+        with self._lock:
+            records = [
+                copy.deepcopy(record)
+                for record in self._work_items._records.values()
+                if record["state"] == normalized_state
+                and _after_claimable_cursor(record, cursor)
+            ]
+        records.sort(
+            key=lambda record: (
+                str(record["created_at"]),
+                str(record["tenant_id"]),
+                str(record["work_item_id"]),
+            )
+        )
+        return [
+            project_claimable_work_item(record)
+            for record in records[:normalized_limit]
+        ]
+
     def save_routing_decision(
         self,
         *,
@@ -652,6 +693,64 @@ class InMemoryCoordinationRepository:
 class SqlAlchemyCoordinationRepository:
     def __init__(self, session_factory: sessionmaker[Session]) -> None:
         self._session_factory = session_factory
+
+    def list_claimable_work_items(
+        self,
+        *,
+        state: str,
+        limit: int,
+        after: Mapping[str, Any] | None = None,
+    ) -> list[dict[str, Any]]:
+        normalized_state, normalized_limit, cursor = validate_claimable_scan(
+            state=state, limit=limit, after=after
+        )
+        cursor_clause = ""
+        params: dict[str, Any] = {
+            "state": normalized_state,
+            "limit": normalized_limit,
+        }
+        if cursor is not None:
+            cursor_clause = (
+                "AND (created_at, tenant_id, work_item_id) > "
+                "(:after_created_at, :after_tenant_id, :after_work_item_id)"
+            )
+            params.update(
+                {
+                    "after_created_at": cursor["created_at"],
+                    "after_tenant_id": cursor["tenant_id"],
+                    "after_work_item_id": cursor["work_item_id"],
+                }
+            )
+        try:
+            with self._session_factory() as session:
+                rows = session.execute(
+                    text(
+                        f"""
+                        SELECT tenant_id, work_item_id, state, version,
+                               work_item -> 'trace' ->> 'correlation_id' AS trace_id,
+                               created_at, updated_at
+                        FROM wc_work_item
+                        WHERE state = :state
+                        {cursor_clause}
+                        ORDER BY created_at, tenant_id, work_item_id
+                        LIMIT :limit
+                        """
+                    ),
+                    params,
+                ).mappings()
+                return [
+                    project_claimable_work_item(
+                        {
+                            **dict(row),
+                            "work_item_id": str(row["work_item_id"]),
+                            "created_at": _time_value(row["created_at"]),
+                            "updated_at": _time_value(row["updated_at"]),
+                        }
+                    )
+                    for row in rows
+                ]
+        except SQLAlchemyError as exc:
+            raise _store_unavailable() from exc
 
     def get_work_item(self, *, tenant_id: str, work_item_id: str) -> dict[str, Any] | None:
         try:
@@ -1191,6 +1290,28 @@ def _update_work_item(session: Session, record: dict[str, Any], state: str, now:
     )
     record["state"] = state
     record["version"] = item["version"]
+
+
+def _after_claimable_cursor(
+    record: Mapping[str, Any], cursor: Mapping[str, str] | None
+) -> bool:
+    if cursor is None:
+        return True
+    return (
+        str(record["created_at"]),
+        str(record["tenant_id"]),
+        str(record["work_item_id"]),
+    ) > (
+        cursor["created_at"],
+        cursor["tenant_id"],
+        cursor["work_item_id"],
+    )
+
+
+def _time_value(value: object) -> str:
+    if isinstance(value, datetime):
+        return _time(value)
+    return str(value)
 
 
 def _transition_record(record: dict[str, Any], *, state: str, updated_at: str) -> None:
