@@ -519,11 +519,24 @@ def _semantic_runtime_failure_summary(
 def _collect_ae_runtime_logs(
     env: Mapping[str, str], *, root: Path
 ) -> tuple[str, int]:
-    lookup = installed._compose(
-        env,
-        root=root,
-        arguments=("ps", "-q", "nex-ae-api"),
+    lookup = subprocess.run(
+        (
+            "docker",
+            "ps",
+            "--filter",
+            f"label=com.docker.compose.project={installed.PROJECT_NAME}",
+            "--filter",
+            "label=com.docker.compose.service=nex-ae-api",
+            "--format",
+            "{{.ID}}",
+        ),
+        cwd=root,
+        env=dict(env),
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
         check=False,
+        timeout=30,
     )
     container_ids = [
         line.strip()

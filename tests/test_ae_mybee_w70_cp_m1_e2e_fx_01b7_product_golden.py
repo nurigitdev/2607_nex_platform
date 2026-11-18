@@ -212,17 +212,17 @@ def test_product_semantic_runtime_failure_summary_is_bounded() -> None:
 def test_product_runtime_log_collection_uses_running_container(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(
-        acceptance.installed,
-        "_compose",
-        lambda *_args, **_kwargs: subprocess.CompletedProcess(
-            args=[], returncode=0, stdout="a" * 64 + "\n", stderr=None
-        ),
-    )
     calls: list[tuple[str, ...]] = []
 
     def run(command: tuple[str, ...], **_kwargs: object) -> subprocess.CompletedProcess[str]:
         calls.append(command)
+        if command[1] == "ps":
+            return subprocess.CompletedProcess(
+                args=command,
+                returncode=0,
+                stdout="a" * 64 + "\n",
+                stderr=None,
+            )
         return subprocess.CompletedProcess(
             args=command,
             returncode=0,
@@ -236,7 +236,8 @@ def test_product_runtime_log_collection_uses_running_container(
 
     assert returncode == 0
     assert output == "exception_type=CandidateSchemaError\n"
-    assert calls == [("docker", "logs", "--tail", "2000", "a" * 64)]
+    assert calls[0][0:2] == ("docker", "ps")
+    assert calls[-1] == ("docker", "logs", "--tail", "2000", "a" * 64)
 
 
 def test_product_baseline_rejects_duplicate_projects_and_one_transaction(
