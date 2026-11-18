@@ -1,18 +1,16 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import subprocess
 from dataclasses import replace
 from pathlib import Path
+from types import SimpleNamespace
 
 import build_canonical_platform_images as build
 import nex_runtime.demo_oci_release as demo_oci
 import pytest
 from nex_runtime.demo_oci_release import (
-    DEMO_APPLICATION_ARTIFACTS,
-    DEMO_BACKGROUND_PROCESS_IDS,
-    DEMO_PACKAGE_CHECK_MODE,
-    DEMO_PACKAGE_CHECK_MODE_ENV,
     DemoBackgroundContainerCheck,
     DemoOciReleaseError,
     DemoPackagedEntrypoint,
@@ -35,7 +33,6 @@ from nex_runtime.deployment_locks import (
 )
 from nex_runtime.deployment_oci import (
     build_current_oci_definitions,
-    build_default_oci_definitions,
     validate_oci_containerfiles,
 )
 from nex_runtime.process_manifest import (
@@ -122,6 +119,202 @@ def test_build_rejects_dirty_or_context_contaminated_source(
         build._execute_canonical_platform_image_build(ROOT, tmp_path / "report.json")
 
 
+def _copy_ae_wheel_admission_fixture(tmp_path: Path) -> Path:
+    platform_bytes = b"cryptography==46.0.7 --hash=sha256:fixture\n"
+    platform_lock = tmp_path / "deployment/locks/python-production.lock"
+    platform_lock.parent.mkdir(parents=True, exist_ok=True)
+    platform_lock.write_bytes(platform_bytes)
+    wheel_name = "nex_skill_language-0.2.1-py3-none-any.whl"
+    wheel = tmp_path / build.AE_NSL_WHEEL_SOURCE_DIRECTORY / wheel_name
+    wheel.parent.mkdir(parents=True, exist_ok=True)
+    wheel_bytes = b"canonical-nsl-wheel-fixture"
+    wheel.write_bytes(wheel_bytes)
+    lock = json.loads(
+        (ROOT / build.AE_NSL_WHEEL_LOCK_PATH).read_text(encoding="utf-8")
+    )
+    lock["wheel_sha256"] = f"sha256:{hashlib.sha256(wheel_bytes).hexdigest()}"
+    lock["wheel_size"] = len(wheel_bytes)
+    lock["platform_lock_sha256"] = (
+        f"sha256:{hashlib.sha256(platform_bytes).hexdigest()}"
+    )
+    lock_path = tmp_path / build.AE_NSL_WHEEL_LOCK_PATH
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    lock_path.write_text(json.dumps(lock), encoding="utf-8")
+    return wheel
+
+
+def test_ae_nsl_wheel_admission_and_context_staging(tmp_path: Path) -> None:
+    _copy_ae_wheel_admission_fixture(tmp_path)
+    admission = build._admit_ae_nsl_wheel(tmp_path)
+    definition = next(
+        item
+        for item in build_current_oci_definitions()
+        if item.artifact_id == "nex-ae-runtime"
+    )
+    context_root = tmp_path / "context"
+    context_root.mkdir()
+
+    manifest = build._stage_ae_nsl_wheel(
+        tmp_path,
+        context_root,
+        definition,
+        admission,
+    )
+
+    assert admission["status"] == "PASS"
+    assert admission["package_version"] == "0.2.1"
+    assert admission["secret_included"] is False
+    assert {item.path for item in manifest.files} == {admission["context_path"]}
+
+
+def test_ae_nsl_wheel_admission_rejects_artifact_drift(tmp_path: Path) -> None:
+    wheel = _copy_ae_wheel_admission_fixture(tmp_path)
+    wheel.write_bytes(wheel.read_bytes() + b"drift")
+
+    with pytest.raises(
+        build.image_build.PlatformImageBuildError,
+        match="wheel artifact has drifted",
+    ):
+        build._admit_ae_nsl_wheel(tmp_path)
+
+
+def test_ae_nsl_wheel_admission_rejects_platform_lock_drift(
+    tmp_path: Path,
+) -> None:
+    _copy_ae_wheel_admission_fixture(tmp_path)
+    platform_lock = tmp_path / "deployment/locks/python-production.lock"
+    platform_lock.write_text("drift\n", encoding="utf-8")
+
+    with pytest.raises(
+        build.image_build.PlatformImageBuildError,
+        match="platform lock has drifted",
+    ):
+        build._admit_ae_nsl_wheel(tmp_path)
+
+
+def _canonical_validation_fixture():
+    catalog = build_current_deployment_artifact_catalog()
+    manifest = build_current_packaged_runtime_manifest(
+        "local_mock", environ={}, python_executable="python"
+    )
+    entries = build_packaged_entrypoint_definitions(manifest, catalog)
+    commands = {
+        item.artifact_id: packaged_image_default_command(item)
+        for item in entries
+        if item.kind in {"api", "web"}
+    }
+    records = tuple(
+        SimpleNamespace(
+            artifact_id=artifact.artifact_id,
+            source_revision=REVISION,
+            entrypoint=(),
+            command=commands[artifact.artifact_id],
+            runtime_user=(
+                "node" if artifact.kind == "node-web" else "65532:65532"
+            ),
+            target=artifact.build_target,
+        )
+        for artifact in catalog.artifacts
+    )
+    direct_processes = tuple(
+        item
+        for item in CURRENT_BACKGROUND_PROCESS_IDS
+        if item not in BACKGROUND_PROCESS_IDS
+    )
+    checks = tuple(
+        {
+            "process_id": process_id,
+            "package_ready": True,
+            "runtime_ready": False,
+            "secret_included": False,
+        }
+        for process_id in direct_processes
+    )
+    wheel = {
+        "status": "PASS",
+        "wheel_filename": "nex_skill_language-0.2.1-py3-none-any.whl",
+        "context_path": (
+            "deployment/product/wheel/"
+            "nex_skill_language-0.2.1-py3-none-any.whl"
+        ),
+    }
+    return records, checks, wheel
+
+
+def test_canonical_release_validation_accepts_exact_product_set() -> None:
+    records, checks, wheel = _canonical_validation_fixture()
+
+    build._validate_canonical_release(
+        source_revision=REVISION,
+        build_inputs_digest="sha256:" + "a" * 64,
+        release_set_digest="sha256:" + "b" * 64,
+        records=records,
+        package_checks=checks,
+        ae_nsl_wheel=wheel,
+    )
+
+
+def test_canonical_release_validation_reports_all_product_drift() -> None:
+    records, _checks, wheel = _canonical_validation_fixture()
+    bad_records = list(reversed(records))
+    ae_index = next(
+        index
+        for index, item in enumerate(bad_records)
+        if item.artifact_id == "nex-ae-runtime"
+    )
+    bad_records[ae_index] = SimpleNamespace(
+        **{
+            **vars(bad_records[ae_index]),
+            "source_revision": "c" * 40,
+            "entrypoint": ("bad",),
+            "command": ("bad",),
+            "runtime_user": "root",
+            "target": "ae-runtime",
+        }
+    )
+    bad_checks = (
+        {
+            "process_id": "unknown",
+            "package_ready": False,
+            "runtime_ready": True,
+            "secret_included": True,
+        },
+    )
+
+    with pytest.raises(build.image_build.PlatformImageBuildError) as raised:
+        build._validate_canonical_release(
+            source_revision="bad",
+            build_inputs_digest="bad",
+            release_set_digest="bad",
+            records=bad_records,
+            package_checks=bad_checks,
+            ae_nsl_wheel={
+                **wheel,
+                "status": "FAIL",
+                "context_path": "bad",
+            },
+        )
+
+    detail = str(raised.value)
+    for expected in (
+        "artifact coverage or order drift",
+        "source revision is invalid",
+        "build inputs digest is invalid",
+        "release set digest is invalid",
+        "source drift",
+        "entrypoint drift",
+        "command drift",
+        "privileged runtime",
+        "AE product runtime target drift",
+        "AE NSL wheel is not admitted",
+        "AE NSL wheel context path drift",
+        "package-check coverage drift",
+        "package is not ready",
+        "package check is not isolated",
+    ):
+        assert expected in detail
+
+
 def test_full_canonical_build_orchestration_with_fake_docker(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -139,8 +332,31 @@ def test_full_canonical_build_orchestration_with_fake_docker(
         if item.kind in {"api", "web"}
     }
     inspections: dict[str, dict] = {}
+    wheel_admission = {
+        "status": "PASS",
+        "wheel_filename": "nex_skill_language-0.2.1-py3-none-any.whl",
+        "wheel_sha256": "sha256:" + "c" * 64,
+        "wheel_size": 1,
+        "package_version": "0.2.1",
+        "source_revision": "d" * 40,
+        "platform_lock_sha256": "sha256:" + "e" * 64,
+        "context_path": (
+            "deployment/product/wheel/"
+            "nex_skill_language-0.2.1-py3-none-any.whl"
+        ),
+        "registry_push_performed": False,
+        "secret_included": False,
+    }
 
     monkeypatch.setattr(build, "_git_metadata", lambda *_args: (REVISION, True, 1))
+    monkeypatch.setattr(build, "_admit_ae_nsl_wheel", lambda _root: wheel_admission)
+    monkeypatch.setattr(
+        build,
+        "_stage_ae_nsl_wheel",
+        lambda _root, context_root, definition, _admission: (
+            build.inspect_oci_build_context(context_root, definition)
+        ),
+    )
     monkeypatch.setattr(
         build.image_build,
         "_docker_preflight",

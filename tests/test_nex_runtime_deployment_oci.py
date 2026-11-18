@@ -4,12 +4,13 @@ from dataclasses import replace
 from pathlib import Path
 
 import pytest
-
 from nex_runtime.deployment_artifacts import (
     DeploymentArtifactCatalog,
+    build_current_deployment_artifact_catalog,
     build_default_deployment_artifact_catalog,
 )
 from nex_runtime.deployment_oci import (
+    AE_PRODUCT_RUNTIME_CONTEXT_PATHS,
     NODE_BASE_IMAGE,
     NODE_CONTAINERFILE,
     OCI_BUILD_DEFINITIONS_SCHEMA_VERSION,
@@ -20,6 +21,7 @@ from nex_runtime.deployment_oci import (
     OciBuildDefinition,
     OciBuildDefinitionError,
     _excluded_context_file,
+    build_current_oci_definitions,
     build_default_oci_definitions,
     materialize_oci_build_context,
     oci_build_context_digest,
@@ -27,7 +29,6 @@ from nex_runtime.deployment_oci import (
     validate_oci_build_definitions,
     validate_oci_containerfiles,
 )
-
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -64,6 +65,33 @@ def test_default_oci_definitions_cover_catalog_exactly() -> None:
     assert all(
         "deployment/security/production-configuration.yaml" in item.context_paths
         for item in python_definitions
+    )
+
+
+def test_current_ae_definition_promotes_only_the_product_runtime_target() -> None:
+    default_ae = next(
+        item
+        for item in build_default_oci_definitions()
+        if item.artifact_id == "nex-ae-runtime"
+    )
+    current_catalog = build_current_deployment_artifact_catalog()
+    current_ae_artifact = next(
+        item
+        for item in current_catalog.artifacts
+        if item.artifact_id == "nex-ae-runtime"
+    )
+    current_ae = next(
+        item
+        for item in build_current_oci_definitions()
+        if item.artifact_id == "nex-ae-runtime"
+    )
+
+    assert default_ae.target == "ae-runtime"
+    assert current_ae_artifact.build_target == "ae-product-runtime"
+    assert current_ae.target == "ae-product-runtime"
+    assert set(AE_PRODUCT_RUNTIME_CONTEXT_PATHS) <= set(current_ae.context_paths)
+    assert not set(AE_PRODUCT_RUNTIME_CONTEXT_PATHS).intersection(
+        default_ae.context_paths
     )
 
 

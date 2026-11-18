@@ -4,16 +4,15 @@ from dataclasses import replace
 from pathlib import Path
 
 import pytest
-
 from nex_runtime.deployment_artifacts import build_default_deployment_artifact_catalog
 from nex_runtime.deployment_entrypoints import (
     build_packaged_entrypoint_definitions,
     build_packaged_runtime_manifest,
 )
 from nex_runtime.deployment_image_build import (
-    BackgroundContainerCheck,
     OCI_BUILD_LABEL_KEYS,
     OCI_IMAGE_BUILD_EVIDENCE_SCHEMA_VERSION,
+    BackgroundContainerCheck,
     OciImageBuildEvidence,
     OciImageBuildEvidenceError,
     OciImageBuildRecord,
@@ -28,7 +27,6 @@ from nex_runtime.deployment_locks import (
 )
 from nex_runtime.deployment_oci import build_default_oci_definitions
 from nex_runtime.process_manifest import BACKGROUND_PROCESS_IDS
-
 
 ROOT = Path(__file__).resolve().parents[1]
 REVISION = "a" * 40
@@ -133,6 +131,24 @@ def test_complete_image_set_is_private_non_root_and_deterministic() -> None:
     assert projection["credentials_included"] is False
     assert projection["machine_paths_included"] is False
     assert projection["runtime_values_included"] is False
+
+
+def test_packaged_web_image_uses_the_installed_static_server() -> None:
+    catalog = build_default_deployment_artifact_catalog()
+    manifest = build_packaged_runtime_manifest(
+        "local_mock", environ={}, python_executable="python"
+    )
+    entry = next(
+        item
+        for item in build_packaged_entrypoint_definitions(manifest, catalog)
+        if item.process_id == "nex-ae-web"
+    )
+
+    assert entry.command == ("npm", "start", "--silent")
+    assert packaged_image_default_command(entry) == (
+        "node",
+        "scripts/serve.mjs",
+    )
 
 
 def test_validation_requires_explicit_build_inputs() -> None:

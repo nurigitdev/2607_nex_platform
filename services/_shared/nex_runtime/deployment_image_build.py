@@ -1,8 +1,8 @@
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from pathlib import Path
-import re
 from typing import Any
 
 from .deployment_artifacts import (
@@ -24,7 +24,6 @@ from .deployment_oci import (
     build_default_oci_definitions,
 )
 from .process_manifest import BACKGROUND_PROCESS_IDS
-
 
 OCI_IMAGE_BUILD_EVIDENCE_SCHEMA_VERSION = "oci_image_build_evidence.v2"
 OCI_IMAGE_BUILD_STATUS = "RELEASE_SET_BUILT"
@@ -347,6 +346,8 @@ def _non_root_user(value: str) -> bool:
 def packaged_image_default_command(
     entry: PackagedEntrypointDefinition,
 ) -> tuple[str, ...]:
+    if entry.kind == "web":
+        return ("node", "scripts/serve.mjs")
     if entry.kind != "api":
         return entry.command
     command = list(entry.command)

@@ -429,6 +429,17 @@ claim-handoff delivery remain assigned to `.5B.5`, which is paused until a
 short `.5B.4A` AE NSL packaging reconciliation restores the complete release
 set.
 
+`CP-M1-E2E-FX-01B.6B.5B.4A` implementation evidence is recorded in
+[`mybee_phase1_w70_cp_m1_e2e_fx_01b6b5b4a_ae_nsl_wheel_packaging.md`](../../slices/mybee_phase1_w70_cp_m1_e2e_fx_01b6b5b4a_ae_nsl_wheel_packaging.md).
+Only the current canonical AE artifact now targets `ae-product-runtime`; the
+historical `ae-runtime` target remains available. The canonical builder admits
+the locked NSL v0.2.1 wheel before Docker contact, binds the wheel bytes and
+verified Product Runtime assets into the OCI context digest, preserves the
+non-root boundary, and rejects wheel, Platform lock, target, package inventory,
+or isolation drift. An actual AE image build and isolated worker package check
+pass without database or provider contact. `.5B.5` remains gated on the final
+clean-tree nine-image release-set matrix from the committed Slice revision.
+
 `CP-M1-E2E-FX-01B.6A.1` implementation evidence is recorded in
 [`mybee_phase1_w70_cp_m1_e2e_fx_01b6a1_refresh_contract_source_resolver.md`](../../slices/mybee_phase1_w70_cp_m1_e2e_fx_01b6a1_refresh_contract_source_resolver.md).
 It closes the canonical protected contract and the mutation-free EOS source

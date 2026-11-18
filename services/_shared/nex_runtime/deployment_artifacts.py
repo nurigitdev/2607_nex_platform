@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import PurePosixPath
 from typing import Any
 
@@ -159,7 +159,12 @@ P8_DEMO_DEPLOYMENT_ARTIFACTS = (
 )
 
 CURRENT_DEPLOYMENT_ARTIFACTS = (
-    *P8_DEMO_DEPLOYMENT_ARTIFACTS[:-1],
+    *(
+        replace(artifact, build_target="ae-product-runtime")
+        if artifact.artifact_id == "nex-ae-runtime"
+        else artifact
+        for artifact in P8_DEMO_DEPLOYMENT_ARTIFACTS[:-1]
+    ),
     DeploymentArtifactDefinition(
         "nex-wa-runtime",
         "nex-wa",

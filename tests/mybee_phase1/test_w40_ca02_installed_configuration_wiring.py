@@ -86,6 +86,11 @@ def test_ae_containerfiles_require_the_admitted_mybee_package() -> None:
     ) in base
     assert "/app/domains/mybee" in base
     assert "find_spec('mybee_ax')" in base
+    assert "FROM ae-runtime AS ae-product-runtime" in base
+    assert "nex_skill_language-0.2.1-py3-none-any.whl" in base
+    assert "python -m pip install --no-index --no-deps" in base
+    assert "NEX_AE_PRODUCT_REPOSITORY_ROOT=" in base
+    assert "USER 65532:65532" in base
     assert "require_mybee_product_package" in product
     assert "mybee_ax.PACKAGE_VERSION == '0.1.0'" in product
 
