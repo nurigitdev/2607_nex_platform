@@ -7,7 +7,7 @@ from typing import Any, Protocol
 from uuid import NAMESPACE_URL, uuid5
 
 from mybee_ax.orchestration import M1PreparationAuthority
-from nex_runtime.semantic_hashes import validate_hash_ref
+from nex_runtime.semantic_hashes import semantic_sha256_hash_ref, validate_hash_ref
 
 from nex_ae_api.m1_product_planning_coordinator import M1_PRODUCT_COORDINATOR_ID
 from nex_ae_api.m1_transaction_preparation_runtime import (
@@ -41,7 +41,7 @@ M1_PRODUCT_PREPARATION_WAIT_CONTRACT = (
     "contract://nex/ae/product-preparation-wait/m1/v1"
 )
 M1_PRODUCT_PREPARATION_NOTIFICATION_SCHEMA_VERSION = (
-    "ae.product_preparation_notification.v1"
+    "ae.product_preparation_notification.v2"
 )
 _PREPARATION_REF_KIND = "M1_PREPARATION_CHECKPOINT"
 _PROPOSAL_REF_KIND = "PRODUCT_PLANNING_PROPOSAL"
@@ -199,6 +199,7 @@ class InstalledM1ProductPlanningCoordinator:
         notification_ref: str,
         authority_evidence_ref: str,
         received_at: str,
+        authority_state: str = "APPROVED",
     ) -> dict[str, Any]:
         checkpoint = self._checkpoints.get(
             tenant_id=tenant_id, checkpoint_id=checkpoint_id
@@ -227,6 +228,7 @@ class InstalledM1ProductPlanningCoordinator:
             "authority_evidence_ref": _text(
                 authority_evidence_ref, "authority_evidence_ref", 512
             ),
+            "authority_state": _authority_state(authority_state),
         }
         event = seal_product_preparation_event(
             {
@@ -291,19 +293,35 @@ class InstalledM1ProductPlanningCoordinator:
             ):
                 return self._result(latest, replayed=True)
             raise _conflict("M1 preparation approval event is stale or out of order.")
-        authority = self._resolve_authority(
-            work_intent=work_intent,
-            agent_context=agent_context,
-            capability_snapshot=capability_snapshot,
-            execution=execution,
-            checkpoint=previous,
-        )
         preparation = m1_preparation_projection(previous)
         payload = context["event"]["event_payload"]
         evidence_ref = _text(
             payload.get("authority_evidence_ref"),
             "authority_evidence_ref",
             512,
+        )
+        authority_state = _authority_state(payload.get("authority_state", "APPROVED"))
+        if authority_state == "REJECTED":
+            advanced = _terminal_preparation(
+                preparation,
+                terminal_stage=_rejection_terminal_state(self.registration),
+                authority_evidence_ref=evidence_ref,
+            )
+            checkpoint = self._persist_checkpoint(
+                lineage=lineage,
+                preparation=advanced,
+                previous=previous,
+                causation_id=event_id,
+                proposal_ref=m1_product_planning_proposal_ref(previous),
+                fallback_ref=m1_product_planning_fallback_ref(previous),
+            )
+            return self._result(checkpoint, replayed=False)
+        authority = self._resolve_authority(
+            work_intent=work_intent,
+            agent_context=agent_context,
+            capability_snapshot=capability_snapshot,
+            execution=execution,
+            checkpoint=previous,
         )
         if previous["stage"] == "WAITING_BUSINESS_APPROVAL":
             advanced = self._preparation.adapter.continue_after_business_approval(
@@ -379,7 +397,11 @@ class InstalledM1ProductPlanningCoordinator:
         fallback_ref: str | None = None,
     ) -> dict[str, Any]:
         stage = str(preparation.get("stage") or "")
-        if stage not in {*_STAGES, self.registration.ready_state}:
+        if stage not in {
+            *_STAGES,
+            self.registration.ready_state,
+            *self.registration.terminal_states,
+        }:
             raise _conflict("M1 preparation returned an unregistered stage.")
         preparation_hash = _hash(
             preparation.get("preparation_hash"), "preparation_hash"
@@ -453,7 +475,13 @@ class InstalledM1ProductPlanningCoordinator:
                     self.registration.materializer_source_identity
                 ),
                 "stage": stage,
-                "stage_kind": "WAITING" if stage in _STAGES else "READY",
+                "stage_kind": (
+                    "WAITING"
+                    if stage in _STAGES
+                    else "READY"
+                    if stage == self.registration.ready_state
+                    else "TERMINAL"
+                ),
                 "authority_refs": authority_refs,
                 "idempotency_key": (
                     f"product-preparation:{lineage['agent_execution_id']}:"
@@ -519,6 +547,7 @@ class InstalledM1ProductPlanningCoordinator:
             "wait": wait,
             "replayed": replayed,
             "ready": checkpoint["stage"] == self.registration.ready_state,
+            "terminal": checkpoint["stage"] in self.registration.terminal_states,
             "planning_proposal_ref": m1_product_planning_proposal_ref(checkpoint),
             "planning_fallback_ref": m1_product_planning_fallback_ref(checkpoint),
         }
@@ -643,16 +672,29 @@ class InstalledM1ProductPlanningCoordinator:
         ):
             raise _conflict("M1 approval event is stale or out of order.")
         payload = event["event_payload"]
+        legacy_fields = {
+            "schema_version",
+            "notification_ref",
+            "authority_evidence_ref",
+        }
+        current_fields = legacy_fields | {"authority_state"}
+        legacy = (
+            set(payload) == legacy_fields
+            and payload.get("schema_version")
+            == "ae.product_preparation_notification.v1"
+        )
+        current = (
+            set(payload) == current_fields
+            and payload.get("schema_version")
+            == M1_PRODUCT_PREPARATION_NOTIFICATION_SCHEMA_VERSION
+        )
         if (
-            set(payload)
-            != {
-                "schema_version",
-                "notification_ref",
-                "authority_evidence_ref",
-            }
-            or payload["schema_version"]
-            != M1_PRODUCT_PREPARATION_NOTIFICATION_SCHEMA_VERSION
+            not (legacy or current)
             or payload["notification_ref"] != event_binding["notification_ref"]
+            or (
+                current
+                and payload.get("authority_state") not in {"APPROVED", "REJECTED"}
+            )
         ):
             raise _conflict("M1 approval event payload is invalid.")
 
@@ -787,6 +829,52 @@ def _wait_id(checkpoint: Mapping[str, Any]) -> str:
             f"{checkpoint['tenant_id']}/{checkpoint['checkpoint_hash']}",
         )
     )
+
+
+def _terminal_preparation(
+    preparation: Mapping[str, Any],
+    *,
+    terminal_stage: str,
+    authority_evidence_ref: str,
+) -> dict[str, Any]:
+    semantics = {
+        key: item for key, item in preparation.items() if key != "preparation_hash"
+    }
+    references = dict(_mapping(semantics.get("references"), "references"))
+    references.update(
+        {
+            "authority_outcome": "REJECTED",
+            "authority_evidence_ref": authority_evidence_ref,
+        }
+    )
+    semantics.update(stage=terminal_stage, references=references)
+    return {**semantics, "preparation_hash": semantic_sha256_hash_ref(semantics)}
+
+
+def _rejection_terminal_state(
+    registration: ProductPlanningCoordinatorRegistration,
+) -> str:
+    matches = [
+        state for state in registration.terminal_states if "CANCEL" in state.upper()
+    ]
+    if len(matches) != 1:
+        raise _conflict(
+            "Product coordinator lacks one approval-rejection terminal state."
+        )
+    return matches[0]
+
+
+def _authority_state(value: object) -> str:
+    admitted = _text(value, "authority_state", 32)
+    if admitted not in {"APPROVED", "REJECTED"}:
+        raise _invalid("authority_state is invalid.")
+    return admitted
+
+
+def _mapping(value: object, field: str) -> Mapping[str, Any]:
+    if not isinstance(value, Mapping):
+        raise _conflict(f"M1 preparation {field} is unavailable.")
+    return value
 
 
 def _timestamp(value: datetime) -> str:

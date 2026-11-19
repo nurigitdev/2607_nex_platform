@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from types import MappingProxyType
 from typing import Any, Protocol
 
@@ -399,6 +400,27 @@ class SqlAlchemyProductPlanningLineageSource:
             },
         }
 
+    def close_terminal_execution(
+        self,
+        *,
+        route: ResumeRoute,
+        execution: Mapping[str, Any],
+        terminal_stage: str,
+    ) -> dict[str, Any]:
+        target_state = "CANCELLED" if "CANCEL" in terminal_stage.upper() else "FAILED"
+        if execution.get("state") == target_state:
+            return dict(execution)
+        if execution.get("state") != "WAITING_APPROVAL":
+            raise _conflict("Product terminal execution is not waiting for approval.")
+        return self._executions.transition(
+            tenant_id=route.tenant_id,
+            agent_execution_id=route.execution_id,
+            expected_version=int(execution["version"]),
+            state=target_state,
+            phase="PLAN_BUILD",
+            updated_at=datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+        )
+
 
 class InstalledProductCoordinatorAssignmentHandler:
     """Resume one durable Product wait and activate READY plans in-place."""
@@ -435,6 +457,15 @@ class InstalledProductCoordinatorAssignmentHandler:
             else None
         )
         checkpoint = _mapping(resumed.get("checkpoint"), "Product checkpoint")
+        terminal_execution = (
+            self._lineage.close_terminal_execution(
+                route=route,
+                execution=inputs["execution"],
+                terminal_stage=_text(checkpoint.get("stage"), "terminal_stage"),
+            )
+            if resumed.get("terminal")
+            else None
+        )
         return {
             "schema_version": PRODUCT_COORDINATOR_ASSIGNMENT_SCHEMA_VERSION,
             "runtime_job_id": route.runtime_job_id,
@@ -444,6 +475,10 @@ class InstalledProductCoordinatorAssignmentHandler:
             "checkpoint_hash": checkpoint.get("checkpoint_hash"),
             "stage": checkpoint.get("stage"),
             "ready": bool(resumed.get("ready")),
+            "terminal": bool(resumed.get("terminal")),
+            "terminal_execution_state": (
+                None if terminal_execution is None else terminal_execution["state"]
+            ),
             "replayed": bool(resumed.get("replayed")),
             "activation": None if activation is None else dict(activation),
             "content_included": False,
@@ -453,7 +488,7 @@ class InstalledProductCoordinatorAssignmentHandler:
 class InstalledProductPlanningEventAdmission:
     """Persist an owner notification and schedule its generalized resume job."""
 
-    _FIELDS = frozenset(
+    _REQUIRED_FIELDS = frozenset(
         {
             "tenant_id",
             "coordinator_id",
@@ -466,13 +501,18 @@ class InstalledProductPlanningEventAdmission:
             "received_at",
         }
     )
+    _OPTIONAL_FIELDS = frozenset({"authority_state"})
 
     def __init__(self, *, runtimes: Any, resume_service: Any) -> None:
         self._runtimes = runtimes
         self._resume = resume_service
 
     def ingest(self, payload: Mapping[str, Any]) -> dict[str, Any]:
-        if not isinstance(payload, Mapping) or set(payload) != self._FIELDS:
+        if (
+            not isinstance(payload, Mapping)
+            or not self._REQUIRED_FIELDS.issubset(payload)
+            or not set(payload).issubset(self._REQUIRED_FIELDS | self._OPTIONAL_FIELDS)
+        ):
             raise _invalid("Product planning event fields are invalid.")
         runtime = self._runtimes.resolve_identity(
             coordinator_id=payload["coordinator_id"],
@@ -490,6 +530,9 @@ class InstalledProductPlanningEventAdmission:
             authority_evidence_ref=_text(
                 payload["authority_evidence_ref"], "authority_evidence_ref"
             ),
+            authority_state=_authority_state(
+                payload.get("authority_state", "APPROVED")
+            ),
             received_at=_text(payload["received_at"], "received_at"),
         )
         resumed = _invoke_product_boundary(
@@ -505,6 +548,9 @@ class InstalledProductPlanningEventAdmission:
             "coordinator_version": runtime.registration.coordinator_version,
             "event_state": resumed["event_state"],
             "wait_state": resumed["wait_state"],
+            "authority_state": _authority_state(
+                payload.get("authority_state", "APPROVED")
+            ),
             "resume_runtime_job_id": resumed["resume_runtime_job_id"],
             "event_replayed": bool(accepted.get("replayed")),
             "content_included": False,
@@ -721,6 +767,13 @@ def _text(value: object, field: str) -> str:
     if not isinstance(value, str) or not value.strip():
         raise _invalid(f"{field} is required.")
     return value.strip()
+
+
+def _authority_state(value: object) -> str:
+    admitted = _text(value, "authority_state")
+    if admitted not in {"APPROVED", "REJECTED"}:
+        raise _invalid("Product authority state is invalid.")
+    return admitted
 
 
 def _invalid(detail: str) -> ProductPlanningRuntimeError:

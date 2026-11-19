@@ -533,6 +533,18 @@ and AE Slice Gates, coverage, and zero-residue checks pass without a migration
 or remote-provider call. One protected exact-head live replay is now admitted
 after confirming DGX availability.
 
+`CP-M1-E2E-FX-01B.7F` implementation evidence is recorded in
+[`mybee_phase1_w70_cp_m1_e2e_fx_01b7f_eos_approval_receipt_product_resume.md`](../../slices/mybee_phase1_w70_cp_m1_e2e_fx_01b7f_eos_approval_receipt_product_resume.md).
+It validates EOS document-signoff and accounting approval receipts as typed
+authority outcomes, resolves the existing generalized Product wait by exact
+tenant, authority kind, and case reference, and reuses the current Product
+event persistence and `RESUME_EXECUTION` enqueue boundary. Approval, rejection,
+exact replay, ACK-loss retry, restart, and cross-tenant failure semantics are
+covered without a migration or scenario-specific product branch. Actual
+`nex_ae_test` restart smoke and the AE Slice Gate pass; one protected exact-head
+live journey remains before this corrective Slice and the parent `.7` boundary
+can close.
+
 `CP-M1-E2E-FX-01B.6A.1` implementation evidence is recorded in
 [`mybee_phase1_w70_cp_m1_e2e_fx_01b6a1_refresh_contract_source_resolver.md`](../../slices/mybee_phase1_w70_cp_m1_e2e_fx_01b6a1_refresh_contract_source_resolver.md).
 It closes the canonical protected contract and the mutation-free EOS source

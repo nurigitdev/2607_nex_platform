@@ -29,6 +29,7 @@ from nex_ae_api.analytics import (
 )
 from nex_ae_api.approval_decision_event_api import (
     ApprovalDecisionEventRouter,
+    EosProductApprovalReceiptAdmission,
     HttpEosBusinessApprovalDecisionClient,
     SqlAlchemyNslApprovalDecisionAdmission,
     register_approval_decision_event_routes,
@@ -62,6 +63,9 @@ from nex_ae_api.product_planning_event_api import (
 )
 from nex_ae_api.product_planning_runtime import (
     build_contract_m1_product_planning_composition,
+)
+from nex_ae_api.product_preparation_persistence import (
+    SqlAlchemyGeneralizedWaitEventRepository,
 )
 from nex_ae_api.project_agent_lifecycle import (
     AdmittedProjectAgentProfilePolicy,
@@ -215,30 +219,6 @@ AE_WORK_RESULT_EVENTS = (
 )
 app.state.ae_work_result_events = AE_WORK_RESULT_EVENTS
 register_work_result_event_routes(app, admission=AE_WORK_RESULT_EVENTS)
-AE_APPROVAL_DECISION_EVENTS = None
-if (
-    SERVICE_PERSISTENCE.api_session_factory is not None
-    and AE_AGENT_RUNTIME.jobs is not None
-    and os.getenv("NEX_AE_TO_EOS_SERVICE_TOKEN", "").strip()
-):
-    AE_APPROVAL_DECISION_EVENTS = ApprovalDecisionEventRouter(
-        nsl_admission=SqlAlchemyNslApprovalDecisionAdmission(
-            SERVICE_PERSISTENCE.api_session_factory,
-            event_service=SqlAlchemyNslApprovalEventService(
-                SERVICE_PERSISTENCE.api_session_factory,
-                runtime_jobs=AE_AGENT_RUNTIME.jobs,
-            ),
-        ),
-        business_admission=HttpEosBusinessApprovalDecisionClient(
-            base_url=os.getenv("NEX_EOS_BASE_URL", "http://127.0.0.1:8107"),
-            service_token=os.environ["NEX_AE_TO_EOS_SERVICE_TOKEN"],
-        ),
-    )
-app.state.ae_approval_decision_events = AE_APPROVAL_DECISION_EVENTS
-register_approval_decision_event_routes(
-    app,
-    admission=AE_APPROVAL_DECISION_EVENTS,
-)
 register_eos_outbox_event_routes(
     app,
     store=SERVICE_PERSISTENCE.operational_event_store,
@@ -309,6 +289,41 @@ register_product_planning_event_routes(
     admission=(
         None if AE_PRODUCT_PLANNING is None else AE_PRODUCT_PLANNING.event_admission
     ),
+)
+AE_APPROVAL_DECISION_EVENTS = None
+if (
+    SERVICE_PERSISTENCE.api_session_factory is not None
+    and AE_AGENT_RUNTIME.jobs is not None
+    and os.getenv("NEX_AE_TO_EOS_SERVICE_TOKEN", "").strip()
+):
+    _eos_approval_client = HttpEosBusinessApprovalDecisionClient(
+        base_url=os.getenv("NEX_EOS_BASE_URL", "http://127.0.0.1:8107"),
+        service_token=os.environ["NEX_AE_TO_EOS_SERVICE_TOKEN"],
+    )
+    AE_APPROVAL_DECISION_EVENTS = ApprovalDecisionEventRouter(
+        nsl_admission=SqlAlchemyNslApprovalDecisionAdmission(
+            SERVICE_PERSISTENCE.api_session_factory,
+            event_service=SqlAlchemyNslApprovalEventService(
+                SERVICE_PERSISTENCE.api_session_factory,
+                runtime_jobs=AE_AGENT_RUNTIME.jobs,
+            ),
+        ),
+        business_admission=EosProductApprovalReceiptAdmission(
+            eos_client=_eos_approval_client,
+            wait_contexts=SqlAlchemyGeneralizedWaitEventRepository(
+                SERVICE_PERSISTENCE.api_session_factory
+            ),
+            product_events=(
+                None
+                if AE_PRODUCT_PLANNING is None
+                else AE_PRODUCT_PLANNING.event_admission
+            ),
+        ),
+    )
+app.state.ae_approval_decision_events = AE_APPROVAL_DECISION_EVENTS
+register_approval_decision_event_routes(
+    app,
+    admission=AE_APPROVAL_DECISION_EVENTS,
 )
 AE_INSTALLED_CLAIM_HANDOFF = build_installed_claim_handoff_admission(
     agent_runtime=AE_AGENT_RUNTIME,

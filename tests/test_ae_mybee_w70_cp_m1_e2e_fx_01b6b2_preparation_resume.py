@@ -408,7 +408,9 @@ def _planning_proposal(registration, work_intent, context):
     return proposal
 
 
-def _notify(coordinator, checkpoint, *, event_id, evidence_ref):
+def _notify(
+    coordinator, checkpoint, *, event_id, evidence_ref, authority_state="APPROVED"
+):
     return coordinator.accept_approval_notification(
         tenant_id=TENANT,
         checkpoint_id=checkpoint["checkpoint_id"],
@@ -416,6 +418,7 @@ def _notify(coordinator, checkpoint, *, event_id, evidence_ref):
         notification_ref=f"wc-event://{event_id}",
         authority_evidence_ref=evidence_ref,
         received_at=NOW_TEXT,
+        authority_state=authority_state,
     )
 
 
@@ -495,6 +498,48 @@ def test_6b2_reaches_ready_through_two_fresh_authority_resumes() -> None:
         ("BUSINESS", ENVELOPE_ID),
         ("ACCOUNTING", EVIDENCE_ID),
     ]
+
+
+def test_7f_rejected_authority_creates_terminal_checkpoint_without_mutation() -> None:
+    coordinator, adapter, source, checkpoints, waits = _coordinator()
+    work_intent, context, snapshot, execution = _inputs()
+    values = {
+        "work_intent": work_intent,
+        "agent_context": context,
+        "capability_snapshot": snapshot,
+        "execution": execution,
+    }
+    waiting = coordinator.begin(**values)
+    _notify(
+        coordinator,
+        waiting["checkpoint"],
+        event_id="business-rejected-100",
+        evidence_ref="eos.scoped-approval-decision:decision-100",
+        authority_state="REJECTED",
+    )
+    runtime_job_id = _match(waits, event_id="business-rejected-100")
+
+    terminal = coordinator.resume_approval(
+        event_id="business-rejected-100",
+        runtime_job_id=runtime_job_id,
+        **values,
+    )
+    replay = coordinator.resume_approval(
+        event_id="business-rejected-100",
+        runtime_job_id=runtime_job_id,
+        **values,
+    )
+
+    assert terminal["ready"] is False
+    assert terminal["terminal"] is True
+    assert terminal["wait"] is None
+    assert terminal["checkpoint"]["stage"] == "PREPARATION_CANCELLED"
+    assert terminal["checkpoint"]["stage_kind"] == "TERMINAL"
+    assert replay["replayed"] is True
+    assert replay["checkpoint"] == terminal["checkpoint"]
+    assert len(checkpoints.records) == 2
+    assert source.calls == [None]
+    assert adapter.calls == [("BEGIN", None)]
 
 
 def test_required_product_proposal_is_bounded_and_replayed_exactly() -> None:

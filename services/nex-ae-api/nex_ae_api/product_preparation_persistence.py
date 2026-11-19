@@ -20,12 +20,8 @@ PRODUCT_EVENT_TYPES = frozenset(
     {"BUSINESS_APPROVAL_CHANGED", "ACCOUNTING_APPROVAL_CHANGED"}
 )
 PRODUCT_AUTHORITY_KINDS = frozenset({"BUSINESS_FORMAL", "ACCOUNTING_REVIEW"})
-PRODUCT_CHECKPOINT_STAGE_KINDS = frozenset(
-    {"INITIAL", "WAITING", "READY", "TERMINAL"}
-)
-PRODUCT_PREPARATION_CHECKPOINT_SCHEMA_VERSION = (
-    "ae.product_preparation_checkpoint.v1"
-)
+PRODUCT_CHECKPOINT_STAGE_KINDS = frozenset({"INITIAL", "WAITING", "READY", "TERMINAL"})
+PRODUCT_PREPARATION_CHECKPOINT_SCHEMA_VERSION = "ae.product_preparation_checkpoint.v1"
 
 
 @dataclass
@@ -91,9 +87,7 @@ def seal_product_preparation_checkpoint(value: Mapping[str, Any]) -> dict[str, A
         "previous_checkpoint_hash": _nullable_hash(
             record["previous_checkpoint_hash"], "previous_checkpoint_hash"
         ),
-        "agent_execution_id": _uuid(
-            record["agent_execution_id"], "agent_execution_id"
-        ),
+        "agent_execution_id": _uuid(record["agent_execution_id"], "agent_execution_id"),
         "requester_ref": _text(record["requester_ref"], "requester_ref", 200),
         "work_intent_id": _uuid(record["work_intent_id"], "work_intent_id"),
         "work_intent_revision": _positive_int(
@@ -142,9 +136,7 @@ def seal_product_preparation_checkpoint(value: Mapping[str, Any]) -> dict[str, A
             record["stage_kind"], PRODUCT_CHECKPOINT_STAGE_KINDS, "stage_kind"
         ),
         "authority_refs": _array(record["authority_refs"], "authority_refs", 32),
-        "idempotency_key": _text(
-            record["idempotency_key"], "idempotency_key", 512
-        ),
+        "idempotency_key": _text(record["idempotency_key"], "idempotency_key", 512),
         "correlation_id": _text(record["correlation_id"], "correlation_id", 256),
         "causation_id": _nullable_text(record["causation_id"], "causation_id", 256),
         "created_at": _time(record["created_at"], "created_at"),
@@ -176,9 +168,7 @@ def product_preparation_wait_envelope(value: Mapping[str, Any]) -> dict[str, Any
     return {
         "tenant_id": _text(record["tenant_id"], "tenant_id", 128),
         "wait_id": _uuid(record["wait_id"], "wait_id"),
-        "agent_execution_id": _uuid(
-            record["agent_execution_id"], "agent_execution_id"
-        ),
+        "agent_execution_id": _uuid(record["agent_execution_id"], "agent_execution_id"),
         "executable_step_id": None,
         "wait_type": "PRODUCT_PREPARATION",
         "external_ref": _text(record["external_ref"], "external_ref", 512),
@@ -239,18 +229,14 @@ def seal_product_preparation_wait_binding(
             record["authority_kind"], PRODUCT_AUTHORITY_KINDS, "authority_kind"
         ),
         "authority_ref": _text(record["authority_ref"], "authority_ref", 512),
-        "agent_execution_id": _uuid(
-            record["agent_execution_id"], "agent_execution_id"
-        ),
+        "agent_execution_id": _uuid(record["agent_execution_id"], "agent_execution_id"),
         "work_intent_id": _uuid(record["work_intent_id"], "work_intent_id"),
         "created_at": _time(record["created_at"], "created_at"),
     }
     _authority_pair(normalized)
     return {
         **normalized,
-        "binding_hash": semantic_sha256_hash_ref(
-            _without(normalized, "created_at")
-        ),
+        "binding_hash": semantic_sha256_hash_ref(_without(normalized, "created_at")),
     }
 
 
@@ -334,20 +320,14 @@ def seal_product_preparation_event_binding(
         "authority_kind": _enum(
             record["authority_kind"], PRODUCT_AUTHORITY_KINDS, "authority_kind"
         ),
-        "notification_ref": _text(
-            record["notification_ref"], "notification_ref", 512
-        ),
-        "agent_execution_id": _uuid(
-            record["agent_execution_id"], "agent_execution_id"
-        ),
+        "notification_ref": _text(record["notification_ref"], "notification_ref", 512),
+        "agent_execution_id": _uuid(record["agent_execution_id"], "agent_execution_id"),
         "work_intent_id": _uuid(record["work_intent_id"], "work_intent_id"),
         "created_at": _time(record["created_at"], "created_at"),
     }
     return {
         **normalized,
-        "binding_hash": semantic_sha256_hash_ref(
-            _without(normalized, "created_at")
-        ),
+        "binding_hash": semantic_sha256_hash_ref(_without(normalized, "created_at")),
     }
 
 
@@ -359,7 +339,10 @@ class SqlAlchemyProductPreparationCheckpointRepository:
         normalized = _checkpoint(checkpoint)
         try:
             with self._sessions() as session:
-                session.execute(text(_checkpoint_insert_sql(session)), _checkpoint_params(normalized))
+                session.execute(
+                    text(_checkpoint_insert_sql(session)),
+                    _checkpoint_params(normalized),
+                )
                 saved = _load_checkpoint(
                     session,
                     tenant_id=normalized["tenant_id"],
@@ -475,7 +458,9 @@ class SqlAlchemyGeneralizedWaitEventRepository:
         binding = _product_event_binding(product_binding, event=normalized)
         try:
             with self._sessions() as session:
-                session.execute(text(_event_insert_sql(session)), _event_params(normalized))
+                session.execute(
+                    text(_event_insert_sql(session)), _event_params(normalized)
+                )
                 if binding is not None:
                     session.execute(text(_EVENT_BINDING_INSERT_SQL), binding)
                 saved = _load_event(
@@ -517,9 +502,7 @@ class SqlAlchemyGeneralizedWaitEventRepository:
         }
         try:
             with self._sessions() as session:
-                row = (
-                    session.execute(text(_WAIT_BY_ID_SQL), params).mappings().first()
-                )
+                row = session.execute(text(_WAIT_BY_ID_SQL), params).mappings().first()
                 return None if row is None else _wait_projection(row)
         except SQLAlchemyError as exc:
             raise _unavailable() from exc
@@ -556,6 +539,42 @@ class SqlAlchemyGeneralizedWaitEventRepository:
                     "product_binding": _wait_binding_projection(row, prefix="binding_"),
                     "checkpoint": _checkpoint_projection(row, prefix="checkpoint_"),
                 }
+        except SQLAlchemyError as exc:
+            raise _unavailable() from exc
+
+    def resolve_product_wait_context(
+        self,
+        *,
+        tenant_id: str,
+        authority_kind: str,
+        authority_ref: str,
+    ) -> dict[str, Any] | None:
+        params = {
+            "tenant_id": _text(tenant_id, "tenant_id", 128),
+            "authority_kind": _text(authority_kind, "authority_kind", 64),
+            "authority_ref": _text(authority_ref, "authority_ref", 512),
+        }
+        try:
+            with self._sessions() as session:
+                rows = (
+                    session.execute(text(_PRODUCT_WAIT_BY_AUTHORITY_SQL), params)
+                    .mappings()
+                    .all()
+                )
+                if not rows:
+                    return None
+                if len(rows) != 1:
+                    raise _conflict(
+                        "Product Preparation authority resolves to multiple waits."
+                    )
+                row = rows[0]
+                return {
+                    "wait": _wait_projection(row),
+                    "product_binding": _wait_binding_projection(row, prefix="binding_"),
+                    "checkpoint": _checkpoint_projection(row, prefix="checkpoint_"),
+                }
+        except ProductPreparationPersistenceError:
+            raise
         except SQLAlchemyError as exc:
             raise _unavailable() from exc
 
@@ -646,9 +665,7 @@ def _wait(value: Mapping[str, Any]) -> dict[str, Any]:
     normalized = {
         "tenant_id": _text(record["tenant_id"], "tenant_id", 128),
         "wait_id": _uuid(record["wait_id"], "wait_id"),
-        "agent_execution_id": _uuid(
-            record["agent_execution_id"], "agent_execution_id"
-        ),
+        "agent_execution_id": _uuid(record["agent_execution_id"], "agent_execution_id"),
         "executable_step_id": _nullable_uuid(
             record["executable_step_id"], "executable_step_id"
         ),
@@ -707,9 +724,7 @@ def _event(value: Mapping[str, Any]) -> dict[str, Any]:
     normalized = {
         "tenant_id": _text(record["tenant_id"], "tenant_id", 128),
         "event_id": _text(record["event_id"], "event_id", 256),
-        "event_family": _enum(
-            record["event_family"], EVENT_FAMILIES, "event_family"
-        ),
+        "event_family": _enum(record["event_family"], EVENT_FAMILIES, "event_family"),
         "event_type": _text(record["event_type"], "event_type", 64),
         "event_semantic_hash": _hash(
             record["event_semantic_hash"], "event_semantic_hash"
@@ -753,9 +768,7 @@ def _product_wait_binding(
         return None
     if value is None:
         raise _invalid("Product Preparation wait requires its typed binding.")
-    expected = seal_product_preparation_wait_binding(
-        _without(value, "binding_hash")
-    )
+    expected = seal_product_preparation_wait_binding(_without(value, "binding_hash"))
     supplied = _exact_mapping(value, set(expected), "sealed Product wait binding")
     if supplied != expected:
         raise _invalid("Product Preparation wait binding seal differs from content.")
@@ -776,19 +789,16 @@ def _product_event_binding(
         return None
     if value is None:
         raise _invalid("Product Preparation event requires its typed binding.")
-    expected = seal_product_preparation_event_binding(
-        _without(value, "binding_hash")
-    )
+    expected = seal_product_preparation_event_binding(_without(value, "binding_hash"))
     supplied = _exact_mapping(value, set(expected), "sealed Product event binding")
     if supplied != expected:
         raise _invalid("Product Preparation event binding seal differs from content.")
-    if expected["tenant_id"] != event["tenant_id"] or expected["event_id"] != event[
-        "event_id"
-    ]:
-        raise _invalid("Product Preparation event binding lineage differs.")
-    if expected["notification_ref"] != event["event_payload"].get(
-        "notification_ref"
+    if (
+        expected["tenant_id"] != event["tenant_id"]
+        or expected["event_id"] != event["event_id"]
     ):
+        raise _invalid("Product Preparation event binding lineage differs.")
+    if expected["notification_ref"] != event["event_payload"].get("notification_ref"):
         raise _invalid("Product Preparation notification reference differs.")
     return expected
 
@@ -942,9 +952,7 @@ def _checkpoint_semantic_projection(value: Mapping[str, Any]) -> dict[str, Any]:
         "capability_registration_hash": value["capability_registration_hash"],
         "coordinator_id": value["coordinator_id"],
         "coordinator_version": value["coordinator_version"],
-        "coordinator_registration_hash": value[
-            "coordinator_registration_hash"
-        ],
+        "coordinator_registration_hash": value["coordinator_registration_hash"],
         "preparation_adapter_source_identity": value[
             "preparation_adapter_source_identity"
         ],
@@ -995,9 +1003,7 @@ def _load_checkpoint(
             text(
                 _CHECKPOINT_SELECT
                 + " WHERE "
-                + " OR ".join(
-                    [clauses[0] + " AND " + clause for clause in clauses[1:]]
-                )
+                + " OR ".join([clauses[0] + " AND " + clause for clause in clauses[1:]])
             ),
             params,
         )
@@ -1266,8 +1272,10 @@ def _unavailable() -> ProductPreparationPersistenceError:
 
 
 def _database_error(exc: DBAPIError) -> ProductPreparationPersistenceError:
-    return _unavailable() if exc.connection_invalidated else _rejected(
-        "Product Preparation persistence was rejected."
+    return (
+        _unavailable()
+        if exc.connection_invalidated
+        else _rejected("Product Preparation persistence was rejected.")
     )
 
 
@@ -1436,7 +1444,9 @@ _EVENT_BINDING_REPLAY_FIELDS = tuple(
     field for field in _EVENT_BINDING_FIELDS if field != "created_at"
 )
 
-_CHECKPOINT_SELECT = "SELECT " + ", ".join(_CHECKPOINT_FIELDS) + " FROM ae_product_prep_checkpoint"
+_CHECKPOINT_SELECT = (
+    "SELECT " + ", ".join(_CHECKPOINT_FIELDS) + " FROM ae_product_prep_checkpoint"
+)
 _LATEST_CHECKPOINT_SQL = (
     _CHECKPOINT_SELECT
     + " WHERE tenant_id = :tenant_id AND agent_execution_id = :agent_execution_id "
@@ -1456,7 +1466,9 @@ _WAIT_BINDING_BY_ID_SQL = (
     "WHERE tenant_id = :tenant_id AND wait_id = :wait_id"
 )
 _EVENT_BINDING_BY_ID_SQL = (
-    "SELECT " + ", ".join(_EVENT_BINDING_FIELDS) + " FROM ae_product_prep_event_binding "
+    "SELECT "
+    + ", ".join(_EVENT_BINDING_FIELDS)
+    + " FROM ae_product_prep_event_binding "
     "WHERE tenant_id = :tenant_id AND event_id = :event_id"
 )
 
@@ -1609,4 +1621,13 @@ JOIN ae_product_prep_checkpoint AS checkpoint
   ON checkpoint.tenant_id = binding.tenant_id
  AND checkpoint.checkpoint_id = binding.checkpoint_id
 WHERE wait.tenant_id = :tenant_id AND wait.wait_id = :wait_id
+"""
+
+_PRODUCT_WAIT_BY_AUTHORITY_SQL = f"""
+{_PRODUCT_WAIT_CONTEXT_SQL.partition("WHERE wait.tenant_id")[0]}
+WHERE wait.tenant_id = :tenant_id
+  AND binding.authority_kind = :authority_kind
+  AND binding.authority_ref = :authority_ref
+ORDER BY wait.created_at, wait.wait_id
+LIMIT 2
 """

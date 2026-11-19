@@ -205,9 +205,12 @@ def test_wc_to_ae_and_ae_to_eos_http_adapters_bind_receipts() -> None:
             observed.append((request.full_url, request.headers["Authorization"]))
             or _Response(
                 {
+                    "schema_version": "eos_approval_decision_receipt.v1",
                     "outbox_id": OUTBOX_ID,
                     "event_id": EVENT_ID,
                     "approval_domain": "BUSINESS_FORMAL",
+                    "approval_instance_id": INSTANCE_ID,
+                    "transition_state": "APPROVED",
                 }
             )
         ),
@@ -261,15 +264,18 @@ def test_wc_approval_delivery_marks_only_after_ack() -> None:
 
 
 def test_ae_to_eos_http_adapter_rejects_unbound_receipt_and_bad_timeout() -> None:
-    with pytest.raises(ApprovalDecisionEventError, match="receipt binding"):
+    with pytest.raises(ApprovalDecisionEventError, match="receipt domain"):
         HttpEosBusinessApprovalDecisionClient(
             base_url="https://eos.example",
             service_token="token",
             opener=lambda *_args, **_kwargs: _Response(
                 {
+                    "schema_version": "eos_approval_decision_receipt.v1",
                     "outbox_id": OUTBOX_ID,
                     "event_id": EVENT_ID,
                     "approval_domain": "NSL_WRITE",
+                    "approval_instance_id": INSTANCE_ID,
+                    "transition_state": "APPROVED",
                 }
             ),
         ).ingest(_delivery())

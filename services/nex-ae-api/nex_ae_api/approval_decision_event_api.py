@@ -37,6 +37,20 @@ class ApprovalDecisionEventAdmission(Protocol):
     def ingest(self, delivery: object) -> dict[str, Any]: ...
 
 
+class ProductAuthorityEventAdmission(Protocol):
+    def ingest(self, payload: Mapping[str, Any]) -> dict[str, Any]: ...
+
+
+class ProductWaitContextSource(Protocol):
+    def resolve_product_wait_context(
+        self,
+        *,
+        tenant_id: str,
+        authority_kind: str,
+        authority_ref: str,
+    ) -> dict[str, Any] | None: ...
+
+
 class ApprovalDecisionEventError(RuntimeError):
     def __init__(
         self,
@@ -196,14 +210,102 @@ class HttpEosBusinessApprovalDecisionClient:
                 retryable=True,
             ) from exc
         event = _mapping(delivery.get("event"), "event")
+        if not isinstance(result, Mapping):
+            raise _invalid("EOS business approval receipt binding is invalid.")
+        admitted = _eos_approval_receipt(result)
         if (
-            not isinstance(result, Mapping)
-            or result.get("outbox_id") != delivery.get("outbox_id")
-            or result.get("event_id") != event.get("event_id")
-            or result.get("approval_domain") != "BUSINESS_FORMAL"
+            admitted.get("outbox_id") != delivery.get("outbox_id")
+            or admitted.get("event_id") != event.get("event_id")
+            or admitted.get("approval_domain") != "BUSINESS_FORMAL"
         ):
             raise _invalid("EOS business approval receipt binding is invalid.")
-        return dict(result)
+        return admitted
+
+
+class EosProductApprovalReceiptAdmission:
+    """Bind an EOS authority receipt to one registered Product wait."""
+
+    def __init__(
+        self,
+        *,
+        eos_client: ApprovalDecisionEventAdmission,
+        wait_contexts: ProductWaitContextSource,
+        product_events: ProductAuthorityEventAdmission | None,
+    ) -> None:
+        self._eos = eos_client
+        self._wait_contexts = wait_contexts
+        self._product_events = product_events
+
+    def ingest(self, delivery: object) -> dict[str, Any]:
+        admitted_delivery = _mapping(delivery, "delivery")
+        _outbox_id, work_item, decision, event = _delivery(admitted_delivery)
+        receipt = self._eos.ingest(admitted_delivery)
+        authority = _product_authority_receipt(
+            receipt,
+            work_item=work_item,
+            decision=decision,
+            event=event,
+        )
+        if authority is None or authority["authority_state"] == "PENDING":
+            return dict(receipt)
+        if self._product_events is None:
+            raise ApprovalDecisionEventError(
+                "ae.product_approval_resume_unavailable",
+                "The active Product authority event admission is unavailable.",
+                status_code=503,
+                retryable=True,
+            )
+        try:
+            context = self._wait_contexts.resolve_product_wait_context(
+                tenant_id=authority["tenant_id"],
+                authority_kind=authority["authority_kind"],
+                authority_ref=authority["authority_ref"],
+            )
+        except Exception as exc:
+            raise _product_resume_error(exc) from exc
+        if context is None:
+            raise ApprovalDecisionEventError(
+                "ae.product_approval_wait_not_found",
+                "No Product wait matches the EOS approval authority receipt.",
+                status_code=409,
+            )
+        binding = _mapping(context.get("product_binding"), "product_binding")
+        checkpoint = _mapping(context.get("checkpoint"), "checkpoint")
+        expected_event_type = (
+            "BUSINESS_APPROVAL_CHANGED"
+            if authority["authority_kind"] == "BUSINESS_FORMAL"
+            else "ACCOUNTING_APPROVAL_CHANGED"
+        )
+        if (
+            binding.get("expected_event_type") != expected_event_type
+            or binding.get("authority_ref") != authority["authority_ref"]
+            or binding.get("checkpoint_id") != checkpoint.get("checkpoint_id")
+        ):
+            raise ApprovalDecisionEventError(
+                "ae.product_approval_wait_drifted",
+                "The Product wait binding differs from the EOS authority receipt.",
+                status_code=409,
+            )
+        try:
+            resumed = self._product_events.ingest(
+                {
+                    "tenant_id": authority["tenant_id"],
+                    "coordinator_id": binding["coordinator_id"],
+                    "coordinator_version": binding["coordinator_version"],
+                    "coordinator_registration_hash": binding[
+                        "coordinator_registration_hash"
+                    ],
+                    "checkpoint_id": binding["checkpoint_id"],
+                    "event_id": authority["event_id"],
+                    "notification_ref": authority["notification_ref"],
+                    "authority_evidence_ref": authority["authority_evidence_ref"],
+                    "authority_state": authority["authority_state"],
+                    "received_at": authority["received_at"],
+                }
+            )
+        except Exception as exc:
+            raise _product_resume_error(exc) from exc
+        return {**dict(receipt), "product_resume": dict(resumed)}
 
 
 class ApprovalDecisionEventRouter:
@@ -310,6 +412,133 @@ def _delivery(
     if any(decision.get(name) != item for name, item in ids.items()):
         raise _invalid("WC approval delivery decision lineage differs.")
     return outbox_id, work_item, decision, event
+
+
+def _eos_approval_receipt(value: Mapping[str, Any]) -> dict[str, Any]:
+    receipt = dict(value)
+    schema_version = _required(receipt.get("schema_version"), "schema_version")
+    if schema_version not in {
+        "eos_approval_decision_receipt.v1",
+        "eos_document_signoff_decision_receipt.v1",
+        "eos_accounting_approval_decision_receipt.v2",
+    }:
+        raise _invalid("EOS business approval receipt schema is unsupported.")
+    _required(receipt.get("outbox_id"), "outbox_id")
+    _required(receipt.get("event_id"), "event_id")
+    if receipt.get("approval_domain") != "BUSINESS_FORMAL":
+        raise _invalid("EOS business approval receipt domain is invalid.")
+    if schema_version == "eos_approval_decision_receipt.v1":
+        if receipt.get("transition_state") not in {
+            "PENDING",
+            "APPROVED",
+            "REJECTED",
+        }:
+            raise _invalid("EOS approval transition state is invalid.")
+        _required(receipt.get("approval_instance_id"), "approval_instance_id")
+        return receipt
+    purpose = (
+        "DOCUMENT_SIGNOFF"
+        if schema_version == "eos_document_signoff_decision_receipt.v1"
+        else "ACCOUNTING_POSTING"
+    )
+    if receipt.get("purpose") != purpose:
+        raise _invalid("EOS scoped approval receipt purpose is invalid.")
+    _required(receipt.get("case_id"), "case_id")
+    if receipt.get("case_state") not in {"PENDING", "APPROVED", "REJECTED"}:
+        raise _invalid("EOS scoped approval receipt state is invalid.")
+    return receipt
+
+
+def _product_authority_receipt(
+    receipt: Mapping[str, Any],
+    *,
+    work_item: Mapping[str, Any],
+    decision: Mapping[str, Any],
+    event: Mapping[str, Any],
+) -> dict[str, str] | None:
+    schema_version = receipt.get("schema_version")
+    profiles = {
+        "eos_document_signoff_decision_receipt.v1": (
+            "DOCUMENT_SIGNOFF",
+            "BUSINESS_FORMAL",
+            "approved_document_envelope",
+            "envelope_id",
+        ),
+        "eos_accounting_approval_decision_receipt.v2": (
+            "ACCOUNTING_POSTING",
+            "ACCOUNTING_REVIEW",
+            "accounting_approval_evidence",
+            "evidence_id",
+        ),
+    }
+    profile = profiles.get(str(schema_version))
+    if profile is None:
+        return None
+    purpose, authority_kind, evidence_field, evidence_id_field = profile
+    case_id = _required(receipt.get("case_id"), "case_id")
+    resume_target = _required(work_item.get("resume_target_ref"), "resume_target_ref")
+    expected_prefix = f"eos.scoped-approval-case:{case_id}:stage:"
+    if not resume_target.startswith(expected_prefix):
+        raise _invalid("EOS scoped approval receipt authority binding differs.")
+    authority_state = str(receipt.get("case_state") or "")
+    decision_state = decision.get("decision")
+    if (
+        authority_state == "APPROVED"
+        and decision_state != "APPROVE"
+        or authority_state == "REJECTED"
+        and decision_state != "REJECT"
+    ):
+        raise _invalid("EOS scoped approval receipt decision differs.")
+    evidence = receipt.get(evidence_field)
+    if authority_state == "APPROVED":
+        evidence_ref = _required(
+            _mapping(evidence, evidence_field).get(evidence_id_field),
+            evidence_id_field,
+        )
+    elif authority_state == "REJECTED":
+        if evidence is not None:
+            raise _invalid("Rejected EOS authority receipt contains approval evidence.")
+        evidence_ref = (
+            "eos.scoped-approval-decision:"
+            f"{_required(decision.get('decision_id'), 'decision_id')}"
+        )
+    else:
+        if evidence is not None:
+            raise _invalid("Pending EOS authority receipt contains terminal evidence.")
+        evidence_ref = f"eos.scoped-approval-case:{case_id}:pending"
+    decided_at = _datetime(decision.get("decided_at"))
+    if event.get("occurred_at") != decision.get("decided_at"):
+        raise _invalid("EOS authority receipt event time differs.")
+    return {
+        "tenant_id": _required(event.get("tenant_id"), "tenant_id"),
+        "authority_kind": authority_kind,
+        "authority_ref": case_id,
+        "authority_state": authority_state,
+        "event_id": _required(event.get("event_id"), "event_id"),
+        "notification_ref": (
+            f"eos.{purpose.lower()}:{case_id}:{authority_state.lower()}"
+        ),
+        "authority_evidence_ref": evidence_ref,
+        "received_at": decided_at.isoformat().replace("+00:00", "Z"),
+    }
+
+
+def _product_resume_error(exc: Exception) -> ApprovalDecisionEventError:
+    if isinstance(exc, ApprovalDecisionEventError):
+        return exc
+    error_code = getattr(exc, "error_code", None)
+    detail = getattr(exc, "detail", None)
+    retryable = bool(getattr(exc, "retryable", False))
+    if not isinstance(error_code, str) or not isinstance(detail, str):
+        error_code = "ae.product_approval_resume_failed"
+        detail = "Product approval resume admission failed."
+        retryable = True
+    return ApprovalDecisionEventError(
+        error_code,
+        detail,
+        status_code=503 if retryable else 409,
+        retryable=retryable,
+    )
 
 
 def _mapping(value: object, field: str) -> Mapping[str, Any]:
