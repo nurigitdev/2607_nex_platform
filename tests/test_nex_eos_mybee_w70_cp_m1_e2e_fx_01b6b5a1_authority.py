@@ -244,6 +244,13 @@ def test_authority_resolution_is_bounded_hash_bound_and_read_only(
         selection.risk_level is None
         for selection in dependencies["approval_policies"].selections
     )
+    business_selection, accounting_selection = (
+        dependencies["approval_policies"].selections
+    )
+    assert business_selection.project_id == (
+        PROJECT_IDS[0] if len(project_codes) == 1 else None
+    )
+    assert accounting_selection.project_id == PROJECT_IDS[0]
     expected = semantic_sha256_hash_ref(
         {
             "domain": "EOS-TRANSACTION-PREPARATION-AUTHORITY-RESOLUTION-V1",

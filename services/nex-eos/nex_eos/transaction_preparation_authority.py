@@ -186,13 +186,16 @@ class EosTransactionPreparationAuthorityService:
             raise _conflict("AccountingPeriod is not OPEN")
 
         primary_project = projects[0]["project"]
+        business_policy_project_id = (
+            str(primary_project["project_id"]) if len(projects) == 1 else None
+        )
         amount = Decimal(request["amount"])
         business_policy = self._resolve_policy(
             tenant_id=tenant_id,
             amount=amount,
             effective_at=_effective_at(recognition_date),
             transaction_type="DOCUMENT_SIGNOFF",
-            project_id=str(primary_project["project_id"]),
+            project_id=business_policy_project_id,
             account_ids=(),
         )
         accounting_policy = self._resolve_policy(

@@ -726,6 +726,9 @@ def _seed_approval_policies(
         ("business", "DOCUMENT_SIGNOFF"),
         ("accounting", "ACCOUNTING_POSTING"),
     ):
+        project_id = (
+            None if transaction_type == "DOCUMENT_SIGNOFF" else primary_project_id
+        )
         repository.create_policy(
             ApprovalPolicyInput(
                 tenant_id,
@@ -736,7 +739,7 @@ def _seed_approval_policies(
                 now,
                 (ApprovalPolicyStageInput("TEAM_LEAD"),),
                 transaction_type=transaction_type,
-                project_id=primary_project_id,
+                project_id=project_id,
             )
         )
 

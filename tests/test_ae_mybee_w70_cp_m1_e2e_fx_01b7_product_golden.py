@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -41,6 +42,30 @@ def test_product_seed_cannot_delete_public_authority_or_bypass_protection() -> N
     assert "cleanup_acceptance_tenant" not in source
     assert 'schema="public"' not in source
     assert "DISABLE TRIGGER" not in source
+
+
+def test_product_seed_uses_scope_compatible_approval_policies(monkeypatch) -> None:
+    policies = []
+
+    class Repository:
+        def __init__(self, _factory) -> None:
+            pass
+
+        def create_policy(self, value) -> None:
+            policies.append(value)
+
+    monkeypatch.setattr(support, "SqlAlchemyEosApprovalPolicyRepository", Repository)
+    baseline = support.load_acceptance_baseline()
+
+    support._seed_approval_policies(
+        object(), baseline, now=datetime(2026, 11, 18, 1, tzinfo=UTC)
+    )
+
+    by_type = {value.transaction_type: value for value in policies}
+    assert by_type["DOCUMENT_SIGNOFF"].project_id is None
+    assert by_type["ACCOUNTING_POSTING"].project_id == baseline["projects"][0][
+        "project_id"
+    ]
 
 
 def test_product_golden_execution_is_protected_and_contains_failures() -> None:
