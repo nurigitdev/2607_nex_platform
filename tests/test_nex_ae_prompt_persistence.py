@@ -46,7 +46,8 @@ def session_factory(*, with_schema: bool = True):
 
 
 def _create_schema(connection) -> None:
-    connection.execute(text("""
+    connection.execute(
+        text("""
         CREATE TABLE ae_prompt_templates (
             prompt_template_id TEXT PRIMARY KEY,
             service_id TEXT NOT NULL,
@@ -58,8 +59,10 @@ def _create_schema(connection) -> None:
             updated_at TEXT NOT NULL,
             UNIQUE (service_id, purpose, name)
         )
-    """))
-    connection.execute(text("""
+    """)
+    )
+    connection.execute(
+        text("""
         CREATE TABLE ae_prompt_template_versions (
             prompt_template_version_id TEXT PRIMARY KEY,
             prompt_template_id TEXT NOT NULL,
@@ -74,8 +77,10 @@ def _create_schema(connection) -> None:
             created_at TEXT NOT NULL,
             UNIQUE (prompt_template_id, version, role, segment_order)
         )
-    """))
-    connection.execute(text("""
+    """)
+    )
+    connection.execute(
+        text("""
         CREATE TABLE ae_prompt_bindings (
             prompt_binding_id TEXT PRIMARY KEY,
             binding_key TEXT NOT NULL UNIQUE,
@@ -85,8 +90,10 @@ def _create_schema(connection) -> None:
             status TEXT NOT NULL,
             bound_at TEXT NOT NULL
         )
-    """))
-    connection.execute(text("""
+    """)
+    )
+    connection.execute(
+        text("""
         CREATE TABLE ae_prompt_render_events (
             prompt_render_event_id TEXT PRIMARY KEY,
             prompt_binding_id TEXT,
@@ -100,8 +107,10 @@ def _create_schema(connection) -> None:
             metadata TEXT NOT NULL,
             created_at TEXT NOT NULL
         )
-    """))
-    connection.execute(text("""
+    """)
+    )
+    connection.execute(
+        text("""
         CREATE TABLE ae_prompt_binding_history (
             binding_change_id TEXT PRIMARY KEY,
             binding_key TEXT NOT NULL,
@@ -113,7 +122,8 @@ def _create_schema(connection) -> None:
             changed_at TEXT NOT NULL,
             UNIQUE (binding_key, correlation_id)
         )
-    """))
+    """)
+    )
 
 
 def test_registry_seeds_configured_bindings_idempotently_and_survives_restart() -> None:
@@ -278,7 +288,7 @@ def test_startup_upgrades_existing_intent_v9_binding_with_history() -> None:
 
     after = store.get_binding(AE_INTENT_RESOLUTION_BINDING)
     version = store.get_template_version(after["prompt_template_version_id"])
-    assert version["version"] == "v11"
+    assert version["version"] == "v12"
     assert version["metadata"]["historical_scenario_dependency"] is False
     assert version["metadata"]["nvt_project_operations"] == ("create_get_list_update")
     assert version["metadata"]["employee_authority"] == "oa_only"
@@ -294,7 +304,7 @@ def test_startup_upgrades_existing_intent_v9_binding_with_history() -> None:
                     "new_prompt_template_version_id, correlation_id "
                     "FROM ae_prompt_binding_history "
                     "WHERE correlation_id = "
-                    "'w70-cp-m1-e2e-fx-01b2-intent-prompt-v10'"
+                    "'w70-cp-m1-e2e-fx-01b7i-intent-prompt-v12'"
                 )
             )
             .mappings()
@@ -509,11 +519,13 @@ def test_binding_activation_rolls_back_history_and_pointer_on_fault(
     )
     trigger_operation = "INSERT" if failure_target == "history" else "UPDATE"
     with factory() as session:
-        session.execute(text(f"""
+        session.execute(
+            text(f"""
             CREATE TRIGGER fail_{failure_target}
             BEFORE {trigger_operation} ON {trigger_target}
             BEGIN SELECT RAISE(ABORT, 'injected failure'); END
-        """))
+        """)
+        )
         session.commit()
 
     with pytest.raises(PromptRepositoryError) as raised:

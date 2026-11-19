@@ -96,6 +96,18 @@ def _candidate(*, project_code: str = PROJECT_CODE):
                 "confidence": 0.98,
             }
         ],
+        "parameter_candidates": [
+            {
+                "name": "primary_project_code",
+                "value": project_code,
+                "confidence": 0.98,
+            },
+            {
+                "name": "allocation_project_code_1",
+                "value": project_code,
+                "confidence": 0.98,
+            },
+        ],
     }
 
 
@@ -119,9 +131,7 @@ def _work_intent():
             "recognition_date": "2026-11-15",
             "description": "Post the Project expense.",
         },
-        "requested_allocation": [
-            {"project_code": PROJECT_CODE, "ratio": "1.000000"}
-        ],
+        "requested_allocation": [{"project_code": PROJECT_CODE, "ratio": "1.000000"}],
         "candidate_provenance": {
             "intent_candidate_hash": "sha256:" + "b" * 64,
             "input_context_hash": "sha256:" + "c" * 64,
@@ -292,7 +302,57 @@ def test_project_delegation_fails_closed_for_missing_or_ambiguous_project_code()
     candidate["entity_selectors"].append(dict(candidate["entity_selectors"][0]))
     with pytest.raises(ProjectDelegationPlanningError) as ambiguous:
         _activate(candidate=candidate)
-    assert ambiguous.value.error_code == "PROJECT_CODE_AMBIGUOUS"
+    assert ambiguous.value.error_code == "PRIMARY_PROJECT_IDENTITY_INVALID"
+
+
+def test_project_delegation_uses_typed_primary_identity_not_selector_order():
+    secondary = "VO00D260002"
+    candidate = _candidate()
+    candidate["entity_selectors"].insert(
+        0,
+        {
+            "selector_id": "E2",
+            "selector_type": "QUERY_TERM",
+            "value": secondary,
+            "confidence": 1.0,
+        },
+    )
+    candidate["parameter_candidates"].append(
+        {
+            "name": "allocation_project_code_2",
+            "value": secondary,
+            "confidence": 1.0,
+        }
+    )
+
+    activated = _activate(candidate=candidate)
+
+    assert activated.work_intent["entity_selectors"][0]["raw_text"] == PROJECT_CODE
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    (
+        lambda value: value["parameter_candidates"][0].update(value="VO00D260003"),
+        lambda value: value["parameter_candidates"][0].update(value="not-a-project"),
+        lambda value: value["entity_selectors"].append(
+            {
+                "selector_id": "E2",
+                "selector_type": "QUERY_TERM",
+                "value": "VO00D260003",
+                "confidence": 0.99,
+            }
+        ),
+    ),
+)
+def test_project_delegation_rejects_primary_identity_or_unknown_selector(mutation):
+    candidate = _candidate()
+    mutation(candidate)
+
+    with pytest.raises(ProjectDelegationPlanningError) as raised:
+        _activate(candidate=candidate)
+
+    assert raised.value.error_code == "PRIMARY_PROJECT_IDENTITY_INVALID"
 
 
 def test_project_delegation_fails_closed_for_oa_denial_and_inactive_pa():
@@ -418,12 +478,14 @@ def test_ia_resolved_project_entity_admits_delegate_work_scope():
         agent_plan_id=PLAN_ID,
     )
     assert plan["steps"][0]["delegation"]["project_scope_ref"] == PROJECT_ID
-    assert plan["steps"][0]["delegation"]["business_request_context"] == intent[
-        "business_request_context"
-    ]
-    assert plan["steps"][0]["delegation"]["business_context_hash"] == intent[
-        "business_context_hash"
-    ]
+    assert (
+        plan["steps"][0]["delegation"]["business_request_context"]
+        == intent["business_request_context"]
+    )
+    assert (
+        plan["steps"][0]["delegation"]["business_context_hash"]
+        == intent["business_context_hash"]
+    )
 
     bad_context = dict(context)
     bad_context["resolved_entities"] = []
@@ -647,11 +709,12 @@ def test_eos_project_resolution_preserves_bounded_http_failure_category(
     assert raised.value.retryable is retryable
 
 
-def test_active_intent_prompt_is_v11_and_delegation_prompt_is_separate():
+def test_active_intent_prompt_is_v12_and_delegation_prompt_is_separate():
     source = Path("services/nex-ae-api/nex_ae_api/prompts.py").read_text(
         encoding="utf-8"
     )
-    assert 'version="v11"' in source
+    assert 'version="v12"' in source
+    assert "primary_project_code" in source
     assert "allocation_project_code_1" in source
     assert '"ae.plan_builder.project_delegation.v1"' in source
     assert "p7.plan_candidate.v1" in source

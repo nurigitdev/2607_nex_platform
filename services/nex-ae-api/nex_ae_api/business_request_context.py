@@ -29,14 +29,13 @@ BUSINESS_ALLOCATION_MAX_ITEMS = 12
 
 _CANDIDATE_SCHEMA_VERSION = "p65.intent_candidate.v1"
 _PROJECT_CODE = re.compile(r"^[A-Z0-9]{4}[DMSOIG][0-9]{6}$")
-_SOURCE_PROMPT_REF = re.compile(
-    r"^AE:INTERACTION:[A-Za-z0-9][A-Za-z0-9_.:-]{0,159}$"
-)
+_SOURCE_PROMPT_REF = re.compile(r"^AE:INTERACTION:[A-Za-z0-9][A-Za-z0-9_.:-]{0,159}$")
 _ALLOCATION_PROJECT = re.compile(r"^allocation_project_code_([1-9][0-9]?)$")
 _ALLOCATION_RATIO = re.compile(r"^allocation_ratio_([1-9][0-9]?)$")
 _STATIC_PARAMETER_NAMES = frozenset(
     {
         "company_selector",
+        "primary_project_code",
         "document_subject",
         "counterparty_selector",
         "amount",
@@ -56,6 +55,8 @@ _CANDIDATE_KEYS = frozenset(
         "confidence",
     }
 )
+
+
 @dataclass(frozen=True)
 class BusinessRequestContextError(ValueError):
     error_code: str
@@ -100,15 +101,16 @@ def admit_business_request_context(
     )
 
     parameters = _parameter_map(record.get("parameter_candidates"))
-    project_selector = _project_selector(record.get("entity_selectors"))
     allocations = _allocations(parameters)
-    if project_selector["value"] not in {
-        item["project_code"] for item in allocations
-    }:
-        raise _error(
-            "ae.business_context_project_ambiguous",
-            "The delegated Project Code must be one requested allocation target.",
-        )
+    primary_project_code = _project_code(
+        parameters["primary_project_code"].get("value"),
+        field_name="Primary Project Code",
+    )
+    project_selector = _primary_project_selector(
+        record.get("entity_selectors"),
+        primary_project_code=primary_project_code,
+        allocation_project_codes={item["project_code"] for item in allocations},
+    )
 
     company = _text_parameter(parameters, "company_selector", 160)
     subject = _text_parameter(parameters, "document_subject", 256)
@@ -209,7 +211,11 @@ def _parameter_map(value: object) -> dict[str, dict[str, Any]]:
         raise _invalid("Business parameter candidates are invalid.")
     result: dict[str, dict[str, Any]] = {}
     for item in value:
-        if not isinstance(item, Mapping) or set(item) != {"name", "value", "confidence"}:
+        if not isinstance(item, Mapping) or set(item) != {
+            "name",
+            "value",
+            "confidence",
+        }:
             raise _invalid("Business parameter candidate fields are invalid.")
         name = item.get("name")
         if not isinstance(name, str) or not name:
@@ -235,7 +241,12 @@ def _parameter_map(value: object) -> dict[str, dict[str, Any]]:
     return result
 
 
-def _project_selector(value: object) -> dict[str, Any]:
+def _primary_project_selector(
+    value: object,
+    *,
+    primary_project_code: str,
+    allocation_project_codes: set[str],
+) -> dict[str, Any]:
     if not isinstance(value, list):
         raise _invalid("Project selectors must be an array.")
     matches = [
@@ -246,17 +257,31 @@ def _project_selector(value: object) -> dict[str, Any]:
         and isinstance(item.get("value"), str)
         and _PROJECT_CODE.fullmatch(str(item["value"]).strip().upper())
     ]
-    if len(matches) != 1:
+    normalized: list[dict[str, Any]] = []
+    for selected in matches:
+        selected["value"] = str(selected["value"]).strip().upper()
+        selector_id = selected.get("selector_id")
+        if (
+            not isinstance(selector_id, str)
+            or re.fullmatch(r"E[0-9]{1,3}", selector_id) is None
+        ):
+            raise _invalid("Delegated Project selector ID is invalid.")
+        normalized.append(selected)
+
+    project_codes = [str(item["value"]) for item in normalized]
+    primary_matches = [
+        item for item in normalized if item["value"] == primary_project_code
+    ]
+    if (
+        len(primary_matches) != 1
+        or len(project_codes) != len(set(project_codes))
+        or not set(project_codes).issubset(allocation_project_codes)
+    ):
         raise _error(
             "ae.business_context_project_ambiguous",
-            "Exactly one delegated Project Code selector is required.",
+            "Primary Project identity must match exactly one requested allocation selector.",
         )
-    selected = matches[0]
-    selected["value"] = str(selected["value"]).strip().upper()
-    selector_id = selected.get("selector_id")
-    if not isinstance(selector_id, str) or re.fullmatch(r"E[0-9]{1,3}", selector_id) is None:
-        raise _invalid("Delegated Project selector ID is invalid.")
-    return selected
+    return primary_matches[0]
 
 
 def _allocations(parameters: Mapping[str, Mapping[str, Any]]) -> list[dict[str, str]]:
@@ -300,6 +325,10 @@ def _work_intent_parameters(
 ) -> tuple[Mapping[str, Any], ...]:
     normalized_values: dict[str, Any] = {
         "company_selector": context["company_selector"]["value"],
+        "primary_project_code": _project_code(
+            parameters["primary_project_code"].get("value"),
+            field_name="Primary Project Code",
+        ),
         "document_subject": context["document"]["subject_ref"],
         "counterparty_selector": context["transaction"]["counterparty_selector"],
         "amount": context["transaction"]["amount"],
@@ -377,12 +406,12 @@ def _source_prompt_ref(value: object) -> str:
     return selected
 
 
-def _project_code(value: object) -> str:
+def _project_code(value: object, *, field_name: str = "Allocation Project Code") -> str:
     if not isinstance(value, str):
-        raise _invalid("Allocation Project Code is invalid.")
+        raise _invalid(f"{field_name} is invalid.")
     selected = value.strip().upper()
     if _PROJECT_CODE.fullmatch(selected) is None:
-        raise _invalid("Allocation Project Code is invalid.")
+        raise _invalid(f"{field_name} is invalid.")
     return selected
 
 
@@ -423,7 +452,9 @@ def _calendar_date(value: object) -> str:
     try:
         parsed = date.fromisoformat(selected)
     except ValueError:
-        raise _invalid("Business recognition date must be an ISO calendar date.") from None
+        raise _invalid(
+            "Business recognition date must be an ISO calendar date."
+        ) from None
     if parsed.isoformat() != selected:
         raise _invalid("Business recognition date must be canonical.")
     return selected

@@ -80,6 +80,11 @@ def _m1_business_candidate() -> dict[str, object]:
         ],
         "parameter_candidates": [
             {"name": "company_selector", "value": "NURIVOICE", "confidence": 0.99},
+            {
+                "name": "primary_project_code",
+                "value": "VO00D260101",
+                "confidence": 0.99,
+            },
             {"name": "document_subject", "value": "Workshop", "confidence": 0.98},
             {
                 "name": "counterparty_selector",
@@ -242,17 +247,17 @@ def _run(service: LiveIntentCandidateService, **overrides):
     return service.generate_and_resolve(**values)
 
 
-def test_prompt_registry_seeds_durable_context_v11_and_keeps_history() -> None:
+def test_prompt_registry_seeds_primary_project_v12_and_keeps_history() -> None:
     store = _store()
     binding = store.get_binding(AE_INTENT_RESOLUTION_BINDING)
     version = store.get_template_version(binding["prompt_template_version_id"])
 
     assert binding["purpose"] == "intent_resolution"
-    assert version["version"] == "v11"
+    assert version["version"] == "v12"
     assert version["role"] == "system"
     assert version["metadata"] == {
         "phase": "MyBee-W70",
-        "slice": "CP-M1-E2E-FX-01B.2",
+        "slice": "CP-M1-E2E-FX-01B.7I",
         "candidate_schema": "p65.intent_candidate.v1",
         "authority": "untrusted_candidate_only",
         "project_membership_batch": "indexed_scalar_candidates",
@@ -260,6 +265,7 @@ def test_prompt_registry_seeds_durable_context_v11_and_keeps_history() -> None:
         "employee_authority": "oa_only",
         "nvt_fallback_rule": "non_nvt_only",
         "mybee_m1_project_delegation": "FINANCE.VOUCHER.APPROVE_AND_POST",
+        "primary_project_identity": "typed_cross_validated",
         "historical_scenario_dependency": False,
         "business_request_context": "ae.business_request_context.v1",
         "allocation_contract": "contiguous_indexed_scalar_pairs",
@@ -270,6 +276,12 @@ def test_prompt_registry_seeds_durable_context_v11_and_keeps_history() -> None:
     assert "FINANCE.VOUCHER.APPROVE_AND_POST" in version["content"]
     assert "only as an allocation_project_code_N parameter" in version["content"]
     assert "allocation_project_code_1" in version["content"]
+    assert "primary_project_code" in version["content"]
+    assert any(
+        item["version"] == "v11"
+        for item in store.template_versions.values()
+        if item["purpose"] == "intent_resolution"
+    )
     assert any(
         item["version"] == "v9"
         for item in store.template_versions.values()
@@ -328,10 +340,8 @@ def test_required_mode_generates_candidate_then_deterministic_work_intent() -> N
     assert result.prompt_provenance["prompt_binding_key"] == (
         AE_INTENT_RESOLUTION_BINDING
     )
-    assert result.prompt_provenance["prompt_template_version"] == "v11"
-    assert result.model_provenance["mo_generation_id"] == (
-        "mo-generation-p65-s2"
-    )
+    assert result.prompt_provenance["prompt_template_version"] == "v12"
+    assert result.model_provenance["mo_generation_id"] == ("mo-generation-p65-s2")
 
     call = client.generation_calls[0]
     assert call["semantic_stage"] == "INTENT"
@@ -849,7 +859,7 @@ def test_in_flight_binding_switch_keeps_captured_v10_snapshot() -> None:
     result = _run(_service(store=switching))
 
     assert switching.switched is True
-    assert result.prompt_provenance["prompt_template_version"] == "v11"
+    assert result.prompt_provenance["prompt_template_version"] == "v12"
     assert (
         base.get_binding(AE_INTENT_RESOLUTION_BINDING)["prompt_template_version_id"]
         == version["prompt_template_version_id"]

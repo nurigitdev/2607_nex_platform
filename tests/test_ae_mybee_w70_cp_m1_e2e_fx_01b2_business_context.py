@@ -58,6 +58,11 @@ def _candidate(**overrides: object) -> dict[str, object]:
         "parameter_candidates": [
             {"name": "company_selector", "value": "NURIVOICE", "confidence": 0.99},
             {
+                "name": "primary_project_code",
+                "value": PROJECT_A,
+                "confidence": 0.99,
+            },
+            {
                 "name": "document_subject",
                 "value": "Quarterly customer workshop expense",
                 "confidence": 0.97,
@@ -142,7 +147,8 @@ def _validator(path: Path) -> Draft202012Validator:
 def _factory() -> sessionmaker:
     engine = create_engine("sqlite+pysqlite://", future=True)
     with engine.begin() as connection:
-        connection.execute(text("""
+        connection.execute(
+            text("""
             CREATE TABLE ae_work_intent (
                 tenant_id TEXT NOT NULL,
                 work_intent_id TEXT NOT NULL,
@@ -159,7 +165,8 @@ def _factory() -> sessionmaker:
                 PRIMARY KEY (tenant_id, work_intent_id),
                 UNIQUE (tenant_id, agent_execution_id, intent_revision)
             )
-        """))
+        """)
+        )
     return sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
 
 
@@ -212,9 +219,10 @@ def test_01b2_builds_contract_valid_hash_bound_work_intent_v1_2() -> None:
     _validator(CONTEXT_SCHEMA).validate(record["business_request_context"])
     _validator(WORK_INTENT_SCHEMA).validate(record)
     assert record["schema_version"] == "1.2"
-    assert record["business_context_hash"] == record["business_request_context"][
-        "context_hash"
-    ]
+    assert (
+        record["business_context_hash"]
+        == record["business_request_context"]["context_hash"]
+    )
     assert record["business_request_context"]["candidate_provenance"] == {
         "intent_candidate_hash": semantic_sha256_hash_ref(_candidate()),
         "input_context_hash": INPUT_CONTEXT_HASH,
@@ -256,8 +264,8 @@ def test_01b2_rejects_malformed_business_values(name: str, value: object) -> Non
     assert raised.value.error_code == "ae.business_context_invalid"
 
 
-def test_01b2_rejects_ambiguous_project_and_authority_bearing_parameter() -> None:
-    ambiguous = _candidate(
+def test_01b2_admits_multiple_allocation_selectors_by_typed_primary_identity() -> None:
+    candidate = _candidate(
         entity_selectors=[
             *_candidate()["entity_selectors"],
             {
@@ -268,9 +276,49 @@ def test_01b2_rejects_ambiguous_project_and_authority_bearing_parameter() -> Non
             },
         ]
     )
-    with pytest.raises(WorkIntentError) as project_error:
-        _intent(ambiguous)
-    assert project_error.value.error_code == "ae.business_context_project_ambiguous"
+
+    admitted = _admit(candidate)
+
+    assert [item["raw_text"] for item in admitted.entity_selectors] == [PROJECT_A]
+    parameters = {item["name"]: item["value"] for item in admitted.parameter_candidates}
+    assert parameters["primary_project_code"] == PROJECT_A
+
+
+def test_01b2_rejects_primary_project_identity_conflicts_and_authority_parameter() -> (
+    None
+):
+    cases = []
+    missing_primary_selector = copy.deepcopy(_candidate())
+    missing_primary_selector["entity_selectors"][0]["value"] = PROJECT_B
+    cases.append(missing_primary_selector)
+    unknown_selector = copy.deepcopy(_candidate())
+    unknown_selector["entity_selectors"].append(
+        {
+            "selector_id": "E2",
+            "selector_type": "QUERY_TERM",
+            "value": "VO00D260103",
+            "confidence": 0.97,
+        }
+    )
+    cases.append(unknown_selector)
+    duplicate_primary = copy.deepcopy(_candidate())
+    duplicate_primary["entity_selectors"].append(
+        {
+            "selector_id": "E2",
+            "selector_type": "QUERY_TERM",
+            "value": PROJECT_A,
+            "confidence": 0.97,
+        }
+    )
+    cases.append(duplicate_primary)
+    cases.append(
+        _replace_parameter(_candidate(), "primary_project_code", "VO00D260103")
+    )
+
+    for ambiguous in cases:
+        with pytest.raises(WorkIntentError) as project_error:
+            _intent(ambiguous)
+        assert project_error.value.error_code == "ae.business_context_project_ambiguous"
 
     authority = copy.deepcopy(_candidate())
     authority["parameter_candidates"].append(
@@ -312,9 +360,7 @@ def test_01b2_requires_candidate_lineage_and_persists_exact_v1_2_json() -> None:
 
     repository = SqlAlchemyWorkIntentRepository(_factory())
     record = _intent()
-    saved = repository.save(
-        tenant_id="VO00", work_intent=record, created_at=NOW
-    )
+    saved = repository.save(tenant_id="VO00", work_intent=record, created_at=NOW)
     assert saved == record
     assert repository.get(tenant_id="VO00", work_intent_id=WORK_INTENT_ID) == record
 
@@ -339,9 +385,9 @@ def test_01b2_legacy_v1_1_replay_remains_accepted() -> None:
     repository = SqlAlchemyWorkIntentRepository(_factory())
 
     assert legacy["schema_version"] == "1.1"
-    assert repository.save(
-        tenant_id="VO00", work_intent=legacy, created_at=NOW
-    ) == legacy
+    assert (
+        repository.save(tenant_id="VO00", work_intent=legacy, created_at=NOW) == legacy
+    )
 
 
 def test_01b2_admission_preserves_optional_attachment_and_null_model_lineage() -> None:

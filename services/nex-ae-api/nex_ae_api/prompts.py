@@ -185,6 +185,16 @@ _MYBEE_M1_DURABLE_BUSINESS_CONTEXT_INTENT_CANDIDATE_V11_CONTENT = (
     "ambiguous, set clarification.required true instead of inventing it."
 )
 
+_MYBEE_M1_PRIMARY_PROJECT_IDENTITY_INTENT_CANDIDATE_V12_CONTENT = (
+    _MYBEE_M1_DURABLE_BUSINESS_CONTEXT_INTENT_CANDIDATE_V11_CONTENT
+    + " For FINANCE.VOUCHER.APPROVE_AND_POST, also emit exactly one required "
+    "scalar primary_project_code parameter. It must equal the explicitly "
+    "delegated primary Project Code and one allocation_project_code_N value. "
+    "Every Project Code emitted in entity_selectors must be unique and must also "
+    "be an allocation target. The primary_project_code value, not selector order "
+    "or confidence, determines delegation."
+)
+
 _P65_CONTEXT_CANDIDATE_V1_CONTENT = (
     "You generate an untrusted context candidate set, never an "
     "authoritative context or access decision. Return exactly one JSON "
@@ -343,6 +353,32 @@ AE_HISTORICAL_PROMPT_SEEDS = [
             "mybee_m1_project_delegation": "FINANCE.VOUCHER.APPROVE_AND_POST",
             "historical_scenario_dependency": False,
             "status": "REPLAY_ONLY",
+        },
+    ),
+    PromptSeed(
+        service_id="nex-ae-api",
+        purpose="intent_resolution",
+        name="p65_default_intent_candidate_system",
+        owner_domain="agent-experience",
+        binding_key=AE_INTENT_RESOLUTION_BINDING,
+        version="v11",
+        role="system",
+        segment_order=0,
+        content=_MYBEE_M1_DURABLE_BUSINESS_CONTEXT_INTENT_CANDIDATE_V11_CONTENT,
+        model_capability="generation",
+        metadata={
+            "phase": "MyBee-W70",
+            "slice": "CP-M1-E2E-FX-01B.2",
+            "candidate_schema": "p65.intent_candidate.v1",
+            "authority": "untrusted_candidate_only",
+            "project_membership_batch": "indexed_scalar_candidates",
+            "nvt_project_operations": "create_get_list_update",
+            "employee_authority": "oa_only",
+            "nvt_fallback_rule": "non_nvt_only",
+            "mybee_m1_project_delegation": "FINANCE.VOUCHER.APPROVE_AND_POST",
+            "historical_scenario_dependency": False,
+            "business_request_context": "ae.business_request_context.v1",
+            "allocation_contract": "contiguous_indexed_scalar_pairs",
         },
     ),
     PromptSeed(
@@ -628,14 +664,14 @@ AE_PROMPT_SEEDS = [
         name="p65_default_intent_candidate_system",
         owner_domain="agent-experience",
         binding_key=AE_INTENT_RESOLUTION_BINDING,
-        version="v11",
+        version="v12",
         role="system",
         segment_order=0,
-        content=_MYBEE_M1_DURABLE_BUSINESS_CONTEXT_INTENT_CANDIDATE_V11_CONTENT,
+        content=_MYBEE_M1_PRIMARY_PROJECT_IDENTITY_INTENT_CANDIDATE_V12_CONTENT,
         model_capability="generation",
         metadata={
             "phase": "MyBee-W70",
-            "slice": "CP-M1-E2E-FX-01B.2",
+            "slice": "CP-M1-E2E-FX-01B.7I",
             "candidate_schema": "p65.intent_candidate.v1",
             "authority": "untrusted_candidate_only",
             "project_membership_batch": "indexed_scalar_candidates",
@@ -643,6 +679,7 @@ AE_PROMPT_SEEDS = [
             "employee_authority": "oa_only",
             "nvt_fallback_rule": "non_nvt_only",
             "mybee_m1_project_delegation": "FINANCE.VOUCHER.APPROVE_AND_POST",
+            "primary_project_identity": "typed_cross_validated",
             "historical_scenario_dependency": False,
             "business_request_context": "ae.business_request_context.v1",
             "allocation_contract": "contiguous_indexed_scalar_pairs",
@@ -840,8 +877,8 @@ def _activate_current_intent_candidate_prompt(store: Any) -> None:
         new_prompt_template_version_id=target["prompt_template_version_id"],
         expected_prompt_template_version_id=current["prompt_template_version_id"],
         changed_by="nex-ae-api-bootstrap",
-        reason="W70 durable M1 business context candidate activation",
-        correlation_id="w70-cp-m1-e2e-fx-01b2-intent-prompt-v10",
+        reason="W70 deterministic primary Project candidate identity activation",
+        correlation_id="w70-cp-m1-e2e-fx-01b7i-intent-prompt-v12",
     )
 
 

@@ -448,12 +448,61 @@ def _one_project_code(candidate: Mapping[str, Any]) -> tuple[str, Mapping[str, A
         and isinstance(item.get("value"), str)
         and _is_project_code(str(item["value"]))
     ]
-    if len(matches) != 1:
+    parameters = candidate.get("parameter_candidates")
+    primary_records = (
+        [
+            item
+            for item in parameters
+            if isinstance(item, Mapping)
+            and item.get("name") == "primary_project_code"
+        ]
+        if isinstance(parameters, list)
+        else []
+    )
+    if not primary_records:
+        if len(matches) != 1:
+            raise ProjectDelegationPlanningError(
+                "PROJECT_CODE_AMBIGUOUS",
+                "Exactly one explicit Project Code is required for legacy delegation.",
+            )
+        return str(matches[0]["value"]).strip().upper(), matches[0]
+
+    primary_values = [
+        str(item["value"]).strip().upper()
+        for item in primary_records
+        if isinstance(item.get("value"), str)
+        and _is_project_code(str(item["value"]))
+    ]
+
+    allocation_codes = {
+        str(item["value"]).strip().upper()
+        for item in parameters
+        if isinstance(item, Mapping)
+        and isinstance(item.get("name"), str)
+        and str(item["name"]).startswith("allocation_project_code_")
+        and isinstance(item.get("value"), str)
+        and _is_project_code(str(item["value"]))
+    }
+    normalized_matches = [
+        (str(item["value"]).strip().upper(), item) for item in matches
+    ]
+    primary_value = primary_values[0] if len(primary_values) == 1 else None
+    selected = [item for code, item in normalized_matches if code == primary_value]
+    project_codes = [code for code, _item in normalized_matches]
+    if (
+        len(primary_records) != 1
+        or len(primary_values) != 1
+        or primary_value not in allocation_codes
+        or len(selected) != 1
+        or len(project_codes) != len(set(project_codes))
+        or not set(project_codes).issubset(allocation_codes)
+    ):
         raise ProjectDelegationPlanningError(
-            "PROJECT_CODE_AMBIGUOUS",
-            "Exactly one explicit Project Code is required for delegation.",
+            "PRIMARY_PROJECT_IDENTITY_INVALID",
+            "Primary Project identity does not match the admitted allocation candidates.",
         )
-    return str(matches[0]["value"]), matches[0]
+    assert primary_value is not None
+    return primary_value, selected[0]
 
 
 def _activate_work_intent(
@@ -467,9 +516,10 @@ def _activate_work_intent(
     expected = semantic_sha256_hash_ref(
         {key: value for key, value in record.items() if key != "intent_hash"}
     )
-    if record.get("schema_version") not in {"1.1", "1.2"} or record.get(
-        "intent_hash"
-    ) != expected:
+    if (
+        record.get("schema_version") not in {"1.1", "1.2"}
+        or record.get("intent_hash") != expected
+    ):
         raise _invalid("Project delegation requires an intact WorkIntent v1.1 or v1.2.")
     confidence = selector.get("confidence")
     if isinstance(confidence, bool) or not isinstance(confidence, (int, float)):
@@ -508,7 +558,7 @@ def _activate_work_intent(
                 {
                     "constraint_type": "PROJECT_DELEGATION_AUTHORITY",
                     "description": "EOS, OA, and AE Project Agent state are authoritative.",
-                }
+                },
             ],
             "completion_criteria": [
                 {
