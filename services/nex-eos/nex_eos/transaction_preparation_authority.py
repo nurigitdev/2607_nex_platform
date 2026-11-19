@@ -421,7 +421,10 @@ def _authority_projection(
         {
             "project_code": str(item["authorization"].project_code),
             "decision_ref": str(item["authorization"].decision_ref),
-            "revision_hash": str(item["authorization"].authorization_revision_hash),
+            "revision_hash": _canonical_hash_ref(
+                "authorization_revision_hash",
+                item["authorization"].authorization_revision_hash,
+            ),
             "source_version": int(item["authorization"].source_version),
         }
         for item in projects
@@ -494,6 +497,13 @@ def _hash_ref(name: str, value: object) -> str:
         return validate_hash_ref(str(value))
     except (TypeError, ValueError) as exc:
         raise _invalid(f"{name} is invalid") from exc
+
+
+def _canonical_hash_ref(name: str, value: object) -> str:
+    candidate = str(value)
+    if re.fullmatch(r"[0-9a-f]{64}", candidate):
+        candidate = f"sha256:{candidate}"
+    return _hash_ref(name, candidate)
 
 
 def _amount(value: object) -> Decimal:

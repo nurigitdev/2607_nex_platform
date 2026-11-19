@@ -159,9 +159,10 @@ class _Policies:
 
 
 class _Authorizer:
-    def __init__(self, *, deny: bool = False) -> None:
+    def __init__(self, *, deny: bool = False, bare_revision: bool = False) -> None:
         self.calls = []
         self.deny = deny
+        self.bare_revision = bare_revision
 
     def authorize(self, **values):
         self.calls.append(values)
@@ -170,6 +171,7 @@ class _Authorizer:
             error.status_code = 403
             raise error
         index = PROJECT_CODES.index(values["expected_project_code"])
+        revision_hash = HASH_A if index == 0 else HASH_B
         return EosProjectAuthorizationEvidence(
             decision_ref=f"sha256:{index + 1:064x}",
             project_code=PROJECT_CODES[index],
@@ -177,7 +179,11 @@ class _Authorizer:
             project_status="ACTIVE",
             source_version=index + 10,
             projection_event_hash=HASH_A,
-            authorization_revision_hash=HASH_A if index == 0 else HASH_B,
+            authorization_revision_hash=(
+                revision_hash.removeprefix("sha256:")
+                if self.bare_revision
+                else revision_hash
+            ),
             decided_at=NOW.isoformat(),
         )
 
@@ -245,6 +251,23 @@ def test_authority_resolution_is_bounded_hash_bound_and_read_only(
         }
     )
     assert result["resolution_hash"] == expected
+
+
+def test_authority_resolution_canonicalizes_bare_oa_revision_hashes() -> None:
+    service, _dependencies = _service(
+        project_authorizer=_Authorizer(bare_revision=True)
+    )
+
+    result = service.resolve(
+        tenant_id=TENANT,
+        requester_subject_id=SUBJECT,
+        payload=_request(),
+    )
+
+    assert [
+        item["revision_hash"]
+        for item in result["authority"]["project_authorizations"]
+    ] == [HASH_A, HASH_B]
 
 
 @pytest.mark.parametrize(
