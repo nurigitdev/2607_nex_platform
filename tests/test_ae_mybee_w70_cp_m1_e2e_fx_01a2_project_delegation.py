@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
+from types import SimpleNamespace
 from uuid import uuid4
 
 import httpx
@@ -209,6 +210,50 @@ def test_project_delegation_resolves_eos_oa_and_active_pa_without_ia_project_ref
         "OA_PROJECT_AUTHORIZATION",
         "AE_PROJECT_AGENT_PROJECTION",
     ]
+
+
+def test_project_delegation_binds_trusted_project_scope_for_background_agent():
+    resolver = _activate().context_resolver
+    request = SimpleNamespace(
+        tenant_id=TENANT,
+        principal_id=SUBJECT,
+        agent_type="PA",
+        source_type="CLAIMED_WORKITEM",
+    )
+
+    context = resolver.resolve(request)
+
+    assert context.project_ref == {
+        "system": "nex-eos",
+        "resource_type": "PROJECT",
+        "resource_id": PROJECT_ID,
+        "version": "3",
+    }
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    (
+        ("tenant_id", "OTHER"),
+        ("principal_id", "other-subject"),
+        ("agent_type", "UNKNOWN"),
+        ("source_type", "IA_PROMPT"),
+    ),
+)
+def test_project_delegation_rejects_background_context_scope_mismatch(field, value):
+    resolver = _activate().context_resolver
+    request_values = {
+        "tenant_id": TENANT,
+        "principal_id": SUBJECT,
+        "agent_type": "PA",
+        "source_type": "CLAIMED_WORKITEM",
+    }
+    request_values[field] = value
+
+    with pytest.raises(ProjectDelegationPlanningError) as error:
+        resolver.resolve(SimpleNamespace(**request_values))
+
+    assert error.value.error_code == "PROJECT_CONTEXT_SCOPE_MISMATCH"
 
 
 def test_project_delegation_activation_is_exactly_idempotent_on_replay():
@@ -613,9 +658,11 @@ def test_active_intent_prompt_is_v11_and_delegation_prompt_is_separate():
     assert "suggested_plan_kind equals DIRECT" in source
     assert "The sole logical_steps item must contain exactly" in source
     assert "FINANCE.VOUCHER.APPROVE_AND_POST" in source
-    assert "project_ref=None" in Path(
+    delegation_source = Path(
         "services/nex-ae-api/nex_ae_api/project_delegation_planning.py"
     ).read_text(encoding="utf-8")
+    assert 'if agent_type == "IA"' in delegation_source
+    assert "project_ref=project_ref" in delegation_source
 
 
 def test_oa_action_is_project_scoped_finance_authority():

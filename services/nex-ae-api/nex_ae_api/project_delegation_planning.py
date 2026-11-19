@@ -331,15 +331,37 @@ class ProjectDelegationContextResolver:
     profile: ProjectDelegationPlanningProfile
     resolved_at: str
 
-    def resolve(self, _request: Any) -> TrustedContextResolution:
+    def resolve(self, request: Any) -> TrustedContextResolution:
         project_id = str(self.project_agent["project_id"])
         project_code = str(self.project["project_code"])
         version = str(self.project["version"])
         authority_ref = str(self.decision["decision_ref"])
         authority_hash = semantic_sha256_hash_ref(dict(self.decision))
         project_hash = semantic_sha256_hash_ref(dict(self.project))
+        agent_type = "IA" if request is None else str(request.agent_type)
+        if request is not None and (
+            request.tenant_id != self.tenant_id
+            or request.principal_id != self.principal_id
+            or agent_type not in {"IA", "CA", "PA", "EA"}
+            or (agent_type == "IA" and request.source_type != "IA_PROMPT")
+            or (agent_type != "IA" and request.source_type != "CLAIMED_WORKITEM")
+        ):
+            raise ProjectDelegationPlanningError(
+                "PROJECT_CONTEXT_SCOPE_MISMATCH",
+                "Project delegation context scope does not match the execution.",
+            )
+        project_ref = (
+            None
+            if agent_type == "IA"
+            else {
+                "system": "nex-eos",
+                "resource_type": "PROJECT",
+                "resource_id": project_id,
+                "version": version,
+            }
+        )
         return TrustedContextResolution(
-            project_ref=None,
+            project_ref=project_ref,
             authority_ref=authority_ref,
             resolved_entities=(
                 {
