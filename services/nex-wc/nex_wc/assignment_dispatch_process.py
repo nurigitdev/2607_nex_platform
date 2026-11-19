@@ -39,10 +39,12 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from nex_wc.assignment_dispatch import (
     CLAIM,
+    RECLAIM,
     ROUTE,
     WC_ASSIGNMENT_DISPATCH_JOB_TYPE,
     WC_ASSIGNMENT_DISPATCH_WORKER_TYPE,
     enqueue_claimable_assignment_jobs,
+    enqueue_recoverable_assignment_jobs,
     run_assignment_dispatch_worker_once,
 )
 from nex_wc.coordination import (
@@ -148,7 +150,11 @@ class InstalledWcAssignmentDispatchProcess:
             "database_environment": self.database_environment,
             "checks": checks,
             "database": database,
-            "dispatch_paths": ["CREATED_TO_ROUTED", "ROUTED_TO_ASSIGNED"],
+            "dispatch_paths": [
+                "EXPIRED_UNBOUND_CLAIM_RECOVERY",
+                "CREATED_TO_ROUTED",
+                "ROUTED_TO_ASSIGNED",
+            ],
             "work_capability": "assignment_dispatching",
             "claim_lease_seconds": self.claim_lease_seconds,
             "content_included": False,
@@ -190,6 +196,13 @@ class InstalledWcAssignmentDispatchProcess:
         }
 
     def run_once(self) -> dict[str, Any]:
+        recovery_scan = enqueue_recoverable_assignment_jobs(
+            repository=self.repository,
+            queue=self.queue,
+            observed_at=_timestamp(time.time()),
+            limit=self.scan_limit,
+        )
+        recovery_execution = self._run_worker_once()
         route_scan = enqueue_claimable_assignment_jobs(
             repository=self.repository,
             queue=self.queue,
@@ -204,17 +217,22 @@ class InstalledWcAssignmentDispatchProcess:
             limit=self.scan_limit,
         )
         claim_execution = self._run_worker_once()
-        executions = (route_execution, claim_execution)
+        executions = (recovery_execution, route_execution, claim_execution)
         claimed_count = sum(execution.job is not None for execution in executions)
         succeeded_count = sum(
             execution.status == "SUCCEEDED" for execution in executions
         )
         failed_count = sum(execution.status == "FAILED" for execution in executions)
         work = bool(
-            route_scan["scanned_count"] or claim_scan["scanned_count"] or claimed_count
+            recovery_scan["scanned_count"]
+            or route_scan["scanned_count"]
+            or claim_scan["scanned_count"]
+            or claimed_count
         )
         return {
             "status": "WORK" if work else "IDLE",
+            "recovery_scanned_count": recovery_scan["scanned_count"],
+            "recovery_enqueued_count": recovery_scan["enqueued_count"],
             "route_scanned_count": route_scan["scanned_count"],
             "route_enqueued_count": route_scan["enqueued_count"],
             "claim_scanned_count": claim_scan["scanned_count"],
@@ -251,8 +269,12 @@ def build_source_check() -> dict[str, Any]:
         "database_environments": dict(DATABASE_ENVIRONMENTS),
         "job_type": WC_ASSIGNMENT_DISPATCH_JOB_TYPE,
         "worker_type": WC_ASSIGNMENT_DISPATCH_WORKER_TYPE,
-        "dispatch_actions": [ROUTE, CLAIM],
-        "dispatch_paths": ["CREATED_TO_ROUTED", "ROUTED_TO_ASSIGNED"],
+        "dispatch_actions": [ROUTE, CLAIM, RECLAIM],
+        "dispatch_paths": [
+            "EXPIRED_UNBOUND_CLAIM_RECOVERY",
+            "CREATED_TO_ROUTED",
+            "ROUTED_TO_ASSIGNED",
+        ],
         "queue_type": SqlAlchemyJobQueue.__name__,
         "work_capability": "assignment_dispatching",
         "default_claim_lease_seconds": DEFAULT_CLAIM_LEASE_SECONDS,

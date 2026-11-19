@@ -519,6 +519,20 @@ blocked because its PA execution stayed `QUEUED:INTAKE` after the WC claim
 became `ACTIVE:EXPIRED`; another live replay is not admitted before that
 recovery boundary is corrected.
 
+`CP-M1-E2E-FX-01B.7E` implementation evidence is recorded in
+[`mybee_phase1_w70_cp_m1_e2e_fx_01b7e_claim_recovery_approval_inbox.md`](../../slices/mybee_phase1_w70_cp_m1_e2e_fx_01b7e_claim_recovery_approval_inbox.md).
+It adds bounded recovery only for expired WC claims whose handoff is still
+`PENDING/FAILED` and is not bound to an AE execution. In-flight, delivered, or
+execution-bound handoffs are deliberately excluded to prevent duplicate PA
+execution. Product admission now projects the durable execution as
+`WAITING_APPROVAL:PLAN_BUILD`, and the M1 OA approver role is aligned with the
+EOS/WC `TEAM_LEAD` approval target. Approval delivery remains the existing
+`EOS -> WC SoR -> AE authenticated facade -> AE Web approval inbox` path; no
+approval object is copied into an IA conversation. Actual `nex_wc_test`, WC
+and AE Slice Gates, coverage, and zero-residue checks pass without a migration
+or remote-provider call. One protected exact-head live replay is now admitted
+after confirming DGX availability.
+
 `CP-M1-E2E-FX-01B.6A.1` implementation evidence is recorded in
 [`mybee_phase1_w70_cp_m1_e2e_fx_01b6a1_refresh_contract_source_resolver.md`](../../slices/mybee_phase1_w70_cp_m1_e2e_fx_01b6a1_refresh_contract_source_resolver.md).
 It closes the canonical protected contract and the mutation-free EOS source

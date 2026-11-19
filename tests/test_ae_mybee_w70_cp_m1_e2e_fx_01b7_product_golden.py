@@ -36,6 +36,15 @@ def test_product_golden_source_admission_uses_installed_m1_registry() -> None:
     assert result["browser_process_timeout_seconds"] == 2_340
     assert support.PROJECT_REFERENCE_RESOLVE_SCOPE in support._OA_SCOPES["requester"]
     assert {"approval:read", "approval:decide"}.issubset(support._OA_SCOPES["approver"])
+    assert support.M1_APPROVAL_POSITION_TYPE == "TEAM_LEAD"
+
+
+def test_product_acceptance_approver_role_matches_eos_policy_position() -> None:
+    source = Path(support.__file__).read_text(encoding="utf-8")
+
+    assert "ApprovalPolicyStageInput(M1_APPROVAL_POSITION_TYPE)" in source
+    assert "[M1_APPROVAL_POSITION_TYPE]" in source
+    assert 'ApprovalPolicyStageInput("TEAM_LEAD")' not in source
 
 
 def test_product_golden_projects_structured_cleanup_failure_evidence() -> None:

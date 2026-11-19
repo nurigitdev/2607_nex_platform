@@ -226,8 +226,9 @@ def test_source_check_is_generic_content_free_and_offline() -> None:
 
     assert report["status"] == "PASS"
     assert report["process_id"] == "nex-wc-assignment-dispatch-worker"
-    assert report["dispatch_actions"] == ["ROUTE", "CLAIM"]
+    assert report["dispatch_actions"] == ["ROUTE", "CLAIM", "RECLAIM"]
     assert report["dispatch_paths"] == [
+        "EXPIRED_UNBOUND_CLAIM_RECOVERY",
         "CREATED_TO_ROUTED",
         "ROUTED_TO_ASSIGNED",
     ]
@@ -467,6 +468,7 @@ def test_run_once_schedules_route_then_claim_and_forwards_service_log(
     observed_states: list[str] = []
     executions = iter(
         (
+            _execution(),
             _execution(status="SUCCEEDED", job={"job_id": "route"}),
             _execution(status="SUCCEEDED", job={"job_id": "claim"}),
         )
@@ -483,6 +485,11 @@ def test_run_once_schedules_route_then_claim_and_forwards_service_log(
         return next(executions)
 
     monkeypatch.setattr(process, "enqueue_claimable_assignment_jobs", enqueue)
+    monkeypatch.setattr(
+        process,
+        "enqueue_recoverable_assignment_jobs",
+        lambda **_kwargs: {"scanned_count": 0, "enqueued_count": 0},
+    )
     monkeypatch.setattr(process, "run_assignment_dispatch_worker_once", run_worker)
     result = installed.run_once()
     assert observed_states == ["CREATED", "ROUTED"]
@@ -503,8 +510,14 @@ def test_run_once_preserves_idle_and_failure_projection(monkeypatch) -> None:
         "enqueue_claimable_assignment_jobs",
         lambda **_kwargs: {"scanned_count": 0, "enqueued_count": 0},
     )
+    monkeypatch.setattr(
+        process,
+        "enqueue_recoverable_assignment_jobs",
+        lambda **_kwargs: {"scanned_count": 0, "enqueued_count": 0},
+    )
     executions = iter(
         (
+            _execution(),
             _execution(),
             _execution(
                 status="FAILED",
@@ -521,7 +534,7 @@ def test_run_once_preserves_idle_and_failure_projection(monkeypatch) -> None:
     result = installed.run_once()
     assert result["status"] == "WORK"
     assert result["failed_count"] == 1
-    assert result["execution_statuses"] == ["IDLE", "FAILED"]
+    assert result["execution_statuses"] == ["IDLE", "IDLE", "FAILED"]
     installed.close()
 
 
@@ -551,6 +564,11 @@ def test_restart_recovers_route_completed_before_claim_scan(monkeypatch) -> None
         return _execution()
 
     monkeypatch.setattr(process, "enqueue_claimable_assignment_jobs", enqueue)
+    monkeypatch.setattr(
+        process,
+        "enqueue_recoverable_assignment_jobs",
+        lambda **_kwargs: {"scanned_count": 0, "enqueued_count": 0},
+    )
     monkeypatch.setattr(process, "run_assignment_dispatch_worker_once", worker)
     with pytest.raises(RuntimeError, match="simulated crash"):
         installed.run_once()

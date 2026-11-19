@@ -5,6 +5,7 @@ from types import SimpleNamespace
 import pytest
 from nex_ae_api.agent_execution import AgentExecutionError, AgentRuntimeAdmission
 from nex_ae_api.background_planning import (
+    BackgroundAgentPlanningService,
     BackgroundPlanningError,
     InstalledClaimHandoffAdmission,
     background_runtime_policy_ref,
@@ -41,12 +42,23 @@ class _Planning:
         )
         self.failure = failure
         self.calls: list[dict] = []
+        self.waiting_calls: list[dict] = []
 
     def plan_claimed_execution(self, **values):
         self.calls.append(values)
         if self.failure is not None:
             raise self.failure
         return self.result
+
+    def mark_product_waiting(self, **values):
+        self.waiting_calls.append(values)
+        return {
+            "tenant_id": values["tenant_id"],
+            "agent_execution_id": values["execution_id"],
+            "correlation_id": "m1-correlation",
+            "state": "WAITING_APPROVAL",
+            "phase": "PLAN_BUILD",
+        }
 
 
 class _Scheduler:
@@ -134,7 +146,96 @@ def test_installed_claim_handoff_accepts_product_coordination_without_step_sched
     result = _admit(_service(planning=planning, scheduler=scheduler))
 
     assert result.execution["agent_execution_id"] == EXECUTION_ID
+    assert result.execution["state"] == "WAITING_APPROVAL"
     assert scheduler.calls == []
+    assert planning.waiting_calls == [
+        {
+            "tenant_id": TENANT,
+            "execution_id": EXECUTION_ID,
+            "updated_at": NOW,
+        }
+    ]
+
+
+class _ExecutionStore:
+    def __init__(self, execution):
+        self.execution = execution
+        self.transitions = []
+
+    def get(self, _tenant_id, _execution_id):
+        return self.execution
+
+    def transition(self, **values):
+        self.transitions.append(values)
+        self.execution = {
+            **self.execution,
+            "state": values["state"],
+            "phase": values["phase"],
+            "version": self.execution["version"] + 1,
+        }
+        return self.execution
+
+
+def test_product_wait_state_is_durable_and_replay_safe() -> None:
+    store = _ExecutionStore(
+        {
+            "tenant_id": TENANT,
+            "agent_execution_id": EXECUTION_ID,
+            "state": "QUEUED",
+            "phase": "INTAKE",
+            "version": 1,
+        }
+    )
+    planning = BackgroundAgentPlanningService(
+        semantic_admission=object(),
+        executions=store,
+    )
+
+    first = planning.mark_product_waiting(
+        tenant_id=TENANT,
+        execution_id=EXECUTION_ID,
+        updated_at=NOW,
+    )
+    replay = planning.mark_product_waiting(
+        tenant_id=TENANT,
+        execution_id=EXECUTION_ID,
+        updated_at=NOW,
+    )
+
+    assert first == replay
+    assert (first["state"], first["phase"], first["version"]) == (
+        "WAITING_APPROVAL",
+        "PLAN_BUILD",
+        2,
+    )
+    assert len(store.transitions) == 1
+
+
+def test_product_wait_state_rejects_terminal_or_missing_execution() -> None:
+    for execution, code in (
+        (None, "ae.background_execution_missing"),
+        (
+            {
+                "tenant_id": TENANT,
+                "agent_execution_id": EXECUTION_ID,
+                "state": "FAILED",
+                "phase": "FINALIZE",
+                "version": 2,
+            },
+            "ae.background_execution_state_conflict",
+        ),
+    ):
+        planning = BackgroundAgentPlanningService(
+            semantic_admission=object(),
+            executions=_ExecutionStore(execution),
+        )
+        with pytest.raises(BackgroundPlanningError) as captured:
+            planning.mark_product_waiting(
+                tenant_id=TENANT,
+                execution_id=EXECUTION_ID,
+                updated_at=NOW,
+            )
+        assert captured.value.error_code == code
 
 
 def test_installed_claim_handoff_rejects_missing_execution() -> None:

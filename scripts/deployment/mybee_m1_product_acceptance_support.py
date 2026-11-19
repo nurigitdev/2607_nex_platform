@@ -52,9 +52,9 @@ from nex_eos import (
     allocation_plans,
     fx_policy_hash,
 )
+from nex_eos.project_applications import PROJECT_REFERENCE_RESOLVE_SCOPE
 from nex_eos.project_entitlement_events import append_project_entitlement_snapshot
 from nex_eos.project_lifecycle_events import append_project_lifecycle_event
-from nex_eos.project_applications import PROJECT_REFERENCE_RESOLVE_SCOPE
 from nex_oa.credentials import SqlAlchemyOaCredentialRegistry
 from nex_oa.memberships import SqlAlchemyOaTenantMembershipRegistry
 from nex_oa.subjects import SqlAlchemyOaSubjectRegistry
@@ -69,6 +69,7 @@ DEFAULT_BASELINE_PATH = (
     ROOT / "scripts/deployment/data/mybee_m1_product_acceptance.v1.json"
 )
 PROFILE_POLICY_REF = "policy://nex-platform/project-agent-lifecycle/v1"
+M1_APPROVAL_POSITION_TYPE = "TEAM_LEAD"
 HASH_A = "sha256:" + "a" * 64
 HASH_B = "sha256:" + "b" * 64
 HASH_C = "sha256:" + "c" * 64
@@ -291,7 +292,15 @@ def _seed_oa(
                 "subject_id": principal["subject_id"],
                 "tenant_display_name": baseline["tenant"]["display_name"],
                 "subject_display_name": principal["display_name"],
-                "roles": ["employee", f"m1-{role}"],
+                "roles": [
+                    "employee",
+                    f"m1-{role}",
+                    *(
+                        [M1_APPROVAL_POSITION_TYPE]
+                        if role == "approver"
+                        else []
+                    ),
+                ],
                 "scopes": list(_OA_SCOPES[role]),
                 "membership_metadata": {
                     "source": "mybee-m1-product-acceptance"
@@ -390,7 +399,12 @@ def _seed_eos(engine: Engine, baseline: Mapping[str, Any]) -> dict[str, int]:
         )
     )
     organization.create_position(
-        PositionInput(tenant_id, _id("position"), "TEAM_LEAD", _id("org"))
+        PositionInput(
+            tenant_id,
+            _id("position"),
+            M1_APPROVAL_POSITION_TYPE,
+            _id("org"),
+        )
     )
     organization.assign_position(
         PositionAssignmentInput(
@@ -737,7 +751,7 @@ def _seed_approval_policies(
                 f"M1 acceptance {key} approval",
                 "BUSINESS_FORMAL",
                 now,
-                (ApprovalPolicyStageInput("TEAM_LEAD"),),
+                (ApprovalPolicyStageInput(M1_APPROVAL_POSITION_TYPE),),
                 transaction_type=transaction_type,
                 project_id=project_id,
             )

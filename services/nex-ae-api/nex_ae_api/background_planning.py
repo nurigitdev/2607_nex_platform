@@ -143,6 +143,39 @@ class BackgroundAgentPlanningService:
                 exc.error_code, exc.detail, exc.retryable
             ) from exc
 
+    def mark_product_waiting(
+        self, *, tenant_id: str, execution_id: str, updated_at: str
+    ) -> dict[str, Any]:
+        try:
+            execution = self.executions.get(tenant_id, execution_id)
+            if execution is None:
+                raise BackgroundPlanningError(
+                    "ae.background_execution_missing",
+                    "Product coordination requires its durable AgentExecution.",
+                )
+            if (
+                execution.get("state") == "WAITING_APPROVAL"
+                and execution.get("phase") == "PLAN_BUILD"
+            ):
+                return execution
+            if execution.get("state") not in {"QUEUED", "RUNNING"}:
+                raise BackgroundPlanningError(
+                    "ae.background_execution_state_conflict",
+                    "Product coordination cannot wait from the current execution state.",
+                )
+            return self.executions.transition(
+                tenant_id=tenant_id,
+                agent_execution_id=execution_id,
+                expected_version=int(execution["version"]),
+                state="WAITING_APPROVAL",
+                phase="PLAN_BUILD",
+                updated_at=updated_at,
+            )
+        except AgentExecutionError as exc:
+            raise BackgroundPlanningError(
+                exc.error_code, exc.detail, exc.retryable
+            ) from exc
+
 
 @dataclass(frozen=True)
 class InstalledClaimHandoffAdmission:
@@ -207,6 +240,17 @@ class InstalledClaimHandoffAdmission:
                 raise AgentExecutionError(
                     "ae.claim_handoff_plan_not_compiled",
                     "Claim handoff did not produce an admitted planning route.",
+                )
+            else:
+                waiting = self.planning.mark_product_waiting(
+                    tenant_id=tenant_id,
+                    execution_id=execution_id,
+                    updated_at=self.clock(),
+                )
+                admitted = AgentRuntimeAdmission(
+                    mode=admitted.mode,
+                    execution=waiting,
+                    shadow_error_code=admitted.shadow_error_code,
                 )
         except BackgroundPlanningError as exc:
             raise AgentExecutionError(

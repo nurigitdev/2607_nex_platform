@@ -26,9 +26,11 @@ ASSIGNMENT_DISPATCH_SCHEMA_VERSION = "wc_assignment_dispatch.v1"
 
 ROUTE = "ROUTE"
 CLAIM = "CLAIM"
-ASSIGNMENT_DISPATCH_ACTIONS = frozenset({ROUTE, CLAIM})
+RECLAIM = "RECLAIM"
+ASSIGNMENT_DISPATCH_ACTIONS = frozenset({ROUTE, CLAIM, RECLAIM})
 CLAIMABLE_WORK_ITEM_STATES = frozenset({"CREATED", "ROUTED"})
-ACTION_BY_STATE = {"CREATED": ROUTE, "ROUTED": CLAIM}
+RECOVERABLE_WORK_ITEM_STATE = "ASSIGNED"
+ACTION_BY_STATE = {"CREATED": ROUTE, "ROUTED": CLAIM, "ASSIGNED": RECLAIM}
 
 RETRY = "RETRY"
 RELOAD = "RELOAD"
@@ -78,6 +80,14 @@ class AssignmentDispatchRepository(Protocol):
         after: Mapping[str, Any] | None = None,
     ) -> list[dict[str, Any]]: ...
 
+    def list_recoverable_work_items(
+        self,
+        *,
+        observed_at: str,
+        limit: int,
+        after: Mapping[str, Any] | None = None,
+    ) -> list[dict[str, Any]]: ...
+
     def get_work_item(
         self, *, tenant_id: str, work_item_id: str
     ) -> dict[str, Any] | None: ...
@@ -120,6 +130,26 @@ def validate_claimable_scan(
             f"claimable scan limit must be between 1 and {MAX_CLAIMABLE_SCAN_LIMIT}",
         )
     return normalized_state, limit, _validate_cursor(after)
+
+
+def validate_recoverable_scan(
+    *,
+    observed_at: object,
+    limit: object,
+    after: Mapping[str, Any] | None = None,
+) -> tuple[str, int, dict[str, str] | None]:
+    normalized_observed_at = _required_string(observed_at, "observed_at")
+    if isinstance(limit, bool) or not isinstance(limit, int):
+        raise AssignmentDispatchContractError(
+            "wc.assignment_dispatch_limit_invalid",
+            "recoverable scan limit must be an integer",
+        )
+    if not 1 <= limit <= MAX_CLAIMABLE_SCAN_LIMIT:
+        raise AssignmentDispatchContractError(
+            "wc.assignment_dispatch_limit_invalid",
+            f"recoverable scan limit must be between 1 and {MAX_CLAIMABLE_SCAN_LIMIT}",
+        )
+    return normalized_observed_at, limit, _validate_cursor(after)
 
 
 def project_claimable_work_item(record: Mapping[str, Any]) -> dict[str, Any]:
@@ -275,7 +305,7 @@ def validate_assignment_dispatch_job(job: Mapping[str, Any]) -> dict[str, Any]:
     if action not in ASSIGNMENT_DISPATCH_ACTIONS:
         raise AssignmentDispatchContractError(
             "wc.assignment_dispatch_action_invalid",
-            "assignment dispatcher action must be ROUTE or CLAIM",
+            "assignment dispatcher action must be ROUTE, CLAIM, or RECLAIM",
         )
     expected_version = payload.get("expected_version")
     if (
@@ -401,6 +431,52 @@ def enqueue_claimable_assignment_jobs(
     }
 
 
+def enqueue_recoverable_assignment_jobs(
+    *,
+    repository: AssignmentDispatchRepository,
+    queue: JobQueue,
+    observed_at: str,
+    limit: int,
+    after: Mapping[str, Any] | None = None,
+    created_at: str | None = None,
+) -> dict[str, Any]:
+    normalized_at, normalized_limit, cursor = validate_recoverable_scan(
+        observed_at=observed_at,
+        limit=limit,
+        after=after,
+    )
+    candidates = repository.list_recoverable_work_items(
+        observed_at=normalized_at,
+        limit=normalized_limit,
+        after=cursor,
+    )
+    jobs = []
+    for candidate in candidates:
+        job = build_assignment_dispatch_job(candidate, created_at=created_at)
+        try:
+            jobs.append(queue.enqueue(job))
+        except JobQueueError as exc:
+            if exc.error_code != "job.duplicate_id":
+                raise
+            existing = queue.get_job(str(job["job_id"]))
+            if existing is None or not _same_dispatch_job(existing, job):
+                raise AssignmentDispatchContractError(
+                    "wc.assignment_dispatch_job_conflict",
+                    "existing assignment recovery job has different semantics",
+                ) from exc
+            jobs.append(existing)
+    return {
+        "schema_version": ASSIGNMENT_DISPATCH_SCHEMA_VERSION,
+        "state": RECOVERABLE_WORK_ITEM_STATE,
+        "action": RECLAIM,
+        "observed_at": normalized_at,
+        "scanned_count": len(candidates),
+        "enqueued_count": len(jobs),
+        "job_ids": [str(job["job_id"]) for job in jobs],
+        "next_cursor": claimable_cursor(candidates[-1]) if candidates else cursor,
+    }
+
+
 def _same_dispatch_job(
     existing: Mapping[str, Any], expected: Mapping[str, Any]
 ) -> bool:
@@ -458,6 +534,7 @@ def run_assignment_dispatch_job(
             tenant_id=tenant_id,
             work_item_id=work_item_id,
             expected_version=expected_version,
+            reclaim=action == RECLAIM,
         )
     except AssignmentDispatchExecutionError:
         raise
@@ -590,6 +667,7 @@ def _run_claim(
     tenant_id: str,
     work_item_id: str,
     expected_version: int,
+    reclaim: bool = False,
 ) -> dict[str, Any]:
     state = str(record.get("state"))
     version = int(record.get("version", 0))
@@ -600,10 +678,11 @@ def _run_claim(
         )
         if authority is not None:
             return _claim_result(authority, replayed=True)
-    if state != "ROUTED" or version != expected_version:
+    expected_state = "ASSIGNED" if reclaim else "ROUTED"
+    if state != expected_state or version != expected_version:
         raise AssignmentDispatchExecutionError(
             "wc.work_item_claim_conflict",
-            "WorkItem is not at the expected ROUTED version.",
+            f"WorkItem is not at the expected {expected_state} version.",
             RELOAD,
         )
     result = service.claim(
@@ -611,7 +690,7 @@ def _run_claim(
         work_item_id=work_item_id,
         expected_version=expected_version,
     )
-    return _claim_result(result, replayed=False)
+    return _claim_result(result, replayed=False, reclaimed=reclaim)
 
 
 def _route_result(route: Mapping[str, Any], *, replayed: bool) -> dict[str, Any]:
@@ -623,11 +702,19 @@ def _route_result(route: Mapping[str, Any], *, replayed: bool) -> dict[str, Any]
     }
 
 
-def _claim_result(result: Mapping[str, Any], *, replayed: bool) -> dict[str, Any]:
+def _claim_result(
+    result: Mapping[str, Any], *, replayed: bool, reclaimed: bool = False
+) -> dict[str, Any]:
     assignment = result["assignment"]
     claim = result["claim"]
     return {
-        "outcome": "CLAIM_REPLAYED" if replayed else "CLAIMED",
+        "outcome": (
+            "CLAIM_REPLAYED"
+            if replayed
+            else "CLAIM_RECLAIMED"
+            if reclaimed
+            else "CLAIMED"
+        ),
         "assignment_id": str(assignment["assignment_id"]),
         "claim_id": str(claim["claim_id"]),
         "claim_generation": int(claim["claim_generation"]),

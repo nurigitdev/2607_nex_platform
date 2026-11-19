@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from nex_wc.assignment_dispatch import (
     project_claimable_work_item,
     validate_claimable_scan,
+    validate_recoverable_scan,
 )
 from nex_wc.authorization import (
     AuthorizationSource,
@@ -65,6 +66,14 @@ class CoordinationRepository(Protocol):
         self,
         *,
         state: str,
+        limit: int,
+        after: Mapping[str, Any] | None = None,
+    ) -> list[dict[str, Any]]: ...
+
+    def list_recoverable_work_items(
+        self,
+        *,
+        observed_at: str,
         limit: int,
         after: Mapping[str, Any] | None = None,
     ) -> list[dict[str, Any]]: ...
@@ -450,6 +459,68 @@ class InMemoryCoordinationRepository:
             for record in records[:normalized_limit]
         ]
 
+    def list_recoverable_work_items(
+        self,
+        *,
+        observed_at: str,
+        limit: int,
+        after: Mapping[str, Any] | None = None,
+    ) -> list[dict[str, Any]]:
+        normalized_at, normalized_limit, cursor = validate_recoverable_scan(
+            observed_at=observed_at,
+            limit=limit,
+            after=after,
+        )
+        observed = _parse_time(normalized_at)
+        with self._lock:
+            records = []
+            for key, record in self._work_items._records.items():
+                if record["state"] != "ASSIGNED" or not _after_claimable_cursor(
+                    record, cursor
+                ):
+                    continue
+                assignment = self._assignments.get(key)
+                claims = self._claims.get(key, ())
+                claim = next(
+                    (item for item in reversed(claims) if item["state"] == "ACTIVE"),
+                    None,
+                )
+                outbox = next(
+                    (
+                        item
+                        for item in self._outbox.values()
+                        if item["tenant_id"] == key[0]
+                        and item["work_item_id"] == key[1]
+                        and item["event_type"] == "CLAIM_EXECUTION_HANDOFF"
+                        and claim is not None
+                        and item["event_payload"].get("claim_ref")
+                        == claim["claim_id"]
+                    ),
+                    None,
+                )
+                if (
+                    assignment is None
+                    or assignment.get("status") != "ACTIVE"
+                    or assignment.get("agent_execution_id") is not None
+                    or claim is None
+                    or _parse_time(claim["lease_expires_at"]) > observed
+                    or outbox is None
+                    or outbox.get("delivery_state") not in {"PENDING", "FAILED"}
+                ):
+                    continue
+                records.append(copy.deepcopy(record))
+        records.sort(
+            key=lambda record: (
+                str(record["created_at"]),
+                str(record["tenant_id"]),
+                str(record["work_item_id"]),
+            )
+        )
+        return [
+            project_claimable_work_item(record)
+            for record in records[:normalized_limit]
+        ]
+
     def save_routing_decision(
         self,
         *,
@@ -772,6 +843,83 @@ class SqlAlchemyCoordinationRepository:
                         WHERE state = :state
                         {cursor_clause}
                         ORDER BY created_at, tenant_id, work_item_id
+                        LIMIT :limit
+                        """
+                    ),
+                    params,
+                ).mappings()
+                return [
+                    project_claimable_work_item(
+                        {
+                            **dict(row),
+                            "work_item_id": str(row["work_item_id"]),
+                            "created_at": _time_value(row["created_at"]),
+                            "updated_at": _time_value(row["updated_at"]),
+                        }
+                    )
+                    for row in rows
+                ]
+        except SQLAlchemyError as exc:
+            raise _store_unavailable() from exc
+
+    def list_recoverable_work_items(
+        self,
+        *,
+        observed_at: str,
+        limit: int,
+        after: Mapping[str, Any] | None = None,
+    ) -> list[dict[str, Any]]:
+        normalized_at, normalized_limit, cursor = validate_recoverable_scan(
+            observed_at=observed_at,
+            limit=limit,
+            after=after,
+        )
+        cursor_clause = ""
+        params: dict[str, Any] = {
+            "observed_at": normalized_at,
+            "limit": normalized_limit,
+        }
+        if cursor is not None:
+            cursor_clause = (
+                "AND (w.created_at, w.tenant_id, w.work_item_id) > "
+                "(:after_created_at, :after_tenant_id, :after_work_item_id)"
+            )
+            params.update(
+                {
+                    "after_created_at": cursor["created_at"],
+                    "after_tenant_id": cursor["tenant_id"],
+                    "after_work_item_id": cursor["work_item_id"],
+                }
+            )
+        try:
+            with self._session_factory() as session:
+                rows = session.execute(
+                    text(
+                        f"""
+                        SELECT w.tenant_id, w.work_item_id, w.state, w.version,
+                               w.work_item -> 'trace' ->> 'correlation_id' AS trace_id,
+                               w.created_at, w.updated_at
+                        FROM wc_work_item AS w
+                        JOIN wc_assignment AS a
+                          ON a.tenant_id = w.tenant_id
+                         AND a.work_item_id = w.work_item_id
+                         AND a.status = 'ACTIVE'
+                         AND a.agent_execution_id IS NULL
+                        JOIN wc_claim AS c
+                          ON c.tenant_id = w.tenant_id
+                         AND c.work_item_id = w.work_item_id
+                         AND c.assignment_id = a.assignment_id
+                         AND c.state = 'ACTIVE'
+                         AND c.lease_expires_at <= CAST(:observed_at AS TIMESTAMPTZ)
+                        JOIN wc_event_outbox AS o
+                          ON o.tenant_id = w.tenant_id
+                         AND o.work_item_id = w.work_item_id
+                         AND o.event_type = 'CLAIM_EXECUTION_HANDOFF'
+                         AND o.event_payload ->> 'claim_ref' = CAST(c.claim_id AS text)
+                         AND o.delivery_state IN ('PENDING', 'FAILED')
+                        WHERE w.state = 'ASSIGNED'
+                        {cursor_clause}
+                        ORDER BY w.created_at, w.tenant_id, w.work_item_id
                         LIMIT :limit
                         """
                     ),
