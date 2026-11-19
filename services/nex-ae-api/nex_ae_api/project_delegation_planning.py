@@ -452,6 +452,19 @@ def _activate_work_intent(
     confidence = selector.get("confidence")
     if isinstance(confidence, bool) or not isinstance(confidence, (int, float)):
         raise _invalid("Project selector confidence is invalid.")
+    existing_constraints = (
+        list(record.get("constraints", ()))
+        if record.get("schema_version") == "1.2"
+        else []
+    )
+    canonical_constraints = [
+        item
+        for item in existing_constraints
+        if not (
+            isinstance(item, Mapping)
+            and item.get("constraint_type") == "PROJECT_DELEGATION_AUTHORITY"
+        )
+    ]
     record.update(
         {
             "intent_label": profile.capability_id,
@@ -469,11 +482,7 @@ def _activate_work_intent(
                 }
             ],
             "constraints": [
-                *(
-                    list(record.get("constraints", ()))
-                    if record.get("schema_version") == "1.2"
-                    else []
-                ),
+                *canonical_constraints,
                 {
                     "constraint_type": "PROJECT_DELEGATION_AUTHORITY",
                     "description": "EOS, OA, and AE Project Agent state are authoritative.",

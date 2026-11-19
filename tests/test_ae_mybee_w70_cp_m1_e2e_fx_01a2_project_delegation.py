@@ -211,6 +211,33 @@ def test_project_delegation_resolves_eos_oa_and_active_pa_without_ia_project_ref
     ]
 
 
+def test_project_delegation_activation_is_exactly_idempotent_on_replay():
+    activator = ProjectDelegationIntentActivator(
+        eos=_Eos(), oa=_Oa(), project_agents=_Agents()
+    )
+    first = activator.activate(
+        candidate=_candidate(),
+        work_intent=_work_intent(),
+        tenant_id=TENANT,
+        principal_id=SUBJECT,
+        resolved_at="2026-11-15T01:00:00Z",
+    )
+    replay = activator.activate(
+        candidate=_candidate(),
+        work_intent=first.work_intent,
+        tenant_id=TENANT,
+        principal_id=SUBJECT,
+        resolved_at="2026-11-15T01:00:01Z",
+    )
+
+    assert replay.work_intent == first.work_intent
+    assert [
+        item["constraint_type"]
+        for item in replay.work_intent["constraints"]
+        if item["constraint_type"] == "PROJECT_DELEGATION_AUTHORITY"
+    ] == ["PROJECT_DELEGATION_AUTHORITY"]
+
+
 def test_project_delegation_fails_closed_for_missing_or_ambiguous_project_code():
     with pytest.raises(ProjectDelegationPlanningError) as missing:
         _activate(candidate={"entity_selectors": []})
