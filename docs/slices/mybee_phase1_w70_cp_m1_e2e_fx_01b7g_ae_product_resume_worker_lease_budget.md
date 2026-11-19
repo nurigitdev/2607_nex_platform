@@ -3,8 +3,8 @@
 ## Status
 
 - Date: `2026-11-19`
-- Status: `IMPLEMENTED`; source and regression boundary passed, protected live
-  rerun pending
+- Status: `LIVE_BLOCKED`; source and regression boundary passed, protected live
+  rerun exposed a missing Product RuntimeJob settlement boundary
 - Parent boundary: `CP-M1-E2E-FX-01B.7`
 - Database migration: none
 - Public API or RuntimeJob schema change: none
@@ -84,8 +84,34 @@ a claim that every Product operation should consume the full interval.
   - report:
     `reports/quality/mybee-w70-cp-m1-01b7g-ae-slice-gate.coverage.json`
 
-The final protected journey remains separate from source acceptance and must
-start only after confirming an idle DGX window.
+## Protected Live Result
+
+The exact-head protected journey ran on an idle DGX window with the actual
+eight PostgreSQL databases, installed Compose topology, signed trust, and live
+generation, embedding, and reranking providers.
+
+- the installed AE worker reported `lease_seconds=600`;
+- the Product `RESUME_EXECUTION` claim received the expected 600-second lease;
+- all six observed generation requests returned HTTP 200;
+- the authority receipt was matched, the Product wait reached
+  `RESUME_QUEUED`, and AgentPlan/ExecutablePlan persistence was observed;
+- no Product assignment path completed the claimed RuntimeJob;
+- at exactly 600 seconds attempt 1 became `LEASE_EXPIRED` and attempt 2 was
+  claimed;
+- the run was intentionally interrupted before duplicate work could continue;
+- all Compose resources and all eight isolated database schemas were removed.
+
+Source reconciliation confirmed that
+`InstalledProductCoordinatorAssignmentHandler` resumes and activates the
+Product coordinator but never calls `SqlAlchemyRuntimeJobQueue.complete()` or
+`fail()`. The generic worker lifecycle only emits heartbeat state and explicitly
+leaves lease settlement to the RuntimeJob authority. The installed 600-second
+policy therefore exposed, rather than caused, the missing settlement boundary.
+
+The next corrective boundary must add lease-token-fenced success and failure
+settlement for Product coordinator assignments, including retryable failure,
+stale lease, replay, restart, and ACK-loss coverage. Increasing the lease again
+or rerunning the same journey cannot close this defect.
 
 ## Protected Live Rule
 
@@ -99,5 +125,7 @@ The exact-head installed rerun must prove:
 5. the IA result is published and the journey reaches its terminal success;
 6. all isolated database schemas and Compose resources are removed.
 
-Until that run passes, this Slice closes only the configuration, admission,
-and regression boundary. It does not close the parent `.7` journey.
+This Slice closes only the configuration, admission, and regression boundary.
+The protected live acceptance and parent `.7` journey remain blocked until the
+Product RuntimeJob settlement corrective boundary is implemented and the same
+journey passes without a lease-expiry retry.
