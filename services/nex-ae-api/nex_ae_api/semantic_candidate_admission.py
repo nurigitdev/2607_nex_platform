@@ -8,6 +8,7 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import NAMESPACE_URL, uuid5
 
+from nex_runtime import ServiceLogEmitter
 from nex_runtime.semantic_hashes import semantic_sha256_hash_ref, validate_hash_ref
 
 from nex_ae_api.agent_context import (
@@ -478,8 +479,7 @@ class DeterministicCandidateAdmissionService:
                         prompt_provenance=_work_intent_provenance(intent_evidence),
                     )
                 elif (
-                    intent_result is not None
-                    and intent_result.work_intent is not None
+                    intent_result is not None and intent_result.work_intent is not None
                 ):
                     work_intent = dict(intent_result.work_intent)
                 else:
@@ -686,9 +686,7 @@ class DeterministicCandidateAdmissionService:
                             product_registration.planning_policy.deterministic_fallback_ref
                         )
                     else:
-                        stages.append(
-                            _stage_projection(plan_evidence, resumed=resumed)
-                        )
+                        stages.append(_stage_projection(plan_evidence, resumed=resumed))
                         if plan_evidence["directive"] == "CONTINUE":
                             planning_proposal = build_product_planning_proposal(
                                 evidence=plan_evidence,
@@ -1240,11 +1238,29 @@ def attach_semantic_candidate_admission(
         retirement_projection=product_capability_retirements,
         session_factory=session_factory,
     )
+    service_log_store = getattr(persistence, "service_log_store", None)
+    context_repair_log_emitter = (
+        ServiceLogEmitter(
+            service_id="nex-ae-api",
+            logger_name="nex_ae_api.semantic_candidate.context_repair",
+            store=service_log_store,
+            default_attributes={
+                "boundary": "semantic_candidate_context_repair",
+            },
+        )
+        if service_log_store is not None
+        else None
+    )
     service = DeterministicCandidateAdmissionService(
         mode=mode,
         admission=admission,
         intent_stage=LiveIntentCandidateService(client, prompt_store, calibrations),
-        context_stage=LiveContextCandidateService(client, prompt_store, calibrations),
+        context_stage=LiveContextCandidateService(
+            client,
+            prompt_store,
+            calibrations,
+            context_repair_log_emitter,
+        ),
         plan_stage=ProfileAwarePlanCandidateService(
             LivePlanCandidateService(client, prompt_store, calibrations),
             build_m1_plan_candidate_profile_registry(product_capabilities),
@@ -1359,9 +1375,11 @@ def _package_hash(value: Mapping[str, Any]) -> str:
         {
             "retrieval_package_id": value.get("retrieval_package_id"),
             "status": value.get("status"),
-            "evidence_count": len(value.get("evidence_items", []))
-            if isinstance(value.get("evidence_items"), list)
-            else 0,
+            "evidence_count": (
+                len(value.get("evidence_items", []))
+                if isinstance(value.get("evidence_items"), list)
+                else 0
+            ),
         }
     )
 

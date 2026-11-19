@@ -478,6 +478,19 @@ drift, and records each claimed delivery attempt with durable elapsed-time and
 error evidence. Source and WC Slice Gates pass without a migration. The actual
 DGX-backed installed journey remains required before `.7` can close.
 
+`CP-M1-E2E-FX-01B.7C` implementation evidence is recorded in
+[`mybee_phase1_w70_cp_m1_e2e_fx_01b7c_scalar_context_candidate_repair.md`](../../slices/mybee_phase1_w70_cp_m1_e2e_fx_01b7c_scalar_context_candidate_repair.md).
+The same installed journey exposed a provider formatting defect where a
+CONTEXT parameter value was an object or array despite the canonical
+scalar-only contract. The corrective boundary keeps that contract strict and
+admits only one bounded regeneration for the exact scalar-value diagnostic,
+without passing the rejected output back to the provider. Dedicated Prompt
+Registry provenance, immutable model/route lineage, and durable service-log
+evidence make the repair observable; every other malformed, authority, or
+injection response remains fail-closed. AE Slice Gate and actual
+`nex_ae_test` evidence persistence/cleanup pass without a migration. The final
+DGX-backed installed journey remains required before `.7` can close.
+
 `CP-M1-E2E-FX-01B.6A.1` implementation evidence is recorded in
 [`mybee_phase1_w70_cp_m1_e2e_fx_01b6a1_refresh_contract_source_resolver.md`](../../slices/mybee_phase1_w70_cp_m1_e2e_fx_01b6a1_refresh_contract_source_resolver.md).
 It closes the canonical protected contract and the mutation-free EOS source

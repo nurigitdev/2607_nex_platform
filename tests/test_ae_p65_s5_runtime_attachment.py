@@ -21,6 +21,7 @@ from nex_ae_api.semantic_candidate_admission import (
     attach_semantic_candidate_admission,
 )
 from nex_ae_api.semantic_candidate_evidence import LocalSemanticCandidateStorage
+from nex_runtime import InMemoryServiceLogStore, ServiceLogEmitter
 from nex_runtime.prompts import PromptRegistryStore
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -38,7 +39,10 @@ def _persistence() -> SimpleNamespace:
         autoflush=False,
         expire_on_commit=False,
     )
-    return SimpleNamespace(api_session_factory=factory)
+    return SimpleNamespace(
+        api_session_factory=factory,
+        service_log_store=InMemoryServiceLogStore(),
+    )
 
 
 def _environment(mode: str, **overrides: str) -> dict[str, str]:
@@ -94,6 +98,10 @@ def test_required_attachment_accepts_durable_private_storage(tmp_path) -> None:
     assert isinstance(
         runtime.service.domain_intent_activator_registry,
         DomainIntentActivatorRegistry,
+    )
+    assert isinstance(
+        runtime.service.context_stage.repair_log_emitter,
+        ServiceLogEmitter,
     )
 
 
@@ -522,6 +530,8 @@ def test_request_text_helpers_reject_missing_or_invalid_values(value) -> None:
 
 
 def test_timestamp_normalizes_naive_datetime() -> None:
-    assert admission_module._timestamp(datetime(2026, 10, 17, 3, 0)) == (  # noqa: DTZ001
+    assert admission_module._timestamp(
+        datetime(2026, 10, 17, 3, 0)
+    ) == (  # noqa: DTZ001
         "2026-10-17T03:00:00Z"
     )

@@ -12,11 +12,13 @@ from nex_ae_api.context_candidate_generation import (
 )
 from nex_ae_api.intent_policy import resolve_intent_decision
 from nex_ae_api.mo_generation_client import (
+    AeMoGenerationClientError,
     AeMoGenerationReadiness,
     AeMoGenerationResult,
 )
 from nex_ae_api.prompts import (
     AE_CONTEXT_CANDIDATE_BINDING,
+    AE_CONTEXT_CANDIDATE_REPAIR_BINDING,
     AE_PROMPT_SEEDS,
     seed_ae_prompt_registry,
 )
@@ -35,8 +37,8 @@ from nex_runtime.prompts import (
     build_prompt_template,
     build_prompt_template_version,
 )
+from nex_runtime import InMemoryServiceLogStore, ServiceLogEmitter
 from nex_runtime.semantic_hashes import canonical_json, sha256_text
-
 
 TRACE_ID = "4bf92f3577b34da6a3ce929d0e0e4736"
 REQUEST_ID = "p65-s3-request"
@@ -170,6 +172,43 @@ class FakeClient:
         )
 
 
+class SequenceClient(FakeClient):
+    def __init__(self, outputs, **kwargs) -> None:
+        super().__init__(**kwargs)
+        self.outputs = list(outputs)
+
+    def generate_candidate(self, **kwargs):
+        self.generation_calls.append(kwargs)
+        output = self.outputs.pop(0)
+        if isinstance(output, Exception):
+            raise output
+        output_text = canonical_json(output)
+        call_number = len(self.generation_calls)
+        return AeMoGenerationResult(
+            mo_generation_id=f"mo-generation-p65-s3-{call_number}",
+            model_profile=MODEL_PROFILE,
+            model_ref=self.generation_model_ref,
+            deployment_id=DEPLOYMENT_ID,
+            provider_type="vllm-openai-compatible",
+            output_text=output_text,
+            provider_output_sha256=sha256_text(output_text),
+            provider_output_size_bytes=len(output_text.encode()),
+            finish_reason="STOP",
+            input_tokens=100,
+            output_tokens=120,
+            total_tokens=220,
+            request_id=kwargs["request_id"],
+            trace_id=kwargs["trace_id"],
+            route_id=ROUTE_ID,
+            provider_request_id=f"provider-request-p65-s3-{call_number}",
+            queue_ms=1,
+            provider_ms=24 + call_number,
+            total_ms=25 + call_number,
+            created_at=RECEIVED_AT,
+            updated_at="2026-10-16T12:00:01Z",
+        )
+
+
 class Resolver:
     def __init__(self, resolution: TrustedContextResolution | object | None = None):
         self.resolution = resolution if resolution is not None else _resolution()
@@ -248,12 +287,13 @@ def _store() -> PromptRegistryStore:
     return store
 
 
-def _service(client=None, *, store=None, policies=None):
+def _service(client=None, *, store=None, policies=None, repair_log_emitter=None):
     selected_policies = (_policy(),) if policies is None else tuple(policies)
     return LiveContextCandidateService(
         client=client or FakeClient(),
         prompt_store=store if store is not None else _store(),
         calibration_registry=SemanticCalibrationRegistry(selected_policies),
+        repair_log_emitter=repair_log_emitter,
     )
 
 
@@ -304,6 +344,21 @@ def test_prompt_registry_preserves_history_and_activates_context_binding_v3() ->
         if item["prompt_template_id"] == version["prompt_template_id"]
     ) == ["v1", "v2", "v3"]
 
+    repair_binding = store.get_binding(AE_CONTEXT_CANDIDATE_REPAIR_BINDING)
+    repair_version = store.get_template_version(
+        repair_binding["prompt_template_version_id"]
+    )
+    assert repair_binding["purpose"] == "context_candidate_repair"
+    assert repair_version["version"] == "v1"
+    assert repair_version["metadata"] == {
+        "phase": "MyBee-W70",
+        "slice": "CP-M1-E2E-FX-01B.7C",
+        "candidate_schema": "p65.context_candidate_set.v1",
+        "authority": "untrusted_candidate_only",
+        "repair_mode": "bounded_single_attempt_without_rejected_output",
+    }
+    assert "never an object or array" in repair_version["content"]
+
 
 def test_required_mode_passes_bounded_hints_to_trusted_resolver() -> None:
     client = FakeClient()
@@ -338,13 +393,158 @@ def test_required_mode_passes_bounded_hints_to_trusted_resolver() -> None:
     assert "untrusted context candidate" in system_message["content"]
     generation_input = json.loads(user_message["content"])
     assert generation_input["schema_version"] == "p65.context_generation_input.v1"
-    assert generation_input["work_intent"]["intent_hash"] == _work_intent()[
-        "intent_hash"
-    ]
+    assert (
+        generation_input["work_intent"]["intent_hash"] == _work_intent()["intent_hash"]
+    )
     assert "tenant_id" not in canonical_json(generation_input)
     assert "principal_id" not in canonical_json(generation_input)
     assert "raw_prompt" not in canonical_json(result.prompt_provenance)
     assert "provider_url" not in repr(result)
+
+
+def test_scalar_type_failure_is_repaired_once_without_rejected_output() -> None:
+    invalid = _candidate(
+        parameter_candidates=[
+            {
+                "name": "currency",
+                "value": {"unexpected_nested": "DO_NOT_COPY"},
+                "confidence": 0.98,
+            }
+        ]
+    )
+    client = SequenceClient([invalid, _candidate()])
+    log_store = InMemoryServiceLogStore()
+    emitter = ServiceLogEmitter(
+        service_id="nex-ae-api",
+        logger_name="test.context_repair",
+        store=log_store,
+    )
+
+    result = _run(_service(client, repair_log_emitter=emitter))
+
+    assert result.directive == "CONTINUE"
+    assert len(client.generation_calls) == 2
+    initial_call, repair_call = client.generation_calls
+    assert initial_call["request_id"] == REQUEST_ID
+    assert repair_call["request_id"].startswith("context-repair-")
+    assert repair_call["request_id"] != REQUEST_ID
+    repair_payload = json.loads(repair_call["messages"][1]["content"])
+    assert repair_payload["schema_version"] == "p65.context_candidate_repair_input.v1"
+    assert repair_payload["trigger_diagnostic_code"] == (
+        "CONTEXT_PARAMETER_VALUE_TYPE_IS_INVALID"
+    )
+    assert repair_payload["attempt"] == repair_payload["max_attempts"] == 1
+    assert "DO_NOT_COPY" not in repair_call["messages"][1]["content"]
+    assert result.prompt_provenance["prompt_binding_key"] == (
+        AE_CONTEXT_CANDIDATE_REPAIR_BINDING
+    )
+    assert result.provider_output_sha256 == sha256_text(canonical_json(_candidate()))
+
+    logs = log_store.list_logs(service_id="nex-ae-api")
+    assert len(logs) == 1
+    evidence = logs[0]["attributes"]
+    assert evidence["schema_version"] == "ae.context_candidate_repair_evidence.v1"
+    assert evidence["repair_status"] == "SUCCEEDED"
+    assert evidence["trigger_diagnostic_code"] == (
+        "CONTEXT_PARAMETER_VALUE_TYPE_IS_INVALID"
+    )
+    assert evidence["attempt_count"] == evidence["max_attempts"] == 1
+    assert evidence["invalid_output_included"] is False
+    assert evidence["initial_generation_id"] == "mo-generation-p65-s3-1"
+    assert evidence["repair_generation_id"] == "mo-generation-p65-s3-2"
+    assert evidence["combined_total_ms"] == 53
+
+
+def test_context_repair_is_single_attempt_and_second_invalid_output_fails_closed() -> (
+    None
+):
+    invalid = _candidate(
+        parameter_candidates=[
+            {"name": "currency", "value": ["KRW"], "confidence": 0.98}
+        ]
+    )
+    client = SequenceClient([invalid, invalid])
+    log_store = InMemoryServiceLogStore()
+    emitter = ServiceLogEmitter(
+        service_id="nex-ae-api",
+        logger_name="test.context_repair",
+        store=log_store,
+    )
+
+    with pytest.raises(ContextCandidateStageError) as raised:
+        _run(_service(client, repair_log_emitter=emitter))
+
+    assert raised.value.error_code == "CANDIDATE_SCHEMA_INVALID"
+    assert raised.value.diagnostic_code == "CONTEXT_PARAMETER_VALUE_TYPE_IS_INVALID"
+    assert len(client.generation_calls) == 2
+    evidence = log_store.list_logs(service_id="nex-ae-api")[0]["attributes"]
+    assert evidence["repair_status"] == "REJECTED"
+    assert evidence["repair_error_code"] == "CANDIDATE_SCHEMA_INVALID"
+    assert evidence["repair_generation_id"] == "mo-generation-p65-s3-2"
+
+
+def test_context_repair_does_not_run_for_authority_or_other_schema_failures() -> None:
+    for invalid in (
+        {**_candidate(), "tenant_id": "other-tenant"},
+        _candidate(parameter_candidates=[{}]),
+    ):
+        client = SequenceClient([invalid])
+        with pytest.raises(ContextCandidateStageError):
+            _run(_service(client))
+        assert len(client.generation_calls) == 1
+
+
+def test_context_repair_transport_failure_is_observed_and_propagated() -> None:
+    invalid = _candidate(
+        parameter_candidates=[
+            {"name": "currency", "value": {"code": "KRW"}, "confidence": 0.98}
+        ]
+    )
+    timeout = AeMoGenerationClientError(
+        status_code=504,
+        error_code="PROVIDER_TIMEOUT",
+        detail="MO generation boundary timed out.",
+        retryable=True,
+    )
+    client = SequenceClient([invalid, timeout])
+    log_store = InMemoryServiceLogStore()
+    emitter = ServiceLogEmitter(
+        service_id="nex-ae-api",
+        logger_name="test.context_repair",
+        store=log_store,
+    )
+
+    with pytest.raises(AeMoGenerationClientError) as raised:
+        _run(_service(client, repair_log_emitter=emitter))
+
+    assert raised.value.error_code == "PROVIDER_TIMEOUT"
+    evidence = log_store.list_logs(service_id="nex-ae-api")[0]["attributes"]
+    assert evidence["repair_status"] == "REJECTED"
+    assert evidence["repair_error_code"] == "PROVIDER_TIMEOUT"
+    assert evidence["repair_generation_id"] is None
+
+
+def test_context_repair_fails_closed_when_durable_evidence_is_unavailable() -> None:
+    invalid = _candidate(
+        parameter_candidates=[
+            {"name": "currency", "value": {"code": "KRW"}, "confidence": 0.98}
+        ]
+    )
+
+    class UnavailableEmitter:
+        def safe_emit(self, **_kwargs):
+            return type("EmitResult", (), {"ok": False})()
+
+    with pytest.raises(ContextCandidateStageError) as raised:
+        _run(
+            _service(
+                SequenceClient([invalid, _candidate()]),
+                repair_log_emitter=UnavailableEmitter(),
+            )
+        )
+
+    assert raised.value.error_code == "CONTEXT_REPAIR_EVIDENCE_UNAVAILABLE"
+    assert raised.value.retryable is True
 
 
 def test_business_work_intent_v12_uses_the_same_bounded_context_projection() -> None:
@@ -380,9 +580,10 @@ def test_cross_tenant_looking_selector_is_only_a_hint_and_grants_nothing() -> No
     resolver = Resolver()
     result = _run(_service(FakeClient(candidate)), resolver=resolver)
 
-    assert resolver.requests[0].candidate_hints.resource_selectors[0][
-        "selector_value"
-    ] == "tenant-other/document-9"
+    assert (
+        resolver.requests[0].candidate_hints.resource_selectors[0]["selector_value"]
+        == "tenant-other/document-9"
+    )
     assert result.agent_context["identity"]["tenant_id"] == TENANT_ID
     assert result.agent_context["retrieval_refs"] == []
     assert result.agent_context["project_ref"] is None
@@ -476,11 +677,23 @@ def test_non_finite_parameter_value_fails_closed() -> None:
         ("not-json", "CANDIDATE_JSON_INVALID"),
         ("NaN", "CANDIDATE_JSON_INVALID"),
         ("[]", "CANDIDATE_SCHEMA_INVALID"),
-        (canonical_json({**_candidate(), "tenant_id": "tenant-other"}), "CANDIDATE_AUTHORITY_VIOLATION"),
-        (canonical_json({**_candidate(), "project_ref": "project-1"}), "CANDIDATE_AUTHORITY_VIOLATION"),
-        (canonical_json({**_candidate(), "provider_url": "private"}), "CANDIDATE_PRIVATE_DATA_VIOLATION"),
+        (
+            canonical_json({**_candidate(), "tenant_id": "tenant-other"}),
+            "CANDIDATE_AUTHORITY_VIOLATION",
+        ),
+        (
+            canonical_json({**_candidate(), "project_ref": "project-1"}),
+            "CANDIDATE_AUTHORITY_VIOLATION",
+        ),
+        (
+            canonical_json({**_candidate(), "provider_url": "private"}),
+            "CANDIDATE_PRIVATE_DATA_VIOLATION",
+        ),
         (canonical_json({**_candidate(), "extra": True}), "CANDIDATE_SCHEMA_INVALID"),
-        (canonical_json(_candidate(schema_version="unknown")), "CANDIDATE_SCHEMA_INVALID"),
+        (
+            canonical_json(_candidate(schema_version="unknown")),
+            "CANDIDATE_SCHEMA_INVALID",
+        ),
         (canonical_json(_candidate(confidence=True)), "CANDIDATE_SCHEMA_INVALID"),
         (canonical_json(_candidate(confidence=1.1)), "CANDIDATE_SCHEMA_INVALID"),
     ],
@@ -496,17 +709,86 @@ def test_candidate_top_level_fail_closed_matrix(output: str, error_code: str) ->
     [
         ({}, "CANDIDATE_SCHEMA_INVALID"),
         ([{}], "CANDIDATE_SCHEMA_INVALID"),
-        ([{"candidate_key": "bad", "entity_type": "DOCUMENT", "selector_kind": "NAME", "selector_value": "x", "confidence": 0.5}], "CANDIDATE_SCHEMA_INVALID"),
-        ([{"candidate_key": "E1", "entity_type": "document", "selector_kind": "NAME", "selector_value": "x", "confidence": 0.5}], "CANDIDATE_SCHEMA_INVALID"),
-        ([{"candidate_key": "E1", "entity_type": "DOCUMENT", "selector_kind": "ROLE", "selector_value": "x", "confidence": 0.5}], "CANDIDATE_SCHEMA_INVALID"),
-        ([{"candidate_key": "E1", "entity_type": "DOCUMENT", "selector_kind": "NAME", "selector_value": "x" * 257, "confidence": 0.5}], "CANDIDATE_BOUNDS_EXCEEDED"),
-        ([{"candidate_key": "E1", "entity_type": "DOCUMENT", "selector_kind": "NAME", "selector_value": "x", "confidence": -0.1}], "CANDIDATE_SCHEMA_INVALID"),
-        ([{"candidate_key": f"E{index}", "entity_type": "DOCUMENT", "selector_kind": "NAME", "selector_value": str(index), "confidence": 0.5} for index in range(1, 34)], "CANDIDATE_BOUNDS_EXCEEDED"),
+        (
+            [
+                {
+                    "candidate_key": "bad",
+                    "entity_type": "DOCUMENT",
+                    "selector_kind": "NAME",
+                    "selector_value": "x",
+                    "confidence": 0.5,
+                }
+            ],
+            "CANDIDATE_SCHEMA_INVALID",
+        ),
+        (
+            [
+                {
+                    "candidate_key": "E1",
+                    "entity_type": "document",
+                    "selector_kind": "NAME",
+                    "selector_value": "x",
+                    "confidence": 0.5,
+                }
+            ],
+            "CANDIDATE_SCHEMA_INVALID",
+        ),
+        (
+            [
+                {
+                    "candidate_key": "E1",
+                    "entity_type": "DOCUMENT",
+                    "selector_kind": "ROLE",
+                    "selector_value": "x",
+                    "confidence": 0.5,
+                }
+            ],
+            "CANDIDATE_SCHEMA_INVALID",
+        ),
+        (
+            [
+                {
+                    "candidate_key": "E1",
+                    "entity_type": "DOCUMENT",
+                    "selector_kind": "NAME",
+                    "selector_value": "x" * 257,
+                    "confidence": 0.5,
+                }
+            ],
+            "CANDIDATE_BOUNDS_EXCEEDED",
+        ),
+        (
+            [
+                {
+                    "candidate_key": "E1",
+                    "entity_type": "DOCUMENT",
+                    "selector_kind": "NAME",
+                    "selector_value": "x",
+                    "confidence": -0.1,
+                }
+            ],
+            "CANDIDATE_SCHEMA_INVALID",
+        ),
+        (
+            [
+                {
+                    "candidate_key": f"E{index}",
+                    "entity_type": "DOCUMENT",
+                    "selector_kind": "NAME",
+                    "selector_value": str(index),
+                    "confidence": 0.5,
+                }
+                for index in range(1, 34)
+            ],
+            "CANDIDATE_BOUNDS_EXCEEDED",
+        ),
     ],
 )
 def test_entity_candidate_fail_closed_matrix(entities, error_code: str) -> None:
     with pytest.raises(ContextCandidateStageError) as raised:
-        parse_context_candidate_set(canonical_json(_candidate(entity_candidates=entities)))
+        parse_context_candidate_set(
+            canonical_json(_candidate(entity_candidates=entities))
+        )
     assert raised.value.error_code == error_code
 
 
@@ -516,11 +798,23 @@ def test_entity_candidate_fail_closed_matrix(entities, error_code: str) -> None:
         {},
         [{}],
         [{"query_terms": [], "resource_types": ["DOCUMENT"], "confidence": 0.5}],
-        [{"query_terms": ["x", "x"], "resource_types": ["DOCUMENT"], "confidence": 0.5}],
+        [
+            {
+                "query_terms": ["x", "x"],
+                "resource_types": ["DOCUMENT"],
+                "confidence": 0.5,
+            }
+        ],
         [{"query_terms": ["x"], "resource_types": [], "confidence": 0.5}],
         [{"query_terms": ["x"], "resource_types": ["PROJECT"], "confidence": 0.5}],
         [{"query_terms": ["x"], "resource_types": ["DOCUMENT"], "confidence": None}],
-        [{"query_terms": [str(index) for index in range(17)], "resource_types": ["DOCUMENT"], "confidence": 0.5}],
+        [
+            {
+                "query_terms": [str(index) for index in range(17)],
+                "resource_types": ["DOCUMENT"],
+                "confidence": 0.5,
+            }
+        ],
     ],
 )
 def test_retrieval_hint_fail_closed_matrix(hints) -> None:
@@ -533,11 +827,47 @@ def test_retrieval_hint_fail_closed_matrix(hints) -> None:
     [
         {},
         [{}],
-        [{"resource_type": "PROJECT", "selector_kind": "ID", "selector_value": "x", "confidence": 0.5}],
-        [{"resource_type": "DOCUMENT", "selector_kind": "ROLE", "selector_value": "x", "confidence": 0.5}],
-        [{"resource_type": "DOCUMENT", "selector_kind": "ID", "selector_value": " ", "confidence": 0.5}],
-        [{"resource_type": "DOCUMENT", "selector_kind": "ID", "selector_value": "x", "confidence": 2}],
-        [{"resource_type": "DOCUMENT", "selector_kind": "ID", "selector_value": str(index), "confidence": 0.5} for index in range(33)],
+        [
+            {
+                "resource_type": "PROJECT",
+                "selector_kind": "ID",
+                "selector_value": "x",
+                "confidence": 0.5,
+            }
+        ],
+        [
+            {
+                "resource_type": "DOCUMENT",
+                "selector_kind": "ROLE",
+                "selector_value": "x",
+                "confidence": 0.5,
+            }
+        ],
+        [
+            {
+                "resource_type": "DOCUMENT",
+                "selector_kind": "ID",
+                "selector_value": " ",
+                "confidence": 0.5,
+            }
+        ],
+        [
+            {
+                "resource_type": "DOCUMENT",
+                "selector_kind": "ID",
+                "selector_value": "x",
+                "confidence": 2,
+            }
+        ],
+        [
+            {
+                "resource_type": "DOCUMENT",
+                "selector_kind": "ID",
+                "selector_value": str(index),
+                "confidence": 0.5,
+            }
+            for index in range(33)
+        ],
     ],
 )
 def test_resource_selector_fail_closed_matrix(selectors) -> None:
@@ -636,7 +966,12 @@ def test_nested_authority_and_candidate_injection_are_rejected() -> None:
         {"base_context": {}},
         {"base_context": {**_base_context(), "conversation_summary": " "}},
         {"base_context": {**_base_context(), "resource_label_hints": ["x", "x"]}},
-        {"base_context": {**_base_context(), "resource_label_hints": [str(index) for index in range(33)]}},
+        {
+            "base_context": {
+                **_base_context(),
+                "resource_label_hints": [str(index) for index in range(33)],
+            }
+        },
     ],
 )
 def test_stage_rejects_invalid_request_before_generation(overrides) -> None:
@@ -713,9 +1048,7 @@ def test_missing_incompatible_and_invalid_digest_prompt_fail_closed() -> None:
 
     invalid_digest = _store()
     binding = invalid_digest.get_binding(AE_CONTEXT_CANDIDATE_BINDING)
-    version = invalid_digest.get_template_version(
-        binding["prompt_template_version_id"]
-    )
+    version = invalid_digest.get_template_version(binding["prompt_template_version_id"])
     version["content_sha256"] = "invalid"
     with pytest.raises(ContextCandidateStageError) as raised:
         _run(_service(store=invalid_digest))
@@ -733,11 +1066,15 @@ def test_missing_incompatible_and_invalid_digest_prompt_fail_closed() -> None:
 def test_in_flight_binding_switch_keeps_captured_v3_snapshot() -> None:
     base = _store()
     seed = next(
-        item for item in AE_PROMPT_SEEDS if item.binding_key == AE_CONTEXT_CANDIDATE_BINDING
+        item
+        for item in AE_PROMPT_SEEDS
+        if item.binding_key == AE_CONTEXT_CANDIDATE_BINDING
     )
     v4_seed = replace(seed, version="v4", content=seed.content + " Version four.")
     template = build_prompt_template(v4_seed)
-    version = base.save_template_version(build_prompt_template_version(v4_seed, template))
+    version = base.save_template_version(
+        build_prompt_template_version(v4_seed, template)
+    )
     v4_binding = build_prompt_binding(v4_seed, version)
 
     class SwitchingStore:
@@ -758,6 +1095,7 @@ def test_in_flight_binding_switch_keeps_captured_v3_snapshot() -> None:
     result = _run(_service(store=SwitchingStore(base)))
 
     assert result.prompt_provenance["prompt_template_version"] == "v3"
-    assert base.get_binding(AE_CONTEXT_CANDIDATE_BINDING)[
-        "prompt_template_version_id"
-    ] == version["prompt_template_version_id"]
+    assert (
+        base.get_binding(AE_CONTEXT_CANDIDATE_BINDING)["prompt_template_version_id"]
+        == version["prompt_template_version_id"]
+    )

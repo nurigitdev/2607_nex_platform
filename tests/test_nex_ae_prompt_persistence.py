@@ -11,6 +11,7 @@ from nex_ae_api.prompt_persistence import (
 )
 from nex_ae_api.prompts import (
     AE_CONTEXT_CANDIDATE_BINDING,
+    AE_CONTEXT_CANDIDATE_REPAIR_BINDING,
     AE_DOCUMENT_GENERATION_BINDING,
     AE_DOCUMENT_SUMMARY_BINDING,
     AE_GENERAL_ANSWER_BINDING,
@@ -45,8 +46,7 @@ def session_factory(*, with_schema: bool = True):
 
 
 def _create_schema(connection) -> None:
-    connection.execute(
-        text("""
+    connection.execute(text("""
         CREATE TABLE ae_prompt_templates (
             prompt_template_id TEXT PRIMARY KEY,
             service_id TEXT NOT NULL,
@@ -58,10 +58,8 @@ def _create_schema(connection) -> None:
             updated_at TEXT NOT NULL,
             UNIQUE (service_id, purpose, name)
         )
-    """)
-    )
-    connection.execute(
-        text("""
+    """))
+    connection.execute(text("""
         CREATE TABLE ae_prompt_template_versions (
             prompt_template_version_id TEXT PRIMARY KEY,
             prompt_template_id TEXT NOT NULL,
@@ -76,10 +74,8 @@ def _create_schema(connection) -> None:
             created_at TEXT NOT NULL,
             UNIQUE (prompt_template_id, version, role, segment_order)
         )
-    """)
-    )
-    connection.execute(
-        text("""
+    """))
+    connection.execute(text("""
         CREATE TABLE ae_prompt_bindings (
             prompt_binding_id TEXT PRIMARY KEY,
             binding_key TEXT NOT NULL UNIQUE,
@@ -89,10 +85,8 @@ def _create_schema(connection) -> None:
             status TEXT NOT NULL,
             bound_at TEXT NOT NULL
         )
-    """)
-    )
-    connection.execute(
-        text("""
+    """))
+    connection.execute(text("""
         CREATE TABLE ae_prompt_render_events (
             prompt_render_event_id TEXT PRIMARY KEY,
             prompt_binding_id TEXT,
@@ -106,10 +100,8 @@ def _create_schema(connection) -> None:
             metadata TEXT NOT NULL,
             created_at TEXT NOT NULL
         )
-    """)
-    )
-    connection.execute(
-        text("""
+    """))
+    connection.execute(text("""
         CREATE TABLE ae_prompt_binding_history (
             binding_change_id TEXT PRIMARY KEY,
             binding_key TEXT NOT NULL,
@@ -121,8 +113,7 @@ def _create_schema(connection) -> None:
             changed_at TEXT NOT NULL,
             UNIQUE (binding_key, correlation_id)
         )
-    """)
-    )
+    """))
 
 
 def test_registry_seeds_configured_bindings_idempotently_and_survives_restart() -> None:
@@ -141,6 +132,7 @@ def test_registry_seeds_configured_bindings_idempotently_and_survives_restart() 
             AE_DOCUMENT_GENERATION_BINDING,
             AE_INTENT_RESOLUTION_BINDING,
             AE_CONTEXT_CANDIDATE_BINDING,
+            AE_CONTEXT_CANDIDATE_REPAIR_BINDING,
             AE_PLAN_BUILDER_BINDING,
             AE_PROJECT_DELEGATION_PLAN_BUILDER_BINDING,
         ]
@@ -161,6 +153,14 @@ def test_registry_seeds_configured_bindings_idempotently_and_survives_restart() 
     assert context_version["version"] == "v3"
     assert context_version["metadata"]["hardening"] == (
         "resource_selector_enum_and_empty_default"
+    )
+    repair_binding = restarted.get_binding(AE_CONTEXT_CANDIDATE_REPAIR_BINDING)
+    repair_version = restarted.get_template_version(
+        repair_binding["prompt_template_version_id"]
+    )
+    assert repair_version["version"] == "v1"
+    assert repair_version["metadata"]["repair_mode"] == (
+        "bounded_single_attempt_without_rejected_output"
     )
     delegation_binding = restarted.get_binding(
         AE_PROJECT_DELEGATION_PLAN_BUILDER_BINDING
@@ -509,13 +509,11 @@ def test_binding_activation_rolls_back_history_and_pointer_on_fault(
     )
     trigger_operation = "INSERT" if failure_target == "history" else "UPDATE"
     with factory() as session:
-        session.execute(
-            text(f"""
+        session.execute(text(f"""
             CREATE TRIGGER fail_{failure_target}
             BEFORE {trigger_operation} ON {trigger_target}
             BEGIN SELECT RAISE(ABORT, 'injected failure'); END
-        """)
-        )
+        """))
         session.commit()
 
     with pytest.raises(PromptRepositoryError) as raised:

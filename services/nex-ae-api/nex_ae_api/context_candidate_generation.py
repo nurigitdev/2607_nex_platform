@@ -18,7 +18,10 @@ from nex_ae_api.mo_generation_client import (
     AeMoGenerationReadiness,
     AeMoGenerationResult,
 )
-from nex_ae_api.prompts import AE_CONTEXT_CANDIDATE_BINDING
+from nex_ae_api.prompts import (
+    AE_CONTEXT_CANDIDATE_BINDING,
+    AE_CONTEXT_CANDIDATE_REPAIR_BINDING,
+)
 from nex_ae_api.semantic_candidates import (
     SemanticCalibrationPolicy,
     SemanticCalibrationRegistry,
@@ -29,17 +32,22 @@ from nex_ae_api.work_intent import (
     BUSINESS_WORK_INTENT_SCHEMA_VERSION,
     WORK_INTENT_SCHEMA_VERSION,
 )
+from nex_runtime import ServiceLogEmitter
 from nex_runtime.prompts import PromptRegistryError, render_prompt_from_binding
 from nex_runtime.semantic_hashes import (
     canonical_json,
     semantic_sha256_hash_ref,
+    sha256_text,
     validate_hash_ref,
     validate_sha256_digest,
 )
 
-
 CONTEXT_CANDIDATE_SCHEMA_VERSION = "p65.context_candidate_set.v1"
 CONTEXT_GENERATION_INPUT_SCHEMA_VERSION = "p65.context_generation_input.v1"
+CONTEXT_REPAIR_INPUT_SCHEMA_VERSION = "p65.context_candidate_repair_input.v1"
+CONTEXT_REPAIR_EVIDENCE_SCHEMA_VERSION = "ae.context_candidate_repair_evidence.v1"
+
+_REPAIRABLE_DIAGNOSTIC_CODES = frozenset({"CONTEXT_PARAMETER_VALUE_TYPE_IS_INVALID"})
 
 _TOP_LEVEL_KEYS = {
     "schema_version",
@@ -162,6 +170,11 @@ class LiveContextCandidateService:
         default_factory=ContextCalibrationRegistry,
         repr=False,
     )
+    repair_log_emitter: ServiceLogEmitter | None = field(
+        default=None,
+        repr=False,
+        compare=False,
+    )
 
     def generate_and_resolve(
         self,
@@ -236,7 +249,75 @@ class LiveContextCandidateService:
             trace_id=selected_trace_id,
         )
         _require_matching_model(readiness, generation)
-        candidate = parse_context_candidate_set(generation.output_text)
+        try:
+            candidate = parse_context_candidate_set(generation.output_text)
+        except ContextCandidateStageError as initial_error:
+            if not _repairable_context_failure(initial_error):
+                raise
+            initial_generation = generation
+            repair_request_id = _repair_request_id(
+                selected_request_id,
+                trace_id=selected_trace_id,
+            )
+            repair_input = {
+                "schema_version": CONTEXT_REPAIR_INPUT_SCHEMA_VERSION,
+                "generation_input": generation_input,
+                "trigger_diagnostic_code": initial_error.diagnostic_code,
+                "attempt": 1,
+                "max_attempts": 1,
+            }
+            repair_prompt_snapshot = _resolve_repair_prompt_snapshot(
+                self.prompt_store,
+                user_prompt=canonical_json(repair_input),
+                request_id=repair_request_id,
+                trace_id=selected_trace_id,
+            )
+            try:
+                generation = self.client.generate_candidate(
+                    semantic_stage="CONTEXT",
+                    messages=(
+                        {
+                            "role": "system",
+                            "content": repair_prompt_snapshot["rendered_prompt"],
+                        },
+                        {"role": "user", "content": canonical_json(repair_input)},
+                    ),
+                    request_id=repair_request_id,
+                    trace_id=selected_trace_id,
+                )
+                _require_matching_model(readiness, generation)
+                candidate = parse_context_candidate_set(generation.output_text)
+            except Exception as repair_error:
+                _emit_context_repair_evidence(
+                    self.repair_log_emitter,
+                    execution_id=execution_id,
+                    request_id=selected_request_id,
+                    trace_id=selected_trace_id,
+                    repair_request_id=repair_request_id,
+                    initial_error=initial_error,
+                    initial_generation=initial_generation,
+                    repair_generation=(
+                        generation if generation is not initial_generation else None
+                    ),
+                    repair_error=repair_error,
+                    initial_prompt_snapshot=prompt_snapshot,
+                    repair_prompt_snapshot=repair_prompt_snapshot,
+                )
+                raise
+            _emit_context_repair_evidence(
+                self.repair_log_emitter,
+                execution_id=execution_id,
+                request_id=selected_request_id,
+                trace_id=selected_trace_id,
+                repair_request_id=repair_request_id,
+                initial_error=initial_error,
+                initial_generation=initial_generation,
+                repair_generation=generation,
+                repair_error=None,
+                initial_prompt_snapshot=prompt_snapshot,
+                repair_prompt_snapshot=repair_prompt_snapshot,
+            )
+            prompt_snapshot = repair_prompt_snapshot
         candidate_hash = semantic_sha256_hash_ref(candidate)
         prompt_provenance = {
             **prompt_snapshot["provenance"],
@@ -393,7 +474,10 @@ def _entity_candidates(value: object) -> list[dict[str, Any]]:
         ):
             raise _schema_error("CONTEXT entity candidate key is invalid.")
         entity_type = record.get("entity_type")
-        if not isinstance(entity_type, str) or _ENTITY_TYPE.fullmatch(entity_type) is None:
+        if (
+            not isinstance(entity_type, str)
+            or _ENTITY_TYPE.fullmatch(entity_type) is None
+        ):
             raise _schema_error("CONTEXT entity type is invalid.")
         selector_kind = record.get("selector_kind")
         if selector_kind not in _ENTITY_SELECTOR_KINDS:
@@ -405,9 +489,7 @@ def _entity_candidates(value: object) -> list[dict[str, Any]]:
             "selector_value": _candidate_text(
                 record.get("selector_value"), "entity selector value", 256
             ),
-            "confidence": _confidence(
-                record.get("confidence"), "entity confidence"
-            ),
+            "confidence": _confidence(record.get("confidence"), "entity confidence"),
         }
         identity = canonical_json(item)
         if candidate_key in candidate_keys or identity in identities:
@@ -442,9 +524,7 @@ def _retrieval_hints(value: object) -> list[dict[str, Any]]:
         item = {
             "query_terms": query_terms,
             "resource_types": resource_types,
-            "confidence": _confidence(
-                record.get("confidence"), "retrieval confidence"
-            ),
+            "confidence": _confidence(record.get("confidence"), "retrieval confidence"),
         }
         identity = canonical_json(item)
         if identity in identities:
@@ -510,9 +590,7 @@ def _parameter_candidates(value: object) -> list[dict[str, Any]]:
         item = {
             "name": name,
             "value": candidate_value,
-            "confidence": _confidence(
-                record.get("confidence"), "parameter confidence"
-            ),
+            "confidence": _confidence(record.get("confidence"), "parameter confidence"),
         }
         identity = canonical_json(item)
         if name in names or identity in identities:
@@ -545,9 +623,7 @@ def _result(
         prompt_provenance=dict(prompt_provenance),
         model_provenance=dict(model_provenance),
         admission_policy_ref=policy.policy_ref if policy is not None else None,
-        selected_threshold=(
-            policy.minimum_confidence if policy is not None else None
-        ),
+        selected_threshold=(policy.minimum_confidence if policy is not None else None),
         candidate=dict(candidate),
         agent_context=(dict(agent_context) if agent_context is not None else None),
     )
@@ -616,10 +692,49 @@ def _resolve_prompt_snapshot(
     request_id: str,
     trace_id: str,
 ) -> dict[str, Any]:
+    return _resolve_prompt_binding_snapshot(
+        store,
+        binding_key=AE_CONTEXT_CANDIDATE_BINDING,
+        purpose="context_candidate_extraction",
+        boundary_label="CONTEXT",
+        user_prompt=user_prompt,
+        request_id=request_id,
+        trace_id=trace_id,
+    )
+
+
+def _resolve_repair_prompt_snapshot(
+    store: Any,
+    *,
+    user_prompt: str,
+    request_id: str,
+    trace_id: str,
+) -> dict[str, Any]:
+    return _resolve_prompt_binding_snapshot(
+        store,
+        binding_key=AE_CONTEXT_CANDIDATE_REPAIR_BINDING,
+        purpose="context_candidate_repair",
+        boundary_label="CONTEXT repair",
+        user_prompt=user_prompt,
+        request_id=request_id,
+        trace_id=trace_id,
+    )
+
+
+def _resolve_prompt_binding_snapshot(
+    store: Any,
+    *,
+    binding_key: str,
+    purpose: str,
+    boundary_label: str,
+    user_prompt: str,
+    request_id: str,
+    trace_id: str,
+) -> dict[str, Any]:
     try:
         rendered = render_prompt_from_binding(
             store,
-            binding_key=AE_CONTEXT_CANDIDATE_BINDING,
+            binding_key=binding_key,
             variables={},
             request_id=request_id,
             trace_id=trace_id,
@@ -631,28 +746,30 @@ def _resolve_prompt_snapshot(
         raise ContextCandidateStageError(
             503,
             "PROVIDER_NOT_READY",
-            "The exact CONTEXT prompt binding is not ready.",
+            f"The exact {boundary_label} prompt binding is not ready.",
         ) from exc
     if not isinstance(version, dict) or version.get("status") != "ACTIVE":
         raise ContextCandidateStageError(
             503,
             "PROVIDER_NOT_READY",
-            "The captured CONTEXT prompt version is not active.",
+            f"The captured {boundary_label} prompt version is not active.",
         )
     if (
-        event.get("binding_key") != AE_CONTEXT_CANDIDATE_BINDING
-        or event.get("purpose") != "context_candidate_extraction"
-        or version.get("purpose") != "context_candidate_extraction"
+        event.get("binding_key") != binding_key
+        or event.get("purpose") != purpose
+        or version.get("purpose") != purpose
         or version.get("role") != "system"
         or version.get("model_capability") != "generation"
     ):
-        raise _schema_error("The captured CONTEXT prompt binding is incompatible.")
+        raise _schema_error(
+            f"The captured {boundary_label} prompt binding is incompatible."
+        )
     try:
         content_sha256 = validate_sha256_digest(version.get("content_sha256"))
         rendered_hash = validate_sha256_digest(event.get("rendered_prompt_hash"))
     except ValueError as exc:
         raise _schema_error(
-            "The captured CONTEXT prompt provenance digest is invalid."
+            f"The captured {boundary_label} prompt provenance digest is invalid."
         ) from exc
     return {
         "rendered_prompt": _bounded_text(
@@ -662,7 +779,7 @@ def _resolve_prompt_snapshot(
             "prompt_binding_id": _bounded_text(
                 event.get("prompt_binding_id"), "prompt_binding_id", 64
             ),
-            "prompt_binding_key": AE_CONTEXT_CANDIDATE_BINDING,
+            "prompt_binding_key": binding_key,
             "prompt_template_version_id": _bounded_text(
                 event.get("prompt_template_version_id"),
                 "prompt_template_version_id",
@@ -675,6 +792,99 @@ def _resolve_prompt_snapshot(
             "rendered_prompt_hash": rendered_hash,
         },
     }
+
+
+def _repairable_context_failure(error: ContextCandidateStageError) -> bool:
+    return (
+        error.error_code == "CANDIDATE_SCHEMA_INVALID"
+        and error.diagnostic_code in _REPAIRABLE_DIAGNOSTIC_CODES
+    )
+
+
+def _repair_request_id(request_id: str, *, trace_id: str) -> str:
+    digest = sha256_text(f"{request_id}:{trace_id}:CONTEXT:repair:1")
+    return f"context-repair-{digest[:32]}"
+
+
+def _emit_context_repair_evidence(
+    emitter: ServiceLogEmitter | None,
+    *,
+    execution_id: str,
+    request_id: str,
+    trace_id: str,
+    repair_request_id: str,
+    initial_error: ContextCandidateStageError,
+    initial_generation: AeMoGenerationResult,
+    repair_generation: AeMoGenerationResult | None,
+    repair_error: Exception | None,
+    initial_prompt_snapshot: Mapping[str, Any],
+    repair_prompt_snapshot: Mapping[str, Any],
+) -> None:
+    if emitter is None:
+        return
+    repair_succeeded = repair_error is None and repair_generation is not None
+    repair_error_code = getattr(repair_error, "error_code", None)
+    if not isinstance(repair_error_code, str) or not repair_error_code:
+        repair_error_code = type(repair_error).__name__ if repair_error else None
+    attributes = {
+        "schema_version": CONTEXT_REPAIR_EVIDENCE_SCHEMA_VERSION,
+        "semantic_stage": "CONTEXT",
+        "trigger_error_code": initial_error.error_code,
+        "trigger_diagnostic_code": initial_error.diagnostic_code,
+        "attempt_count": 1,
+        "max_attempts": 1,
+        "repair_status": "SUCCEEDED" if repair_succeeded else "REJECTED",
+        "repair_error_code": repair_error_code,
+        "invalid_output_included": False,
+        "initial_generation_id": initial_generation.mo_generation_id,
+        "repair_generation_id": (
+            repair_generation.mo_generation_id
+            if repair_generation is not None
+            else None
+        ),
+        "initial_output_sha256": initial_generation.provider_output_sha256,
+        "repair_output_sha256": (
+            repair_generation.provider_output_sha256
+            if repair_generation is not None
+            else None
+        ),
+        "initial_total_ms": initial_generation.total_ms,
+        "repair_total_ms": (
+            repair_generation.total_ms if repair_generation is not None else None
+        ),
+        "combined_total_ms": initial_generation.total_ms
+        + (repair_generation.total_ms if repair_generation is not None else 0),
+        "repair_request_id": repair_request_id,
+        "model_profile": initial_generation.model_profile,
+        "model_ref": initial_generation.model_ref,
+        "deployment_id": initial_generation.deployment_id,
+        "route_id": initial_generation.route_id,
+        "initial_prompt_template_version_id": initial_prompt_snapshot["provenance"][
+            "prompt_template_version_id"
+        ],
+        "repair_prompt_template_version_id": repair_prompt_snapshot["provenance"][
+            "prompt_template_version_id"
+        ],
+    }
+    emitted = emitter.safe_emit(
+        severity="INFO" if repair_succeeded else "WARNING",
+        message=(
+            "CONTEXT candidate repair completed."
+            if repair_succeeded
+            else "CONTEXT candidate repair was rejected."
+        ),
+        trace_id=trace_id,
+        request_id=request_id,
+        subject_ref={"type": "agent_execution", "id": execution_id},
+        attributes=attributes,
+    )
+    if not emitted.ok:
+        raise ContextCandidateStageError(
+            503,
+            "CONTEXT_REPAIR_EVIDENCE_UNAVAILABLE",
+            "CONTEXT repair evidence could not be persisted.",
+            retryable=True,
+        )
 
 
 def _require_matching_model(
@@ -734,7 +944,9 @@ def _enum_list(
     records = _bounded_list(value, field_name, maximum)
     if require_one and not records:
         raise _schema_error(f"CONTEXT {field_name} must not be empty.")
-    if any(item not in allowed for item in records) or len(set(records)) != len(records):
+    if any(item not in allowed for item in records) or len(set(records)) != len(
+        records
+    ):
         raise _schema_error(f"CONTEXT {field_name} is invalid.")
     return list(records)
 
@@ -801,7 +1013,9 @@ def _reject_prompt_injection(value: object) -> None:
 
 def _planning_mode(value: object) -> str:
     if not isinstance(value, str) or value.casefold() not in {"shadow", "required"}:
-        raise _request_error("CONTEXT candidate stage requires shadow or required mode.")
+        raise _request_error(
+            "CONTEXT candidate stage requires shadow or required mode."
+        )
     return value.casefold()
 
 
