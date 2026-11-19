@@ -496,8 +496,8 @@ DGX-backed installed journey remains required before `.7` can close.
 The post-`.7C` installed run compiled and submitted transaction one but exposed
 an acceptance-runner defect: its 960-second parent timeout included startup and
 could terminate before the browser's 900-second result deadline produced
-diagnostics. `.7D` separates 60-second UI actions from per-transaction
-900-second result windows, derives a 1,980-second parent budget, emits atomic
+diagnostics. `.7D` separates 120-second UI actions from per-transaction
+900-second result windows, derives a 2,220-second parent budget, emits atomic
 redacted progress heartbeats, and captures bounded AE/WC operational states
 before teardown. AE and Web regressions, coverage, and actual AE/WC PostgreSQL
 diagnostic queries pass without a migration. The protected exact-head journey

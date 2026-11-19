@@ -30,9 +30,9 @@ def test_product_golden_source_admission_uses_installed_m1_registry() -> None:
     assert result["non_identical_positive_request_count"] == 2
     assert result["post_request_direct_transition_allowed"] is False
     assert result["isolated_eight_database_schema_required"] is True
-    assert result["browser_action_timeout_ms"] == 60_000
+    assert result["browser_action_timeout_ms"] == 120_000
     assert result["browser_result_timeout_ms"] == 900_000
-    assert result["browser_process_timeout_seconds"] == 1_980
+    assert result["browser_process_timeout_seconds"] == 2_220
     assert support.PROJECT_REFERENCE_RESOLVE_SCOPE in support._OA_SCOPES["requester"]
     assert {"approval:read", "approval:decide"}.issubset(support._OA_SCOPES["approver"])
 
@@ -394,7 +394,7 @@ def test_product_playwright_timeout_returns_last_bounded_progress(
             encoding="utf-8",
         )
         assert kwargs["timeout"] == acceptance.BROWSER_PROCESS_TIMEOUT_SECONDS
-        assert kwargs["env"]["NEX_MYBEE_M1_GOLDEN_TIMEOUT_MS"] == "60000"
+        assert kwargs["env"]["NEX_MYBEE_M1_GOLDEN_TIMEOUT_MS"] == "120000"
         assert kwargs["env"]["NEX_MYBEE_M1_GOLDEN_RESULT_TIMEOUT_MS"] == "900000"
         raise subprocess.TimeoutExpired(_arguments, kwargs["timeout"])
 

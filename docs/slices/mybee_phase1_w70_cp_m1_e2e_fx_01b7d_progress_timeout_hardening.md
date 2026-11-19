@@ -16,10 +16,12 @@ redacted progress snapshot before installed teardown.
 ## Decision
 
 - Separate UI action timeout from business result timeout.
-- Keep UI actions bounded at 60 seconds.
+- Keep ordinary UI actions bounded at 120 seconds. The protected live run proved
+  that a 60-second submit budget could expire while the admitted Qwen3.5-9B
+  provider was still completing the three synchronous semantic stages.
 - Keep each of the two admitted transaction result windows at 900 seconds.
-- Set the parent process budget to two result windows plus a 180-second
-  startup/teardown margin: 1,980 seconds.
+- Set the parent process budget to two action/result windows plus a 180-second
+  startup/teardown margin: 2,220 seconds.
 - Emit an atomic progress heartbeat at stage changes and at most every five
   seconds while waiting for approval or result.
 - Persist only bounded stage, sequence, transaction index, poll count, approval
@@ -67,8 +69,12 @@ redacted progress snapshot before installed teardown.
 
 ## Protected Live Rule
 
-The committed exact-head installed journey must be rerun with the canonical
-Qwen3.5-9B provider. A failure is acceptable evidence only when it records:
+The first committed exact-head installed rerun stopped at transaction-one
+submission after the original 60-second UI budget. It preserved
+`QUEUED:INTAKE`, zero WC progress, and bounded browser evidence, proving both
+the diagnostics and the need for the 120-second action rebaseline. The journey
+must be rerun with the canonical Qwen3.5-9B provider. A failure is acceptable
+evidence only when it records:
 
 1. the exact browser stage and bounded progress counters;
 2. AE execution and attempt state;
