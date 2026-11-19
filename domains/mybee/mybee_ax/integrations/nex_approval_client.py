@@ -266,6 +266,14 @@ def admit_scoped_approval_receipt(
     ):
         raise _error("MYBEE_APPROVAL_WC_INVALID", "WC publication drifted")
     work_item = publication["work_item"]
+    approval_work_item_id = work_item.get("approval_work_item_id")
+    try:
+        _uuid("approval_work_item_id", approval_work_item_id)
+    except ScopedApprovalContractError as exc:
+        raise _error(
+            "MYBEE_APPROVAL_WC_INVALID",
+            "WC approval work-item identity drifted",
+        ) from exc
     if (
         work_item.get("tenant_id") != tenant_id
         or work_item.get("approval_domain") != "BUSINESS_FORMAL"

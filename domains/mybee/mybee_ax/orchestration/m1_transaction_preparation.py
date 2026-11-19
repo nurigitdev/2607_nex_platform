@@ -206,7 +206,7 @@ class M1TransactionPreparationAdapter:
                 "business_approval_case_id": receipt["scoped_approval_case"]["case_id"],
                 "business_approval_work_item_id": receipt["wc_publication"][
                     "work_item"
-                ]["work_item_id"],
+                ]["approval_work_item_id"],
             },
             adapter=self.registration,
         )
@@ -283,7 +283,7 @@ class M1TransactionPreparationAdapter:
                 ],
                 "accounting_approval_work_item_id": review["wc_publication"][
                     "work_item"
-                ]["work_item_id"],
+                ]["approval_work_item_id"],
             },
             adapter=self.registration,
         )

@@ -139,7 +139,11 @@ class _BusinessApprovals:
         self.proposals.append((proposal, dict(kwargs)))
         return {
             "scoped_approval_case": {"case_id": kwargs["case_id"]},
-            "wc_publication": {"work_item": {"work_item_id": "wc-business-work-item"}},
+            "wc_publication": {
+                "work_item": {
+                    "approval_work_item_id": "c32b14d8-b8b3-4bf5-ae5c-27a987128b8f"
+                }
+            },
         }
 
     def get_approved_document(self, proposal, *, envelope_id):
@@ -204,7 +208,9 @@ class _VoucherCandidates:
         return {
             "scoped_approval_case": {"case_id": kwargs["case_id"]},
             "wc_publication": {
-                "work_item": {"work_item_id": "wc-accounting-work-item"}
+                "work_item": {
+                    "approval_work_item_id": "894b8ac3-6d61-4811-a5c7-91668e33b7ac"
+                }
             },
         }
 

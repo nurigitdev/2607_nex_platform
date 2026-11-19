@@ -781,13 +781,25 @@ def test_mybee_consumer_rejects_case_and_receipt_drift_matrix() -> None:
         _request(idempotency_key="")
     malformed = dict(receipt)
     malformed["wc_publication"] = {"created": True, "work_item": {}}
-    with pytest.raises(ScopedApprovalContractError):
+    with pytest.raises(ScopedApprovalContractError) as missing_work_item_id:
         admit_scoped_approval_receipt(
             malformed,
             tenant_id=TENANT,
             business_operation_id=OPERATION_ID,
             case_id=CASE_ID,
         )
+    assert missing_work_item_id.value.code == "MYBEE_APPROVAL_WC_INVALID"
+
+    malformed = deepcopy(receipt)
+    malformed["wc_publication"]["work_item"]["approval_work_item_id"] = "not-a-uuid"
+    with pytest.raises(ScopedApprovalContractError) as malformed_work_item_id:
+        admit_scoped_approval_receipt(
+            malformed,
+            tenant_id=TENANT,
+            business_operation_id=OPERATION_ID,
+            case_id=CASE_ID,
+        )
+    assert malformed_work_item_id.value.code == "MYBEE_APPROVAL_WC_INVALID"
 
 
 class FakeScopedApprovalService:
