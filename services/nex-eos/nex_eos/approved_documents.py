@@ -370,8 +370,9 @@ class SqlAlchemyEosApprovedDocumentRepository:
         company = self._load_company(session, semantics)
         self._require_project_scope(session, semantics=semantics, company=company)
         approved_at = _aware_datetime("approved_at", evidence["decided_at"])
-        if semantics["valid_from"] < approved_at:
-            raise _invalid("valid_from", "cannot precede final document approval")
+        # Scoped evidence creates the envelope only after the terminal decision.
+        # valid_from describes the covered business period, while approved_at is
+        # the authority boundary that prevents pre-approval use.
         now = self._now()
         record = {
             **semantics,

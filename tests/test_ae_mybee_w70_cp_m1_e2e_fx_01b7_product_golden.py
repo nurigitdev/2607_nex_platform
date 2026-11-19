@@ -624,6 +624,129 @@ def test_product_wc_database_progress_summary_is_bounded(tmp_path: Path) -> None
     )
 
 
+def test_product_eos_approval_authority_summary_is_bounded(tmp_path: Path) -> None:
+    case_id = "71000000-0000-4000-8000-000000000001"
+    wc_database = tmp_path / "wc-authority.sqlite"
+    eos_database = tmp_path / "eos-authority.sqlite"
+    wc_engine = create_engine(f"sqlite+pysqlite:///{wc_database}")
+    eos_engine = create_engine(f"sqlite+pysqlite:///{eos_database}")
+    with wc_engine.begin() as connection:
+        connection.execute(
+            text(
+                "CREATE TABLE wc_approval_work_item (tenant_id TEXT, "
+                "approval_work_item_id TEXT, resume_target_ref TEXT, state TEXT, "
+                "target_role_ref TEXT, version INTEGER, created_at TEXT)"
+            )
+        )
+        connection.execute(
+            text(
+                "CREATE TABLE wc_approval_decision (tenant_id TEXT, "
+                "approval_work_item_id TEXT, decided_by TEXT, "
+                "authorized_by_oa INTEGER, decided_at TEXT)"
+            )
+        )
+        connection.execute(
+            text(
+                "INSERT INTO wc_approval_work_item VALUES "
+                "('V101', 'work-1', :target, 'APPROVED', 'TEAM_LEAD', 2, "
+                "'2026-11-18T00:00:00Z')"
+            ),
+            {"target": f"eos.scoped-approval-case:{case_id}:stage:1"},
+        )
+        connection.execute(
+            text(
+                "INSERT INTO wc_approval_decision VALUES "
+                "('V101', 'work-1', 'approver-1', 1, "
+                "'2026-11-18T00:01:00Z')"
+            )
+        )
+    with eos_engine.begin() as connection:
+        connection.execute(
+            text(
+                "CREATE TABLE eos_scoped_approval_case (tenant_id TEXT, "
+                "case_id TEXT, purpose TEXT, state TEXT, "
+                "active_stage_order INTEGER, stage_count INTEGER, "
+                "target_role_ref TEXT, requester_id TEXT, version INTEGER)"
+            )
+        )
+        for table in (
+            "eos_document_signoff_context",
+            "eos_scoped_approval_decision",
+            "eos_document_signoff_evidence",
+        ):
+            connection.execute(
+                text(
+                    f"CREATE TABLE {table} (tenant_id TEXT, case_id TEXT)"
+                )
+            )
+        connection.execute(
+            text(
+                "INSERT INTO eos_scoped_approval_case VALUES "
+                "('V101', :case_id, 'DOCUMENT_SIGNOFF', 'PENDING', 1, 1, "
+                "'TEAM_LEAD', 'requester-1', 1)"
+            ),
+            {"case_id": case_id},
+        )
+        connection.execute(
+            text(
+                "INSERT INTO eos_document_signoff_context VALUES "
+                "('V101', :case_id)"
+            ),
+            {"case_id": case_id},
+        )
+    wc_engine.dispose()
+    eos_engine.dispose()
+
+    assert acceptance._eos_approval_authority_summary(
+        f"sqlite+pysqlite:///{wc_database}",
+        f"sqlite+pysqlite:///{eos_database}",
+        tenant_id="V101",
+    ) == (
+        "target=scoped_case,stage=1,wc_state=APPROVED,"
+        "case=DOCUMENT_SIGNOFF:PENDING:1:1,"
+        "binding=version_PASS:role_PASS:requester_PASS:wc_oa_PASS,"
+        "context=1,decisions=0,evidence=0"
+    )
+
+
+def test_product_eos_approval_authority_summary_rejects_unbound_target(
+    tmp_path: Path,
+) -> None:
+    wc_database = tmp_path / "wc-unbound.sqlite"
+    eos_database = tmp_path / "eos-unbound.sqlite"
+    wc_engine = create_engine(f"sqlite+pysqlite:///{wc_database}")
+    with wc_engine.begin() as connection:
+        connection.execute(
+            text(
+                "CREATE TABLE wc_approval_work_item (tenant_id TEXT, "
+                "approval_work_item_id TEXT, resume_target_ref TEXT, state TEXT, "
+                "target_role_ref TEXT, version INTEGER, created_at TEXT)"
+            )
+        )
+        connection.execute(
+            text(
+                "CREATE TABLE wc_approval_decision (tenant_id TEXT, "
+                "approval_work_item_id TEXT, decided_by TEXT, "
+                "authorized_by_oa INTEGER, decided_at TEXT)"
+            )
+        )
+        connection.execute(
+            text(
+                "INSERT INTO wc_approval_work_item VALUES "
+                "('V101', 'work-1', 'ae-wait:private-reference', 'APPROVED', "
+                "'TEAM_LEAD', 2, "
+                "'2026-11-18T00:00:00Z')"
+            )
+        )
+    wc_engine.dispose()
+
+    assert acceptance._eos_approval_authority_summary(
+        f"sqlite+pysqlite:///{wc_database}",
+        f"sqlite+pysqlite:///{eos_database}",
+        tenant_id="V101",
+    ) == "target=invalid,wc_state=APPROVED"
+
+
 def test_product_playwright_timeout_returns_last_bounded_progress(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

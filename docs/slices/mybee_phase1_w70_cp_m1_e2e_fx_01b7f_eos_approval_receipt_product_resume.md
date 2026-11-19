@@ -3,7 +3,8 @@
 ## Status
 
 - Date: `2026-11-19`
-- Status: `IMPLEMENTED`; protected exact-head live acceptance pending
+- Status: `IMPLEMENTED`; protected receipt/resume boundary passed, final live
+  journey pending an idle DGX window
 - Parent boundary: `CP-M1-E2E-FX-01B.7`
 - Database migration: none
 - Remote provider: required only for the final installed journey
@@ -53,6 +54,15 @@ must match the terminal EOS state, and the event timestamp and lineage must
 match the delivered decision. Missing, malformed, or drifted evidence fails
 closed.
 
+The installed run also exposed a document-envelope semantic drift. For a
+scoped approval, `valid_from` is the covered business period and may precede
+the final decision, while `approved_at` is the authority boundary that prevents
+pre-approval use. EOS now permits that relationship only on the scoped-evidence
+path, where the envelope itself is materialized after the terminal decision.
+The legacy proof path retains its existing validation. Approved-document
+errors raised during signoff finalization are also preserved as typed
+`EosDocumentSignoffError` responses instead of becoming opaque server errors.
+
 ## Generalized Wait and Resume
 
 `SqlAlchemyGeneralizedWaitEventRepository` now resolves an existing Product
@@ -85,17 +95,39 @@ new notifications use v2 with an explicit authority state.
   - cross-tenant delivery failed with zero mutation
   - isolated schema removed after verification
 - Ruff, compile, and diff checks: `PASS`
+- focused approval and acceptance-runner regression after the covered-period
+  correction: `91 passed, 1 protected skip`
+- EOS Slice Gate: `2338 passed`, `67` protected skips, commands `5/5`
+  - statement coverage: `96.83%`
+  - branch coverage: `94.87%`
+  - report:
+    `reports/quality/mybee-w70-cp-m1-01b7f-eos-slice-gate.coverage.json`
 - AE Slice Gate: `6852 passed`, `52` protected skips, commands `6/6`
   - statement coverage: `96.45%`
   - branch coverage: `94.72%`
   - active Product coverage: statement `97.07%`, branch `95.01%`
   - report: `reports/quality/mybee-w70-cp-m1-01b7f-ae-slice-gate.coverage.json`
+- protected installed run against eight actual dev PostgreSQL databases:
+  - WC `BUSINESS_FORMAL` approval: `APPROVED`
+  - WC approval outbox: `DELIVERED`
+  - EOS scoped `DOCUMENT_SIGNOFF` case: `APPROVED`
+  - EOS document evidence and immutable envelope: one each
+  - AE generalized Product event: `MATCHED`
+  - existing AE `RESUME_EXECUTION` job: `RUNNING`
+  - isolated eight-database schemas and Compose resources removed after the
+    diagnostic run
+
+The run was intentionally excluded from latency and final-journey acceptance.
+The admitted Qwen3.5-9B provider was under unrelated co-resident DGX load while
+the resumed execution was running, so continuing to a timeout would not have
+distinguished a product defect from an external capacity condition.
 
 ## Remaining Acceptance
 
-The implementation boundary is complete without a migration. Closure still
-requires one exact-head installed live journey using actual AE/WC/OA/EOS
-PostgreSQL databases and the admitted generation provider. The run must prove
-approval receipt admission, Product resume job execution, final result
-publication, ACK/replay safety, and zero residue before this Slice is marked
-`CLOSED` and the parent `.7` boundary is resumed.
+The implementation boundary is complete without a migration, and the protected
+receipt-to-resume path is proven against actual PostgreSQL. Final closure still
+requires one exact-head installed journey during an idle DGX window. That run
+must continue beyond the already proven resume enqueue to final result
+publication, retain ACK/replay safety, and finish with zero residue before this
+Slice is marked `CLOSED` and the parent `.7` boundary is resumed. No additional
+live run is to start without confirming the DGX load window first.

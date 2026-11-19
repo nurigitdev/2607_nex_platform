@@ -40,6 +40,7 @@ from .accounting_approval import (
 from .approval_policies import EOS_APPROVAL_POLICY_STAGE_TABLE
 from .approved_documents import (
     ApprovedDocumentInput,
+    EosApprovedDocumentError,
     SqlAlchemyEosApprovedDocumentRepository,
     approved_document_payload_hash,
 )
@@ -262,6 +263,13 @@ class EosDocumentSignoffService:
                     created = True
         except EosDocumentSignoffError:
             raise
+        except EosApprovedDocumentError as exc:
+            raise EosDocumentSignoffError(
+                exc.error_code,
+                exc.detail,
+                status_code=exc.status_code,
+                retryable=exc.retryable,
+            ) from exc
         except EosAccountingApprovalError as exc:
             raise _from_accounting_error(exc) from exc
         except IntegrityError as exc:

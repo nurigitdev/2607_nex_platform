@@ -42,6 +42,7 @@ from nex_eos import (
     admit_document_signoff_context,
     scoped_approval_payload_hash,
 )
+from nex_eos.approved_documents import EosApprovedDocumentError
 from nex_oa.authorization_repository import build_authorization_repository_for_runtime
 from nex_oa.authorization_resolver import OaEffectiveAuthorizationResolver
 from nex_oa.authorization_service import OaAuthorizationService
@@ -189,9 +190,9 @@ def _proposal():
     )
 
 
-def _request():
+def _request(proposal=None):
     return build_business_proposal_approval_request(
-        _proposal(),
+        proposal or _proposal(),
         business_operation_id=OPERATION_ID,
         idempotency_key="w30-s00-proposal-r1",
         case_id=CASE_ID,
@@ -457,6 +458,76 @@ def test_reject_creates_no_evidence_or_envelope():
             )
             == 0
         )
+
+
+def test_scoped_signoff_allows_covered_period_before_approval_time():
+    sessions, scoped, _finalizer, router, _auth, _wc, _accounting = _runtime()
+    proposal = build_business_proposal_form(
+        tenant_id=TENANT,
+        proposal_id="proposal-w30-historical-period",
+        revision=1,
+        company_id=COMPANY_ID,
+        title="과거 인식일 비용 품의",
+        purpose="승인 후 과거 업무기간을 포괄합니다.",
+        business_justification="승인 전에는 envelope가 존재하지 않습니다.",
+        scope_type="PROJECT",
+        project_refs=(BusinessProposalProjectRef(PROJECT_ID, PROJECT_CODE),),
+        requested_amount="1250000",
+        currency="KRW",
+        requester_subject_id="employee-1004",
+        valid_from=NOW - timedelta(days=1),
+        valid_until=NOW + timedelta(days=31),
+        attachments=(),
+    )
+    receipt = scoped.request_case(
+        _request(proposal).payload,
+        caller=EosServiceCaller("nex-ae-api", "nex-eos", ("service:call",)),
+    )
+
+    result = router.ingest_wc_delivery(
+        _delivery(receipt["wc_publication"]["work_item"])
+    )
+
+    assert result["case_state"] == "APPROVED"
+    assert result["approved_document_envelope"]["valid_from"] == (
+        NOW - timedelta(days=1)
+    ).isoformat().replace("+00:00", "Z")
+    assert result["approved_document_envelope"]["approved_at"] == (
+        NOW + timedelta(minutes=1)
+    ).isoformat().replace("+00:00", "Z")
+    with sessions() as session:
+        assert (
+            session.scalar(
+                select(func.count()).select_from(EOS_APPROVED_DOCUMENT_TABLE)
+            )
+            == 1
+        )
+
+
+def test_scoped_signoff_preserves_approved_document_error_identity(monkeypatch):
+    _sessions, scoped, finalizer, _router, _auth, _wc, _accounting = _runtime()
+    item = _create_case(scoped)["wc_publication"]["work_item"]
+
+    def reject_document(*_args, **_kwargs):
+        raise EosApprovedDocumentError(
+            "EOS_APPROVED_DOCUMENT_INVALID",
+            "document semantics drifted",
+            status_code=422,
+        )
+
+    monkeypatch.setattr(
+        finalizer._document_repository,
+        "create_from_scoped_evidence_in_session",
+        reject_document,
+    )
+
+    with pytest.raises(EosDocumentSignoffError) as error:
+        finalizer.ingest_wc_delivery(_delivery(item))
+
+    assert error.value.error_code == "EOS_APPROVED_DOCUMENT_INVALID"
+    assert error.value.detail == "document semantics drifted"
+    assert error.value.status_code == 422
+    assert error.value.retryable is False
 
 
 def test_two_stage_signoff_publishes_next_stage_then_materializes():

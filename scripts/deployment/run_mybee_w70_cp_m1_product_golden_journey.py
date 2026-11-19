@@ -260,6 +260,15 @@ def execute_m1_product_golden_journey(
                 wc_log_output,
                 returncode=wc_diagnostic_returncode,
             )
+            eos_log_output, eos_diagnostic_returncode = _collect_compose_service_logs(
+                runtime_env,
+                root=root,
+                service="nex-eos",
+            )
+            eos_failure = _semantic_runtime_failure_summary(
+                eos_log_output,
+                returncode=eos_diagnostic_returncode,
+            )
             database_failure = _runtime_database_failure_summary(
                 urls["nex-ae-api"],
                 tenant_id=str(baseline["tenant"]["tenant_id"]),
@@ -268,13 +277,20 @@ def execute_m1_product_golden_journey(
                 urls["nex-wc"],
                 tenant_id=str(baseline["tenant"]["tenant_id"]),
             )
+            approval_authority = _eos_approval_authority_summary(
+                urls["nex-wc"],
+                urls["nex-eos"],
+                tenant_id=str(baseline["tenant"]["tenant_id"]),
+            )
             raise M1ProductGoldenJourneyError(
                 "M1 product browser journey failed: "
                 + _browser_failure_summary(browser)
                 + f" runtime_exception={runtime_failure}"
                 + f" runtime_database={database_failure}"
                 + f" wc_progress={wc_progress}"
+                + f" approval_authority={approval_authority}"
                 + f" wc_delivery={wc_delivery_failure}"
+                + f" eos_exception={eos_failure}"
             )
         interaction_ids = tuple(
             str(item.get("interaction_id") or "") for item in transactions
@@ -795,6 +811,116 @@ def _wc_database_progress_summary(database_url: str, *, tenant_id: str) -> str:
     )
 
 
+def _eos_approval_authority_summary(
+    wc_database_url: str,
+    eos_database_url: str,
+    *,
+    tenant_id: str,
+) -> str:
+    wc_engine = create_engine(wc_database_url, poolclass=NullPool)
+    eos_engine = create_engine(eos_database_url, poolclass=NullPool)
+    try:
+        with wc_engine.connect() as connection:
+            approval = connection.execute(
+                text(
+                    "SELECT approval_work_item_id, resume_target_ref, state, "
+                    "target_role_ref, version FROM wc_approval_work_item "
+                    "WHERE tenant_id=:tenant ORDER BY created_at DESC LIMIT 1"
+                ),
+                {"tenant": tenant_id},
+            ).first()
+            decision = (
+                connection.execute(
+                    text(
+                        "SELECT decided_by, authorized_by_oa FROM wc_approval_decision "
+                        "WHERE tenant_id=:tenant AND approval_work_item_id=:work_item_id "
+                        "ORDER BY decided_at DESC LIMIT 1"
+                    ),
+                    {"tenant": tenant_id, "work_item_id": approval[0]},
+                ).first()
+                if approval is not None
+                else None
+            )
+        if approval is None:
+            return "target=none"
+        match = re.fullmatch(
+            r"eos\.scoped-approval-case:([0-9a-fA-F-]{36}):stage:([1-9][0-9]*)",
+            str(approval[1] or ""),
+        )
+        if match is None:
+            return f"target=invalid,wc_state={_diagnostic_token(approval[2])}"
+        case_id, stage_order = match.groups()
+        with eos_engine.connect() as connection:
+            scoped_case = connection.execute(
+                text(
+                    "SELECT purpose, state, active_stage_order, stage_count, "
+                    "target_role_ref, requester_id, version "
+                    "FROM eos_scoped_approval_case "
+                    "WHERE tenant_id=:tenant AND case_id=:case_id"
+                ),
+                {"tenant": tenant_id, "case_id": case_id},
+            ).first()
+            counts = {
+                name: connection.execute(
+                    text(
+                        f"SELECT COUNT(*) FROM {table} "
+                        "WHERE tenant_id=:tenant AND case_id=:case_id"
+                    ),
+                    {"tenant": tenant_id, "case_id": case_id},
+                ).scalar_one()
+                for name, table in (
+                    ("context", "eos_document_signoff_context"),
+                    ("decisions", "eos_scoped_approval_decision"),
+                    ("evidence", "eos_document_signoff_evidence"),
+                )
+            }
+    except Exception:  # noqa: BLE001 - diagnostics must stay bounded and optional
+        return "unavailable"
+    finally:
+        wc_engine.dispose()
+        eos_engine.dispose()
+    case_summary = (
+        "none"
+        if scoped_case is None
+        else ":".join(
+            (
+                _diagnostic_token(scoped_case[0]),
+                _diagnostic_token(scoped_case[1]),
+                _diagnostic_integer(scoped_case[2]),
+                _diagnostic_integer(scoped_case[3]),
+            )
+        )
+    )
+    binding_summary = "unavailable"
+    if scoped_case is not None and decision is not None:
+        binding_summary = ":".join(
+            (
+                "version_PASS"
+                if int(approval[4]) == int(scoped_case[6]) + 1
+                else "version_FAIL",
+                "role_PASS"
+                if approval[3] == scoped_case[4]
+                else "role_FAIL",
+                "requester_PASS"
+                if decision[0] != scoped_case[5]
+                else "requester_FAIL",
+                "wc_oa_PASS" if decision[1] is True or decision[1] == 1 else "wc_oa_FAIL",
+            )
+        )
+    return ",".join(
+        (
+            "target=scoped_case",
+            f"stage={_diagnostic_integer(stage_order)}",
+            f"wc_state={_diagnostic_token(approval[2])}",
+            f"case={case_summary}",
+            f"binding={binding_summary}",
+            f"context={counts['context']}",
+            f"decisions={counts['decisions']}",
+            f"evidence={counts['evidence']}",
+        )
+    )
+
+
 def _diagnostic_row(row: Any) -> str:
     if row is None:
         return "none"
@@ -808,6 +934,14 @@ def _diagnostic_token(value: object) -> str:
         if re.fullmatch(r"[A-Za-z][A-Za-z0-9_.-]{0,95}", candidate)
         else "invalid"
     )
+
+
+def _diagnostic_integer(value: object) -> str:
+    try:
+        admitted = int(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return "none" if value is None else "invalid"
+    return str(admitted) if not isinstance(value, bool) and admitted >= 0 else "invalid"
 
 
 def _collect_ae_runtime_logs(env: Mapping[str, str], *, root: Path) -> tuple[str, int]:
