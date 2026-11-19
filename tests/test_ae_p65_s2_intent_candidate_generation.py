@@ -329,7 +329,9 @@ def test_required_mode_generates_candidate_then_deterministic_work_intent() -> N
         AE_INTENT_RESOLUTION_BINDING
     )
     assert result.prompt_provenance["prompt_template_version"] == "v11"
-    assert result.model_provenance["mo_generation_id"] == ("mo-generation-p65-s2")
+    assert result.model_provenance["mo_generation_id"] == (
+        "mo-generation-p65-s2"
+    )
 
     call = client.generation_calls[0]
     assert call["semantic_stage"] == "INTENT"
@@ -351,6 +353,30 @@ def test_required_mode_generates_candidate_then_deterministic_work_intent() -> N
         result.prompt_provenance,
         ["user_prompt", "raw_prompt", "provider_url", "api_key"],
     )
+
+
+def test_claimed_source_defers_work_intent_to_source_aware_admission() -> None:
+    client = FakeClient(candidate=_m1_business_candidate())
+
+    result = _run(
+        _service(client),
+        user_prompt="Execute the admitted delegated business request.",
+        materialize_work_intent=False,
+    )
+
+    assert result.directive == "CONTINUE"
+    assert result.intent_decision["intent_label"] == (
+        "FINANCE.VOUCHER.APPROVE_AND_POST"
+    )
+    assert result.work_intent is None
+    assert client.generation_calls[0]["semantic_stage"] == "INTENT"
+
+
+def test_intent_materialization_control_must_be_boolean() -> None:
+    with pytest.raises(IntentCandidateStageError) as raised:
+        _run(_service(), materialize_work_intent="false")
+
+    assert raised.value.error_code == "INTENT_STAGE_REQUEST_INVALID"
 
 
 def test_mock_provider_m1_candidate_builds_durable_work_intent_v1_2() -> None:

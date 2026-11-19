@@ -156,6 +156,7 @@ class LiveIntentCandidateService:
         retrieval_enabled: bool = False,
         authorized_resource_context_available: bool = False,
         work_intent_id: str | None = None,
+        materialize_work_intent: bool = True,
         id_factory: Callable[[], str] | None = None,
     ) -> IntentCandidateStageResult:
         selected_mode = _planning_mode(planning_mode)
@@ -168,6 +169,8 @@ class LiveIntentCandidateService:
             raise _request_error(
                 "authorized_resource_context_available must be boolean."
             )
+        if not isinstance(materialize_work_intent, bool):
+            raise _request_error("materialize_work_intent must be boolean.")
 
         prompt_snapshot = _resolve_prompt_snapshot(
             self.prompt_store,
@@ -262,6 +265,20 @@ class LiveIntentCandidateService:
         if selected_mode == "shadow":
             return _result(
                 directive="SHADOW_ONLY",
+                failure_code=None,
+                candidate=candidate,
+                candidate_hash=candidate_hash,
+                generation=generation,
+                input_context_hash=input_context_hash,
+                prompt_provenance=prompt_provenance,
+                model_provenance=model_provenance,
+                policy=policy,
+                intent_decision=decision,
+            )
+
+        if not materialize_work_intent:
+            return _result(
+                directive="CONTINUE",
                 failure_code=None,
                 candidate=candidate,
                 candidate_hash=candidate_hash,

@@ -93,7 +93,6 @@ from nex_ae_api.work_intent import (
     planning_mode,
 )
 
-
 LOGGER = logging.getLogger(__name__)
 
 _OPTIONAL_PRODUCT_FALLBACK_ERRORS = frozenset(
@@ -447,6 +446,9 @@ class DeterministicCandidateAdmissionService:
                 ),
                 trusted_execution_mode=request.trusted_execution_mode,
                 work_intent_id=ids.work_intent,
+                materialize_work_intent=(
+                    request.planning_source_type != "CLAIMED_WORKITEM"
+                ),
             ),
             now=now,
         )
