@@ -63,8 +63,25 @@ residue had never been reconciled.
 - AE Slice Gate: `PASS`, `6/6` commands, 569.964 seconds.
 - AE Slice Gate coverage: statement `96.40%`, branch `94.64%`.
 - Historical residue reconciliation: `PASS`, eight databases at zero.
+- Exact-head OCI release: `PASS`, nine images, seven entrypoint checks, five
+  packaged process checks, and a complete release set.
+- Exact-head AE product runtime image: `PASS` from base revision `573d3f3e`.
+- DGX provider preflight: `PASS` for Qwen3.5-9B, Qwen3-Embedding-4B, and
+  Qwen3-Reranker-4B.
+- Protected live submit: `PASS`; transaction one entered
+  `approval_and_result` after approximately 135 seconds, within the dedicated
+  180-second semantic submit budget.
+- Protected live result: `BLOCKED`; the 900-second result boundary ended with
+  `ProductResultTimeout`. The PA execution remained `QUEUED:INTAKE`, while the
+  WC work item was `ASSIGNED`, its claim was `ACTIVE:EXPIRED`, and its
+  `BUSINESS_FORMAL` approval was `PENDING`.
+- Protected failure cleanup: `PASS`; all eight isolated schemas were dropped,
+  `cleanup_error_types` and `residue_service_ids` were empty, and an independent
+  post-run inventory returned zero acceptance schemas in every dev database.
 - Database migration: none.
 - Public API change: none.
 
-The exact-head OCI build and protected live rerun remain required before this
-corrective Slice can close.
+The timeout separation and zero-residue failure closure are accepted. The
+parent `.7` journey remains blocked by expired WC claim recovery and orphaned
+PA execution progress. Repeating the 15-minute journey without correcting that
+runtime boundary is not admitted.

@@ -512,7 +512,12 @@ isolated-database cleanup results, and cleanup continues across database owners
 without masking residue. Three historical acceptance schema sets were admitted
 by exact naming and migration identity, removed under their owning roles, and
 all eight dev databases now report zero `m1_01b7_%` residue. No migration or
-public product contract changes.
+public product contract changes. The exact-head live rerun admitted transaction
+one's semantic submit in approximately 135 seconds and proved zero-residue
+failure cleanup across all eight databases. The parent `.7` journey remains
+blocked because its PA execution stayed `QUEUED:INTAKE` after the WC claim
+became `ACTIVE:EXPIRED`; another live replay is not admitted before that
+recovery boundary is corrected.
 
 `CP-M1-E2E-FX-01B.6A.1` implementation evidence is recorded in
 [`mybee_phase1_w70_cp_m1_e2e_fx_01b6a1_refresh_contract_source_resolver.md`](../../slices/mybee_phase1_w70_cp_m1_e2e_fx_01b6a1_refresh_contract_source_resolver.md).
