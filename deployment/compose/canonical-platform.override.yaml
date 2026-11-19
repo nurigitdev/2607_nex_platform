@@ -343,6 +343,7 @@ services:
       NEX_WC_AE_DELIVERY_TIMEOUT_SECONDS: "240"
       NEX_WC_AE_RESULT_TIMEOUT_SECONDS: "15"
       NEX_WC_AE_APPROVAL_TIMEOUT_SECONDS: "15"
+      NEX_WC_CLAIM_LEASE_SECONDS: "600"
     secrets:
       - openbao_ca
       - platform_ca
@@ -368,6 +369,7 @@ services:
       NEX_WC_ASSIGNMENT_OA_TIMEOUT_SECONDS: "15"
       NEX_WC_ASSIGNMENT_DISPATCH_POLL_SECONDS: "1"
       NEX_WC_ASSIGNMENT_DISPATCH_SCAN_LIMIT: "100"
+      NEX_WC_CLAIM_LEASE_SECONDS: "600"
     secrets:
       - openbao_ca
       - platform_ca

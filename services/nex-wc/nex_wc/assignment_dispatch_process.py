@@ -61,6 +61,7 @@ PROCESS_READINESS_SCHEMA_VERSION = "wc_assignment_dispatch_readiness.v1"
 PROCESS_RUN_SCHEMA_VERSION = "wc_assignment_dispatch_run.v1"
 DEFAULT_WORKER_ID = "wc-assignment-dispatch-worker-1"
 DEFAULT_SCAN_LIMIT = 100
+DEFAULT_CLAIM_LEASE_SECONDS = 600
 SUPPORTED_PROFILES = ("local_mock", "test", "staging_live", "production")
 DATABASE_ENVIRONMENTS = {
     "test": "NEX_WC_TEST_DATABASE_URL",
@@ -117,6 +118,7 @@ class InstalledWcAssignmentDispatchProcess:
     worker_id: str
     poll_interval_seconds: float
     scan_limit: int
+    claim_lease_seconds: int = DEFAULT_CLAIM_LEASE_SECONDS
 
     def readiness(self) -> dict[str, Any]:
         database = _database_readiness(self.sessions)
@@ -133,6 +135,7 @@ class InstalledWcAssignmentDispatchProcess:
             ),
             "heartbeat_available": self.heartbeat is not None,
             "service_log_available": self.service_log is not None,
+            "claim_lease_configured": 30 <= self.claim_lease_seconds <= 3600,
         }
         ready = all(checks.values())
         return {
@@ -147,6 +150,7 @@ class InstalledWcAssignmentDispatchProcess:
             "database": database,
             "dispatch_paths": ["CREATED_TO_ROUTED", "ROUTED_TO_ASSIGNED"],
             "work_capability": "assignment_dispatching",
+            "claim_lease_seconds": self.claim_lease_seconds,
             "content_included": False,
             "secret_included": False,
         }
@@ -251,6 +255,7 @@ def build_source_check() -> dict[str, Any]:
         "dispatch_paths": ["CREATED_TO_ROUTED", "ROUTED_TO_ASSIGNED"],
         "queue_type": SqlAlchemyJobQueue.__name__,
         "work_capability": "assignment_dispatching",
+        "default_claim_lease_seconds": DEFAULT_CLAIM_LEASE_SECONDS,
         "runtime_ready": False,
         "content_included": False,
         "secret_included": False,
@@ -305,6 +310,15 @@ def build_installed_wc_assignment_dispatch_process(
         "NEX_WC_ASSIGNMENT_DISPATCH_SCAN_LIMIT",
         minimum=1,
         maximum=500,
+    )
+    claim_lease_seconds = _bounded_int(
+        env.get(
+            "NEX_WC_CLAIM_LEASE_SECONDS",
+            str(DEFAULT_CLAIM_LEASE_SECONDS),
+        ),
+        "NEX_WC_CLAIM_LEASE_SECONDS",
+        minimum=30,
+        maximum=3600,
     )
     engine: Engine | None = None
     try:
@@ -361,12 +375,14 @@ def build_installed_wc_assignment_dispatch_process(
                 repository,
                 candidate_source=candidate_source,
                 authorization_source=authorization_source,
+                lease_seconds=claim_lease_seconds,
             ),
             candidate_source=candidate_source,
             authorization_source=authorization_source,
             worker_id=worker_id,
             poll_interval_seconds=poll_interval_seconds,
             scan_limit=scan_limit,
+            claim_lease_seconds=claim_lease_seconds,
         )
     except Exception as exc:
         if engine is not None:

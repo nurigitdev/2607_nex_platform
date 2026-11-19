@@ -91,6 +91,7 @@ def test_assignment_dispatcher_start_order_and_compose_contract_are_canonical() 
         "import os; os.kill(1, 0)",
     ]
     assert service["environment"]["NEX_WC_ASSIGNMENT_DISPATCH_SCAN_LIMIT"] == "100"
+    assert service["environment"]["NEX_WC_CLAIM_LEASE_SECONDS"] == "600"
 
 
 def test_assignment_dispatcher_rolls_back_on_drift_or_scenario_residue() -> None:

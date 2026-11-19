@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import os
 import signal
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from io import StringIO
 from types import SimpleNamespace
 from uuid import UUID
@@ -189,6 +189,7 @@ def _postgres_installed(engine, sessions, *, id_start: int):
         id_factory=lambda: str(UUID(int=next(identifiers))),
         token_factory=lambda: "postgres-private-lease-b5b3",
         clock=lambda: NOW_DT,
+        lease_seconds=process.DEFAULT_CLAIM_LEASE_SECONDS,
     )
     worker_id = f"wc-assignment-dispatch-postgres-{id_start}"
     return process.InstalledWcAssignmentDispatchProcess(
@@ -215,6 +216,7 @@ def _postgres_installed(engine, sessions, *, id_start: int):
         worker_id=worker_id,
         poll_interval_seconds=0.01,
         scan_limit=100,
+        claim_lease_seconds=process.DEFAULT_CLAIM_LEASE_SECONDS,
     )
 
 
@@ -306,6 +308,7 @@ def test_builder_assembles_existing_authorities_and_disposes_failures() -> None:
         "NEX_WC_ASSIGNMENT_DISPATCH_WORKER_ID": "worker-installed",
         "NEX_WC_ASSIGNMENT_DISPATCH_POLL_SECONDS": "0.5",
         "NEX_WC_ASSIGNMENT_DISPATCH_SCAN_LIMIT": "37",
+        "NEX_WC_CLAIM_LEASE_SECONDS": "600",
     }
     installed = process.build_installed_wc_assignment_dispatch_process(
         "test",
@@ -316,6 +319,8 @@ def test_builder_assembles_existing_authorities_and_disposes_failures() -> None:
     assert installed.worker_id == "worker-installed"
     assert installed.poll_interval_seconds == 0.5
     assert installed.scan_limit == 37
+    assert installed.claim_lease_seconds == 600
+    assert installed.service._lease_seconds == 600
     assert installed.queue.__class__.__name__ == "SqlAlchemyJobQueue"
     assert installed.repository.__class__.__name__ == "SqlAlchemyCoordinationRepository"
     assert installed.service.__class__.__name__ == "WorkCoordinationService"
@@ -333,6 +338,15 @@ def test_builder_assembles_existing_authorities_and_disposes_failures() -> None:
             engine_checker=lambda _engine: False,
         )
     assert rejected.disposed is True
+
+    for value in ("29", "3601", "invalid"):
+        with pytest.raises(process.WcAssignmentDispatchProcessError, match="LEASE"):
+            process.build_installed_wc_assignment_dispatch_process(
+                "test",
+                environ={**env, "NEX_WC_CLAIM_LEASE_SECONDS": value},
+                engine_factory=lambda *_args, **_kwargs: engine,
+                engine_checker=lambda _engine: True,
+            )
 
 
 def test_builder_wraps_component_failure_and_rejects_blank_worker() -> None:
@@ -373,6 +387,7 @@ def test_readiness_reports_exact_component_state(monkeypatch) -> None:
     assert report["readiness_status"] == "READY"
     assert all(report["checks"].values())
     assert report["secret_included"] is False
+    assert report["claim_lease_seconds"] == 600
     installed.authorization_source = None
     assert installed.readiness()["readiness_status"] == "NOT_READY"
     installed.close()
@@ -705,6 +720,23 @@ def test_main_check_run_package_and_blocked_paths_redact_secrets() -> None:
     output = StringIO()
     assert (
         process.main(
+            ["--profile", "test", "--check"],
+            environ={},
+            stdout=output,
+            live_check=lambda *_args, **_kwargs: (_ for _ in ()).throw(
+                ValueError("plain assignment configuration failure")
+            ),
+        )
+        == 2
+    )
+    assert (
+        json.loads(output.getvalue())["detail"]
+        == "plain assignment configuration failure"
+    )
+
+    output = StringIO()
+    assert (
+        process.main(
             ["--profile", "staging_live", "--check"],
             environ={"NEX_RUNTIME_CHECK_MODE": "PACKAGE"},
             stdout=output,
@@ -817,6 +849,18 @@ def test_actual_postgres_restart_after_route_recovers_claim_and_liveness() -> No
         assert authority["assignment"]["status"] == "ACTIVE"
         assert authority["claim"]["state"] == "ACTIVE"
         with restarted_engine.connect() as connection:
+            claim_timing = (
+                connection.execute(
+                    text(
+                        "SELECT created_at, lease_expires_at FROM wc_claim "
+                        "WHERE tenant_id = :tenant_id AND work_item_id = :work_item_id "
+                        "AND state = 'ACTIVE'"
+                    ),
+                    {"tenant_id": TENANT, "work_item_id": WORK_ITEM_ID},
+                )
+                .mappings()
+                .one()
+            )
             heartbeat_count = connection.execute(
                 text(
                     "SELECT count(*) FROM service_worker_heartbeats "
@@ -829,6 +873,9 @@ def test_actual_postgres_restart_after_route_recovers_claim_and_liveness() -> No
                     "WHERE logger_name = 'nex_wc.assignment_dispatch_process'"
                 )
             ).scalar_one()
+        assert claim_timing["lease_expires_at"] - claim_timing["created_at"] == timedelta(
+            seconds=600
+        )
         assert heartbeat_count == 1
         assert log_count > initial_log_count
     finally:

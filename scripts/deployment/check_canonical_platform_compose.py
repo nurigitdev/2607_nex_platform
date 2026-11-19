@@ -188,6 +188,29 @@ def _admit_rendered_canonical_compose(
     assignment_dispatcher = services.get("nex-wc-assignment-dispatch-worker")
     if not isinstance(assignment_dispatcher, Mapping):
         raise TypeError("canonical assignment dispatcher is missing")
+    event_delivery = services.get("nex-wc-event-delivery-worker")
+    if not isinstance(event_delivery, Mapping):
+        raise TypeError("canonical event delivery worker is missing")
+    assignment_environment = assignment_dispatcher.get("environment")
+    delivery_environment = event_delivery.get("environment")
+    if not isinstance(assignment_environment, Mapping) or not isinstance(
+        delivery_environment, Mapping
+    ):
+        raise TypeError("canonical WC worker environment is missing")
+    assignment_lease = int(
+        str(assignment_environment.get("NEX_WC_CLAIM_LEASE_SECONDS") or "0")
+    )
+    delivery_lease = int(
+        str(delivery_environment.get("NEX_WC_CLAIM_LEASE_SECONDS") or "0")
+    )
+    handoff_timeout = float(
+        str(delivery_environment.get("NEX_WC_AE_DELIVERY_TIMEOUT_SECONDS") or "0")
+    )
+    if (
+        assignment_lease != delivery_lease
+        or assignment_lease < 2 * handoff_timeout
+    ):
+        raise ValueError("canonical WC handoff lease policy drift")
     dispatcher_dependencies = assignment_dispatcher.get("depends_on")
     required_dispatcher_dependencies = {
         "openbao",

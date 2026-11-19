@@ -762,6 +762,15 @@ def test_s4_http_delivery_failures_and_store_failures(monkeypatch):
     assert "detail=The admitted planning route is invalid." in projected.value.detail
     assert "sensitive" not in projected.value.detail
 
+    non_object = HTTPError(
+        "http://ae",
+        409,
+        "conflict",
+        {},
+        io.BytesIO(json.dumps(["not", "an", "object"]).encode()),
+    )
+    assert delivery_module._problem_detail(non_object) == ""
+
     monkeypatch.setattr(
         delivery_module,
         "urlopen",

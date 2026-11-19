@@ -150,6 +150,15 @@ def _canonical_rendered() -> dict:
             "NEX_DEPLOYMENT_BOUNDARY": "CANONICAL_PLATFORM",
             "NEX_SERVICE_TOKEN_BOOTSTRAP_PROFILE": "STARTUP_24H",
         }
+    rendered["services"]["nex-wc-assignment-dispatch-worker"]["environment"][
+        "NEX_WC_CLAIM_LEASE_SECONDS"
+    ] = "600"
+    rendered["services"]["nex-wc-event-delivery-worker"]["environment"].update(
+        {
+            "NEX_WC_CLAIM_LEASE_SECONDS": "600",
+            "NEX_WC_AE_DELIVERY_TIMEOUT_SECONDS": "240",
+        }
+    )
     return rendered
 
 
@@ -184,6 +193,18 @@ def test_demo_compose_sources_are_exact_and_secret_free() -> None:
             "NEX_WC_AE_APPROVAL_TIMEOUT_SECONDS"
         ]
         == "15"
+    )
+    assert (
+        overlay["services"]["nex-wc-event-delivery-worker"]["environment"][
+            "NEX_WC_CLAIM_LEASE_SECONDS"
+        ]
+        == "600"
+    )
+    assert (
+        overlay["services"]["nex-wc-assignment-dispatch-worker"]["environment"][
+            "NEX_WC_CLAIM_LEASE_SECONDS"
+        ]
+        == "600"
     )
 
 

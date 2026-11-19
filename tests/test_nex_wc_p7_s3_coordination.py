@@ -502,6 +502,20 @@ def test_s3_http_sources_fail_closed_for_missing_or_invalid_data(monkeypatch):
         )
 
 
+def test_s3_http_problem_parser_ignores_non_object_payload() -> None:
+    from urllib.error import HTTPError
+    from io import BytesIO
+
+    error = HTTPError(
+        "http://oa",
+        403,
+        "denied",
+        {},
+        BytesIO(json.dumps(["not", "an", "object"]).encode("utf-8")),
+    )
+    assert client_module._http_problem_error_code(error) is None
+
+
 def test_s3_sql_repository_maps_database_failures_to_retryable_error():
     engine = create_engine("sqlite:///:memory:")
     repository = SqlAlchemyCoordinationRepository(

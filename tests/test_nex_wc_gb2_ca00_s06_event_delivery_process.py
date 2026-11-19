@@ -32,6 +32,15 @@ class _Engine:
         self.disposed = True
 
 
+class _ServiceLog:
+    def __init__(self) -> None:
+        self.events: list[dict[str, object]] = []
+
+    def safe_emit(self, **kwargs):
+        self.events.append(dict(kwargs))
+        return SimpleNamespace(ok=True)
+
+
 class _LoopProcess:
     def __init__(self, results=None, *, ready=True) -> None:
         self.heartbeat = _Heartbeat()
@@ -82,6 +91,9 @@ def _installed(*, sessions=None) -> process.InstalledWcEventDeliveryProcess:
         approval_client=object(),
         worker_id="worker-1",
         poll_interval_seconds=1.0,
+        service_log=_ServiceLog(),
+        handoff_timeout_seconds=240.0,
+        claim_lease_seconds=600,
     )
 
 
@@ -128,6 +140,10 @@ def test_environment_and_numeric_guards_fail_closed() -> None:
         with pytest.raises(process.WcEventDeliveryProcessError):
             process._bounded_float(value, "TIMEOUT", minimum=0.001, maximum=120)
     assert process._bounded_float("12.5", "TIMEOUT", minimum=0.001, maximum=120) == 12.5
+    for value in (True, "bad", "29", "3601"):
+        with pytest.raises(process.WcEventDeliveryProcessError):
+            process._bounded_int(value, "LEASE", minimum=30, maximum=3600)
+    assert process._bounded_int("600", "LEASE", minimum=30, maximum=3600) == 600
 
 
 @pytest.mark.parametrize("value", ["wc.local", "ftp://wc.local", "http:///missing"])
@@ -165,6 +181,7 @@ def test_builder_assembles_existing_components_and_disposes_on_check_failure() -
         "NEX_WC_AE_DELIVERY_TIMEOUT_SECONDS": "240",
         "NEX_WC_AE_RESULT_TIMEOUT_SECONDS": "15",
         "NEX_WC_AE_APPROVAL_TIMEOUT_SECONDS": "15",
+        "NEX_WC_CLAIM_LEASE_SECONDS": "600",
         "NEX_WC_EVENT_DELIVERY_POLL_SECONDS": "0.5",
     }
     installed = process.build_installed_wc_event_delivery_process(
@@ -178,6 +195,9 @@ def test_builder_assembles_existing_components_and_disposes_on_check_failure() -
     assert installed.handoff_client._timeout_seconds == 240.0
     assert installed.result_client._timeout_seconds == 15.0
     assert installed.approval_client._timeout_seconds == 15.0
+    assert installed.handoff_timeout_seconds == 240.0
+    assert installed.claim_lease_seconds == 600
+    assert installed.service_log.__class__.__name__ == "ServiceLogEmitter"
     assert installed.queue.__class__.__name__ == "SqlAlchemyJobQueue"
     installed.close()
 
@@ -188,6 +208,14 @@ def test_builder_assembles_existing_components_and_disposes_on_check_failure() -
                 **env,
                 "NEX_WC_AE_DELIVERY_TIMEOUT_SECONDS": "301",
             },
+            engine_factory=lambda *_args, **_kwargs: engine,
+            engine_checker=lambda _engine: True,
+        )
+
+    with pytest.raises(process.WcEventDeliveryProcessError, match="two AE"):
+        process.build_installed_wc_event_delivery_process(
+            "test",
+            environ={**env, "NEX_WC_CLAIM_LEASE_SECONDS": "479"},
             engine_factory=lambda *_args, **_kwargs: engine,
             engine_checker=lambda _engine: True,
         )
@@ -239,6 +267,8 @@ def test_readiness_reports_exact_component_state(monkeypatch) -> None:
     assert report["readiness_status"] == "READY"
     assert all(report["checks"].values())
     assert report["secret_included"] is False
+    assert report["handoff_timeout_seconds"] == 240.0
+    assert report["claim_lease_seconds"] == 600
     installed.queue = None
     assert installed.readiness()["readiness_status"] == "NOT_READY"
     installed.close()
@@ -288,6 +318,8 @@ def test_database_readiness_redacts_database_failures() -> None:
 
 def test_run_once_reuses_all_delivery_paths(monkeypatch) -> None:
     installed = _installed()
+    ticks = iter((100.0, 100.125))
+    monkeypatch.setattr(process.time, "monotonic", lambda: next(ticks))
     monkeypatch.setattr(
         process,
         "enqueue_pending_handoffs",
@@ -319,15 +351,26 @@ def test_run_once_reuses_all_delivery_paths(monkeypatch) -> None:
         "failed_count": 0,
         "delivery_status": "SUCCEEDED",
         "delivery_error_code": None,
+        "delivery_elapsed_ms": 125,
         "approval_delivered_count": 1,
         "content_included": False,
         "secret_included": False,
+    }
+    assert installed.service_log.events[-1]["attributes"] == {
+        "attempt_count": 0,
+        "delivery_status": "SUCCEEDED",
+        "error_code": None,
+        "delivery_elapsed_ms": 125,
+        "handoff_timeout_seconds": 240.0,
+        "claim_lease_seconds": 600,
     }
     installed.close()
 
 
 def test_run_once_preserves_retry_and_wraps_approval_failure(monkeypatch) -> None:
     installed = _installed()
+    ticks = iter((100.0, 100.25, 101.0, 101.5))
+    monkeypatch.setattr(process.time, "monotonic", lambda: next(ticks))
     monkeypatch.setattr(process, "enqueue_pending_handoffs", lambda **_kwargs: [])
     monkeypatch.setattr(process, "enqueue_pending_result_events", lambda **_kwargs: [])
     monkeypatch.setattr(
@@ -347,6 +390,8 @@ def test_run_once_preserves_retry_and_wraps_approval_failure(monkeypatch) -> Non
     retry = installed.run_once()
     assert retry["failed_count"] == 1
     assert retry["delivery_error_code"] == "nex.signed_token_invalid"
+    assert retry["delivery_elapsed_ms"] == 250
+    assert installed.service_log.events[-1]["severity"] == "ERROR"
     monkeypatch.setattr(
         process,
         "deliver_pending_approval_events",
@@ -356,6 +401,45 @@ def test_run_once_preserves_retry_and_wraps_approval_failure(monkeypatch) -> Non
     )
     with pytest.raises(process.WcEventDeliveryProcessError, match="approval"):
         installed.run_once()
+    installed.close()
+
+
+@pytest.mark.parametrize(
+    ("job", "service_log"),
+    (
+        (None, _ServiceLog()),
+        ({"job_id": "idle-log-disabled"}, None),
+    ),
+)
+def test_run_once_skips_attempt_evidence_without_claimed_job_or_log_store(
+    monkeypatch, job, service_log
+) -> None:
+    installed = _installed()
+    installed.service_log = service_log
+    ticks = iter((100.0, 100.01))
+    monkeypatch.setattr(process.time, "monotonic", lambda: next(ticks))
+    monkeypatch.setattr(process, "enqueue_pending_handoffs", lambda **_kwargs: [])
+    monkeypatch.setattr(process, "enqueue_pending_result_events", lambda **_kwargs: [])
+    monkeypatch.setattr(
+        process,
+        "run_worker_once",
+        lambda **_kwargs: SimpleNamespace(
+            job=job,
+            status="IDLE",
+            error_code=None,
+        ),
+    )
+    monkeypatch.setattr(
+        process,
+        "deliver_pending_approval_events",
+        lambda **_kwargs: {"pending_count": 0, "delivered_count": 0},
+    )
+
+    result = installed.run_once()
+
+    assert result["delivery_elapsed_ms"] == 10
+    if service_log is not None:
+        assert service_log.events == []
     installed.close()
 
 

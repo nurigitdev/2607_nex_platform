@@ -468,6 +468,16 @@ inspection reports eight of eight databases current with redacted evidence.
 The database packaging blocker is closed and `.7` may resume its installed
 product acceptance.
 
+`CP-M1-E2E-FX-01B.7B` implementation evidence is recorded in
+[`mybee_phase1_w70_cp_m1_e2e_fx_01b7b_handoff_lease_timing.md`](../../slices/mybee_phase1_w70_cp_m1_e2e_fx_01b7b_handoff_lease_timing.md).
+The installed M1 journey exposed that the historical 300-second WC claim lease
+could expire during synchronous Qwen3.5-9B planning retries. The corrective
+boundary keeps planning-before-ACK, promotes an explicit shared 600-second
+installed lease, retains the 240-second handoff timeout, rejects configuration
+drift, and records each claimed delivery attempt with durable elapsed-time and
+error evidence. Source and WC Slice Gates pass without a migration. The actual
+DGX-backed installed journey remains required before `.7` can close.
+
 `CP-M1-E2E-FX-01B.6A.1` implementation evidence is recorded in
 [`mybee_phase1_w70_cp_m1_e2e_fx_01b6a1_refresh_contract_source_resolver.md`](../../slices/mybee_phase1_w70_cp_m1_e2e_fx_01b6a1_refresh_contract_source_resolver.md).
 It closes the canonical protected contract and the mutation-free EOS source
