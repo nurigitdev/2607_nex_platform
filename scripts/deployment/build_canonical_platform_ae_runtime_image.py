@@ -189,11 +189,16 @@ def _stage_context(
     wheel_path: Path,
     wheel_filename: str,
 ) -> None:
+    (context / "config").mkdir()
     (context / "wheel").mkdir()
     (context / "repository").mkdir()
     shutil.copy2(
         ROOT / "deployment/oci/canonical-platform-ae-runtime.Containerfile",
         context / "Containerfile",
+    )
+    shutil.copy2(
+        ROOT / "deployment/product/config/project-agent-profile-policy.v1.json",
+        context / "config/project-agent-profile-policy.v1.json",
     )
     shutil.copy2(wheel_path, context / "wheel" / wheel_filename)
     for relative in (

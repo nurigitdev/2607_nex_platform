@@ -971,6 +971,7 @@ def test_s20_image_builder_stages_product_runtime_bundle(
         "deployment/locks/ae-mybee-m1-signed-skill-checkpoint.v1.json": "{}\n",
         "deployment/environments/ae-product-capability-registry.mybee-m1.v1.json": "{}\n",
         "deployment/environments/ae-product-capability-registry.mybee-m1.v2.json": "{}\n",
+        "deployment/product/config/project-agent-profile-policy.v1.json": "{}\n",
         "domains/mybee/config/m1_transaction_preparation_registry.v1.json": "{}\n",
         "domains/mybee/skills/m1_checkpoint/context.json": "{}\n",
         "domains/mybee/skills/m1_checkpoint/mybee-m1-d04-d12.v1.nsp": "nsp\n",
@@ -1002,7 +1003,11 @@ def test_s20_image_builder_stages_product_runtime_bundle(
 
     assert (context / "wheel/nsl.whl").read_bytes() == b"wheel"
     assert not (context / "skill").exists()
-    assert not (context / "config").exists()
+    assert sorted(
+        path.relative_to(context / "config").as_posix()
+        for path in (context / "config").rglob("*")
+        if path.is_file()
+    ) == ["project-agent-profile-policy.v1.json"]
     assert not (context / "locks").exists()
     assert (
         context

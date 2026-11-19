@@ -6,6 +6,7 @@ USER 0:0
 COPY --chown=65532:65532 wheel/nex_skill_language-0.2.1-py3-none-any.whl /app/deployment/product/wheel/nex_skill_language-0.2.1-py3-none-any.whl
 RUN python -m pip install --no-deps /app/deployment/product/wheel/nex_skill_language-0.2.1-py3-none-any.whl
 
+COPY --chown=65532:65532 config /app/deployment/product/config
 COPY --chown=65532:65532 repository /app/deployment/product/repository
 COPY --chown=65532:65532 repository/contracts /app/contracts
 COPY --chown=65532:65532 repository/domains/mybee/config /app/domains/mybee/config
@@ -24,11 +25,12 @@ ENV NEX_AE_PRODUCT_RUNTIME_PROFILE=VERIFIED_PRODUCT_RELEASE \
     NEX_AE_PRODUCT_TOOL_CATALOG_PATH=/app/deployment/product/repository/domains/mybee/skills/m1_checkpoint/tool_catalog.v1.json \
     NEX_AE_PRODUCT_RUNTIME_CONTEXT_PATH=/app/deployment/product/repository/domains/mybee/skills/m1_checkpoint/context.json \
     NEX_AE_PRODUCT_CAPABILITY_REGISTRY_PATH=/app/deployment/product/repository/deployment/environments/ae-product-capability-registry.mybee-m1.v2.json \
+    NEX_AE_PROJECT_AGENT_PROFILE_POLICY_PATH=/app/deployment/product/config/project-agent-profile-policy.v1.json \
     NEX_AE_NSL_WHEEL=/app/deployment/product/wheel/nex_skill_language-0.2.1-py3-none-any.whl \
     NEX_AE_AGENT_WORKER_NSL_WHEEL_LOCK=/app/deployment/product/repository/deployment/locks/nsl-v0.2.1-wheel.json \
     NEX_AE_NSL_PLATFORM_LOCK=/app/deployment/product/repository/deployment/locks/python-production.lock
 
 USER 65532:65532
-RUN python -c "import os; from pathlib import Path; names=('NEX_AE_M1_SIGNED_SKILL_LOCK','NEX_AE_M1_SIGNED_PACKAGE_PATH','NEX_AE_PRODUCT_RUNTIME_ADMISSION_PATH','NEX_AE_PRODUCT_RUNTIME_ACTIVATION_PATH','NEX_AE_PRODUCT_TOOL_CATALOG_PATH','NEX_AE_PRODUCT_RUNTIME_CONTEXT_PATH','NEX_AE_PRODUCT_CAPABILITY_REGISTRY_PATH','NEX_AE_NSL_WHEEL','NEX_AE_AGENT_WORKER_NSL_WHEEL_LOCK','NEX_AE_NSL_PLATFORM_LOCK'); assert all(Path(os.environ[name]).exists() for name in names)"
+RUN python -c "import os; from pathlib import Path; names=('NEX_AE_M1_SIGNED_SKILL_LOCK','NEX_AE_M1_SIGNED_PACKAGE_PATH','NEX_AE_PRODUCT_RUNTIME_ADMISSION_PATH','NEX_AE_PRODUCT_RUNTIME_ACTIVATION_PATH','NEX_AE_PRODUCT_TOOL_CATALOG_PATH','NEX_AE_PRODUCT_RUNTIME_CONTEXT_PATH','NEX_AE_PRODUCT_CAPABILITY_REGISTRY_PATH','NEX_AE_PROJECT_AGENT_PROFILE_POLICY_PATH','NEX_AE_NSL_WHEEL','NEX_AE_AGENT_WORKER_NSL_WHEEL_LOCK','NEX_AE_NSL_PLATFORM_LOCK'); assert all(Path(os.environ[name]).exists() for name in names)"
 RUN python -c "import mybee_ax, nsl; from nex_ae_api.agent_runtime_process import build_source_check; from nex_ae_api.mybee_product_admission import require_mybee_product_package; assert nsl.__version__ == '0.2.1'; assert mybee_ax.PACKAGE_VERSION == '0.1.0'; assert require_mybee_product_package()['status'] == 'PASS'; assert build_source_check()['status'] == 'PASS'"
 RUN python -c "import json, os; from pathlib import Path; from nex_ae_api.mybee_m1_skill_runtime import build_mybee_m1_runtime_admission; expected=json.loads(Path(os.environ['NEX_AE_PRODUCT_RUNTIME_ADMISSION_PATH']).read_text()); assert build_mybee_m1_runtime_admission(os.environ) == expected"

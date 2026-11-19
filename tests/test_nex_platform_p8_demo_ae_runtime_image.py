@@ -24,7 +24,14 @@ def test_demo_ae_runtime_containerfile_admits_every_embedded_asset_path() -> Non
         "install -d -o 65532 -g 65532 -m 0700 /var/lib/nex-platform/ae-runtime/nsl"
     ) in source
     assert source.index("install -d -o 65532") < source.index("USER 65532:65532")
-    assert "COPY --chown=65532:65532 config" not in source
+    assert (
+        "COPY --chown=65532:65532 config /app/deployment/product/config"
+        in source
+    )
+    assert (
+        "NEX_AE_PROJECT_AGENT_PROFILE_POLICY_PATH=/app/deployment/product/"
+        "config/project-agent-profile-policy.v1.json"
+    ) in source
     assert (
         "COPY --chown=65532:65532 repository/domains/mybee/config "
         "/app/domains/mybee/config"
