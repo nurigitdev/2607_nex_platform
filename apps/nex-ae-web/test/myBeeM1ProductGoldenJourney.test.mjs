@@ -9,6 +9,7 @@ import {
   apiSemanticFailureStage,
   journeyProgressReporter,
   myBeeM1RuntimeConfig,
+  myBeeM1RuntimeTimeouts,
   myBeeM1ProductJourneyUiContract,
   parseProductPrompts,
   runMyBeeM1ProductGoldenJourney,
@@ -87,6 +88,23 @@ test("M1 product runtime config keeps authenticated fetch approval mode", () => 
   assert.equal(config.client_mode, "fetch");
   assert.equal(config.ae_base_url, "/ae-api");
   assert.equal(config.features.approval_inbox_enabled, true);
+});
+
+test("M1 product journey separates action, semantic submit, and result budgets", () => {
+  assert.deepEqual(myBeeM1RuntimeTimeouts({}), {
+    actionTimeout: 60_000,
+    semanticSubmitTimeout: 180_000,
+    resultTimeout: 900_000
+  });
+  assert.deepEqual(myBeeM1RuntimeTimeouts({
+    NEX_MYBEE_M1_GOLDEN_TIMEOUT_MS: "70000",
+    NEX_MYBEE_M1_GOLDEN_SEMANTIC_SUBMIT_TIMEOUT_MS: "190000",
+    NEX_MYBEE_M1_GOLDEN_RESULT_TIMEOUT_MS: "910000"
+  }), {
+    actionTimeout: 70_000,
+    semanticSubmitTimeout: 190_000,
+    resultTimeout: 910_000
+  });
 });
 
 test("M1 product prompts require two non-identical bounded prompts", () => {

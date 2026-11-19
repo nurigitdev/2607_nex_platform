@@ -21,6 +21,7 @@ const ENV = {
   screenshotDir: "NEX_MYBEE_M1_GOLDEN_SCREENSHOT_DIR",
   progressPath: "NEX_MYBEE_M1_GOLDEN_PROGRESS_PATH",
   timeoutMs: "NEX_MYBEE_M1_GOLDEN_TIMEOUT_MS",
+  semanticSubmitTimeoutMs: "NEX_MYBEE_M1_GOLDEN_SEMANTIC_SUBMIT_TIMEOUT_MS",
   resultTimeoutMs: "NEX_MYBEE_M1_GOLDEN_RESULT_TIMEOUT_MS"
 };
 const REQUIRED = [
@@ -40,7 +41,8 @@ const RECOVERY_REQUIRED = [
   ENV.recoveryInteractionId
 ];
 const SENSITIVE = [ENV.requesterPassword, ENV.approverPassword, ENV.promptsJson];
-const DEFAULT_TIMEOUT_MS = 900_000;
+const DEFAULT_TIMEOUT_MS = 60_000;
+const DEFAULT_SEMANTIC_SUBMIT_TIMEOUT_MS = 180_000;
 const DEFAULT_RESULT_TIMEOUT_MS = 900_000;
 
 const UI = Object.freeze({
@@ -76,6 +78,20 @@ export function myBeeM1RuntimeConfig() {
       retrieval_submit_enabled: true,
       fetch_clients_enabled: true
     }
+  };
+}
+
+export function myBeeM1RuntimeTimeouts(environ = {}) {
+  return {
+    actionTimeout: positiveTimeout(environ[ENV.timeoutMs], DEFAULT_TIMEOUT_MS),
+    semanticSubmitTimeout: positiveTimeout(
+      environ[ENV.semanticSubmitTimeoutMs],
+      DEFAULT_SEMANTIC_SUBMIT_TIMEOUT_MS
+    ),
+    resultTimeout: positiveTimeout(
+      environ[ENV.resultTimeoutMs],
+      DEFAULT_RESULT_TIMEOUT_MS
+    )
   };
 }
 
@@ -149,11 +165,8 @@ export async function runMyBeeM1ProductGoldenJourney({
   } catch (error) {
     return failure(safeFailureCode(error));
   }
-  const actionTimeout = positiveTimeout(environ[ENV.timeoutMs]);
-  const resultTimeout = positiveTimeout(
-    environ[ENV.resultTimeoutMs],
-    DEFAULT_RESULT_TIMEOUT_MS
-  );
+  const { actionTimeout, semanticSubmitTimeout, resultTimeout } =
+    myBeeM1RuntimeTimeouts(environ);
   const captures = screenCapture(environ[ENV.screenshotDir], "journey");
   const progress = journeyProgressReporter(environ[ENV.progressPath]);
   let browser;
@@ -210,7 +223,7 @@ export async function runMyBeeM1ProductGoldenJourney({
     let workspace = null;
     for (let index = 0; index < prompts.length; index += 1) {
       markStage(`transaction_${index + 1}_submit`, { transaction_index: index + 1 });
-      const admitted = await submitPrompt(requester, prompts[index], actionTimeout, {
+      const admitted = await submitPrompt(requester, prompts[index], semanticSubmitTimeout, {
         observeWorkspace: index === 0
       });
       if (index === 0) {

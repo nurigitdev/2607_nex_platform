@@ -64,12 +64,13 @@ MODEL_REF_ENV = "NEX_MO_VLLM_MODEL"
 MODEL_REVISION_ENV = "NEX_MO_VLLM_MODEL_REVISION"
 MODEL_DEPLOYMENT_ENV = "NEX_MO_VLLM_DEPLOYMENT_ID"
 DEFAULT_MODEL_REF = "Qwen3.5-9B"
-BROWSER_ACTION_TIMEOUT_MS = 120_000
+BROWSER_ACTION_TIMEOUT_MS = 60_000
+BROWSER_SEMANTIC_SUBMIT_TIMEOUT_MS = 180_000
 BROWSER_RESULT_TIMEOUT_MS = 900_000
 BROWSER_PROCESS_MARGIN_SECONDS = 180
 BROWSER_PROCESS_TIMEOUT_SECONDS = (
     BROWSER_PROCESS_MARGIN_SECONDS
-    + ((BROWSER_ACTION_TIMEOUT_MS + BROWSER_RESULT_TIMEOUT_MS) // 1000) * 2
+    + ((BROWSER_SEMANTIC_SUBMIT_TIMEOUT_MS + BROWSER_RESULT_TIMEOUT_MS) // 1000) * 2
 )
 GOLDEN_JOURNEY_EVIDENCE_CONTRACT = {
     "platform_integrated": True,
@@ -81,6 +82,12 @@ GOLDEN_JOURNEY_EVIDENCE_CONTRACT = {
 
 class M1ProductGoldenJourneyError(RuntimeError):
     pass
+
+
+class M1ProductGoldenJourneyExecutionError(M1ProductGoldenJourneyError):
+    def __init__(self, message: str, *, evidence: Mapping[str, Any]) -> None:
+        super().__init__(message)
+        self.evidence = dict(evidence)
 
 
 def run_m1_product_golden_journey(
@@ -98,6 +105,17 @@ def run_m1_product_golden_journey(
         runner = protected_runner or execute_m1_product_golden_journey
         protected = dict(runner(env, root=root))
         return {**source, **protected, "executed": True}
+    except M1ProductGoldenJourneyExecutionError as exc:
+        return {
+            **source,
+            "status": "FAIL",
+            "executed": True,
+            "issues": [str(exc)],
+            "failure_evidence": exc.evidence,
+            "zero_residue": bool(exc.evidence.get("zero_residue")),
+            "secret_included": False,
+            "token_value_included": False,
+        }
     except (
         OSError,
         TypeError,
@@ -155,6 +173,7 @@ def _source_admission(root: Path) -> dict[str, Any]:
         "actual_remote_generation_required": True,
         "actual_playwright_required": True,
         "browser_action_timeout_ms": BROWSER_ACTION_TIMEOUT_MS,
+        "browser_semantic_submit_timeout_ms": BROWSER_SEMANTIC_SUBMIT_TIMEOUT_MS,
         "browser_result_timeout_ms": BROWSER_RESULT_TIMEOUT_MS,
         "browser_process_timeout_seconds": BROWSER_PROCESS_TIMEOUT_SECONDS,
         "non_identical_positive_request_count": 2,
@@ -340,6 +359,8 @@ def execute_m1_product_golden_journey(
             "secret_included": False,
         }
 
+    execution_error: Exception | None = None
+    result: dict[str, Any] | None = None
     try:
         installed_result = installed.execute_canonical_platform_acceptance(
             runtime_env,
@@ -373,15 +394,44 @@ def execute_m1_product_golden_journey(
             "database_isolation": database_isolation["evidence"],
         }
         installed._assert_redacted(result, sensitive)
+    except Exception as exc:  # noqa: BLE001 - cleanup evidence must survive failure
+        execution_error = exc
     finally:
         isolation_cleanup = _drop_isolated_database_schemas(
             database_isolation["handles"]
         )
+    isolation_evidence = {
+        **database_isolation["evidence"],
+        "cleanup": isolation_cleanup,
+    }
+    if execution_error is not None:
+        message = str(execution_error)
+        if not isolation_cleanup["zero_residue"]:
+            message += "; isolated database cleanup left acceptance residue"
+        raise M1ProductGoldenJourneyExecutionError(
+            message,
+            evidence={
+                "database_isolation": isolation_evidence,
+                "zero_residue": isolation_cleanup["zero_residue"],
+            },
+        ) from execution_error
     if not isolation_cleanup["zero_residue"]:
-        raise M1ProductGoldenJourneyError(
-            "isolated database schema cleanup left acceptance residue"
+        raise M1ProductGoldenJourneyExecutionError(
+            "isolated database schema cleanup left acceptance residue",
+            evidence={
+                "database_isolation": isolation_evidence,
+                "zero_residue": False,
+            },
         )
-    result["database_isolation"]["cleanup"] = isolation_cleanup
+    if result is None:
+        raise M1ProductGoldenJourneyExecutionError(
+            "installed acceptance returned no result",
+            evidence={
+                "database_isolation": isolation_evidence,
+                "zero_residue": True,
+            },
+        )
+    result["database_isolation"] = isolation_evidence
     result["zero_residue"] = True
     return result
 
@@ -473,27 +523,33 @@ def _drop_isolated_database_schemas(
 ) -> dict[str, Any]:
     dropped: list[str] = []
     residue: list[str] = []
+    cleanup_error_types: set[str] = set()
     for handle in reversed(tuple(handles)):
         schema_name = handle["schema_name"]
-        with psycopg.connect(
-            psycopg_database_url(handle["database_url"]), autocommit=True
-        ) as connection:
-            connection.execute(
-                sql.SQL("DROP SCHEMA IF EXISTS {} CASCADE").format(
-                    sql.Identifier(schema_name)
+        try:
+            with psycopg.connect(
+                psycopg_database_url(handle["database_url"]), autocommit=True
+            ) as connection:
+                connection.execute(
+                    sql.SQL("DROP SCHEMA IF EXISTS {} CASCADE").format(
+                        sql.Identifier(schema_name)
+                    )
                 )
-            )
-            remaining = connection.execute(
-                "SELECT to_regnamespace(%s)", (schema_name,)
-            ).fetchone()
-            if remaining != (None,):
-                residue.append(handle["service_id"])
-            else:
-                dropped.append(handle["service_id"])
+                remaining = connection.execute(
+                    "SELECT to_regnamespace(%s)", (schema_name,)
+                ).fetchone()
+                if remaining != (None,):
+                    residue.append(handle["service_id"])
+                else:
+                    dropped.append(handle["service_id"])
+        except Exception as exc:  # noqa: BLE001 - continue across database owners
+            residue.append(handle["service_id"])
+            cleanup_error_types.add(type(exc).__name__)
     return {
         "schema_version": "mybee_m1_isolated_database_cleanup.v1",
         "dropped_database_count": len(dropped),
         "residue_service_ids": sorted(residue),
+        "cleanup_error_types": sorted(cleanup_error_types),
         "zero_residue": not residue and len(dropped) == len(handles),
     }
 
@@ -718,6 +774,9 @@ def _run_playwright(
         "NEX_MYBEE_M1_GOLDEN_SCREENSHOT_DIR": str(SCREENSHOT_DIR),
         "NEX_MYBEE_M1_GOLDEN_PROGRESS_PATH": str(DEFAULT_BROWSER_PROGRESS_REPORT),
         "NEX_MYBEE_M1_GOLDEN_TIMEOUT_MS": str(BROWSER_ACTION_TIMEOUT_MS),
+        "NEX_MYBEE_M1_GOLDEN_SEMANTIC_SUBMIT_TIMEOUT_MS": str(
+            BROWSER_SEMANTIC_SUBMIT_TIMEOUT_MS
+        ),
         "NEX_MYBEE_M1_GOLDEN_RESULT_TIMEOUT_MS": str(BROWSER_RESULT_TIMEOUT_MS),
         "NEX_PLAYWRIGHT_CHROMIUM_EXECUTABLE": env.get(
             "NEX_PLAYWRIGHT_CHROMIUM_EXECUTABLE", "/usr/bin/google-chrome"

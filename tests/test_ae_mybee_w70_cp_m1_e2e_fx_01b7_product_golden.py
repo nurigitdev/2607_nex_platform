@@ -30,11 +30,143 @@ def test_product_golden_source_admission_uses_installed_m1_registry() -> None:
     assert result["non_identical_positive_request_count"] == 2
     assert result["post_request_direct_transition_allowed"] is False
     assert result["isolated_eight_database_schema_required"] is True
-    assert result["browser_action_timeout_ms"] == 120_000
+    assert result["browser_action_timeout_ms"] == 60_000
+    assert result["browser_semantic_submit_timeout_ms"] == 180_000
     assert result["browser_result_timeout_ms"] == 900_000
-    assert result["browser_process_timeout_seconds"] == 2_220
+    assert result["browser_process_timeout_seconds"] == 2_340
     assert support.PROJECT_REFERENCE_RESOLVE_SCOPE in support._OA_SCOPES["requester"]
     assert {"approval:read", "approval:decide"}.issubset(support._OA_SCOPES["approver"])
+
+
+def test_product_golden_projects_structured_cleanup_failure_evidence() -> None:
+    def runner(_env, *, root):
+        assert root == ROOT
+        raise acceptance.M1ProductGoldenJourneyExecutionError(
+            "bounded live failure",
+            evidence={
+                "database_isolation": {
+                    "cleanup": {
+                        "dropped_database_count": 8,
+                        "residue_service_ids": [],
+                        "cleanup_error_types": [],
+                        "zero_residue": True,
+                    }
+                },
+                "zero_residue": True,
+            },
+        )
+
+    result = acceptance.run_m1_product_golden_journey(
+        {acceptance.EXECUTION_ENV: "1"},
+        execute=True,
+        root=ROOT,
+        protected_runner=runner,
+    )
+
+    assert result["status"] == "FAIL"
+    assert result["issues"] == ["bounded live failure"]
+    assert result["zero_residue"] is True
+    assert (
+        result["failure_evidence"]["database_isolation"]["cleanup"][
+            "dropped_database_count"
+        ]
+        == 8
+    )
+
+
+def test_product_cleanup_continues_after_database_owner_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    attempts: list[str] = []
+
+    def connect(database_url: str, *, autocommit: bool):
+        assert autocommit is True
+        attempts.append(database_url)
+        raise RuntimeError("protected cleanup failure")
+
+    monkeypatch.setattr(acceptance.psycopg, "connect", connect)
+    result = acceptance._drop_isolated_database_schemas(
+        (
+            {
+                "service_id": "nex-ae-api",
+                "database_url": "postgresql://owner@localhost/ae",
+                "schema_name": "m1_01b7_nex_ae_api_0123456789ab",
+            },
+            {
+                "service_id": "nex-wc",
+                "database_url": "postgresql://owner@localhost/wc",
+                "schema_name": "m1_01b7_nex_wc_0123456789ab",
+            },
+        )
+    )
+
+    assert len(attempts) == 2
+    assert result == {
+        "schema_version": "mybee_m1_isolated_database_cleanup.v1",
+        "dropped_database_count": 0,
+        "residue_service_ids": ["nex-ae-api", "nex-wc"],
+        "cleanup_error_types": ["RuntimeError"],
+        "zero_residue": False,
+    }
+
+
+def test_product_execution_preserves_original_failure_and_cleanup_evidence(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    handles = (
+        {
+            "service_id": "nex-ae-api",
+            "database_url": "postgresql://owner@localhost/ae",
+            "schema_name": "m1_01b7_nex_ae_api_0123456789ab",
+        },
+    )
+    isolation = {
+        "handles": handles,
+        "evidence": {
+            "schema_version": "mybee_m1_isolated_database_set.v1",
+            "database_count": 1,
+        },
+    }
+    cleanup = {
+        "schema_version": "mybee_m1_isolated_database_cleanup.v1",
+        "dropped_database_count": 1,
+        "residue_service_ids": [],
+        "cleanup_error_types": [],
+        "zero_residue": True,
+    }
+    monkeypatch.setattr(
+        acceptance,
+        "_prepare_isolated_database_environment",
+        lambda env: (dict(env), isolation),
+    )
+    monkeypatch.setattr(
+        acceptance.installed,
+        "execute_canonical_platform_acceptance",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            RuntimeError("authoritative live failure")
+        ),
+    )
+    monkeypatch.setattr(
+        acceptance,
+        "_drop_isolated_database_schemas",
+        lambda actual: cleanup if actual == handles else pytest.fail("wrong handles"),
+    )
+
+    with pytest.raises(
+        acceptance.M1ProductGoldenJourneyExecutionError,
+        match="authoritative live failure",
+    ) as captured:
+        acceptance.execute_m1_product_golden_journey(
+            {
+                acceptance.MODEL_REF_ENV: "Qwen3.5-9B",
+                acceptance.MODEL_REVISION_ENV: "hf:immutable",
+                acceptance.MODEL_DEPLOYMENT_ENV: "dgx-test",
+            },
+            root=ROOT,
+        )
+
+    assert captured.value.evidence["zero_residue"] is True
+    assert captured.value.evidence["database_isolation"]["cleanup"] == cleanup
 
 
 def test_product_seed_cannot_delete_public_authority_or_bypass_protection() -> None:
@@ -394,7 +526,10 @@ def test_product_playwright_timeout_returns_last_bounded_progress(
             encoding="utf-8",
         )
         assert kwargs["timeout"] == acceptance.BROWSER_PROCESS_TIMEOUT_SECONDS
-        assert kwargs["env"]["NEX_MYBEE_M1_GOLDEN_TIMEOUT_MS"] == "120000"
+        assert kwargs["env"]["NEX_MYBEE_M1_GOLDEN_TIMEOUT_MS"] == "60000"
+        assert (
+            kwargs["env"]["NEX_MYBEE_M1_GOLDEN_SEMANTIC_SUBMIT_TIMEOUT_MS"] == "180000"
+        )
         assert kwargs["env"]["NEX_MYBEE_M1_GOLDEN_RESULT_TIMEOUT_MS"] == "900000"
         raise subprocess.TimeoutExpired(_arguments, kwargs["timeout"])
 

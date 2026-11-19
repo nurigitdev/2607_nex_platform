@@ -503,6 +503,17 @@ before teardown. AE and Web regressions, coverage, and actual AE/WC PostgreSQL
 diagnostic queries pass without a migration. The protected exact-head journey
 must be rerun before `.7` can close.
 
+`CP-M1-E2E-FX-01B.7D-A` implementation evidence is recorded in
+[`mybee_phase1_w70_cp_m1_e2e_fx_01b7da_semantic_submit_zero_residue.md`](../../slices/mybee_phase1_w70_cp_m1_e2e_fx_01b7da_semantic_submit_zero_residue.md).
+It separates ordinary 60-second UI actions, the Qwen3.5-9B three-stage
+180-second semantic submit window, and the 900-second approval/result window.
+Failure evidence now retains the original error together with structured
+isolated-database cleanup results, and cleanup continues across database owners
+without masking residue. Three historical acceptance schema sets were admitted
+by exact naming and migration identity, removed under their owning roles, and
+all eight dev databases now report zero `m1_01b7_%` residue. No migration or
+public product contract changes.
+
 `CP-M1-E2E-FX-01B.6A.1` implementation evidence is recorded in
 [`mybee_phase1_w70_cp_m1_e2e_fx_01b6a1_refresh_contract_source_resolver.md`](../../slices/mybee_phase1_w70_cp_m1_e2e_fx_01b6a1_refresh_contract_source_resolver.md).
 It closes the canonical protected contract and the mutation-free EOS source
