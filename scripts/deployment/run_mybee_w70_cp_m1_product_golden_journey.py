@@ -48,24 +48,28 @@ from run_migrations import run_service_migrations
 
 EXECUTION_ENV = "NEX_MYBEE_M1_PRODUCT_GOLDEN_LIVE"
 SCHEMA_VERSION = "mybee_w70_cp_m1_product_golden_journey.v1"
-DEFAULT_REPORT = (
-    ROOT / "reports/deployment/mybee-w70-cp-m1-product-golden-journey.json"
-)
+DEFAULT_REPORT = ROOT / "reports/deployment/mybee-w70-cp-m1-product-golden-journey.json"
 DEFAULT_BROWSER_REPORT = (
     ROOT / "reports/deployment/mybee-w70-cp-m1-product-browser-evidence.json"
 )
+DEFAULT_BROWSER_PROGRESS_REPORT = (
+    ROOT / "reports/deployment/mybee-w70-cp-m1-product-browser-progress.json"
+)
 PLAYWRIGHT_RUNNER = (
-    ROOT
-    / "apps/nex-ae-web/scripts/runMyBeeW70CpM1ProductGoldenJourney.mjs"
+    ROOT / "apps/nex-ae-web/scripts/runMyBeeW70CpM1ProductGoldenJourney.mjs"
 )
-SCREENSHOT_DIR = (
-    ROOT / "reports/deployment/mybee-w70-cp-m1-product-golden-screens"
-)
+SCREENSHOT_DIR = ROOT / "reports/deployment/mybee-w70-cp-m1-product-golden-screens"
 MODEL_PROFILE = "general-llm-default"
 MODEL_REF_ENV = "NEX_MO_VLLM_MODEL"
 MODEL_REVISION_ENV = "NEX_MO_VLLM_MODEL_REVISION"
 MODEL_DEPLOYMENT_ENV = "NEX_MO_VLLM_DEPLOYMENT_ID"
 DEFAULT_MODEL_REF = "Qwen3.5-9B"
+BROWSER_ACTION_TIMEOUT_MS = 60_000
+BROWSER_RESULT_TIMEOUT_MS = 900_000
+BROWSER_PROCESS_MARGIN_SECONDS = 180
+BROWSER_PROCESS_TIMEOUT_SECONDS = (
+    BROWSER_PROCESS_MARGIN_SECONDS + (BROWSER_RESULT_TIMEOUT_MS // 1000) * 2
+)
 GOLDEN_JOURNEY_EVIDENCE_CONTRACT = {
     "platform_integrated": True,
     "runtime_transition_fixture": False,
@@ -149,6 +153,9 @@ def _source_admission(root: Path) -> dict[str, Any]:
         "actual_rustfs_required": True,
         "actual_remote_generation_required": True,
         "actual_playwright_required": True,
+        "browser_action_timeout_ms": BROWSER_ACTION_TIMEOUT_MS,
+        "browser_result_timeout_ms": BROWSER_RESULT_TIMEOUT_MS,
+        "browser_process_timeout_seconds": BROWSER_PROCESS_TIMEOUT_SECONDS,
         "non_identical_positive_request_count": 2,
         "post_request_direct_transition_allowed": False,
         "isolated_eight_database_schema_required": True,
@@ -228,11 +235,16 @@ def execute_m1_product_golden_journey(
                 urls["nex-ae-api"],
                 tenant_id=str(baseline["tenant"]["tenant_id"]),
             )
+            wc_progress = _wc_database_progress_summary(
+                urls["nex-wc"],
+                tenant_id=str(baseline["tenant"]["tenant_id"]),
+            )
             raise M1ProductGoldenJourneyError(
                 "M1 product browser journey failed: "
                 + _browser_failure_summary(browser)
                 + f" runtime_exception={runtime_failure}"
                 + f" runtime_database={database_failure}"
+                + f" wc_progress={wc_progress}"
             )
         interaction_ids = tuple(
             str(item.get("interaction_id") or "") for item in transactions
@@ -292,9 +304,7 @@ def execute_m1_product_golden_journey(
         )
         runtime = recovered.get("runtime")
         projection = (
-            runtime.get("result_projection")
-            if isinstance(runtime, Mapping)
-            else None
+            runtime.get("result_projection") if isinstance(runtime, Mapping) else None
         )
         database = _database_projection(
             urls,
@@ -310,9 +320,7 @@ def execute_m1_product_golden_journey(
             and tuple(projection.get("result", {}).get("business_refs") or ())
             == live_state["business_refs"],
             "two_journals_after_restart": database["journal_count"] == 2,
-            "two_allocation_batches_after_restart": database[
-                "allocation_batch_count"
-            ]
+            "two_allocation_batches_after_restart": database["allocation_batch_count"]
             == 2,
             "two_agent_results_after_restart": database["agent_result_count"] == 2,
         }
@@ -388,9 +396,7 @@ def _prepare_isolated_database_environment(
     try:
         for target in targets:
             service_id = target.target.service_id
-            schema_name = (
-                f"m1_01b7_{service_id.replace('-', '_')}_{suffix}"
-            )
+            schema_name = f"m1_01b7_{service_id.replace('-', '_')}_{suffix}"
             with psycopg.connect(
                 psycopg_database_url(target.database_url), autocommit=True
             ) as connection:
@@ -406,9 +412,7 @@ def _prepare_isolated_database_environment(
                         f"{service_id} isolated database identity drifted"
                     )
                 connection.execute(
-                    sql.SQL("CREATE SCHEMA {}").format(
-                        sql.Identifier(schema_name)
-                    )
+                    sql.SQL("CREATE SCHEMA {}").format(sql.Identifier(schema_name))
                 )
                 connection.execute(
                     sql.SQL(
@@ -420,9 +424,7 @@ def _prepare_isolated_database_environment(
                 )
             scoped_url = (
                 make_url(target.database_url)
-                .update_query_dict(
-                    {"options": f"-csearch_path={schema_name},public"}
-                )
+                .update_query_dict({"options": f"-csearch_path={schema_name},public"})
                 .render_as_string(hide_password=False)
             )
             handles.append(
@@ -497,20 +499,17 @@ def _drop_isolated_database_schemas(
 
 def _semantic_runtime_failure(log_output: str) -> str:
     match = re.search(
-        r"exception_type(?:=|[\"']?\s*:\s*[\"']?)"
-        r"([A-Za-z][A-Za-z0-9_]{0,95})",
+        r"exception_type(?:=|[\"']?\s*:\s*[\"']?)" r"([A-Za-z][A-Za-z0-9_]{0,95})",
         log_output,
     )
     if match:
         exception_type = match.group(1)
         error_code = re.search(
-            r"error_code(?:=|[\"']?\s*:\s*[\"']?)"
-            r"([A-Za-z][A-Za-z0-9_.-]{0,95})",
+            r"error_code(?:=|[\"']?\s*:\s*[\"']?)" r"([A-Za-z][A-Za-z0-9_.-]{0,95})",
             log_output[match.start() : match.start() + 512],
         )
         diagnostic_code = re.search(
-            r"diagnostic_code(?:=|[\"']?\s*:\s*[\"']?)"
-            r"([A-Z][A-Z0-9_]{0,127})",
+            r"diagnostic_code(?:=|[\"']?\s*:\s*[\"']?)" r"([A-Z][A-Z0-9_]{0,127})",
             log_output[match.start() : match.start() + 512],
         )
         parts = [exception_type]
@@ -527,9 +526,7 @@ def _semantic_runtime_failure(log_output: str) -> str:
     return traceback_types[-1] if traceback_types else "not_observed"
 
 
-def _semantic_runtime_failure_summary(
-    log_output: str, *, returncode: int
-) -> str:
+def _semantic_runtime_failure_summary(log_output: str, *, returncode: int) -> str:
     failure = _semantic_runtime_failure(log_output)
     if failure != "not_observed":
         return failure
@@ -537,9 +534,7 @@ def _semantic_runtime_failure_summary(
     return f"not_observed(rc={returncode},lines={line_count})"
 
 
-def _runtime_database_failure_summary(
-    database_url: str, *, tenant_id: str
-) -> str:
+def _runtime_database_failure_summary(database_url: str, *, tenant_id: str) -> str:
     engine = create_engine(database_url, poolclass=NullPool)
     try:
         with engine.connect() as connection:
@@ -584,14 +579,77 @@ def _runtime_database_failure_summary(
     return f"execution={execution_summary},attempt={attempt_summary}"
 
 
+def _wc_database_progress_summary(database_url: str, *, tenant_id: str) -> str:
+    engine = create_engine(database_url, poolclass=NullPool)
+    try:
+        with engine.connect() as connection:
+            work = connection.execute(
+                text(
+                    "SELECT state, required_agent_type FROM wc_work_item "
+                    "WHERE tenant_id=:tenant ORDER BY updated_at DESC LIMIT 1"
+                ),
+                {"tenant": tenant_id},
+            ).first()
+            assignment = connection.execute(
+                text(
+                    "SELECT status, agent_type FROM wc_assignment "
+                    "WHERE tenant_id=:tenant ORDER BY updated_at DESC LIMIT 1"
+                ),
+                {"tenant": tenant_id},
+            ).first()
+            claim = connection.execute(
+                text(
+                    "SELECT state, CASE WHEN lease_expires_at > CURRENT_TIMESTAMP "
+                    "THEN 'FRESH' ELSE 'EXPIRED' END FROM wc_claim "
+                    "WHERE tenant_id=:tenant ORDER BY updated_at DESC LIMIT 1"
+                ),
+                {"tenant": tenant_id},
+            ).first()
+            approval = connection.execute(
+                text(
+                    "SELECT state, approval_domain FROM wc_approval_work_item "
+                    "WHERE tenant_id=:tenant ORDER BY created_at DESC LIMIT 1"
+                ),
+                {"tenant": tenant_id},
+            ).first()
+            outbox = connection.execute(
+                text(
+                    "SELECT delivery_state, event_type FROM wc_event_outbox "
+                    "WHERE tenant_id=:tenant ORDER BY updated_at DESC LIMIT 1"
+                ),
+                {"tenant": tenant_id},
+            ).first()
+    except Exception:  # noqa: BLE001 - diagnostics must stay bounded and optional
+        return "unavailable"
+    finally:
+        engine.dispose()
+    return ",".join(
+        (
+            f"work={_diagnostic_row(work)}",
+            f"assignment={_diagnostic_row(assignment)}",
+            f"claim={_diagnostic_row(claim)}",
+            f"approval={_diagnostic_row(approval)}",
+            f"outbox={_diagnostic_row(outbox)}",
+        )
+    )
+
+
+def _diagnostic_row(row: Any) -> str:
+    if row is None:
+        return "none"
+    return ":".join(_diagnostic_token(value) for value in row)
+
+
 def _diagnostic_token(value: object) -> str:
     candidate = str(value or "none")
-    return candidate if re.fullmatch(r"[A-Za-z][A-Za-z0-9_.-]{0,95}", candidate) else "invalid"
+    return (
+        candidate
+        if re.fullmatch(r"[A-Za-z][A-Za-z0-9_.-]{0,95}", candidate)
+        else "invalid"
+    )
 
 
-def _collect_ae_runtime_logs(
-    env: Mapping[str, str], *, root: Path
-) -> tuple[str, int]:
+def _collect_ae_runtime_logs(env: Mapping[str, str], *, root: Path) -> tuple[str, int]:
     lookup = subprocess.run(
         (
             "docker",
@@ -640,21 +698,26 @@ def _run_playwright(
     approver_password: str,
     recovery_interaction_id: str | None = None,
 ) -> dict[str, Any]:
+    _prepare_browser_progress_file(DEFAULT_BROWSER_PROGRESS_REPORT)
     child_env = {
         **env,
         "NEX_MYBEE_M1_GOLDEN_WEB_URL": "https://ae.nex-staging.test:8443",
         "NEX_MYBEE_M1_GOLDEN_TENANT_ID": baseline["tenant"]["tenant_id"],
-        "NEX_MYBEE_M1_GOLDEN_REQUESTER_EMPLOYEE_ID": baseline["principals"]
-        ["requester"]["employee_id"],
+        "NEX_MYBEE_M1_GOLDEN_REQUESTER_EMPLOYEE_ID": baseline["principals"][
+            "requester"
+        ]["employee_id"],
         "NEX_MYBEE_M1_GOLDEN_REQUESTER_PASSWORD": requester_password,
-        "NEX_MYBEE_M1_GOLDEN_APPROVER_EMPLOYEE_ID": baseline["principals"]
-        ["approver"]["employee_id"],
+        "NEX_MYBEE_M1_GOLDEN_APPROVER_EMPLOYEE_ID": baseline["principals"]["approver"][
+            "employee_id"
+        ],
         "NEX_MYBEE_M1_GOLDEN_APPROVER_PASSWORD": approver_password,
         "NEX_MYBEE_M1_GOLDEN_PROMPTS_JSON": json.dumps(
             list(prompts), ensure_ascii=False
         ),
         "NEX_MYBEE_M1_GOLDEN_SCREENSHOT_DIR": str(SCREENSHOT_DIR),
-        "NEX_MYBEE_M1_GOLDEN_TIMEOUT_MS": "900000",
+        "NEX_MYBEE_M1_GOLDEN_PROGRESS_PATH": str(DEFAULT_BROWSER_PROGRESS_REPORT),
+        "NEX_MYBEE_M1_GOLDEN_TIMEOUT_MS": str(BROWSER_ACTION_TIMEOUT_MS),
+        "NEX_MYBEE_M1_GOLDEN_RESULT_TIMEOUT_MS": str(BROWSER_RESULT_TIMEOUT_MS),
         "NEX_PLAYWRIGHT_CHROMIUM_EXECUTABLE": env.get(
             "NEX_PLAYWRIGHT_CHROMIUM_EXECUTABLE", "/usr/bin/google-chrome"
         ),
@@ -665,15 +728,25 @@ def _run_playwright(
             recovery_interaction_id
         )
         arguments.append("--recovery")
-    completed = subprocess.run(
-        arguments,
-        cwd=ROOT / "apps/nex-ae-web",
-        env=child_env,
-        capture_output=True,
-        text=True,
-        timeout=960,
-        check=False,
-    )
+    try:
+        completed = subprocess.run(
+            arguments,
+            cwd=ROOT / "apps/nex-ae-web",
+            env=child_env,
+            capture_output=True,
+            text=True,
+            timeout=BROWSER_PROCESS_TIMEOUT_SECONDS,
+            check=False,
+        )
+    except subprocess.TimeoutExpired:
+        progress = _read_browser_progress(DEFAULT_BROWSER_PROGRESS_REPORT)
+        return {
+            "smoke_schema_version": "mybee_m1_product_golden_journey.v1",
+            "status": "FAIL",
+            "failure_code": "PLAYWRIGHT_PROCESS_TIMEOUT",
+            "observations": progress,
+            "runtime": None,
+        }
     lines = [line for line in completed.stdout.splitlines() if line.strip()]
     try:
         evidence = json.loads(lines[-1])
@@ -685,7 +758,59 @@ def _run_playwright(
         raise M1ProductGoldenJourneyError(
             "M1 product Playwright process failed after reporting PASS"
         )
+    if evidence.get("status") != "PASS":
+        observations = evidence.get("observations")
+        evidence["observations"] = {
+            **(dict(observations) if isinstance(observations, Mapping) else {}),
+            **_read_browser_progress(DEFAULT_BROWSER_PROGRESS_REPORT),
+        }
     return dict(evidence)
+
+
+def _prepare_browser_progress_file(path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.unlink(missing_ok=True)
+
+
+def _read_browser_progress(path: Path) -> dict[str, Any]:
+    fallback = {
+        "stage": "unknown",
+        "progress_state": "UNAVAILABLE",
+        "progress_sequence": 0,
+    }
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return fallback
+    if not isinstance(payload, Mapping):
+        return fallback
+    stage = str(payload.get("stage") or "unknown")
+    if re.fullmatch(r"[a-z][a-z0-9_]{0,95}", stage) is None:
+        stage = "invalid"
+    state = str(payload.get("state") or "UNAVAILABLE")
+    if state not in {"RUNNING", "PASS", "FAIL"}:
+        state = "INVALID"
+    result: dict[str, Any] = {
+        "stage": stage,
+        "progress_state": state,
+        "progress_sequence": _bounded_nonnegative_int(
+            payload.get("sequence"), maximum=1_000_000
+        ),
+    }
+    for key in (
+        "transaction_index",
+        "poll_count",
+        "approval_count",
+        "pending_gate_count",
+    ):
+        value = payload.get(key)
+        if value is not None:
+            result[key] = _bounded_nonnegative_int(value, maximum=1_000_000)
+    return result
+
+
+def _bounded_nonnegative_int(value: object, *, maximum: int) -> int:
+    return value if isinstance(value, int) and 0 <= value <= maximum else 0
 
 
 def _database_projection(
@@ -743,21 +868,23 @@ def _database_projection(
                 ),
                 {"tenant": tenant_id},
             ).one()
-            first_lines = connection.execute(
-                text(
-                    "SELECT allocated_amount_functional FROM eos_cost_allocation_line "
-                    "WHERE tenant_id=:tenant AND batch_id=(SELECT batch_id FROM "
-                    "eos_cost_allocation_batch WHERE tenant_id=:tenant "
-                    "ORDER BY created_at, batch_id LIMIT 1) ORDER BY line_no"
-                ),
-                {"tenant": tenant_id},
-            ).scalars().all()
+            first_lines = (
+                connection.execute(
+                    text(
+                        "SELECT allocated_amount_functional FROM eos_cost_allocation_line "
+                        "WHERE tenant_id=:tenant AND batch_id=(SELECT batch_id FROM "
+                        "eos_cost_allocation_batch WHERE tenant_id=:tenant "
+                        "ORDER BY created_at, batch_id LIMIT 1) ORDER BY line_no"
+                    ),
+                    {"tenant": tenant_id},
+                )
+                .scalars()
+                .all()
+            )
         with engines["nex-wa"].connect() as connection:
             wa_assets = int(
                 connection.execute(
-                    text(
-                        "SELECT count(*) FROM wa_work_asset WHERE tenant_id=:tenant"
-                    ),
+                    text("SELECT count(*) FROM wa_work_asset WHERE tenant_id=:tenant"),
                     {"tenant": tenant_id},
                 ).scalar_one()
             )
@@ -776,7 +903,9 @@ def _database_projection(
             "pnl_projection_count": int(eos[6]),
             "first_batch_allocated_total": format(first_batch[0], "f"),
             "first_batch_unallocated_total": format(first_batch[1], "f"),
-            "first_batch_project_amounts": [format(value, "f") for value in first_lines],
+            "first_batch_project_amounts": [
+                format(value, "f") for value in first_lines
+            ],
             "wa_work_asset_count": wa_assets,
         }
     finally:
@@ -802,18 +931,14 @@ def _live_checks(
         "two_immutable_journals": database["journal_count"] == 2,
         "journal_duplicates_absent": database["distinct_journal_count"] == 2,
         "two_allocation_batches": database["allocation_batch_count"] == 2,
-        "allocation_duplicates_absent": database[
-            "distinct_allocation_batch_count"
-        ]
+        "allocation_duplicates_absent": database["distinct_allocation_batch_count"]
         == 2,
         "four_allocation_lines": database["allocation_line_count"] == 4,
         "pnl_projection_present": database["pnl_projection_count"] >= 2,
         "wa_evidence_present": database["wa_work_asset_count"] >= 2,
         "first_allocation_total_exact": database["first_batch_allocated_total"]
         == expected["allocated_amount"],
-        "first_allocation_residual_zero": database[
-            "first_batch_unallocated_total"
-        ]
+        "first_allocation_residual_zero": database["first_batch_unallocated_total"]
         == expected["unallocated_amount"],
         "first_project_amounts_exact": database["first_batch_project_amounts"]
         == expected["project_amounts"],
@@ -855,9 +980,7 @@ def _browser_failure_summary(evidence: Mapping[str, Any]) -> str:
     stage = str(safe_observations.get("stage") or "unknown")
     semantic_stage = str(safe_observations.get("semantic_stage") or "")
     semantic_stage = (
-        semantic_stage
-        if semantic_stage in {"INTENT", "CONTEXT", "PLAN"}
-        else ""
+        semantic_stage if semantic_stage in {"INTENT", "CONTEXT", "PLAN"} else ""
     )
     recent = safe_observations.get("recent_api_responses")
     statuses = []
@@ -866,14 +989,25 @@ def _browser_failure_summary(evidence: Mapping[str, Any]) -> str:
             if not isinstance(item, Mapping):
                 continue
             route = item.get("route") or item.get("route_class") or "other"
-            statuses.append(
-                f"{route}:{item.get('status', 'unknown')}"
-            )
+            statuses.append(f"{route}:{item.get('status', 'unknown')}")
+    progress = []
+    for key in (
+        "progress_state",
+        "progress_sequence",
+        "transaction_index",
+        "poll_count",
+        "approval_count",
+        "pending_gate_count",
+    ):
+        value = safe_observations.get(key)
+        if isinstance(value, (str, int)):
+            progress.append(f"{key}={value}")
     return (
         f"{evidence.get('failure_code', 'unknown')} "
         f"stage={stage} "
         + (f"semantic_stage={semantic_stage} " if semantic_stage else "")
-        + f"responses={','.join(statuses) or 'none'}"
+        + f"responses={','.join(statuses) or 'none'} "
+        + f"progress={','.join(progress) or 'none'}"
     )
 
 

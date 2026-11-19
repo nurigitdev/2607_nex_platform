@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { mkdirSync, renameSync, writeFileSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -18,7 +19,9 @@ const ENV = {
   promptsJson: "NEX_MYBEE_M1_GOLDEN_PROMPTS_JSON",
   recoveryInteractionId: "NEX_MYBEE_M1_GOLDEN_RECOVERY_INTERACTION_ID",
   screenshotDir: "NEX_MYBEE_M1_GOLDEN_SCREENSHOT_DIR",
-  timeoutMs: "NEX_MYBEE_M1_GOLDEN_TIMEOUT_MS"
+  progressPath: "NEX_MYBEE_M1_GOLDEN_PROGRESS_PATH",
+  timeoutMs: "NEX_MYBEE_M1_GOLDEN_TIMEOUT_MS",
+  resultTimeoutMs: "NEX_MYBEE_M1_GOLDEN_RESULT_TIMEOUT_MS"
 };
 const REQUIRED = [
   ENV.webUrl,
@@ -38,6 +41,7 @@ const RECOVERY_REQUIRED = [
 ];
 const SENSITIVE = [ENV.requesterPassword, ENV.approverPassword, ENV.promptsJson];
 const DEFAULT_TIMEOUT_MS = 900_000;
+const DEFAULT_RESULT_TIMEOUT_MS = 900_000;
 
 const UI = Object.freeze({
   loginHeading: "사번 로그인",
@@ -93,6 +97,46 @@ export function parseProductPrompts(raw) {
   return value;
 }
 
+export function journeyProgressReporter(progressPath) {
+  let sequence = 0;
+  let latestDetails = {};
+  return {
+    record(stage, state = "RUNNING", details = {}) {
+      if (!progressPath) return;
+      sequence += 1;
+      latestDetails = { ...latestDetails, ...details };
+      const safeStage = /^[a-z][a-z0-9_]{0,95}$/.test(stage) ? stage : "invalid";
+      const safeState = ["RUNNING", "PASS", "FAIL"].includes(state) ? state : "FAIL";
+      const payload = {
+        schema_version: "mybee_m1_product_journey_progress.v1",
+        state: safeState,
+        stage: safeStage,
+        sequence,
+        recorded_at: new Date().toISOString()
+      };
+      for (const key of [
+        "transaction_index",
+        "poll_count",
+        "approval_count",
+        "pending_gate_count"
+      ]) {
+        const value = latestDetails[key];
+        if (Number.isSafeInteger(value) && value >= 0 && value <= 1_000_000) {
+          payload[key] = value;
+        }
+      }
+      try {
+        mkdirSync(path.dirname(progressPath), { recursive: true });
+        const temporary = `${progressPath}.tmp-${process.pid}`;
+        writeFileSync(temporary, `${JSON.stringify(payload)}\n`, { encoding: "utf8", mode: 0o600 });
+        renameSync(temporary, progressPath);
+      } catch {
+        // Progress evidence must never replace the authoritative journey failure.
+      }
+    }
+  };
+}
+
 export async function runMyBeeM1ProductGoldenJourney({
   environ = process.env,
   importPlaywright = () => import("playwright")
@@ -105,8 +149,13 @@ export async function runMyBeeM1ProductGoldenJourney({
   } catch (error) {
     return failure(safeFailureCode(error));
   }
-  const timeout = positiveTimeout(environ[ENV.timeoutMs]);
+  const actionTimeout = positiveTimeout(environ[ENV.timeoutMs]);
+  const resultTimeout = positiveTimeout(
+    environ[ENV.resultTimeoutMs],
+    DEFAULT_RESULT_TIMEOUT_MS
+  );
   const captures = screenCapture(environ[ENV.screenshotDir], "journey");
+  const progress = journeyProgressReporter(environ[ENV.progressPath]);
   let browser;
   let requesterContext;
   let approverContext;
@@ -116,7 +165,12 @@ export async function runMyBeeM1ProductGoldenJourney({
   let semanticFailureStage = null;
   const responses = [];
   const transactions = [];
+  const markStage = (nextStage, details = {}) => {
+    stage = nextStage;
+    progress.record(stage, "RUNNING", details);
+  };
   try {
+    markStage("launch");
     const playwright = await importPlaywright();
     browser = await launchBrowser(playwright, environ);
     requesterContext = await browser.newContext(contextOptions());
@@ -126,37 +180,37 @@ export async function runMyBeeM1ProductGoldenJourney({
     observeResponses(requester, responses);
     observeResponses(approver, responses);
 
-    stage = "anonymous_boundary";
-    await requester.goto(environ[ENV.webUrl], { waitUntil: "domcontentloaded", timeout });
-    await requester.getByRole("heading", { name: UI.loginHeading }).waitFor({ timeout });
+    markStage("anonymous_boundary");
+    await requester.goto(environ[ENV.webUrl], { waitUntil: "domcontentloaded", timeout: actionTimeout });
+    await requester.getByRole("heading", { name: UI.loginHeading }).waitFor({ timeout: actionTimeout });
     const anonymousProtectedSurfaceHidden =
       (await requester.getByRole("navigation", { name: UI.primaryNavigation }).count()) === 0 &&
       (await requester.getByRole("heading", { name: UI.approvalHeading }).count()) === 0;
     await captures.capture(requester, "login");
 
-    stage = "requester_login";
+    markStage("requester_login");
     await login(requester, {
       tenantId: environ[ENV.tenantId],
       employeeId: environ[ENV.requesterEmployeeId],
       password: environ[ENV.requesterPassword],
-      timeout
+      timeout: actionTimeout
     });
     await captures.capture(requester, "requester-workspace");
 
-    stage = "approver_login";
-    await approver.goto(environ[ENV.webUrl], { waitUntil: "domcontentloaded", timeout });
+    markStage("approver_login");
+    await approver.goto(environ[ENV.webUrl], { waitUntil: "domcontentloaded", timeout: actionTimeout });
     await login(approver, {
       tenantId: environ[ENV.tenantId],
       employeeId: environ[ENV.approverEmployeeId],
       password: environ[ENV.approverPassword],
-      timeout
+      timeout: actionTimeout
     });
     await captures.capture(approver, "approver-workspace");
 
     let workspace = null;
     for (let index = 0; index < prompts.length; index += 1) {
-      stage = `transaction_${index + 1}_submit`;
-      const admitted = await submitPrompt(requester, prompts[index], timeout, {
+      markStage(`transaction_${index + 1}_submit`, { transaction_index: index + 1 });
+      const admitted = await submitPrompt(requester, prompts[index], actionTimeout, {
         observeWorkspace: index === 0
       });
       if (index === 0) {
@@ -175,14 +229,24 @@ export async function runMyBeeM1ProductGoldenJourney({
         throw new Error(apiFailureCode(admitted, `ProductAdmissionStatus${admitted.status}`));
       }
       const interactionId = admitted.payload.interaction_id;
-      stage = `transaction_${index + 1}_approval_and_result`;
+      markStage(`transaction_${index + 1}_approval_and_result`, {
+        transaction_index: index + 1,
+        approval_count: 0,
+        pending_gate_count: 0,
+        poll_count: 0
+      });
       const completed = await driveApprovalsUntilResult({
         requester,
         approver,
         interactionId,
-        timeout,
+        actionTimeout,
+        resultTimeout,
         captures,
-        transactionIndex: index + 1
+        transactionIndex: index + 1,
+        onProgress: details => progress.record(stage, "RUNNING", {
+          transaction_index: index + 1,
+          ...details
+        })
       });
       if (completed.result?.status !== "SUCCEEDED") {
         throw new Error("ProductAgentResultNotSucceeded");
@@ -197,9 +261,9 @@ export async function runMyBeeM1ProductGoldenJourney({
       await captures.capture(requester, `transaction-${index + 1}-result`);
     }
 
-    stage = "logout";
-    await logout(approver, timeout);
-    await logout(requester, timeout);
+    markStage("logout", { transaction_index: transactions.length });
+    await logout(approver, actionTimeout);
+    await logout(requester, actionTimeout);
     await captures.capture(requester, "requester-logged-out");
     const requiredDomains = new Set(["BUSINESS_FORMAL", "ACCOUNTING_REVIEW", "NSL_WRITE"]);
     const observedDomains = new Set(transactions.flatMap(item => item.approval_domains));
@@ -256,9 +320,13 @@ export async function runMyBeeM1ProductGoldenJourney({
         transactions
       }
     };
+    progress.record("completed", "PASS", {
+      transaction_index: transactions.length
+    });
     assertRedacted(evidence, environ);
     return evidence;
   } catch (error) {
+    progress.record(stage, "FAIL");
     const failedPage = stage.startsWith("approver") ? approverPage : requesterPage;
     if (failedPage) {
       try {
@@ -290,7 +358,11 @@ export async function runMyBeeM1ProductPostRestartRecovery({
 } = {}) {
   const missing = RECOVERY_REQUIRED.filter(name => !environ[name]);
   if (missing.length > 0) return failure("recovery_env_missing", { missing_count: missing.length });
-  const timeout = positiveTimeout(environ[ENV.timeoutMs]);
+  const actionTimeout = positiveTimeout(environ[ENV.timeoutMs]);
+  const resultTimeout = positiveTimeout(
+    environ[ENV.resultTimeoutMs],
+    DEFAULT_RESULT_TIMEOUT_MS
+  );
   const captures = screenCapture(environ[ENV.screenshotDir], "recovery");
   let browser;
   let context;
@@ -299,17 +371,20 @@ export async function runMyBeeM1ProductPostRestartRecovery({
     browser = await launchBrowser(playwright, environ);
     context = await browser.newContext(contextOptions());
     const page = await configuredPage(context);
-    await page.goto(environ[ENV.webUrl], { waitUntil: "domcontentloaded", timeout });
+    await page.goto(environ[ENV.webUrl], {
+      waitUntil: "domcontentloaded",
+      timeout: actionTimeout
+    });
     await login(page, {
       tenantId: environ[ENV.tenantId],
       employeeId: environ[ENV.requesterEmployeeId],
       password: environ[ENV.requesterPassword],
-      timeout
+      timeout: actionTimeout
     });
     const projection = await waitForResult(
       page,
       environ[ENV.recoveryInteractionId],
-      timeout
+      resultTimeout
     );
     await captures.capture(page, "recovered-result");
     const checks = {
@@ -347,17 +422,27 @@ async function driveApprovalsUntilResult({
   requester,
   approver,
   interactionId,
-  timeout,
+  actionTimeout,
+  resultTimeout,
   captures,
-  transactionIndex
+  transactionIndex,
+  onProgress = () => {}
 }) {
-  const deadline = Date.now() + timeout;
+  const deadline = Date.now() + resultTimeout;
   const approvalDomains = [];
   const replayStatuses = [];
   const decidedGateIds = new Set();
+  let pollCount = 0;
+  let lastProgressAt = 0;
   while (Date.now() < deadline) {
+    pollCount += 1;
     const current = await readResult(requester, interactionId);
     if (current?.terminal === true) {
+      onProgress({
+        poll_count: pollCount,
+        approval_count: approvalDomains.length,
+        pending_gate_count: 0
+      });
       return { ...current, approvalDomains, replayStatuses };
     }
     const gates = await browserJson(approver, "/ae-api/api/v1/approval-gates?limit=100");
@@ -370,10 +455,15 @@ async function driveApprovalsUntilResult({
     if (pending.length > 1) throw new Error("ApprovalGateAmbiguous");
     if (pending.length === 1) {
       const gate = pending[0];
+      onProgress({
+        poll_count: pollCount,
+        approval_count: approvalDomains.length,
+        pending_gate_count: 1
+      });
       const decision = await decideGateInUi(
         approver,
         gate,
-        timeout,
+        actionTimeout,
         `M1 product acceptance ${transactionIndex}`
       );
       decidedGateIds.add(gate.gate_id);
@@ -383,7 +473,20 @@ async function driveApprovalsUntilResult({
         approver,
         `transaction-${transactionIndex}-approval-${approvalDomains.length}-${gate.approval_domain}`
       );
+      onProgress({
+        poll_count: pollCount,
+        approval_count: approvalDomains.length,
+        pending_gate_count: 0
+      });
       continue;
+    }
+    if (Date.now() - lastProgressAt >= 5_000) {
+      onProgress({
+        poll_count: pollCount,
+        approval_count: approvalDomains.length,
+        pending_gate_count: 0
+      });
+      lastProgressAt = Date.now();
     }
     await requester.waitForTimeout(500);
   }
@@ -586,9 +689,9 @@ function routeClass(route) {
   return "other";
 }
 
-function positiveTimeout(value) {
-  const parsed = Number(value || DEFAULT_TIMEOUT_MS);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_TIMEOUT_MS;
+function positiveTimeout(value, fallback = DEFAULT_TIMEOUT_MS) {
+  const parsed = Number(value || fallback);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
 
 export function apiFailureCode(response, fallback) {

@@ -1,15 +1,48 @@
 import assert from "node:assert/strict";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import test from "node:test";
 
 import {
   apiFailureCode,
   apiSemanticFailureStage,
+  journeyProgressReporter,
   myBeeM1RuntimeConfig,
   myBeeM1ProductJourneyUiContract,
   parseProductPrompts,
   runMyBeeM1ProductGoldenJourney,
   runMyBeeM1ProductPostRestartRecovery
 } from "../scripts/runMyBeeW70CpM1ProductGoldenJourney.mjs";
+
+test("M1 product journey writes only bounded atomic progress evidence", () => {
+  const directory = mkdtempSync(path.join(tmpdir(), "mybee-m1-progress-"));
+  const target = path.join(directory, "progress.json");
+  try {
+    const reporter = journeyProgressReporter(target);
+    reporter.record("transaction_1_approval_and_result", "RUNNING", {
+      transaction_index: 1,
+      poll_count: 12,
+      approval_count: 1,
+      pending_gate_count: 0,
+      private_value: "must-not-be-persisted"
+    });
+    const evidence = JSON.parse(readFileSync(target, "utf8"));
+    assert.equal(evidence.stage, "transaction_1_approval_and_result");
+    assert.equal(evidence.state, "RUNNING");
+    assert.equal(evidence.sequence, 1);
+    assert.equal(evidence.poll_count, 12);
+    assert.equal("private_value" in evidence, false);
+    reporter.record("transaction_1_approval_and_result", "FAIL");
+    const failed = JSON.parse(readFileSync(target, "utf8"));
+    assert.equal(failed.state, "FAIL");
+    assert.equal(failed.sequence, 2);
+    assert.equal(failed.poll_count, 12);
+    assert.equal(failed.approval_count, 1);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
 
 test("M1 product journey preserves bounded API failure codes", () => {
   assert.equal(

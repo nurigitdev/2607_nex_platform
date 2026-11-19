@@ -491,6 +491,18 @@ injection response remains fail-closed. AE Slice Gate and actual
 `nex_ae_test` evidence persistence/cleanup pass without a migration. The final
 DGX-backed installed journey remains required before `.7` can close.
 
+`CP-M1-E2E-FX-01B.7D` implementation evidence is recorded in
+[`mybee_phase1_w70_cp_m1_e2e_fx_01b7d_progress_timeout_hardening.md`](../../slices/mybee_phase1_w70_cp_m1_e2e_fx_01b7d_progress_timeout_hardening.md).
+The post-`.7C` installed run compiled and submitted transaction one but exposed
+an acceptance-runner defect: its 960-second parent timeout included startup and
+could terminate before the browser's 900-second result deadline produced
+diagnostics. `.7D` separates 60-second UI actions from per-transaction
+900-second result windows, derives a 1,980-second parent budget, emits atomic
+redacted progress heartbeats, and captures bounded AE/WC operational states
+before teardown. AE and Web regressions, coverage, and actual AE/WC PostgreSQL
+diagnostic queries pass without a migration. The protected exact-head journey
+must be rerun before `.7` can close.
+
 `CP-M1-E2E-FX-01B.6A.1` implementation evidence is recorded in
 [`mybee_phase1_w70_cp_m1_e2e_fx_01b6a1_refresh_contract_source_resolver.md`](../../slices/mybee_phase1_w70_cp_m1_e2e_fx_01b6a1_refresh_contract_source_resolver.md).
 It closes the canonical protected contract and the mutation-free EOS source

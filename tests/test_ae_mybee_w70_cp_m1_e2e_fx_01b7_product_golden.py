@@ -30,10 +30,11 @@ def test_product_golden_source_admission_uses_installed_m1_registry() -> None:
     assert result["non_identical_positive_request_count"] == 2
     assert result["post_request_direct_transition_allowed"] is False
     assert result["isolated_eight_database_schema_required"] is True
+    assert result["browser_action_timeout_ms"] == 60_000
+    assert result["browser_result_timeout_ms"] == 900_000
+    assert result["browser_process_timeout_seconds"] == 1_980
     assert support.PROJECT_REFERENCE_RESOLVE_SCOPE in support._OA_SCOPES["requester"]
-    assert {"approval:read", "approval:decide"}.issubset(
-        support._OA_SCOPES["approver"]
-    )
+    assert {"approval:read", "approval:decide"}.issubset(support._OA_SCOPES["approver"])
 
 
 def test_product_seed_cannot_delete_public_authority_or_bypass_protection() -> None:
@@ -63,9 +64,10 @@ def test_product_seed_uses_scope_compatible_approval_policies(monkeypatch) -> No
 
     by_type = {value.transaction_type: value for value in policies}
     assert by_type["DOCUMENT_SIGNOFF"].project_id is None
-    assert by_type["ACCOUNTING_POSTING"].project_id == baseline["projects"][0][
-        "project_id"
-    ]
+    assert (
+        by_type["ACCOUNTING_POSTING"].project_id
+        == baseline["projects"][0]["project_id"]
+    )
 
 
 def test_product_golden_execution_is_protected_and_contains_failures() -> None:
@@ -120,7 +122,9 @@ def test_product_acceptance_baseline_is_typed_hash_bound_and_non_identical() -> 
     assert len(support.baseline_digest(baseline)) == 71
     assert len(set(prompts)) == 2
     assert all(baseline["company"]["company_code"] in prompt for prompt in prompts)
-    assert all(project["project_code"] in prompts[0] for project in baseline["projects"])
+    assert all(
+        project["project_code"] in prompts[0] for project in baseline["projects"]
+    )
     assert "USD 10000.00" in prompts[0]
     assert "USD 12000.00" in prompts[1]
 
@@ -151,19 +155,25 @@ def test_product_live_checks_require_exact_product_outcomes() -> None:
     )
 
     assert all(checks.values())
-    assert acceptance._live_checks(
-        browser={"status": "PASS"},
-        database={**database, "journal_count": 3},
-        baseline=baseline,
-    )["two_immutable_journals"] is False
-    assert acceptance._live_checks(
-        browser={"status": "PASS"},
-        database={
-            **database,
-            "first_batch_project_amounts": ["8101200.0000", "5400800.0000"],
-        },
-        baseline=baseline,
-    )["first_project_amounts_exact"] is False
+    assert (
+        acceptance._live_checks(
+            browser={"status": "PASS"},
+            database={**database, "journal_count": 3},
+            baseline=baseline,
+        )["two_immutable_journals"]
+        is False
+    )
+    assert (
+        acceptance._live_checks(
+            browser={"status": "PASS"},
+            database={
+                **database,
+                "first_batch_project_amounts": ["8101200.0000", "5400800.0000"],
+            },
+            baseline=baseline,
+        )["first_project_amounts_exact"]
+        is False
+    )
 
 
 def test_product_semantic_calibration_is_exact_revision_scoped() -> None:
@@ -177,9 +187,7 @@ def test_product_semantic_calibration_is_exact_revision_scoped() -> None:
         "PLAN",
     ]
     assert {item["model_ref"] for item in payload} == {"hf:immutable-revision"}
-    assert {item["model_profile"] for item in payload} == {
-        acceptance.MODEL_PROFILE
-    }
+    assert {item["model_profile"] for item in payload} == {acceptance.MODEL_PROFILE}
 
 
 def test_product_browser_failure_summary_is_bounded_and_body_free() -> None:
@@ -202,7 +210,7 @@ def test_product_browser_failure_summary_is_bounded_and_body_free() -> None:
 
     assert summary == (
         "TimeoutError stage=requester_login semantic_stage=CONTEXT "
-        "responses=auth_session:401"
+        "responses=auth_session:401 progress=none"
     )
     assert "must-not-be-projected" not in summary
 
@@ -214,19 +222,16 @@ def test_product_semantic_runtime_failure_keeps_only_exception_type() -> None:
         "nex-ae-api | protected prompt and token must-not-be-projected\n"
     )
 
-    assert (
-        acceptance._semantic_runtime_failure(
-            logs.replace(
-                "exception_type=GenerationResponseError",
-                "exception_type=GenerationResponseError "
-                "error_code=CANDIDATE_PLAN_INVALID "
-                "diagnostic_code=CONTEXT_RESOURCE_TYPE_IS_INVALID",
-            )
+    assert acceptance._semantic_runtime_failure(
+        logs.replace(
+            "exception_type=GenerationResponseError",
+            "exception_type=GenerationResponseError "
+            "error_code=CANDIDATE_PLAN_INVALID "
+            "diagnostic_code=CONTEXT_RESOURCE_TYPE_IS_INVALID",
         )
-        == (
-            "GenerationResponseError:CANDIDATE_PLAN_INVALID:"
-            "CONTEXT_RESOURCE_TYPE_IS_INVALID"
-        )
+    ) == (
+        "GenerationResponseError:CANDIDATE_PLAN_INVALID:"
+        "CONTEXT_RESOURCE_TYPE_IS_INVALID"
     )
     assert (
         acceptance._semantic_runtime_failure(
@@ -287,11 +292,226 @@ def test_product_runtime_database_failure_summary_is_bounded(tmp_path: Path) -> 
 
     assert acceptance._runtime_database_failure_summary(
         f"sqlite+pysqlite:///{database}", tenant_id="V101"
-    ) == (
-        "execution=FAILED:FINALIZE,"
-        "attempt=FAILED:ae.wc_work_item_http_failed"
-    )
+    ) == ("execution=FAILED:FINALIZE," "attempt=FAILED:ae.wc_work_item_http_failed")
     assert acceptance._diagnostic_token("secret value") == "invalid"
+
+
+def test_product_wc_database_progress_summary_is_bounded(tmp_path: Path) -> None:
+    database = tmp_path / "wc-progress.sqlite"
+    engine = create_engine(f"sqlite+pysqlite:///{database}")
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                "CREATE TABLE wc_work_item (tenant_id TEXT, state TEXT, "
+                "required_agent_type TEXT, updated_at TEXT)"
+            )
+        )
+        connection.execute(
+            text(
+                "CREATE TABLE wc_assignment (tenant_id TEXT, status TEXT, "
+                "agent_type TEXT, updated_at TEXT)"
+            )
+        )
+        connection.execute(
+            text(
+                "CREATE TABLE wc_claim (tenant_id TEXT, state TEXT, "
+                "lease_expires_at TEXT, updated_at TEXT)"
+            )
+        )
+        connection.execute(
+            text(
+                "CREATE TABLE wc_approval_work_item (tenant_id TEXT, state TEXT, "
+                "approval_domain TEXT, created_at TEXT)"
+            )
+        )
+        connection.execute(
+            text(
+                "CREATE TABLE wc_event_outbox (tenant_id TEXT, delivery_state TEXT, "
+                "event_type TEXT, updated_at TEXT)"
+            )
+        )
+        connection.execute(
+            text(
+                "INSERT INTO wc_work_item VALUES "
+                "('V101','IN_PROGRESS','PA','2026-11-18T00:00:00Z')"
+            )
+        )
+        connection.execute(
+            text(
+                "INSERT INTO wc_assignment VALUES "
+                "('V101','ACTIVE','PA','2026-11-18T00:00:00Z')"
+            )
+        )
+        connection.execute(
+            text(
+                "INSERT INTO wc_claim VALUES "
+                "('V101','EXPIRED','2020-01-01T00:00:00Z',"
+                "'2026-11-18T00:00:00Z')"
+            )
+        )
+        connection.execute(
+            text(
+                "INSERT INTO wc_approval_work_item VALUES "
+                "('V101','PENDING','BUSINESS_FORMAL','2026-11-18T00:00:00Z')"
+            )
+        )
+        connection.execute(
+            text(
+                "INSERT INTO wc_event_outbox VALUES "
+                "('V101','DELIVERED','WORK_ITEM_CLAIMED','2026-11-18T00:00:00Z')"
+            )
+        )
+    engine.dispose()
+
+    assert acceptance._wc_database_progress_summary(
+        f"sqlite+pysqlite:///{database}", tenant_id="V101"
+    ) == (
+        "work=IN_PROGRESS:PA,assignment=ACTIVE:PA,claim=EXPIRED:EXPIRED,"
+        "approval=PENDING:BUSINESS_FORMAL,outbox=DELIVERED:WORK_ITEM_CLAIMED"
+    )
+
+
+def test_product_playwright_timeout_returns_last_bounded_progress(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    progress = tmp_path / "progress.json"
+    monkeypatch.setattr(acceptance, "DEFAULT_BROWSER_PROGRESS_REPORT", progress)
+
+    def timeout_run(_arguments, **kwargs):
+        progress.write_text(
+            json.dumps(
+                {
+                    "state": "RUNNING",
+                    "stage": "transaction_1_approval_and_result",
+                    "sequence": 8,
+                    "transaction_index": 1,
+                    "poll_count": 44,
+                    "approval_count": 0,
+                    "pending_gate_count": 0,
+                    "private": "must-not-be-projected",
+                }
+            ),
+            encoding="utf-8",
+        )
+        assert kwargs["timeout"] == acceptance.BROWSER_PROCESS_TIMEOUT_SECONDS
+        assert kwargs["env"]["NEX_MYBEE_M1_GOLDEN_TIMEOUT_MS"] == "60000"
+        assert kwargs["env"]["NEX_MYBEE_M1_GOLDEN_RESULT_TIMEOUT_MS"] == "900000"
+        raise subprocess.TimeoutExpired(_arguments, kwargs["timeout"])
+
+    monkeypatch.setattr(acceptance.subprocess, "run", timeout_run)
+    baseline = {
+        "tenant": {"tenant_id": "V101"},
+        "principals": {
+            "requester": {"employee_id": "8101"},
+            "approver": {"employee_id": "8201"},
+        },
+    }
+
+    result = acceptance._run_playwright(
+        {},
+        baseline=baseline,
+        prompts=("first bounded prompt", "second bounded prompt"),
+        requester_password="private-requester",
+        approver_password="private-approver",
+    )
+
+    assert result["failure_code"] == "PLAYWRIGHT_PROCESS_TIMEOUT"
+    assert result["observations"] == {
+        "stage": "transaction_1_approval_and_result",
+        "progress_state": "RUNNING",
+        "progress_sequence": 8,
+        "transaction_index": 1,
+        "poll_count": 44,
+        "approval_count": 0,
+        "pending_gate_count": 0,
+    }
+    assert "must-not-be-projected" not in json.dumps(result)
+
+
+def test_product_playwright_failure_merges_last_bounded_progress(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    progress = tmp_path / "progress.json"
+    monkeypatch.setattr(acceptance, "DEFAULT_BROWSER_PROGRESS_REPORT", progress)
+
+    def failed_run(_arguments, **_kwargs):
+        progress.write_text(
+            json.dumps(
+                {
+                    "state": "FAIL",
+                    "stage": "transaction_1_approval_and_result",
+                    "sequence": 11,
+                    "transaction_index": 1,
+                    "poll_count": 91,
+                    "approval_count": 2,
+                    "pending_gate_count": 0,
+                    "private": "must-not-be-projected",
+                }
+            ),
+            encoding="utf-8",
+        )
+        return subprocess.CompletedProcess(
+            args=_arguments,
+            returncode=1,
+            stdout=json.dumps(
+                {
+                    "status": "FAIL",
+                    "failure_code": "ProductResultTimeout",
+                    "observations": {
+                        "stage": "transaction_1_approval_and_result",
+                        "recent_api_responses": [],
+                    },
+                }
+            ),
+            stderr="",
+        )
+
+    monkeypatch.setattr(acceptance.subprocess, "run", failed_run)
+    baseline = {
+        "tenant": {"tenant_id": "V101"},
+        "principals": {
+            "requester": {"employee_id": "8101"},
+            "approver": {"employee_id": "8201"},
+        },
+    }
+
+    result = acceptance._run_playwright(
+        {},
+        baseline=baseline,
+        prompts=("first bounded prompt", "second bounded prompt"),
+        requester_password="private-requester",
+        approver_password="private-approver",
+    )
+
+    assert result["failure_code"] == "ProductResultTimeout"
+    assert result["observations"]["progress_state"] == "FAIL"
+    assert result["observations"]["poll_count"] == 91
+    assert result["observations"]["approval_count"] == 2
+    assert "must-not-be-projected" not in json.dumps(result)
+
+
+def test_product_browser_progress_reader_rejects_unbounded_values(
+    tmp_path: Path,
+) -> None:
+    progress = tmp_path / "progress.json"
+    progress.write_text(
+        json.dumps(
+            {
+                "state": "unsafe",
+                "stage": "secret value",
+                "sequence": -1,
+                "poll_count": "private",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    assert acceptance._read_browser_progress(progress) == {
+        "stage": "invalid",
+        "progress_state": "INVALID",
+        "progress_sequence": 0,
+        "poll_count": 0,
+    }
 
 
 def test_product_runtime_log_collection_uses_running_container(
@@ -299,7 +519,9 @@ def test_product_runtime_log_collection_uses_running_container(
 ) -> None:
     calls: list[tuple[str, ...]] = []
 
-    def run(command: tuple[str, ...], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+    def run(
+        command: tuple[str, ...], **_kwargs: object
+    ) -> subprocess.CompletedProcess[str]:
         calls.append(command)
         if command[1] == "ps":
             return subprocess.CompletedProcess(
@@ -329,21 +551,18 @@ def test_product_baseline_rejects_duplicate_projects_and_one_transaction(
     tmp_path: Path,
 ) -> None:
     baseline = support.load_acceptance_baseline()
-    baseline["projects"][1]["project_code"] = baseline["projects"][0][
-        "project_code"
-    ]
+    baseline["projects"][1]["project_code"] = baseline["projects"][0]["project_code"]
     path = tmp_path / "duplicate-project.json"
     path.write_text(json.dumps(baseline), encoding="utf-8")
 
-    with pytest.raises(
-        support.M1ProductAcceptanceSupportError, match="Project codes"
-    ):
+    with pytest.raises(support.M1ProductAcceptanceSupportError, match="Project codes"):
         support.load_acceptance_baseline(path)
 
     baseline = support.load_acceptance_baseline()
     baseline["transactions"] = baseline["transactions"][:1]
     path.write_text(json.dumps(baseline), encoding="utf-8")
     with pytest.raises(
-        support.M1ProductAcceptanceSupportError, match="two Projects and two transactions"
+        support.M1ProductAcceptanceSupportError,
+        match="two Projects and two transactions",
     ):
         support.load_acceptance_baseline(path)
