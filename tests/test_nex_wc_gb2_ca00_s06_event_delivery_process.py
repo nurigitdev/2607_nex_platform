@@ -412,6 +412,15 @@ def test_run_once_preserves_retry_and_wraps_approval_failure(monkeypatch) -> Non
         )
         == "wc.approval_delivery_failed"
     )
+    assert (
+        process._approval_delivery_failure_code(
+            process.ApprovalEventDeliveryError(
+                "ae.business_approval_delivery_failed "
+                "(eos.document_signoff_context_missing)"
+            )
+        )
+        == "eos.document_signoff_context_missing"
+    )
     installed.close()
 
 

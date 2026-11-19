@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import json
 from copy import deepcopy
+from io import BytesIO
 from types import SimpleNamespace
+from urllib.error import HTTPError
 
 import nex_ae_api.approval_decision_event_api as approval_api
 import pytest
@@ -347,6 +350,30 @@ def test_7f_eos_client_configuration_fails_closed(arguments, message) -> None:
         timeout_seconds=120,
     )
     assert client._url == "http://eos/internal/v1/approval-decision-events"
+
+
+def test_7f_eos_client_preserves_bounded_source_problem_code() -> None:
+    def opener(request, **_kwargs):
+        body = BytesIO(
+            json.dumps(
+                {
+                    "error_code": "eos.document_signoff_context_missing",
+                    "detail": "protected domain detail",
+                }
+            ).encode()
+        )
+        raise HTTPError(request.full_url, 409, "conflict", {}, body)
+
+    client = HttpEosBusinessApprovalDecisionClient(
+        base_url="http://eos",
+        service_token="token",
+        opener=opener,
+    )
+    with pytest.raises(ApprovalDecisionEventError) as caught:
+        client.ingest(_delivery())
+    assert caught.value.error_code == "ae.business_approval_delivery_failed"
+    assert "eos.document_signoff_context_missing" in caught.value.detail
+    assert "protected domain detail" not in caught.value.detail
 
 
 def test_7f_typed_receipt_schema_and_state_admission() -> None:

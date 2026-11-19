@@ -410,6 +410,23 @@ def test_product_wc_delivery_failure_summary_is_bounded() -> None:
     )
     assert (
         acceptance._wc_delivery_failure_summary(
+            "ae.business_approval_delivery_failed "
+            "(eos.document_signoff_context_missing)",
+            returncode=2,
+        )
+        == "eos.document_signoff_context_missing"
+    )
+    assert (
+        acceptance._wc_delivery_failure_summary(
+            '{"detail":"WC approval event delivery failed: '
+            'wc.approval_delivery_failed","failure_code":'
+            '"wc.event_delivery_process.unavailable"}',
+            returncode=2,
+        )
+        == "wc.approval_delivery_failed"
+    )
+    assert (
+        acceptance._wc_delivery_failure_summary(
             "Traceback\nWcEventDeliveryProcessError: bounded detail",
             returncode=1,
         )

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
 from typing import Any, Protocol
@@ -196,9 +197,12 @@ class HttpEosBusinessApprovalDecisionClient:
             with self._opener(request, timeout=self._timeout_seconds) as response:
                 result = json.loads(response.read().decode("utf-8"))
         except HTTPError as exc:
+            problem = _http_problem(exc)
+            source_code = problem.get("error_code")
             raise ApprovalDecisionEventError(
                 "ae.business_approval_delivery_failed",
-                f"EOS business approval delivery failed with HTTP {exc.code}.",
+                f"EOS business approval delivery failed with HTTP {exc.code}"
+                f"{f' ({source_code})' if source_code else ''}.",
                 status_code=503 if exc.code >= 500 else 409,
                 retryable=exc.code >= 500,
             ) from exc
@@ -562,6 +566,21 @@ def _datetime(value: object) -> datetime:
     if parsed.tzinfo is None:
         raise _invalid("Approval delivery decided_at must be timezone-aware.")
     return parsed.astimezone(UTC)
+
+
+def _http_problem(exc: HTTPError) -> dict[str, str]:
+    try:
+        payload = json.loads(exc.read().decode("utf-8"))
+    except (AttributeError, UnicodeDecodeError, json.JSONDecodeError):
+        return {}
+    if not isinstance(payload, Mapping):
+        return {}
+    value = payload.get("error_code")
+    if not isinstance(value, str) or not re.fullmatch(
+        r"[A-Za-z][A-Za-z0-9_.-]{0,95}", value
+    ):
+        return {}
+    return {"error_code": value}
 
 
 def _invalid(detail: str) -> ApprovalDecisionEventError:
