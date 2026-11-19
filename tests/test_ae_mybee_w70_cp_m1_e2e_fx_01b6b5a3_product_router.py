@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -40,13 +41,17 @@ from nex_ae_api.runtime_composition import (
     RuntimeExecutorProfile,
     build_installed_runtime_composition,
 )
-from nex_ae_api.runtime_jobs import RuntimeJobClaim
+from nex_ae_api.runtime_jobs import (
+    RuntimeJobClaim,
+    RuntimeJobError,
+    SqlAlchemyRuntimeJobQueue,
+)
 from nex_ae_api.runtime_resume import ResumeRoute
 from nex_ae_api.semantic_candidate_admission import SemanticCandidateAdmissionError
 from nex_ae_api.semantic_candidates import SemanticCandidateStageError
 from nex_ae_api.step_executors import P5StepExecutorRegistry
 from nex_runtime.semantic_hashes import semantic_sha256_hash_ref
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 from test_ae_p65_s5_candidate_admission_compile import (
     _components as _semantic_components,
@@ -182,6 +187,29 @@ class _ResumeService:
             "event_state": "MATCHED",
             "wait_state": "RESUME_QUEUED",
             "resume_runtime_job_id": "runtime-job-product",
+        }
+
+
+class _RuntimeJobs:
+    def __init__(self, *, complete_error=None, fail_error=None) -> None:
+        self.complete_error = complete_error
+        self.fail_error = fail_error
+        self.complete_calls = []
+        self.fail_calls = []
+
+    def complete(self, **values):
+        self.complete_calls.append(values)
+        if self.complete_error is not None:
+            raise self.complete_error
+        return {"state": "DONE", "attempt_no": 1}
+
+    def fail(self, **values):
+        self.fail_calls.append(values)
+        if self.fail_error is not None:
+            raise self.fail_error
+        return {
+            "state": "QUEUED" if values.get("retry_at") else "FAILED",
+            "attempt_no": 1,
         }
 
 
@@ -969,18 +997,224 @@ def test_product_assignment_resumes_and_only_activates_exact_ready_state(ready) 
     registry, registration, coordinator, activation, runtime = _runtime(ready=ready)
     route = _route(registration)
     inputs = _inputs(registration)
+    runtime_jobs = _RuntimeJobs()
     handler = InstalledProductCoordinatorAssignmentHandler(
         route_source=_RouteSource(route),
         lineage_source=_LineageSource(inputs),
         runtimes=InstalledProductCoordinatorRuntimeRegistry(registry, (runtime,)),
+        runtime_jobs=runtime_jobs,
+        clock=lambda: datetime(2026, 11, 20, 1, 0, tzinfo=UTC),
     )
 
     result = handler(_assignment())
 
     assert result["ready"] is ready
+    assert result["runtime_job_state"] == "DONE"
+    assert result["runtime_job_attempt_no"] == 1
     assert len(coordinator.resume_calls) == 1
     assert len(activation.calls) == int(ready)
     assert (result["activation"] is not None) is ready
+    assert runtime_jobs.complete_calls == [
+        {
+            "tenant_id": TENANT,
+            "runtime_job_id": "runtime-job-product",
+            "worker_id": "worker-1",
+            "lease_token": "lease-1",
+            "now": "2026-11-20T01:00:00Z",
+        }
+    ]
+    assert runtime_jobs.fail_calls == []
+
+
+@pytest.mark.parametrize(
+    ("error", "retry_at", "retry_ref", "error_ref"),
+    (
+        (
+            ProductPlanningRuntimeError("product.unavailable", "unavailable", True),
+            "2026-11-20T01:00:05Z",
+            "ae.product_coordinator.retryable",
+            "product.unavailable",
+        ),
+        (ValueError("invalid Product state"), None, None, "ae.product_coordinator_assignment_failed"),
+    ),
+)
+def test_product_assignment_settles_failure_with_bounded_retry_policy(
+    error, retry_at, retry_ref, error_ref
+) -> None:
+    registry, registration, coordinator, _activation, runtime = _runtime()
+    coordinator.resume_approval = lambda **_values: (_ for _ in ()).throw(error)
+    runtime_jobs = _RuntimeJobs()
+    handler = InstalledProductCoordinatorAssignmentHandler(
+        route_source=_RouteSource(_route(registration)),
+        lineage_source=_LineageSource(_inputs(registration)),
+        runtimes=InstalledProductCoordinatorRuntimeRegistry(registry, (runtime,)),
+        runtime_jobs=runtime_jobs,
+        clock=lambda: datetime(2026, 11, 20, 1, 0, tzinfo=UTC),
+    )
+
+    with pytest.raises(type(error), match=str(error)):
+        handler(_assignment())
+
+    assert runtime_jobs.complete_calls == []
+    assert runtime_jobs.fail_calls == [
+        {
+            "tenant_id": TENANT,
+            "runtime_job_id": "runtime-job-product",
+            "worker_id": "worker-1",
+            "lease_token": "lease-1",
+            "now": "2026-11-20T01:00:00Z",
+            "error_ref": error_ref,
+            "retry_at": retry_at,
+            "retry_disposition_ref": retry_ref,
+            "max_attempts": 3,
+        }
+    ]
+
+
+def test_product_assignment_preserves_stale_lease_completion_fencing() -> None:
+    registry, registration, _coordinator, _activation, runtime = _runtime()
+    stale = RuntimeJobError(
+        "ae.runtime_job_stale_lease",
+        "RuntimeJob completion requires its current unexpired worker lease.",
+        True,
+    )
+    runtime_jobs = _RuntimeJobs(complete_error=stale)
+    handler = InstalledProductCoordinatorAssignmentHandler(
+        route_source=_RouteSource(_route(registration)),
+        lineage_source=_LineageSource(_inputs(registration)),
+        runtimes=InstalledProductCoordinatorRuntimeRegistry(registry, (runtime,)),
+        runtime_jobs=runtime_jobs,
+        clock=lambda: datetime(2026, 11, 20, 1, 0, tzinfo=UTC),
+    )
+
+    with pytest.raises(RuntimeJobError) as captured:
+        handler(_assignment())
+
+    assert captured.value.error_code == "ae.runtime_job_stale_lease"
+    assert len(runtime_jobs.complete_calls) == 1
+    assert runtime_jobs.fail_calls == []
+
+
+@pytest.mark.parametrize(
+    "runtime_jobs",
+    (
+        SimpleNamespace(fail=lambda **_values: None),
+        SimpleNamespace(complete=lambda **_values: None),
+    ),
+)
+def test_product_assignment_requires_complete_runtime_job_settlement_authority(
+    runtime_jobs,
+) -> None:
+    registry, registration, _coordinator, _activation, runtime = _runtime()
+
+    with pytest.raises(ProductPlanningRuntimeError, match="authority is unavailable"):
+        InstalledProductCoordinatorAssignmentHandler(
+            route_source=_RouteSource(_route(registration)),
+            lineage_source=_LineageSource(_inputs(registration)),
+            runtimes=InstalledProductCoordinatorRuntimeRegistry(registry, (runtime,)),
+            runtime_jobs=runtime_jobs,
+        )
+
+
+def test_product_assignment_rejects_naive_settlement_clock() -> None:
+    registry, registration, _coordinator, _activation, runtime = _runtime()
+    runtime_jobs = _RuntimeJobs()
+    handler = InstalledProductCoordinatorAssignmentHandler(
+        route_source=_RouteSource(_route(registration)),
+        lineage_source=_LineageSource(_inputs(registration)),
+        runtimes=InstalledProductCoordinatorRuntimeRegistry(registry, (runtime,)),
+        runtime_jobs=runtime_jobs,
+        clock=lambda: datetime(2026, 11, 20, 1, 0),  # noqa: DTZ001
+    )
+
+    with pytest.raises(ProductPlanningRuntimeError, match="timezone-aware"):
+        handler(_assignment())
+
+    assert runtime_jobs.complete_calls == []
+    assert runtime_jobs.fail_calls == []
+
+
+def test_product_assignment_settles_actual_runtime_job_and_attempt() -> None:
+    engine = create_engine("sqlite+pysqlite:///:memory:")
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                "CREATE TABLE ae_agent_execution ("
+                "tenant_id TEXT NOT NULL, agent_execution_id TEXT NOT NULL, "
+                "PRIMARY KEY (tenant_id, agent_execution_id))"
+            )
+        )
+        connection.execute(
+            text(
+                "CREATE TABLE ae_runtime_job ("
+                "tenant_id TEXT NOT NULL, runtime_job_id TEXT NOT NULL, "
+                "job_type TEXT NOT NULL, execution_id TEXT NOT NULL, "
+                "executable_step_id TEXT, wait_id TEXT, reconciliation_id TEXT, "
+                "result_delivery_id TEXT, publication_reconciliation_id TEXT, "
+                "state TEXT NOT NULL, dedup_key TEXT NOT NULL, attempt_no INTEGER NOT NULL, "
+                "run_after TEXT NOT NULL, lease_owner TEXT, lease_token TEXT, "
+                "lease_until TEXT, payload_json TEXT NOT NULL, correlation_id TEXT NOT NULL, "
+                "causation_id TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, "
+                "PRIMARY KEY (tenant_id, runtime_job_id), UNIQUE (tenant_id, dedup_key))"
+            )
+        )
+        connection.execute(
+            text(
+                "CREATE TABLE ae_runtime_job_attempt ("
+                "attempt_id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, "
+                "runtime_job_id TEXT NOT NULL, attempt_no INTEGER NOT NULL, "
+                "worker_id TEXT NOT NULL, lease_token TEXT NOT NULL, "
+                "started_at TEXT NOT NULL, ended_at TEXT, outcome TEXT NOT NULL, "
+                "error_ref TEXT, retry_disposition_ref TEXT, "
+                "UNIQUE (tenant_id, runtime_job_id, attempt_no))"
+            )
+        )
+        connection.execute(
+            text(
+                "INSERT INTO ae_agent_execution (tenant_id, agent_execution_id) "
+                "VALUES (:tenant_id, :execution_id)"
+            ),
+            {"tenant_id": TENANT, "execution_id": EXECUTION_ID},
+        )
+    jobs = SqlAlchemyRuntimeJobQueue(sessionmaker(engine))
+    jobs.enqueue_unique(
+        tenant_id=TENANT,
+        runtime_job_id="runtime-job-product",
+        job_type="RESUME_EXECUTION",
+        execution_id=EXECUTION_ID,
+        wait_id="wait-product",
+        resume_target_kind="PRODUCT_COORDINATOR",
+        dedup_key="product-resume:settlement",
+        run_after="2026-11-20T01:00:00Z",
+        payload={},
+        correlation_id=EXECUTION_ID,
+        now="2026-11-20T01:00:00Z",
+    )
+    claim = jobs.claim(
+        tenant_id=TENANT,
+        worker_id="worker-1",
+        lease_seconds=600,
+        now="2026-11-20T01:00:00Z",
+    )
+    assert claim is not None
+    assignment = replace(
+        _assignment(),
+        claim=replace(claim, assignment_kind="PRODUCT_COORDINATOR"),
+    )
+    registry, registration, _coordinator, _activation, runtime = _runtime()
+    handler = InstalledProductCoordinatorAssignmentHandler(
+        route_source=_RouteSource(_route(registration)),
+        lineage_source=_LineageSource(_inputs(registration)),
+        runtimes=InstalledProductCoordinatorRuntimeRegistry(registry, (runtime,)),
+        runtime_jobs=jobs,
+        clock=lambda: datetime(2026, 11, 20, 1, 1, tzinfo=UTC),
+    )
+
+    result = handler(assignment)
+
+    assert result["runtime_job_state"] == "DONE"
+    assert jobs.get(TENANT, "runtime-job-product")["state"] == "DONE"
+    assert jobs.list_attempts(TENANT, "runtime-job-product")[0]["outcome"] == "DONE"
 
 
 def test_product_event_admission_persists_then_schedules_generalized_resume() -> None:
@@ -1009,6 +1243,32 @@ def test_product_event_admission_persists_then_schedules_generalized_resume() ->
     assert result["wait_state"] == "RESUME_QUEUED"
     assert len(coordinator.event_calls) == 1
     assert resume.calls == [{"tenant_id": TENANT, "event_id": "approval-event"}]
+
+
+def test_product_event_admission_rejects_unknown_authority_state() -> None:
+    registry, registration, coordinator, _activation, runtime = _runtime()
+    admission = InstalledProductPlanningEventAdmission(
+        runtimes=InstalledProductCoordinatorRuntimeRegistry(registry, (runtime,)),
+        resume_service=_ResumeService(),
+    )
+
+    with pytest.raises(ProductPlanningRuntimeError, match="authority state is invalid"):
+        admission.ingest(
+            {
+                "tenant_id": TENANT,
+                "coordinator_id": registration.coordinator_id,
+                "coordinator_version": registration.coordinator_version,
+                "coordinator_registration_hash": registration.registration_hash,
+                "checkpoint_id": CHECKPOINT_ID,
+                "event_id": "approval-event",
+                "notification_ref": "eos-event://approval-event",
+                "authority_evidence_ref": "eos-evidence://approval-event",
+                "authority_state": "PENDING",
+                "received_at": "2026-11-18T01:00:00Z",
+            }
+        )
+
+    assert coordinator.event_calls == []
 
 
 def test_one_factory_installs_same_product_handler_in_generic_worker() -> None:
@@ -1171,6 +1431,7 @@ def test_router_and_handler_reject_invalid_product_shapes() -> None:
         route_source=_RouteSource(_route(registration)),
         lineage_source=_LineageSource(_inputs(registration)),
         runtimes=runtimes,
+        runtime_jobs=_RuntimeJobs(),
     )
     with pytest.raises(ProductPlanningRuntimeError, match="another assignment kind"):
         handler(replace(_assignment(), assignment_kind="EXECUTABLE_STEP"))

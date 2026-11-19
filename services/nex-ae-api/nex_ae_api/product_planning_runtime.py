@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from types import MappingProxyType
 from typing import Any, Protocol
 
@@ -28,6 +28,8 @@ from nex_ae_api.work_intent import SqlAlchemyWorkIntentRepository
 
 PRODUCT_PLANNING_ADMISSION_SCHEMA_VERSION = "ae.product_planning_admission.v1"
 PRODUCT_COORDINATOR_ASSIGNMENT_SCHEMA_VERSION = "ae.product_coordinator_assignment.v1"
+PRODUCT_COORDINATOR_RETRY_DELAY_SECONDS = 5
+PRODUCT_COORDINATOR_MAX_ATTEMPTS = 3
 
 
 @dataclass
@@ -54,6 +56,12 @@ class ProductPlanActivation(Protocol):
     registration: ProductPlanningCoordinatorRegistration
 
     def activate(self, **values: Any) -> Mapping[str, Any]: ...
+
+
+class ProductRuntimeJobSettlement(Protocol):
+    def complete(self, **values: Any) -> Mapping[str, Any]: ...
+
+    def fail(self, **values: Any) -> Mapping[str, Any]: ...
 
 
 @dataclass(frozen=True)
@@ -431,14 +439,41 @@ class InstalledProductCoordinatorAssignmentHandler:
         route_source: SqlAlchemyResumeRouteSource,
         lineage_source: SqlAlchemyProductPlanningLineageSource,
         runtimes: InstalledProductCoordinatorRuntimeRegistry,
+        runtime_jobs: ProductRuntimeJobSettlement,
+        clock: Callable[[], datetime] | None = None,
     ) -> None:
         self._routes = route_source
         self._lineage = lineage_source
         self._runtimes = runtimes
+        if not callable(getattr(runtime_jobs, "complete", None)) or not callable(
+            getattr(runtime_jobs, "fail", None)
+        ):
+            raise _invalid("Product RuntimeJob settlement authority is unavailable.")
+        self._runtime_jobs = runtime_jobs
+        self._clock = clock or (lambda: datetime.now(UTC))
 
     def __call__(self, assignment: AgentRuntimeAssignment) -> Mapping[str, Any]:
         if assignment.assignment_kind != "PRODUCT_COORDINATOR":
             raise _invalid("Product handler received another assignment kind.")
+        try:
+            result = self._execute(assignment)
+        except Exception as exc:
+            self._settle_failure(assignment, exc)
+            raise
+        settled = self._runtime_jobs.complete(
+            tenant_id=assignment.tenant_id,
+            runtime_job_id=assignment.runtime_job_id,
+            worker_id=assignment.claim.job["lease_owner"],
+            lease_token=assignment.claim.job["lease_token"],
+            now=self._now(),
+        )
+        return {
+            **result,
+            "runtime_job_state": settled["state"],
+            "runtime_job_attempt_no": settled["attempt_no"],
+        }
+
+    def _execute(self, assignment: AgentRuntimeAssignment) -> dict[str, Any]:
         route = self._routes.resolve(
             tenant_id=assignment.tenant_id,
             runtime_job_id=assignment.runtime_job_id,
@@ -483,6 +518,38 @@ class InstalledProductCoordinatorAssignmentHandler:
             "activation": None if activation is None else dict(activation),
             "content_included": False,
         }
+
+    def _settle_failure(
+        self, assignment: AgentRuntimeAssignment, error: Exception
+    ) -> None:
+        observed_at = self._clock().astimezone(UTC)
+        retryable = bool(getattr(error, "retryable", False))
+        error_code = getattr(error, "error_code", None)
+        if not isinstance(error_code, str) or not error_code.strip():
+            error_code = "ae.product_coordinator_assignment_failed"
+        self._runtime_jobs.fail(
+            tenant_id=assignment.tenant_id,
+            runtime_job_id=assignment.runtime_job_id,
+            worker_id=assignment.claim.job["lease_owner"],
+            lease_token=assignment.claim.job["lease_token"],
+            now=_datetime_timestamp(observed_at),
+            error_ref=error_code,
+            retry_at=(
+                _datetime_timestamp(
+                    observed_at
+                    + timedelta(seconds=PRODUCT_COORDINATOR_RETRY_DELAY_SECONDS)
+                )
+                if retryable
+                else None
+            ),
+            retry_disposition_ref=(
+                "ae.product_coordinator.retryable" if retryable else None
+            ),
+            max_attempts=PRODUCT_COORDINATOR_MAX_ATTEMPTS,
+        )
+
+    def _now(self) -> str:
+        return _datetime_timestamp(self._clock())
 
 
 class InstalledProductPlanningEventAdmission:
@@ -572,29 +639,32 @@ def build_installed_product_planning_composition(
     coordinator_registry: ProductPlanningCoordinatorRegistry,
     runtimes: Sequence[InstalledProductCoordinatorRuntime] = (),
 ) -> InstalledProductPlanningComposition:
+    from nex_ae_api.runtime_jobs import SqlAlchemyRuntimeJobQueue
+
     runtime_registry = InstalledProductCoordinatorRuntimeRegistry(
         coordinator_registry, runtimes
     )
     router = PublicProductPlanningRouter(coordinator_registry, runtime_registry)
+    runtime_jobs = SqlAlchemyRuntimeJobQueue(sessions)
     handler = (
         InstalledProductCoordinatorAssignmentHandler(
             route_source=SqlAlchemyResumeRouteSource(sessions),
             lineage_source=SqlAlchemyProductPlanningLineageSource(sessions),
             runtimes=runtime_registry,
+            runtime_jobs=runtime_jobs,
         )
         if runtime_registry.identities
         else None
     )
     event_admission = None
     if runtime_registry.identities:
-        from nex_ae_api.runtime_jobs import SqlAlchemyRuntimeJobQueue
         from nex_ae_api.runtime_resume import SqlAlchemyProductPreparationResumeService
 
         event_admission = InstalledProductPlanningEventAdmission(
             runtimes=runtime_registry,
             resume_service=SqlAlchemyProductPreparationResumeService(
                 sessions,
-                runtime_jobs=SqlAlchemyRuntimeJobQueue(sessions),
+                runtime_jobs=runtime_jobs,
             ),
         )
     return InstalledProductPlanningComposition(
@@ -767,6 +837,12 @@ def _text(value: object, field: str) -> str:
     if not isinstance(value, str) or not value.strip():
         raise _invalid(f"{field} is required.")
     return value.strip()
+
+
+def _datetime_timestamp(value: datetime) -> str:
+    if not isinstance(value, datetime) or value.tzinfo is None:
+        raise _invalid("Product RuntimeJob settlement clock must be timezone-aware.")
+    return value.astimezone(UTC).isoformat().replace("+00:00", "Z")
 
 
 def _authority_state(value: object) -> str:

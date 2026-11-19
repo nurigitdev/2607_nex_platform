@@ -553,10 +553,21 @@ used the general 60-second RuntimeJob lease and accumulated repeated
 `LEASE_EXPIRED` attempts during synchronous Qwen3.5-9B work. `.7G` preserves
 the 60-second library default while explicitly admitting a bounded 600-second
 canonical Product worker lease, exposes the effective value in startup
-evidence, and rejects source, rendered-Compose, or deployment-audit drift. No
-migration, public API, queue, or asynchronous path is added. One exact-head
-protected journey during an idle DGX window remains required before `.7`
-closure.
+evidence, and rejects source, rendered-Compose, or deployment-audit drift. Its
+exact-head protected rerun proved the 600-second policy and live provider
+success, then exposed the separate missing Product RuntimeJob settlement
+boundary. No migration, public API, queue, or asynchronous path is added.
+
+`CP-M1-E2E-FX-01B.7H` implementation evidence is recorded in
+[`mybee_phase1_w70_cp_m1_e2e_fx_01b7h_product_runtime_job_settlement.md`](../../slices/mybee_phase1_w70_cp_m1_e2e_fx_01b7h_product_runtime_job_settlement.md).
+It makes the installed Product assignment handler the explicit settlement
+authority for its existing RuntimeJob. Success is completed under the current
+lease token, retryable failures use the existing bounded queue retry contract,
+non-retryable failures become terminal, and stale-token completion remains
+fail-closed. Plan, compiler, step, and `RESULT_VERIFY` semantics remain
+unchanged. Actual `nex_ae_test` proves both approval resume jobs reach `DONE`
+before the existing scheduler creates the first executable-step job. One
+exact-head protected installed journey remains before `.7` closure.
 
 `CP-M1-E2E-FX-01B.6A.1` implementation evidence is recorded in
 [`mybee_phase1_w70_cp_m1_e2e_fx_01b6a1_refresh_contract_source_resolver.md`](../../slices/mybee_phase1_w70_cp_m1_e2e_fx_01b6a1_refresh_contract_source_resolver.md).
