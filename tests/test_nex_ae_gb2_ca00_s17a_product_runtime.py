@@ -199,6 +199,38 @@ def test_product_runtime_deployment_audit_passes_and_detects_residue(
         "EOS",
     ]
 
+    lease_drift_root = tmp_path / "lease-drift"
+    for relative in (
+        "deployment/compose",
+        "deployment/oci",
+        "scripts/deployment",
+        "services/nex-ae-api/nex_ae_api",
+        "deployment/locks",
+        "deployment/environments",
+    ):
+        (lease_drift_root / relative).mkdir(parents=True, exist_ok=True)
+    for relative in (
+        *ACTIVE_DEPLOYMENT_PATHS,
+        *CANONICAL_DEPLOYMENT_ENTRYPOINTS,
+        *LEGACY_DEPLOYMENT_WRAPPERS,
+        *PRODUCT_RUNTIME_PATHS,
+        "deployment/environments/ae-product-capability-registry.mybee-m1.v2.json",
+    ):
+        target = lease_drift_root / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes((ROOT / relative).read_bytes())
+    lease_compose = lease_drift_root / "deployment/compose/canonical-platform.override.yaml"
+    lease_compose.write_text(
+        lease_compose.read_text(encoding="utf-8").replace(
+            'NEX_AE_AGENT_WORKER_LEASE_SECONDS: "600"',
+            'NEX_AE_AGENT_WORKER_LEASE_SECONDS: "60"',
+        ),
+        encoding="utf-8",
+    )
+    lease_failed = audit_product_runtime_deployment(lease_drift_root)
+    assert lease_failed["status"] == "FAIL"
+    assert "AE worker product lease policy has drifted" in lease_failed["issues"]
+
     for relative in (
         "deployment/compose",
         "deployment/oci",

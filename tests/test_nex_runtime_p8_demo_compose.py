@@ -153,6 +153,9 @@ def _canonical_rendered() -> dict:
     rendered["services"]["nex-wc-assignment-dispatch-worker"]["environment"][
         "NEX_WC_CLAIM_LEASE_SECONDS"
     ] = "600"
+    rendered["services"]["nex-ae-agent-runtime-worker"]["environment"][
+        "NEX_AE_AGENT_WORKER_LEASE_SECONDS"
+    ] = "600"
     rendered["services"]["nex-wc-event-delivery-worker"]["environment"].update(
         {
             "NEX_WC_CLAIM_LEASE_SECONDS": "600",
@@ -203,6 +206,12 @@ def test_demo_compose_sources_are_exact_and_secret_free() -> None:
     assert (
         overlay["services"]["nex-wc-assignment-dispatch-worker"]["environment"][
             "NEX_WC_CLAIM_LEASE_SECONDS"
+        ]
+        == "600"
+    )
+    assert (
+        overlay["services"]["nex-ae-agent-runtime-worker"]["environment"][
+            "NEX_AE_AGENT_WORKER_LEASE_SECONDS"
         ]
         == "600"
     )

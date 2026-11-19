@@ -58,6 +58,7 @@ _IMAGE_ENV_BY_ARTIFACT = {
     "nex-ae-web": "NEX_AE_WEB_IMAGE",
 }
 _IMMUTABLE_IMAGE = re.compile(r"^[^@\s]+@sha256:[0-9a-f]{64}$")
+_CANONICAL_AE_WORKER_LEASE_SECONDS = "600"
 _SHA256 = re.compile(r"^sha256:[0-9a-f]{64}$")
 _LOCAL_TAG = re.compile(r"^(?P<repository>[^@\s]+):(?P<tag>[A-Za-z0-9_.-]+)$")
 _AE_REQUIRED_PLANNING_ENVIRONMENT = {
@@ -152,6 +153,11 @@ def admit_demo_compose_sources(
     )
     if observed_executors != _AE_INSTALLED_WORKER_EXECUTORS:
         errors.append("Demo AE installed worker executor profile drift")
+    if (
+        str(ae_worker_environment.get("NEX_AE_AGENT_WORKER_LEASE_SECONDS") or "")
+        != _CANONICAL_AE_WORKER_LEASE_SECONDS
+    ):
+        errors.append("Demo AE installed worker lease policy drift")
     if "_TEST_DATABASE_URL" in overlay_text or "nuri1004" in overlay_text:
         errors.append("Demo Compose contains a test or raw database credential")
 

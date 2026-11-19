@@ -85,6 +85,10 @@ def test_current_runtime_and_catalog_have_exact_process_coverage() -> None:
     assert "nex-wc-assignment-dispatch-worker" in process_ids
     assert "nex-wc-event-delivery-worker" in process_ids
     assert "nex-eos-outbox-publisher" in process_ids
+    ae_worker = next(
+        item for item in manifest.processes if item.process_id == "nex-ae-agent-runtime-worker"
+    )
+    assert "NEX_AE_AGENT_WORKER_LEASE_SECONDS" in ae_worker.environment_names
 
 
 def test_current_packaged_entrypoints_reuse_promoted_service_modules() -> None:

@@ -45,6 +45,7 @@ DEFAULT_IMAGE_REPORT = (
     ROOT / "reports/deployment/canonical-platform-oci-image-build.json"
 )
 DEFAULT_REPORT = ROOT / "reports/deployment/canonical-platform-compose-render.json"
+CANONICAL_AE_WORKER_LEASE_SECONDS = 600
 
 
 def check_canonical_platform_compose(
@@ -185,6 +186,17 @@ def _admit_rendered_canonical_compose(
             raise TypeError(f"canonical process is missing: {process_id}")
         if service.get("restart") != "unless-stopped" or "ports" in service:
             raise ValueError(f"canonical process policy drift: {process_id}")
+    ae_worker = services.get("nex-ae-agent-runtime-worker")
+    if not isinstance(ae_worker, Mapping):
+        raise TypeError("canonical AE Agent Runtime worker is missing")
+    ae_worker_environment = ae_worker.get("environment")
+    if not isinstance(ae_worker_environment, Mapping):
+        raise TypeError("canonical AE Agent Runtime worker environment is missing")
+    ae_worker_lease = int(
+        str(ae_worker_environment.get("NEX_AE_AGENT_WORKER_LEASE_SECONDS") or "0")
+    )
+    if ae_worker_lease != CANONICAL_AE_WORKER_LEASE_SECONDS:
+        raise ValueError("canonical AE Agent Runtime worker lease policy drift")
     assignment_dispatcher = services.get("nex-wc-assignment-dispatch-worker")
     if not isinstance(assignment_dispatcher, Mapping):
         raise TypeError("canonical assignment dispatcher is missing")

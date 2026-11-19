@@ -296,6 +296,7 @@ services:
       NEX_AE_OBJECT_STORAGE_SECRET_KEY_REF: secret://openbao/nex-platform/staging/nex-ae-api/NEX_AE_OBJECT_STORAGE_SECRET_KEY@${NEX_CANONICAL_PLATFORM_SECRET_VERSION:-v1}
       NEX_AE_AGENT_WORKER_MODE: enabled
       NEX_AE_AGENT_WORKER_ID: ae-product-agent-runtime-1
+      NEX_AE_AGENT_WORKER_LEASE_SECONDS: "600"
       NEX_AE_PRODUCT_RUNTIME_PROFILE: VERIFIED_PRODUCT_RELEASE
       NEX_AE_PRODUCT_REPOSITORY_ROOT: /app/deployment/product/repository
       NEX_AE_M1_REPOSITORY_ROOT: /app/deployment/product/repository

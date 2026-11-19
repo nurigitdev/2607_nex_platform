@@ -117,16 +117,21 @@ def audit_product_runtime_deployment(root: Path = ROOT) -> dict[str, Any]:
     worker_environment = worker.get("environment")
     if not isinstance(worker_environment, Mapping):
         issues.append("AE worker environment is unavailable")
-    elif str(worker_environment.get("NEX_AE_AGENT_WORKER_EXECUTOR_KINDS") or "").split(
-        ","
-    ) != [
-        "DETERMINISTIC_AGGREGATE",
-        "DETERMINISTIC_REPORT",
-        "LOCAL_SKILL",
-        "P4_CHAT_RAG_COMPATIBILITY",
-        "WC_DELEGATE_WORK",
-    ]:
-        issues.append("AE worker product executor profile is incomplete")
+    else:
+        if str(
+            worker_environment.get("NEX_AE_AGENT_WORKER_EXECUTOR_KINDS") or ""
+        ).split(",") != [
+            "DETERMINISTIC_AGGREGATE",
+            "DETERMINISTIC_REPORT",
+            "LOCAL_SKILL",
+            "P4_CHAT_RAG_COMPATIBILITY",
+            "WC_DELEGATE_WORK",
+        ]:
+            issues.append("AE worker product executor profile is incomplete")
+        if str(
+            worker_environment.get("NEX_AE_AGENT_WORKER_LEASE_SECONDS") or ""
+        ) != "600":
+            issues.append("AE worker product lease policy has drifted")
 
     container = sources["deployment/oci/canonical-platform-ae-runtime.Containerfile"]
     if "COPY --chown=65532:65532 fixtures" in container:

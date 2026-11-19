@@ -205,6 +205,7 @@ def test_startup_fails_closed_for_missing_executor_or_backend() -> None:
 
     ready = validate_agent_runtime_worker_startup(config, **_available())
     assert ready["startup_ready"] is True
+    assert ready["lease_seconds"] == 60
 
     disabled = validate_agent_runtime_worker_startup(
         _config(mode="disabled"),
@@ -238,6 +239,17 @@ def test_config_environment_defaults_and_validation() -> None:
     assert configured.profile.max_concurrent_claims == 2
     assert configured.lease_seconds == 90
     assert configured.poll_interval_seconds == 0.5
+    assert validate_agent_runtime_worker_startup(
+        configured,
+        available_executor_kinds=(LOCAL_SKILL_EXECUTOR,),
+        available_backend_profiles=(NSL_V01_IN_PROCESS_BACKEND,),
+        in_process_package_readiness={
+            "schema_version": "nsl_installed_package_readiness.v1",
+            "status": "PASS",
+            "distribution": "nex-skill-language",
+            "in_process_profile_admissible": True,
+        },
+    )["lease_seconds"] == 90
 
     for env in (
         {"NEX_AE_AGENT_WORKER_MODE": "invalid"},

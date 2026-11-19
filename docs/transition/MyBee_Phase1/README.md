@@ -545,6 +545,19 @@ covered without a migration or scenario-specific product branch. Actual
 live journey remains before this corrective Slice and the parent `.7` boundary
 can close.
 
+`CP-M1-E2E-FX-01B.7G` implementation evidence is recorded in
+[`mybee_phase1_w70_cp_m1_e2e_fx_01b7g_ae_product_resume_worker_lease_budget.md`](../../slices/mybee_phase1_w70_cp_m1_e2e_fx_01b7g_ae_product_resume_worker_lease_budget.md).
+The `.7F` protected run proved the authority receipt and resume admission but
+exposed an installed runtime-policy mismatch: the Product resume worker still
+used the general 60-second RuntimeJob lease and accumulated repeated
+`LEASE_EXPIRED` attempts during synchronous Qwen3.5-9B work. `.7G` preserves
+the 60-second library default while explicitly admitting a bounded 600-second
+canonical Product worker lease, exposes the effective value in startup
+evidence, and rejects source, rendered-Compose, or deployment-audit drift. No
+migration, public API, queue, or asynchronous path is added. One exact-head
+protected journey during an idle DGX window remains required before `.7`
+closure.
+
 `CP-M1-E2E-FX-01B.6A.1` implementation evidence is recorded in
 [`mybee_phase1_w70_cp_m1_e2e_fx_01b6a1_refresh_contract_source_resolver.md`](../../slices/mybee_phase1_w70_cp_m1_e2e_fx_01b6a1_refresh_contract_source_resolver.md).
 It closes the canonical protected contract and the mutation-free EOS source

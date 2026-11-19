@@ -559,6 +559,7 @@ def validate_agent_runtime_worker_startup(
         "mode": config.mode,
         "worker_id": profile["worker_id"],
         "profile_hash": config.profile.profile_hash,
+        "lease_seconds": config.lease_seconds,
         "configured_executor_kinds": profile["supported_executor_kinds"],
         "configured_backend_profiles": profile["supported_backend_profiles"],
         "missing_executor_kinds": missing_executors,

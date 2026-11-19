@@ -58,6 +58,7 @@ CURRENT_BACKGROUND_ENVIRONMENT_NAMES = {
     ),
     "nex-ae-agent-runtime-worker": (
         "NEX_AE_AGENT_WORKER_ID",
+        "NEX_AE_AGENT_WORKER_LEASE_SECONDS",
         "NEX_AE_AGENT_WORKER_EXECUTOR_KINDS",
         "NEX_AE_AGENT_WORKER_BACKEND_PROFILES",
     ),
