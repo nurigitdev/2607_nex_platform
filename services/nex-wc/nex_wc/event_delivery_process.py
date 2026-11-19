@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import signal
 import sys
 import time
@@ -244,7 +245,8 @@ class InstalledWcEventDeliveryProcess:
             )
         except ApprovalEventDeliveryError as exc:
             raise WcEventDeliveryProcessError(
-                "WC approval event delivery failed"
+                "WC approval event delivery failed: "
+                f"{_approval_delivery_failure_code(exc)}"
             ) from exc
         claimed = int(execution.job is not None)
         failed = int(execution.status == "FAILED")
@@ -308,6 +310,12 @@ def build_source_check() -> dict[str, Any]:
         "content_included": False,
         "secret_included": False,
     }
+
+
+def _approval_delivery_failure_code(exc: ApprovalEventDeliveryError) -> str:
+    detail = str(exc.detail)
+    match = re.search(r"\b(?:ae|wc)\.[a-z0-9_.-]{3,95}\b", detail)
+    return match.group(0) if match is not None else "wc.approval_delivery_failed"
 
 
 def build_installed_wc_event_delivery_process(

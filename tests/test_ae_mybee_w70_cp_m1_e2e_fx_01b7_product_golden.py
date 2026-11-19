@@ -400,6 +400,23 @@ def test_product_semantic_runtime_failure_summary_is_bounded() -> None:
     )
 
 
+def test_product_wc_delivery_failure_summary_is_bounded() -> None:
+    assert (
+        acceptance._wc_delivery_failure_summary(
+            "HTTP 409 (ae.product_approval_wait_drifted: protected detail)",
+            returncode=1,
+        )
+        == "ae.product_approval_wait_drifted"
+    )
+    assert (
+        acceptance._wc_delivery_failure_summary(
+            "Traceback\nWcEventDeliveryProcessError: bounded detail",
+            returncode=1,
+        )
+        == "WcEventDeliveryProcessError"
+    )
+
+
 def test_product_runtime_database_failure_summary_is_bounded(tmp_path: Path) -> None:
     database = tmp_path / "runtime-diagnostic.sqlite"
     engine = create_engine(f"sqlite+pysqlite:///{database}")
@@ -407,7 +424,8 @@ def test_product_runtime_database_failure_summary_is_bounded(tmp_path: Path) -> 
         connection.execute(
             text(
                 "CREATE TABLE ae_agent_execution ("
-                "tenant_id TEXT, state TEXT, phase TEXT, updated_at TEXT)"
+                "tenant_id TEXT, agent_type TEXT, state TEXT, phase TEXT, "
+                "updated_at TEXT)"
             )
         )
         connection.execute(
@@ -418,8 +436,42 @@ def test_product_runtime_database_failure_summary_is_bounded(tmp_path: Path) -> 
         )
         connection.execute(
             text(
+                "CREATE TABLE ae_wait_registration (tenant_id TEXT, state TEXT, "
+                "wait_type TEXT, updated_at TEXT)"
+            )
+        )
+        connection.execute(
+            text(
+                "CREATE TABLE ae_product_prep_wait_binding (tenant_id TEXT)"
+            )
+        )
+        connection.execute(
+            text(
+                "CREATE TABLE ae_external_event_inbox (tenant_id TEXT, state TEXT, "
+                "event_type TEXT, received_at TEXT)"
+            )
+        )
+        connection.execute(
+            text("CREATE TABLE ae_product_prep_event_binding (tenant_id TEXT)")
+        )
+        connection.execute(
+            text(
+                "CREATE TABLE ae_runtime_job (tenant_id TEXT, state TEXT, "
+                "job_type TEXT, updated_at TEXT)"
+            )
+        )
+        connection.execute(
+            text(
+                "CREATE TABLE ae_product_prep_checkpoint (tenant_id TEXT, "
+                "stage TEXT, stage_kind TEXT, created_at TEXT)"
+            )
+        )
+        connection.execute(
+            text(
                 "INSERT INTO ae_agent_execution VALUES "
-                "('V101','FAILED','FINALIZE','2026-11-18T00:00:00Z')"
+                "('V101','IA','FAILED','FINALIZE','2026-11-18T00:00:00Z'),"
+                "('V101','PA','WAITING_APPROVAL','PLAN_BUILD',"
+                "'2026-11-18T00:00:01Z')"
             )
         )
         connection.execute(
@@ -429,11 +481,40 @@ def test_product_runtime_database_failure_summary_is_bounded(tmp_path: Path) -> 
                 "'2026-11-18T00:00:00Z')"
             )
         )
+        connection.execute(
+            text(
+                "INSERT INTO ae_wait_registration VALUES "
+                "('V101','WAITING','PRODUCT_PREPARATION',"
+                "'2026-11-18T00:00:00Z')"
+            )
+        )
+        connection.execute(
+            text("INSERT INTO ae_product_prep_wait_binding VALUES ('V101')")
+        )
+        connection.execute(
+            text(
+                "INSERT INTO ae_runtime_job VALUES "
+                "('V101','DONE','START_EXECUTION','2026-11-18T00:00:00Z')"
+            )
+        )
+        connection.execute(
+            text(
+                "INSERT INTO ae_product_prep_checkpoint VALUES "
+                "('V101','WAITING_APPROVAL','WAITING',"
+                "'2026-11-18T00:00:00Z')"
+            )
+        )
     engine.dispose()
 
     assert acceptance._runtime_database_failure_summary(
         f"sqlite+pysqlite:///{database}", tenant_id="V101"
-    ) == ("execution=FAILED:FINALIZE," "attempt=FAILED:ae.wc_work_item_http_failed")
+    ) == (
+        "executions=IA:FAILED:FINALIZE|PA:WAITING_APPROVAL:PLAN_BUILD,"
+        "attempt=FAILED:ae.wc_work_item_http_failed,"
+        "waits=1:WAITING:PRODUCT_PREPARATION,wait_bindings=1,"
+        "events=0:none,event_bindings=0,jobs=1:DONE:START_EXECUTION,"
+        "checkpoints=1:WAITING_APPROVAL:WAITING"
+    )
     assert acceptance._diagnostic_token("secret value") == "invalid"
 
 
@@ -473,6 +554,12 @@ def test_product_wc_database_progress_summary_is_bounded(tmp_path: Path) -> None
         )
         connection.execute(
             text(
+                "CREATE TABLE wc_approval_outbox (tenant_id TEXT, "
+                "delivery_state TEXT, event_type TEXT, updated_at TEXT)"
+            )
+        )
+        connection.execute(
+            text(
                 "INSERT INTO wc_work_item VALUES "
                 "('V101','IN_PROGRESS','PA','2026-11-18T00:00:00Z')"
             )
@@ -502,13 +589,21 @@ def test_product_wc_database_progress_summary_is_bounded(tmp_path: Path) -> None
                 "('V101','DELIVERED','WORK_ITEM_CLAIMED','2026-11-18T00:00:00Z')"
             )
         )
+        connection.execute(
+            text(
+                "INSERT INTO wc_approval_outbox VALUES "
+                "('V101','RETRY','BUSINESS_FORMAL_DECIDED',"
+                "'2026-11-18T00:00:00Z')"
+            )
+        )
     engine.dispose()
 
     assert acceptance._wc_database_progress_summary(
         f"sqlite+pysqlite:///{database}", tenant_id="V101"
     ) == (
         "work=IN_PROGRESS:PA,assignment=ACTIVE:PA,claim=EXPIRED:EXPIRED,"
-        "approval=PENDING:BUSINESS_FORMAL,outbox=DELIVERED:WORK_ITEM_CLAIMED"
+        "approval=PENDING:BUSINESS_FORMAL,outbox=DELIVERED:WORK_ITEM_CLAIMED,"
+        "approval_outbox=RETRY:BUSINESS_FORMAL_DECIDED"
     )
 
 

@@ -251,6 +251,15 @@ def execute_m1_product_golden_journey(
                 log_output,
                 returncode=diagnostic_returncode,
             )
+            wc_log_output, wc_diagnostic_returncode = _collect_compose_service_logs(
+                runtime_env,
+                root=root,
+                service="nex-wc-event-delivery-worker",
+            )
+            wc_delivery_failure = _wc_delivery_failure_summary(
+                wc_log_output,
+                returncode=wc_diagnostic_returncode,
+            )
             database_failure = _runtime_database_failure_summary(
                 urls["nex-ae-api"],
                 tenant_id=str(baseline["tenant"]["tenant_id"]),
@@ -265,6 +274,7 @@ def execute_m1_product_golden_journey(
                 + f" runtime_exception={runtime_failure}"
                 + f" runtime_database={database_failure}"
                 + f" wc_progress={wc_progress}"
+                + f" wc_delivery={wc_delivery_failure}"
             )
         interaction_ids = tuple(
             str(item.get("interaction_id") or "") for item in transactions
@@ -591,17 +601,34 @@ def _semantic_runtime_failure_summary(log_output: str, *, returncode: int) -> st
     return f"not_observed(rc={returncode},lines={line_count})"
 
 
+def _wc_delivery_failure_summary(log_output: str, *, returncode: int) -> str:
+    error_codes = re.findall(r"\b(?:ae|wc)\.[a-z0-9_.-]{3,95}\b", log_output)
+    if error_codes:
+        return _diagnostic_token(error_codes[-1])
+    failure_types = re.findall(
+        r"\b([A-Za-z][A-Za-z0-9_]{0,95}?(?:Error|Exception)):\s",
+        log_output,
+    )
+    if failure_types:
+        return _diagnostic_token(failure_types[-1])
+    failure = _semantic_runtime_failure(log_output)
+    if failure != "not_observed":
+        return failure
+    line_count = sum(1 for line in log_output.splitlines() if line.strip())
+    return f"not_observed(rc={returncode},lines={line_count})"
+
+
 def _runtime_database_failure_summary(database_url: str, *, tenant_id: str) -> str:
     engine = create_engine(database_url, poolclass=NullPool)
     try:
         with engine.connect() as connection:
-            execution = connection.execute(
+            executions = connection.execute(
                 text(
-                    "SELECT state, phase FROM ae_agent_execution "
-                    "WHERE tenant_id=:tenant ORDER BY updated_at DESC LIMIT 1"
+                    "SELECT agent_type, state, phase FROM ae_agent_execution "
+                    "WHERE tenant_id=:tenant ORDER BY updated_at"
                 ),
                 {"tenant": tenant_id},
-            ).first()
+            ).all()
             attempt = connection.execute(
                 text(
                     "SELECT outcome, error_ref FROM ae_runtime_job_attempt "
@@ -609,19 +636,56 @@ def _runtime_database_failure_summary(database_url: str, *, tenant_id: str) -> s
                 ),
                 {"tenant": tenant_id},
             ).first()
+            wait = connection.execute(
+                text(
+                    "SELECT state, wait_type FROM ae_wait_registration "
+                    "WHERE tenant_id=:tenant ORDER BY updated_at DESC LIMIT 1"
+                ),
+                {"tenant": tenant_id},
+            ).first()
+            event = connection.execute(
+                text(
+                    "SELECT state, event_type FROM ae_external_event_inbox "
+                    "WHERE tenant_id=:tenant ORDER BY received_at DESC LIMIT 1"
+                ),
+                {"tenant": tenant_id},
+            ).first()
+            job = connection.execute(
+                text(
+                    "SELECT state, job_type FROM ae_runtime_job "
+                    "WHERE tenant_id=:tenant ORDER BY updated_at DESC LIMIT 1"
+                ),
+                {"tenant": tenant_id},
+            ).first()
+            checkpoint = connection.execute(
+                text(
+                    "SELECT stage, stage_kind FROM ae_product_prep_checkpoint "
+                    "WHERE tenant_id=:tenant ORDER BY created_at DESC LIMIT 1"
+                ),
+                {"tenant": tenant_id},
+            ).first()
+            counts = {
+                name: connection.execute(
+                    text(f"SELECT COUNT(*) FROM {table} WHERE tenant_id=:tenant"),
+                    {"tenant": tenant_id},
+                ).scalar_one()
+                for name, table in (
+                    ("waits", "ae_wait_registration"),
+                    ("wait_bindings", "ae_product_prep_wait_binding"),
+                    ("events", "ae_external_event_inbox"),
+                    ("event_bindings", "ae_product_prep_event_binding"),
+                    ("jobs", "ae_runtime_job"),
+                    ("checkpoints", "ae_product_prep_checkpoint"),
+                )
+            }
     except Exception:  # noqa: BLE001 - diagnostics must stay bounded and optional
         return "unavailable"
     finally:
         engine.dispose()
     execution_summary = (
         "none"
-        if execution is None
-        else ":".join(
-            (
-                _diagnostic_token(execution[0]),
-                _diagnostic_token(execution[1]),
-            )
-        )
+        if not executions
+        else "|".join(_diagnostic_row(row) for row in executions)
     )
     attempt_summary = (
         "none"
@@ -633,7 +697,18 @@ def _runtime_database_failure_summary(database_url: str, *, tenant_id: str) -> s
             )
         )
     )
-    return f"execution={execution_summary},attempt={attempt_summary}"
+    return ",".join(
+        (
+            f"executions={execution_summary}",
+            f"attempt={attempt_summary}",
+            f"waits={counts['waits']}:{_diagnostic_row(wait)}",
+            f"wait_bindings={counts['wait_bindings']}",
+            f"events={counts['events']}:{_diagnostic_row(event)}",
+            f"event_bindings={counts['event_bindings']}",
+            f"jobs={counts['jobs']}:{_diagnostic_row(job)}",
+            f"checkpoints={counts['checkpoints']}:{_diagnostic_row(checkpoint)}",
+        )
+    )
 
 
 def _wc_database_progress_summary(database_url: str, *, tenant_id: str) -> str:
@@ -676,6 +751,13 @@ def _wc_database_progress_summary(database_url: str, *, tenant_id: str) -> str:
                 ),
                 {"tenant": tenant_id},
             ).first()
+            approval_outbox = connection.execute(
+                text(
+                    "SELECT delivery_state, event_type FROM wc_approval_outbox "
+                    "WHERE tenant_id=:tenant ORDER BY updated_at DESC LIMIT 1"
+                ),
+                {"tenant": tenant_id},
+            ).first()
     except Exception:  # noqa: BLE001 - diagnostics must stay bounded and optional
         return "unavailable"
     finally:
@@ -687,6 +769,7 @@ def _wc_database_progress_summary(database_url: str, *, tenant_id: str) -> str:
             f"claim={_diagnostic_row(claim)}",
             f"approval={_diagnostic_row(approval)}",
             f"outbox={_diagnostic_row(outbox)}",
+            f"approval_outbox={_diagnostic_row(approval_outbox)}",
         )
     )
 
@@ -707,6 +790,16 @@ def _diagnostic_token(value: object) -> str:
 
 
 def _collect_ae_runtime_logs(env: Mapping[str, str], *, root: Path) -> tuple[str, int]:
+    return _collect_compose_service_logs(
+        env,
+        root=root,
+        service="nex-ae-api",
+    )
+
+
+def _collect_compose_service_logs(
+    env: Mapping[str, str], *, root: Path, service: str
+) -> tuple[str, int]:
     lookup = subprocess.run(
         (
             "docker",
@@ -714,7 +807,7 @@ def _collect_ae_runtime_logs(env: Mapping[str, str], *, root: Path) -> tuple[str
             "--filter",
             f"label=com.docker.compose.project={installed.PROJECT_NAME}",
             "--filter",
-            "label=com.docker.compose.service=nex-ae-api",
+            f"label=com.docker.compose.service={service}",
             "--format",
             "{{.ID}}",
         ),

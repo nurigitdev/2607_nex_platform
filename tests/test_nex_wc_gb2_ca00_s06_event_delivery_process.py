@@ -396,11 +396,22 @@ def test_run_once_preserves_retry_and_wraps_approval_failure(monkeypatch) -> Non
         process,
         "deliver_pending_approval_events",
         lambda **_kwargs: (_ for _ in ()).throw(
-            process.ApprovalEventDeliveryError("offline")
+            process.ApprovalEventDeliveryError(
+                "HTTP 409 (ae.product_approval_wait_drifted: bounded detail)"
+            )
         ),
     )
-    with pytest.raises(process.WcEventDeliveryProcessError, match="approval"):
+    with pytest.raises(
+        process.WcEventDeliveryProcessError,
+        match="ae.product_approval_wait_drifted",
+    ):
         installed.run_once()
+    assert (
+        process._approval_delivery_failure_code(
+            process.ApprovalEventDeliveryError("offline")
+        )
+        == "wc.approval_delivery_failed"
+    )
     installed.close()
 
 
