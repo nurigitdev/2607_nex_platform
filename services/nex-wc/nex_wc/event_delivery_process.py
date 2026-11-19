@@ -314,10 +314,17 @@ def build_source_check() -> dict[str, Any]:
 
 def _approval_delivery_failure_code(exc: ApprovalEventDeliveryError) -> str:
     detail = str(exc.detail)
-    codes = re.findall(r"\b(?:ae|eos|wc)\.[a-z0-9_.-]{3,95}\b", detail)
+    codes = re.findall(
+        r"\b(?:(?:AE|EOS|WC)_[A-Z0-9_]{3,95}|"
+        r"(?:ae|eos|wc)\.[a-z0-9_.-]{3,95})\b",
+        detail,
+    )
     if not codes:
         return "wc.approval_delivery_failed"
-    return next((code for code in codes if code.startswith("eos.")), codes[0])
+    return next(
+        (code for code in codes if code.startswith("EOS_")),
+        next((code for code in codes if code.startswith("eos.")), codes[0]),
+    )
 
 
 def build_installed_wc_event_delivery_process(

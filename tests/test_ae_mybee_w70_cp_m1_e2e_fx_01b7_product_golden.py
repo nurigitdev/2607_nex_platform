@@ -411,10 +411,10 @@ def test_product_wc_delivery_failure_summary_is_bounded() -> None:
     assert (
         acceptance._wc_delivery_failure_summary(
             "ae.business_approval_delivery_failed "
-            "(eos.document_signoff_context_missing)",
+            "(EOS_DOCUMENT_SIGNOFF_NOT_FOUND)",
             returncode=2,
         )
-        == "eos.document_signoff_context_missing"
+        == "EOS_DOCUMENT_SIGNOFF_NOT_FOUND"
     )
     assert (
         acceptance._wc_delivery_failure_summary(

@@ -602,19 +602,26 @@ def _semantic_runtime_failure_summary(log_output: str, *, returncode: int) -> st
 
 
 def _wc_delivery_failure_summary(log_output: str, *, returncode: int) -> str:
-    error_codes = re.findall(r"\b(?:ae|eos|wc)\.[a-z0-9_.-]{3,95}\b", log_output)
+    error_codes = re.findall(
+        r"\b(?:(?:AE|EOS|WC)_[A-Z0-9_]{3,95}|"
+        r"(?:ae|eos|wc)\.[a-z0-9_.-]{3,95})\b",
+        log_output,
+    )
     if error_codes:
         preferred = next(
-            (code for code in error_codes if code.startswith("eos.")),
+            (code for code in error_codes if code.startswith("EOS_")),
             next(
-                (code for code in error_codes if code.startswith("ae.")),
+                (code for code in error_codes if code.startswith("eos.")),
                 next(
-                    (
-                        code
-                        for code in error_codes
-                        if code != "wc.event_delivery_process.unavailable"
+                    (code for code in error_codes if code.startswith("ae.")),
+                    next(
+                        (
+                            code
+                            for code in error_codes
+                            if code != "wc.event_delivery_process.unavailable"
+                        ),
+                        error_codes[-1],
                     ),
-                    error_codes[-1],
                 ),
             ),
         )
