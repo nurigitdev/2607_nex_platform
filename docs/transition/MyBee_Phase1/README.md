@@ -579,8 +579,15 @@ selectors and allocation targets. Admission retains one canonical delegation
 selector without using order or confidence; unknown, duplicate, or mismatched
 identity fails closed. Prompt `v11` remains replay-only and no migration or
 public API widening is introduced. Actual `nex_ae_test` prompt activation and
-the AE Slice Gate pass at statement `96.46%` and branch `94.72%`. One exact-head
-protected journey remains before `.7I` and the parent `.7` can close.
+the AE Slice Gate pass at statement `96.46%` and branch `94.72%`. The exact-head
+protected journey then proved deterministic PA handoff and one delivered
+BUSINESS_FORMAL approval without `PROJECT_CODE_AMBIGUOUS`. The following
+Product `RESUME_EXECUTION` failed with the generic
+`ae.product_coordinator_assignment_failed` reference before accounting
+preparation. EOS/WC terminal binding diagnostics differ on version and target
+role, but causality is not yet observable. `.7I` is closed while parent `.7`
+remains blocked on a separate typed Product approval-resume corrective boundary;
+all eight isolated schemas and Compose resources were removed.
 
 `CP-M1-E2E-FX-01B.6A.1` implementation evidence is recorded in
 [`mybee_phase1_w70_cp_m1_e2e_fx_01b6a1_refresh_contract_source_resolver.md`](../../slices/mybee_phase1_w70_cp_m1_e2e_fx_01b6a1_refresh_contract_source_resolver.md).

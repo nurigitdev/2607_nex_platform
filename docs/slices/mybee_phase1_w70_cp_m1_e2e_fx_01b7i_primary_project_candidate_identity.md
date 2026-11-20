@@ -3,8 +3,9 @@
 ## Status
 
 - Date: `2026-11-20`
-- Status: `IMPLEMENTED`; source, PostgreSQL, and AE Slice Gate passed;
-  protected installed journey pending
+- Status: `CORRECTIVE OBJECTIVE VERIFIED`; source, PostgreSQL, AE Slice Gate,
+  and protected primary-identity handoff passed; parent journey remains blocked
+  at the downstream Product approval-resume boundary
 - Parent boundary: `CP-M1-E2E-FX-01B.7`
 - Database migration: none
 - Public API or persisted schema change: none
@@ -78,7 +79,44 @@ would repeat the scenario-specific behavior retired earlier in W70.
   every historical prompt row in the long-lived test database. It was not
   rewritten in this Slice; current v12 activation used the existing atomic
   binding API and passed.
-- exact-head DGX-backed installed journey: pending
+- exact-head canonical OCI evidence: `PASS`
+  - source revision: `d1514b394ba0173016b5ffcb2ce77c2fc1726f32`;
+  - nine images, nine immutable manifests, nine non-root images;
+  - twelve background/package checks passed;
+  - the dedicated AE Product Runtime image was rebuilt from the same admitted
+    AE base image and NSL v0.2.1 wheel.
+- exact-head DGX-backed installed journey: `PRIMARY IDENTITY PASS`, downstream
+  Product resume `BLOCKED`
+  - Qwen3.5-9B on canonical port `9111` returned HTTP 200 for both observed
+    generation calls;
+  - the v12 WorkIntent retained one typed primary Project and both allocation
+    targets, while canonical admission retained one delegation selector;
+  - WC routed and claimed one PA assignment without
+    `PROJECT_CODE_AMBIGUOUS`;
+  - one `BUSINESS_FORMAL` approval was created, approved, and delivered;
+  - the generalized AE approval event was `MATCHED` and its Product wait was
+    `RESUME_QUEUED`;
+  - the downstream `RESUME_EXECUTION` attempt then terminated non-retryably as
+    `ae.product_coordinator_assignment_failed`, leaving the PA execution at
+    `WAITING_APPROVAL:PLAN_BUILD` and the browser at result timeout;
+  - bounded diagnostics observed EOS/WC terminal binding differences for
+    policy version and target role, but the current generic error reference is
+    insufficient to prove that those differences caused the exception;
+  - all eight isolated PostgreSQL schemas were removed and Compose resources
+    were stopped; zero-residue passed.
+
+## Resume Decision
+
+The `.7I` defect is closed: primary Project identity is typed, deterministic,
+provider-order independent, and proved in the installed path. The parent
+`CP-M1-E2E-FX-01B.7` journey is not closed because the next authority-backed
+Product resume failed after approval delivery.
+
+Do not widen `.7I` or change approval contracts from the bounded diagnostic
+alone. The next corrective boundary should first preserve a typed, redacted
+Product coordinator failure code and reconcile the exact ApprovedDocument
+receipt/reference plus EOS/WC terminal policy-version and target-role semantics.
+Only then may the same protected journey be replayed.
 
 ## Protected Live Rule
 
