@@ -49,11 +49,11 @@ from .legal_entities import (
     EOS_LEGAL_ENTITY_TABLE,
     EOS_PROJECT_COMPANY_BINDING_TABLE,
 )
-from .projects import EOS_PROJECT_TABLE
 from .project_authorization import (
     EosProjectAuthorizationError,
     EosProjectAuthorizationGate,
 )
+from .projects import EOS_PROJECT_TABLE
 from .voucher_commands import EosServiceCaller
 
 ACCOUNTING_APPROVAL_REQUEST_OPERATION = "FINANCE.ACCOUNTING_APPROVAL.REQUEST"
@@ -311,6 +311,15 @@ class SqlAlchemyEosScopedApprovalRepository:
                     .one_or_none()
                 )
                 return self._projection(session, row) if row is not None else None
+        except SQLAlchemyError as exc:
+            raise _unavailable() from exc
+
+    def resolve_project_scope_ref(self, scoped_case: Mapping[str, Any]) -> str | None:
+        try:
+            with self._session_factory() as session:
+                return scoped_approval_project_scope_ref(session, scoped_case)
+        except EosScopedApprovalError:
+            raise
         except SQLAlchemyError as exc:
             raise _unavailable() from exc
 
@@ -677,10 +686,12 @@ class EosScopedApprovalService:
                 retryable=exc.retryable,
             ) from exc
         scoped_case = operation.result["scoped_approval_case"]
+        project_scope_ref = self._repository.resolve_project_scope_ref(scoped_case)
         work_item = scoped_approval_work_item(
             scoped_case,
             accounting_review=operation.result.get("accounting_review"),
             document_signoff_context=operation.result.get("document_signoff_context"),
+            project_scope_ref=project_scope_ref,
         )
         try:
             publication = _wc_publication(self._wc_client.create_or_get(work_item))
@@ -806,6 +817,7 @@ def scoped_approval_work_item(
     *,
     accounting_review: Mapping[str, Any] | None = None,
     document_signoff_context: Mapping[str, Any] | None = None,
+    project_scope_ref: str | None = None,
 ) -> dict[str, Any]:
     stage_order = scoped_case["active_stage_order"]
     if stage_order is None or scoped_case["state"] != "PENDING":
@@ -814,6 +826,13 @@ def scoped_approval_work_item(
         f"eos.scoped-approval-case:{scoped_case['case_id']}:stage:{stage_order}"
     )
     project_ids = scoped_case["project_ids"]
+    requires_project_scope = (
+        scoped_case["scope_type"] == "PROJECT"
+        and scoped_case["purpose"] != "DOCUMENT_SIGNOFF"
+    )
+    if requires_project_scope and not project_scope_ref:
+        raise _conflict("Project-scoped approval requires a canonical Project Code")
+    target_project_scope_ref = project_scope_ref if requires_project_scope else None
     semantic = {
         "schema_version": "eos_scoped_approval_wc_binding.v2",
         "tenant_id": scoped_case["tenant_id"],
@@ -832,6 +851,7 @@ def scoped_approval_work_item(
         "active_stage_order": stage_order,
         "stage_count": scoped_case["stage_count"],
         "target_role_ref": scoped_case["target_role_ref"],
+        "target_project_scope_ref": target_project_scope_ref,
         "authorization_revision_hash": scoped_case["authorization_revision_hash"],
     }
     if accounting_review is not None:
@@ -902,14 +922,9 @@ def scoped_approval_work_item(
         "target_approver_ref": None,
         "target_role_ref": scoped_case["target_role_ref"],
         "target_org_scope_ref": None,
-        # EOS owns the immutable Project scope. OA currently owns role/scope
-        # authority, so DOCUMENT_SIGNOFF cannot require an OA project grant.
-        "target_project_scope_ref": (
-            project_ids[0]
-            if scoped_case["scope_type"] == "PROJECT"
-            and scoped_case["purpose"] != "DOCUMENT_SIGNOFF"
-            else None
-        ),
+        # EOS persists internal UUID lineage, while OA authorization is keyed
+        # by the stable, user-facing Project Code.
+        "target_project_scope_ref": target_project_scope_ref,
         "agent_execution_id": None,
         "executable_step_id": None,
         "nsl_execution_id": None,
@@ -1231,6 +1246,32 @@ def scoped_approval_case_projection(
     """Project one scoped case without exposing repository internals."""
 
     return _projection(value, bindings)
+
+
+def scoped_approval_project_scope_ref(
+    session: Session, scoped_case: Mapping[str, Any]
+) -> str | None:
+    if (
+        scoped_case.get("scope_type") != "PROJECT"
+        or scoped_case.get("purpose") == "DOCUMENT_SIGNOFF"
+    ):
+        return None
+    project_ids = scoped_case.get("project_ids")
+    if (
+        isinstance(project_ids, (str, bytes))
+        or not isinstance(project_ids, Sequence)
+        or len(project_ids) != 1
+    ):
+        raise _conflict("Project-scoped approval has no unique Project identity")
+    project_code = session.scalar(
+        select(EOS_PROJECT_TABLE.c.project_code).where(
+            EOS_PROJECT_TABLE.c.tenant_id == scoped_case["tenant_id"],
+            EOS_PROJECT_TABLE.c.project_id == project_ids[0],
+        )
+    )
+    if project_code is None:
+        raise _conflict("Project-scoped approval Project Code is unavailable")
+    return str(project_code)
 
 
 def _project_ids(value: object) -> list[str]:

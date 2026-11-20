@@ -47,17 +47,11 @@ _ACTION_ROLES = {
     "project:work-code:approve": frozenset({"OWNER", "MANAGER"}),
     "project:work-assignment:manage": frozenset({"OWNER", "MANAGER"}),
     "project:work-assignment:read": PROJECT_ROLES,
-    "project:work-assignment:perform": frozenset(
-        {"OWNER", "MANAGER", "MEMBER"}
-    ),
-    "finance:voucher-candidate:create": frozenset(
-        {"OWNER", "MANAGER", "MEMBER"}
-    ),
+    "project:work-assignment:perform": frozenset({"OWNER", "MANAGER", "MEMBER"}),
+    "finance:voucher-candidate:create": frozenset({"OWNER", "MANAGER", "MEMBER"}),
     "finance:voucher-draft:create": frozenset({"OWNER", "MANAGER", "MEMBER"}),
     "finance:voucher-draft:read": PROJECT_ROLES,
-    "finance:journal:request-approval": frozenset(
-        {"OWNER", "MANAGER", "MEMBER"}
-    ),
+    "finance:journal:request-approval": frozenset({"OWNER", "MANAGER", "MEMBER"}),
     "finance:report:read": PROJECT_ROLES,
     "project:pnl:read": PROJECT_ROLES,
 }
@@ -81,6 +75,10 @@ class OaProjectGrantRepository(Protocol):
 
     def list_project_grants(
         self, *, tenant_id: str, project_code: str
+    ) -> list[dict[str, Any]]: ...
+
+    def list_subject_grants(
+        self, *, tenant_id: str, subject_id: str
     ) -> list[dict[str, Any]]: ...
 
 
@@ -132,6 +130,17 @@ class InMemoryOaProjectGrantRepository:
             if key[:2] == (tenant, code)
         ]
 
+    def list_subject_grants(
+        self, *, tenant_id: str, subject_id: str
+    ) -> list[dict[str, Any]]:
+        tenant = _scoped_id("tenant_id", tenant_id)
+        subject = _scoped_id("subject_id", subject_id)
+        return [
+            deepcopy(value)
+            for key, value in sorted(self.grants.items())
+            if key[0] == tenant and key[2] == subject
+        ]
+
 
 class SqlAlchemyOaProjectGrantRepository:
     def __init__(self, session_factory: sessionmaker[Session]) -> None:
@@ -158,7 +167,9 @@ class SqlAlchemyOaProjectGrantRepository:
                 except OaAuthorizationError as exc:
                     rejected = exc
         except IntegrityError as exc:
-            raise _grant_conflict("Project grant identity changed concurrently") from exc
+            raise _grant_conflict(
+                "Project grant identity changed concurrently"
+            ) from exc
         except SQLAlchemyError as exc:
             raise _grant_unavailable() from exc
         if rejected is not None:
@@ -194,6 +205,31 @@ class SqlAlchemyOaProjectGrantRepository:
                             "SELECT * FROM oa_project_grant "
                             "WHERE tenant_id = :tenant_id AND project_code = :project_code "
                             "ORDER BY subject_id"
+                        ),
+                        identity,
+                    )
+                    .mappings()
+                    .all()
+                )
+        except SQLAlchemyError as exc:
+            raise _grant_unavailable() from exc
+        return [dict(row) for row in rows]
+
+    def list_subject_grants(
+        self, *, tenant_id: str, subject_id: str
+    ) -> list[dict[str, Any]]:
+        identity = {
+            "tenant_id": _scoped_id("tenant_id", tenant_id),
+            "subject_id": _scoped_id("subject_id", subject_id),
+        }
+        try:
+            with self._session_factory() as session:
+                rows = (
+                    session.execute(
+                        text(
+                            "SELECT * FROM oa_project_grant "
+                            "WHERE tenant_id = :tenant_id AND subject_id = :subject_id "
+                            "ORDER BY project_code"
                         ),
                         identity,
                     )
@@ -409,13 +445,17 @@ def _grant_semantics(value: Mapping[str, Any]) -> tuple[Any, ...]:
 def _select_event_owner(
     session: Session, admitted: Mapping[str, Any]
 ) -> dict[str, Any] | None:
-    row = session.execute(
-        text(
-            "SELECT * FROM oa_project_grant "
-            "WHERE tenant_id = :tenant_id AND source_event_id = :source_event_id"
-        ),
-        dict(admitted),
-    ).mappings().one_or_none()
+    row = (
+        session.execute(
+            text(
+                "SELECT * FROM oa_project_grant "
+                "WHERE tenant_id = :tenant_id AND source_event_id = :source_event_id"
+            ),
+            dict(admitted),
+        )
+        .mappings()
+        .one_or_none()
+    )
     return dict(row) if row is not None else None
 
 
@@ -480,7 +520,9 @@ def _admit_decision_request(payload: Mapping[str, Any]) -> dict[str, Any]:
         "correlation_id",
         "minimum_source_version",
     }
-    if not set(payload).issubset(allowed) or set(payload) - {"minimum_source_version"} != allowed - {"minimum_source_version"}:
+    if not set(payload).issubset(allowed) or set(payload) - {
+        "minimum_source_version"
+    } != allowed - {"minimum_source_version"}:
         raise _grant_invalid("Project decision fields are incomplete or unsupported")
     action = str(payload["action"]).strip()
     if _ACTION.fullmatch(action) is None:
@@ -534,7 +576,10 @@ def _evaluate_project_decision(
         return False, "PROJECT_GRANT_REVOKED"
     if grant["project_status"] in {"INACTIVE", "CLOSED"}:
         return False, f"PROJECT_{grant['project_status']}"
-    if grant["project_status"] == "CLOSING" and request["action"] not in _CLOSING_ACTIONS:
+    if (
+        grant["project_status"] == "CLOSING"
+        and request["action"] not in _CLOSING_ACTIONS
+    ):
         return False, "PROJECT_CLOSING_ACTION_DENIED"
     if grant["project_role"] not in roles:
         return False, "PROJECT_ROLE_INSUFFICIENT"

@@ -8,6 +8,7 @@
     "roles": ["editor", "employee"],
     "scopes": ["document:read", "user:session"],
     "group_ids": ["engineering"],
+    "project_scope_refs": ["VO00D260001"],
     "unresolved_direct_roles": ["employee"],
     "revision_hash": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
     "source_counts": {
@@ -15,7 +16,8 @@
       "direct_scope_count": 1,
       "group_count": 1,
       "group_role_count": 1,
-      "effective_scope_count": 2
+      "effective_scope_count": 2,
+      "project_scope_count": 1
     }
   },
   "request_id": "request-1239",

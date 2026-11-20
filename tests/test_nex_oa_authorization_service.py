@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-from fastapi.testclient import TestClient
-import pytest
+from datetime import UTC, datetime
 
+import pytest
+from fastapi.testclient import TestClient
 from nex_oa.authorization import OaAuthorizationError
 from nex_oa.authorization_repository import (
     InMemoryOaAuthorizationRepository,
@@ -19,6 +20,7 @@ from nex_oa.memberships import (
     InMemoryOaTenantMembershipRegistry,
     OaMembershipError,
 )
+from nex_oa.project_entitlements import InMemoryOaProjectGrantRepository
 from nex_oa.sessions import InMemoryOaSessionRegistry
 from nex_runtime import (
     DEFAULT_SERVICE_SCOPE,
@@ -26,7 +28,6 @@ from nex_runtime import (
     build_service_app,
     issue_mock_service_token,
 )
-
 
 CONTEXT = {
     "actor_ref": "nex.service:nex-ag",
@@ -67,9 +68,7 @@ def _headers(*scopes: str) -> dict[str, str]:
     return {
         "Authorization": f"Bearer {issued.access_token}",
         "X-Request-ID": "request-1237",
-        "traceparent": (
-            "00-1234567890abcdef1234567890abcdef-1234567890abcdef-01"
-        ),
+        "traceparent": ("00-1234567890abcdef1234567890abcdef-1234567890abcdef-01"),
     }
 
 
@@ -133,16 +132,98 @@ def test_service_mutations_revoke_affected_sessions() -> None:
         context=CONTEXT,
     )
     assert role_update["revoked_session_count"] == 1
-    assert sessions.sessions[after_assignment["session"]["session_id"]]["status"] == "REVOKED"
+    assert (
+        sessions.sessions[after_assignment["session"]["session_id"]]["status"]
+        == "REVOKED"
+    )
     assert repository.events[-1]["details"]["revoked_session_count"] == 1
+
+
+def test_effective_authorization_projects_active_grants_as_project_codes() -> None:
+    service, _repository, _sessions, _client = _stack()
+    project_grants = InMemoryOaProjectGrantRepository()
+    service.project_grant_repository = project_grants
+    occurred_at = datetime(2026, 11, 20, tzinfo=UTC)
+
+    def grant(project_code: str, project_status: str, suffix: str) -> None:
+        project_grants.apply_grant(
+            {
+                "tenant_id": "tenant-a",
+                "project_code": project_code,
+                "subject_id": "user-a",
+                "project_role": "MEMBER",
+                "grant_status": "ACTIVE",
+                "project_status": project_status,
+                "source_project_id": (f"10000000-0000-4000-8000-{int(suffix):012d}"),
+                "source_version": 1,
+                "source_event_id": (f"20000000-0000-4000-8000-{int(suffix):012d}"),
+                "source_event_hash": "sha256:" + suffix * 64,
+                "occurred_at": occurred_at,
+            }
+        )
+
+    grant("VO00D260002", "CLOSING", "2")
+    grant("VO00D260001", "ACTIVE", "1")
+    grant("VO00D260003", "INACTIVE", "3")
+
+    authorization = service.effective_authorization(
+        tenant_id="tenant-a", subject_id="user-a"
+    )["authorization"]
+
+    assert authorization["project_scope_refs"] == (
+        "VO00D260001",
+        "VO00D260002",
+    )
+    assert authorization["source_counts"]["project_scope_count"] == 2
+    assert len(authorization["revision_hash"]) == 64
+
+
+def test_project_grant_change_updates_effective_authorization_revision() -> None:
+    service, _repository, _sessions, _client = _stack()
+    project_grants = InMemoryOaProjectGrantRepository()
+    service.project_grant_repository = project_grants
+    base = {
+        "tenant_id": "tenant-a",
+        "project_code": "VO00D260001",
+        "subject_id": "user-a",
+        "project_role": "MEMBER",
+        "project_status": "ACTIVE",
+        "source_project_id": "10000000-0000-4000-8000-000000000001",
+        "source_event_hash": "sha256:" + "a" * 64,
+        "occurred_at": datetime(2026, 11, 20, tzinfo=UTC),
+    }
+    project_grants.apply_grant(
+        {
+            **base,
+            "grant_status": "ACTIVE",
+            "source_version": 1,
+            "source_event_id": "20000000-0000-4000-8000-000000000001",
+        }
+    )
+    active = service.effective_authorization(tenant_id="tenant-a", subject_id="user-a")[
+        "authorization"
+    ]
+    project_grants.apply_grant(
+        {
+            **base,
+            "grant_status": "REVOKED",
+            "source_version": 2,
+            "source_event_id": "20000000-0000-4000-8000-000000000002",
+        }
+    )
+    revoked = service.effective_authorization(
+        tenant_id="tenant-a", subject_id="user-a"
+    )["authorization"]
+
+    assert active["project_scope_refs"] == ("VO00D260001",)
+    assert revoked["project_scope_refs"] == ()
+    assert active["revision_hash"] != revoked["revision_hash"]
 
 
 def test_group_update_and_member_mutation_cover_affected_subjects() -> None:
     service, _, sessions, _ = _stack()
     _seed(service)
-    issued = sessions.issue_session(
-        {"tenant_id": "tenant-a", "subject_id": "user-a"}
-    )
+    issued = sessions.issue_session({"tenant_id": "tenant-a", "subject_id": "user-a"})
     group = service.upsert_group(
         tenant_id="tenant-a",
         group_id="engineering",
@@ -152,9 +233,7 @@ def test_group_update_and_member_mutation_cover_affected_subjects() -> None:
     assert group["revoked_session_count"] == 1
     assert sessions.sessions[issued["session"]["session_id"]]["status"] == "REVOKED"
 
-    issued = sessions.issue_session(
-        {"tenant_id": "tenant-a", "subject_id": "user-a"}
-    )
+    issued = sessions.issue_session({"tenant_id": "tenant-a", "subject_id": "user-a"})
     member = service.upsert_group_member(
         tenant_id="tenant-a",
         group_id="engineering",
@@ -170,11 +249,14 @@ def test_routes_enforce_admin_and_read_scopes() -> None:
     role_path = "/internal/v1/auth/tenants/tenant-a/roles/editor"
     role_payload = {"scopes": ["document:read"], "expected_revision": 0}
     assert client.put(role_path, json=role_payload).status_code == 401
-    assert client.put(
-        role_path,
-        json=role_payload,
-        headers=_headers(OA_AUTHORIZATION_READ_SCOPE),
-    ).status_code == 403
+    assert (
+        client.put(
+            role_path,
+            json=role_payload,
+            headers=_headers(OA_AUTHORIZATION_READ_SCOPE),
+        ).status_code
+        == 403
+    )
     accepted = client.put(
         role_path,
         json=role_payload,
@@ -184,13 +266,14 @@ def test_routes_enforce_admin_and_read_scopes() -> None:
     assert accepted.json()["response_schema_version"] == "oa_authz_mutation_response.v1"
     assert accepted.json()["request_id"] == "request-1237"
 
-    effective_path = (
-        "/internal/v1/auth/tenants/tenant-a/subjects/user-a/authorization"
+    effective_path = "/internal/v1/auth/tenants/tenant-a/subjects/user-a/authorization"
+    assert (
+        client.get(
+            effective_path,
+            headers=_headers(OA_AUTHORIZATION_ADMIN_SCOPE),
+        ).status_code
+        == 403
     )
-    assert client.get(
-        effective_path,
-        headers=_headers(OA_AUTHORIZATION_ADMIN_SCOPE),
-    ).status_code == 403
     effective = client.get(
         effective_path,
         headers=_headers(OA_AUTHORIZATION_READ_SCOPE),
@@ -205,26 +288,38 @@ def test_routes_cover_group_member_role_events_and_failures() -> None:
     _, _, _, client = _stack()
     admin = _headers(OA_AUTHORIZATION_ADMIN_SCOPE)
     reader = _headers(OA_AUTHORIZATION_READ_SCOPE)
-    assert client.put(
-        "/internal/v1/auth/tenants/tenant-a/groups/engineering",
-        json={"expected_revision": 0},
-        headers=admin,
-    ).status_code == 200
-    assert client.put(
-        "/internal/v1/auth/tenants/tenant-a/groups/engineering/members/user-a",
-        json={"expected_revision": 0},
-        headers=admin,
-    ).status_code == 200
-    assert client.put(
-        "/internal/v1/auth/tenants/tenant-a/roles/editor",
-        json={"scopes": ["document:read"], "expected_revision": 0},
-        headers=admin,
-    ).status_code == 200
-    assert client.put(
-        "/internal/v1/auth/tenants/tenant-a/groups/engineering/roles/editor",
-        json={"expected_revision": 0},
-        headers=admin,
-    ).status_code == 200
+    assert (
+        client.put(
+            "/internal/v1/auth/tenants/tenant-a/groups/engineering",
+            json={"expected_revision": 0},
+            headers=admin,
+        ).status_code
+        == 200
+    )
+    assert (
+        client.put(
+            "/internal/v1/auth/tenants/tenant-a/groups/engineering/members/user-a",
+            json={"expected_revision": 0},
+            headers=admin,
+        ).status_code
+        == 200
+    )
+    assert (
+        client.put(
+            "/internal/v1/auth/tenants/tenant-a/roles/editor",
+            json={"scopes": ["document:read"], "expected_revision": 0},
+            headers=admin,
+        ).status_code
+        == 200
+    )
+    assert (
+        client.put(
+            "/internal/v1/auth/tenants/tenant-a/groups/engineering/roles/editor",
+            json={"expected_revision": 0},
+            headers=admin,
+        ).status_code
+        == 200
+    )
 
     events_path = "/internal/v1/auth/tenants/tenant-a/authorization-events"
     events = client.get(events_path, headers=reader)
@@ -248,7 +343,7 @@ def test_routes_cover_group_member_role_events_and_failures() -> None:
 
 
 def test_effective_read_reports_missing_and_registry_failure() -> None:
-    service, repository, _, client = _stack()
+    _service, repository, _, client = _stack()
     missing = client.get(
         "/internal/v1/auth/tenants/tenant-a/subjects/missing/authorization",
         headers=_headers(OA_AUTHORIZATION_READ_SCOPE),

@@ -157,6 +157,47 @@ def test_inbox_returns_only_current_eligible_safe_pending_gates() -> None:
     assert result["gates"][0]["approval_provider_type"] == "NSL"
 
 
+def test_project_code_scope_admits_accounting_approval_and_uuid_does_not() -> None:
+    repository = InMemoryApprovalWorkItemRepository()
+    repository.insert(
+        _work_item(
+            approval_domain="BUSINESS_FORMAL",
+            approval_provider_type="EOS",
+            target_approver_ref=None,
+            target_role_ref="TEAM_LEAD",
+            target_org_scope_ref=None,
+            target_project_scope_ref="VO00D260001",
+        )
+    )
+    matching = AuthorizationSource(
+        {
+            "active": True,
+            "tenant_id": "tenant-p8",
+            "subject_id": "approver-s40",
+            "scopes": ["approval:read"],
+            "roles": ["TEAM_LEAD"],
+            "project_scope_refs": ["VO00D260001"],
+            "revision_hash": "4" * 64,
+        }
+    )
+    mismatched = AuthorizationSource(
+        {
+            **matching.value,
+            "project_scope_refs": ["40000000-0000-4000-8000-000000000099"],
+        }
+    )
+
+    admitted = _service(repository, matching).list_pending(
+        tenant_id="tenant-p8", subject_id="approver-s40"
+    )
+    denied = _service(repository, mismatched).list_pending(
+        tenant_id="tenant-p8", subject_id="approver-s40"
+    )
+
+    assert [gate["gate_id"] for gate in admitted["gates"]] == [WORK_ID]
+    assert denied["gates"] == []
+
+
 def test_inbox_is_tenant_scoped_ordered_and_limited() -> None:
     repository = InMemoryApprovalWorkItemRepository()
     repository.insert(
@@ -184,9 +225,12 @@ def test_inbox_is_tenant_scoped_ordered_and_limited() -> None:
     )
     assert result["returned_count"] == 1
     assert result["gates"][0]["gate_id"] == WORK_ID
-    assert repository.list_pending_work_items(
-        tenant_id="tenant-other", limit=10
-    )[0]["tenant_id"] == "tenant-other"
+    assert (
+        repository.list_pending_work_items(tenant_id="tenant-other", limit=10)[0][
+            "tenant_id"
+        ]
+        == "tenant-other"
+    )
 
 
 @pytest.mark.parametrize(
@@ -323,7 +367,8 @@ def _sql_factory(*, with_schema=True):
     engine = create_engine("sqlite+pysqlite:///:memory:")
     if with_schema:
         with engine.begin() as connection:
-            connection.execute(text("""
+            connection.execute(
+                text("""
                 CREATE TABLE wc_approval_work_item (
                     tenant_id TEXT NOT NULL,
                     approval_work_item_id TEXT NOT NULL,
@@ -352,7 +397,8 @@ def _sql_factory(*, with_schema=True):
                     PRIMARY KEY (tenant_id, approval_work_item_id),
                     UNIQUE (tenant_id, approval_domain, source_ref)
                 )
-            """))
+            """)
+            )
     return sessionmaker(bind=engine, autoflush=False, expire_on_commit=False), engine
 
 
@@ -373,9 +419,9 @@ def test_sql_repository_lists_pending_after_restart_and_maps_failure() -> None:
         restarted = SqlAlchemyApprovalWorkItemRepository(factory)
         rows = restarted.list_pending_work_items(tenant_id="tenant-p8", limit=10)
         assert [row["approval_work_item_id"] for row in rows] == [WORK_ID]
-        assert restarted.list_pending_work_items(
-            tenant_id="tenant-other", limit=10
-        ) == []
+        assert (
+            restarted.list_pending_work_items(tenant_id="tenant-other", limit=10) == []
+        )
     finally:
         engine.dispose()
 
@@ -402,9 +448,7 @@ def _headers(*, token=True):
         "X-NeX-Subject-Id": "approver-s40",
     }
     if token:
-        issued = issue_mock_service_token(
-            service_id="nex-ae-api", audience="nex-wc"
-        )
+        issued = issue_mock_service_token(service_id="nex-ae-api", audience="nex-wc")
         headers["Authorization"] = f"Bearer {issued.access_token}"
     return headers
 
@@ -413,11 +457,12 @@ def test_protected_approval_inbox_api_and_problem_mapping() -> None:
     repository = InMemoryApprovalWorkItemRepository()
     repository.insert(_work_item())
     client = _client(_service(repository))
-    assert client.get("/api/v1/approval-gates", headers=_headers(token=False)).status_code == 401
-
-    response = client.get(
-        "/api/v1/approval-gates?limit=10", headers=_headers()
+    assert (
+        client.get("/api/v1/approval-gates", headers=_headers(token=False)).status_code
+        == 401
     )
+
+    response = client.get("/api/v1/approval-gates?limit=10", headers=_headers())
     assert response.status_code == 200
     assert response.json()["returned_count"] == 1
 
@@ -440,9 +485,9 @@ def test_inbox_contract_positive_and_negative_examples() -> None:
     )
     validator = Draft202012Validator(schema, format_checker=FormatChecker())
     positive = json.loads(
-        (
-            ROOT / "contracts/examples/service/wc_approval_inbox.pending.json"
-        ).read_text(encoding="utf-8")
+        (ROOT / "contracts/examples/service/wc_approval_inbox.pending.json").read_text(
+            encoding="utf-8"
+        )
     )
     validator.validate(positive)
     negative = json.loads(

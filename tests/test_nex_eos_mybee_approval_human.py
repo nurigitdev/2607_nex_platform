@@ -337,6 +337,7 @@ def test_two_stage_human_decision_creates_exact_evidence_and_replays() -> None:
     sessions, scoped, decisions, _auth, wc = _build_runtime()
     request_receipt = _create_case(scoped)
     first_item = request_receipt["wc_publication"]["work_item"]
+    assert first_item["target_project_scope_ref"] == "PROJECT-S203"
     summary = first_item["display_safe_summary"]
     assert '"market_base_rate":"1350.20"' in summary
     assert '"functional_amount":"13502000.00"' in summary
@@ -348,6 +349,7 @@ def test_two_stage_human_decision_creates_exact_evidence_and_replays() -> None:
     assert first["accounting_approval_evidence"] is None
     next_item = first["next_stage_publication"]["work_item"]
     assert next_item["target_role_ref"] == "CEO"
+    assert next_item["target_project_scope_ref"] == "PROJECT-S203"
 
     second_delivery = _delivery(next_item, decided_by="accountant-ceo", suffix="2")
     final = decisions.ingest_wc_delivery(second_delivery)

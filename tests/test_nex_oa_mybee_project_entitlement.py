@@ -52,9 +52,7 @@ POSTGRES_SMOKE = os.getenv("NEX_OA_MYBEE_W40_CA01_S03_POSTGRES_SMOKE") == "1"
 
 class AuthorizationSource:
     def __init__(self, scopes=None) -> None:
-        self.scopes = (
-            ["finance:voucher-candidate:create"] if scopes is None else scopes
-        )
+        self.scopes = ["finance:voucher-candidate:create"] if scopes is None else scopes
 
     def effective_authorization(self, *, tenant_id: str, subject_id: str):
         return {
@@ -140,12 +138,28 @@ def test_in_memory_grant_is_idempotent_versioned_and_tenant_isolated() -> None:
     )
     assert updated["record"]["project_role"] == "VIEWER"
     assert updated["record"]["granted_at"] == NOW.isoformat().replace("+00:00", "Z")
-    assert repository.get_grant(
-        tenant_id=TENANT, project_code=PROJECT_CODE, subject_id=SUBJECT
-    )["source_version"] == 2
-    assert repository.get_grant(
-        tenant_id="VO01", project_code="VO01D260001", subject_id=SUBJECT
-    ) is None
+    assert (
+        repository.get_grant(
+            tenant_id=TENANT, project_code=PROJECT_CODE, subject_id=SUBJECT
+        )["source_version"]
+        == 2
+    )
+    assert (
+        repository.get_grant(
+            tenant_id="VO01", project_code="VO01D260001", subject_id=SUBJECT
+        )
+        is None
+    )
+    assert (
+        repository.list_subject_grants(tenant_id=TENANT, subject_id=SUBJECT)[0][
+            "project_code"
+        ]
+        == PROJECT_CODE
+    )
+    assert (
+        repository.list_subject_grants(tenant_id=TENANT, subject_id="employee-missing")
+        == []
+    )
 
     with pytest.raises(OaAuthorizationError, match="stale"):
         repository.apply_grant(
@@ -252,9 +266,7 @@ def test_project_decision_allows_exact_active_grant_and_closing_read() -> None:
     allowed = service.decide(_decision())
     assert allowed["allowed"] is True
     assert allowed["project_role"] == "MEMBER"
-    assert allowed["applicable_global_scopes"] == [
-        "finance:voucher-candidate:create"
-    ]
+    assert allowed["applicable_global_scopes"] == ["finance:voucher-candidate:create"]
     assert allowed["decision_ref"].startswith("sha256:")
 
     closing_repository = InMemoryOaProjectGrantRepository()
@@ -298,9 +310,7 @@ def test_project_decision_accepts_canonical_immutable_scope_sequence() -> None:
     ).decide(_decision())
 
     assert result["allowed"] is True
-    assert result["applicable_global_scopes"] == [
-        "finance:voucher-candidate:create"
-    ]
+    assert result["applicable_global_scopes"] == ["finance:voucher-candidate:create"]
 
 
 def test_missing_grant_denies_and_malformed_authorization_is_unavailable() -> None:
@@ -333,7 +343,9 @@ def test_missing_grant_denies_and_malformed_authorization_is_unavailable() -> No
     assert non_mapping_error.value.status_code == 503
 
 
-@pytest.mark.parametrize("scopes", ("finance:voucher-candidate:create", {"scope"}, ("",)))
+@pytest.mark.parametrize(
+    "scopes", ("finance:voucher-candidate:create", {"scope"}, ("",))
+)
 def test_project_decision_rejects_noncanonical_scope_sequences(scopes) -> None:
     class MalformedScopes:
         def effective_authorization(self, **_kwargs):
@@ -380,9 +392,18 @@ def test_sqlalchemy_grant_round_trip_restart_update_and_rollback(monkeypatch) ->
     engine, factory, repository = _sqlite_repository()
     repository.apply_grant(_grant())
     restarted = SqlAlchemyOaProjectGrantRepository(factory)
-    assert restarted.get_grant(
-        tenant_id=TENANT, project_code=PROJECT_CODE, subject_id=SUBJECT
-    )["project_role"] == "MEMBER"
+    assert (
+        restarted.get_grant(
+            tenant_id=TENANT, project_code=PROJECT_CODE, subject_id=SUBJECT
+        )["project_role"]
+        == "MEMBER"
+    )
+    assert (
+        restarted.list_subject_grants(tenant_id=TENANT, subject_id=SUBJECT)[0][
+            "project_code"
+        ]
+        == PROJECT_CODE
+    )
     updated = restarted.apply_grant(
         _grant(
             grant_status="REVOKED",
@@ -403,6 +424,9 @@ def test_sqlalchemy_grant_round_trip_restart_update_and_rollback(monkeypatch) ->
             tenant_id=TENANT, project_code=PROJECT_CODE, subject_id=SUBJECT
         )
     assert unavailable.value.status_code == 503
+    with pytest.raises(OaAuthorizationError) as subject_grants_unavailable:
+        repository.list_subject_grants(tenant_id=TENANT, subject_id=SUBJECT)
+    assert subject_grants_unavailable.value.status_code == 503
     engine.dispose()
 
 
@@ -467,15 +491,18 @@ def test_sql_helpers_fail_closed_on_concurrent_update_and_lock_rows() -> None:
     session = PostgresSession()
     with pytest.raises(OaAuthorizationError, match="changed concurrently"):
         project_entitlements._update_grant(session, record, expected=record)
-    assert project_entitlements._select_grant(
-        session,
-        {
-            "tenant_id": TENANT,
-            "project_code": PROJECT_CODE,
-            "subject_id": SUBJECT,
-        },
-        for_update=True,
-    ) is None
+    assert (
+        project_entitlements._select_grant(
+            session,
+            {
+                "tenant_id": TENANT,
+                "project_code": PROJECT_CODE,
+                "subject_id": SUBJECT,
+            },
+            for_update=True,
+        )
+        is None
+    )
     assert session.statements[-1].endswith("FOR UPDATE")
 
 
@@ -520,9 +547,12 @@ def test_signed_project_decision_api_is_no_store_and_scope_protected() -> None:
     client = TestClient(app)
     path = "/internal/v1/auth/project-decisions"
     assert client.post(path, json=_decision()).status_code == 401
-    assert client.post(
-        path, json=_decision(), headers=_headers("authorization:admin")
-    ).status_code == 403
+    assert (
+        client.post(
+            path, json=_decision(), headers=_headers("authorization:admin")
+        ).status_code
+        == 403
+    )
     response = client.post(
         path, json=_decision(), headers=_headers(OA_PROJECT_DECISION_SCOPE)
     )
@@ -530,11 +560,14 @@ def test_signed_project_decision_api_is_no_store_and_scope_protected() -> None:
     assert response.json()["decision"]["allowed"] is True
     assert response.headers["cache-control"] == "no-store, max-age=0"
     assert response.headers["pragma"] == "no-cache"
-    assert client.post(
-        path,
-        json=_decision(project_code="bad"),
-        headers=_headers(OA_PROJECT_DECISION_SCOPE),
-    ).status_code == 400
+    assert (
+        client.post(
+            path,
+            json=_decision(project_code="bad"),
+            headers=_headers(OA_PROJECT_DECISION_SCOPE),
+        ).status_code
+        == 400
+    )
 
 
 def test_project_decision_api_uses_configured_service_token_admission(
@@ -579,8 +612,7 @@ def test_project_decision_schema_openapi_and_migration_contract() -> None:
     )
     example = json.loads(
         (
-            contract_root
-            / "examples/auth/oa_project_authorization_decision.allow.json"
+            contract_root / "examples/auth/oa_project_authorization_decision.allow.json"
         ).read_text(encoding="utf-8")
     )
     Draft202012Validator(schema).validate(example)
@@ -592,9 +624,9 @@ def test_project_decision_schema_openapi_and_migration_contract() -> None:
         "service:call",
         "authorization:read",
     ]
-    migration = Path(
-        "database/nex-oa/migrations/2518_oa_project_grant.sql"
-    ).read_text(encoding="utf-8")
+    migration = Path("database/nex-oa/migrations/2518_oa_project_grant.sql").read_text(
+        encoding="utf-8"
+    )
     assert "PRIMARY KEY (tenant_id, project_code, subject_id)" in migration
     assert "2518_oa_project_grant" in migration
 
@@ -635,6 +667,9 @@ def test_actual_postgres_project_grant_restart_decision_and_zero_residue() -> No
         factory = sessionmaker(bind=engine, expire_on_commit=False)
         SqlAlchemyOaProjectGrantRepository(factory).apply_grant(_grant())
         restarted = SqlAlchemyOaProjectGrantRepository(factory)
+        assert restarted.list_subject_grants(
+            tenant_id=TENANT, subject_id=SUBJECT
+        )[0]["project_code"] == PROJECT_CODE
         decision = OaProjectAuthorizationDecisionService(
             restarted, AuthorizationSource(), clock=lambda: NOW
         ).decide(_decision())
@@ -646,9 +681,12 @@ def test_actual_postgres_project_grant_restart_decision_and_zero_residue() -> No
         ).decide(_decision(action="project:pnl:read"))
         assert pnl_decision["allowed"] is True
         with factory() as session:
-            assert session.execute(
-                text("SELECT count(*) FROM oa_project_grant")
-            ).scalar_one() == 1
+            assert (
+                session.execute(
+                    text("SELECT count(*) FROM oa_project_grant")
+                ).scalar_one()
+                == 1
+            )
         engine.dispose()
     finally:
         with (

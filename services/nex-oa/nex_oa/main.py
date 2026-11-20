@@ -131,6 +131,9 @@ AUTHORIZATION_REPOSITORY = build_authorization_repository_for_runtime(
 AUTHORIZATION_RESOLVER = OaEffectiveAuthorizationResolver(
     repository=AUTHORIZATION_REPOSITORY
 )
+PROJECT_GRANT_REPOSITORY = build_project_grant_repository_for_runtime(
+    SERVICE_PERSISTENCE
+)
 USER_SESSION_REGISTRY = build_oa_session_registry_for_runtime(
     SERVICE_PERSISTENCE,
     membership_registry=TENANT_MEMBERSHIP_REGISTRY,
@@ -141,9 +144,7 @@ AUTHORIZATION_SERVICE = OaAuthorizationService(
     repository=AUTHORIZATION_REPOSITORY,
     resolver=AUTHORIZATION_RESOLVER,
     membership_registry=TENANT_MEMBERSHIP_REGISTRY,
-)
-PROJECT_GRANT_REPOSITORY = build_project_grant_repository_for_runtime(
-    SERVICE_PERSISTENCE
+    project_grant_repository=PROJECT_GRANT_REPOSITORY,
 )
 PROJECT_ENTITLEMENT_INBOX = build_project_entitlement_inbox_for_runtime(
     SERVICE_PERSISTENCE

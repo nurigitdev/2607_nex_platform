@@ -37,6 +37,7 @@ from .scoped_approvals import (
     EOS_SCOPED_APPROVAL_BINDING_TABLE,
     EOS_SCOPED_APPROVAL_CASE_TABLE,
     scoped_approval_case_projection,
+    scoped_approval_project_scope_ref,
     scoped_approval_work_item,
 )
 
@@ -303,7 +304,9 @@ class EosAccountingApprovalService:
                     raise _conflict(
                         "Accounting approval requires an immutable review context"
                     )
-                _require_case_decision_boundary(case, bindings, review, admitted)
+                _require_case_decision_boundary(
+                    session, case, bindings, review, admitted
+                )
                 _require_separation_of_duties(case, review, admitted["decided_by"])
                 _require_current_authorization(
                     authorization,
@@ -442,8 +445,12 @@ class EosAccountingApprovalService:
                     raise _conflict(
                         "Accounting approval requires an immutable review context"
                     )
+                scoped_case = scoped_approval_case_projection(case, bindings)
                 return {
-                    "case": scoped_approval_case_projection(case, bindings),
+                    "case": scoped_case,
+                    "project_scope_ref": scoped_approval_project_scope_ref(
+                        session, scoped_case
+                    ),
                     "review": _review_projection(review),
                     "evidence": (
                         _evidence_projection(evidence) if evidence is not None else None
@@ -467,6 +474,7 @@ class EosAccountingApprovalService:
             expected = scoped_approval_work_item(
                 scoped_case,
                 accounting_review=state["review"],
+                project_scope_ref=state["project_scope_ref"],
             )
             try:
                 publication = self._wc_client.create_or_get(expected)
@@ -790,6 +798,7 @@ def _delivery_decision_hash(value: Mapping[str, Any]) -> str:
 
 
 def _require_case_decision_boundary(
+    session: Session,
     case: Mapping[str, Any],
     bindings: Sequence[Mapping[str, Any]],
     review: Mapping[str, Any],
@@ -811,6 +820,7 @@ def _require_case_decision_boundary(
     expected = scoped_approval_work_item(
         projection,
         accounting_review=_review_projection(review),
+        project_scope_ref=scoped_approval_project_scope_ref(session, projection),
     )
     for field in (
         "tenant_id",
