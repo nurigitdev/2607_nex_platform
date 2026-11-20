@@ -22,9 +22,15 @@ from nex_ae_api.agent_runtime_worker import (
     run_bounded_agent_runtime_worker,
 )
 from nex_ae_api.multi_step_engine import SqlAlchemyMultiStepEngine
-from nex_ae_api.nsl_approval_resume import SqlAlchemyNslApprovalResumeSource
+from nex_ae_api.nsl_approval_resume import (
+    NSL_APPROVAL_RESUME_PAYLOAD_FIELDS,
+    SqlAlchemyNslApprovalResumeSource,
+)
 from nex_ae_api.product_planning_runtime import InstalledProductPlanningComposition
 from nex_ae_api.runtime_assignment_handlers import RuntimeAssignmentHandlerRegistry
+from nex_ae_api.runtime_continuation_sources import (
+    RuntimeContinuationSourceRegistry,
+)
 from nex_ae_api.runtime_jobs import SqlAlchemyRuntimeJobQueue
 from nex_ae_api.step_executors import (
     P5StepExecutionWorker,
@@ -32,6 +38,10 @@ from nex_ae_api.step_executors import (
 )
 from nex_ae_api.work_result_publication import (
     SqlAlchemyInstalledBackgroundResultCloser,
+)
+from nex_ae_api.work_result_resume import (
+    WORK_RESULT_RESUME_PAYLOAD_FIELDS,
+    SqlAlchemyWorkResultResumeSource,
 )
 from nex_ae_api.workspace_result_publication import (
     AgentResultCompletionNotifier,
@@ -156,7 +166,7 @@ class InstalledRuntimeComposition:
     runtime_jobs: SqlAlchemyRuntimeJobQueue
     engine: SqlAlchemyMultiStepEngine
     dispatcher: SqlAlchemyAgentRuntimeDispatcher
-    continuation_source: SqlAlchemyNslApprovalResumeSource
+    continuation_source: RuntimeContinuationSourceRegistry
     worker: P5StepExecutionWorker
     assignment_source: SqlAlchemyAgentRuntimeAssignmentSource
     handler: InstalledStepAssignmentHandler
@@ -212,6 +222,13 @@ class InstalledRuntimeComposition:
             + int(closure["failed_count"])
             + int(background_closure["failed_count"])
         )
+        execution_failures = [
+            {
+                "error_code": str(item.get("error_code") or "unknown")[:128],
+            }
+            for item in result.get("executions", ())
+            if isinstance(item, Mapping) and item.get("status") == "FAILED"
+        ][:10]
         return {
             "status": "WORK" if claimed_count or closure_work else "IDLE",
             "domain_claiming_enabled": True,
@@ -220,6 +237,7 @@ class InstalledRuntimeComposition:
             "succeeded_count": result["succeeded_count"],
             "failed_count": failed_count,
             "stop_reason": result["stop_reason"],
+            "execution_failures": execution_failures,
             "result_closure": closure,
             "background_result_closure": background_closure,
         }
@@ -242,7 +260,16 @@ def build_installed_runtime_composition(
     identity = _required_text(worker_id, "worker_id")
     runtime_jobs = SqlAlchemyRuntimeJobQueue(sessions)
     engine = SqlAlchemyMultiStepEngine(sessions, runtime_jobs)
-    continuation_source = SqlAlchemyNslApprovalResumeSource(sessions)
+    continuation_source = RuntimeContinuationSourceRegistry(
+        {
+            NSL_APPROVAL_RESUME_PAYLOAD_FIELDS: SqlAlchemyNslApprovalResumeSource(
+                sessions
+            ),
+            WORK_RESULT_RESUME_PAYLOAD_FIELDS: SqlAlchemyWorkResultResumeSource(
+                sessions
+            ),
+        }
+    )
     worker = P5StepExecutionWorker(
         engine=engine,
         jobs=runtime_jobs,

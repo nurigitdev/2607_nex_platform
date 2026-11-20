@@ -454,7 +454,31 @@ def run_installed_agent_runtime_process(
 
 
 def _bounded_settlement_diagnostics(result: Mapping[str, Any]) -> dict[str, Any]:
-    diagnostics: dict[str, Any] = {}
+    execution_failures = result.get("execution_failures")
+    admitted_execution_failures = []
+    if isinstance(execution_failures, Sequence) and not isinstance(
+        execution_failures, (str, bytes)
+    ):
+        for failure in execution_failures[:10]:
+            if not isinstance(failure, Mapping):
+                continue
+            error_code = failure.get("error_code")
+            admitted_execution_failures.append(
+                {
+                    "error_code": (
+                        error_code[:128]
+                        if isinstance(error_code, str) and error_code.strip()
+                        else "unknown"
+                    )
+                }
+            )
+    diagnostics: dict[str, Any] = {
+        "runtime_execution": {
+            "failed_count": len(admitted_execution_failures),
+            "failures": admitted_execution_failures,
+            "content_included": False,
+        }
+    }
     for source, target in (
         ("result_closure", "ia_result_settlement"),
         ("background_result_closure", "background_result_settlement"),

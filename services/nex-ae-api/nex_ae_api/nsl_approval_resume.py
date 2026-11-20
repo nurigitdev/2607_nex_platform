@@ -16,7 +16,7 @@ from nex_ae_api.nsl_approval_events import (
 from nex_ae_api.nsl_approval_publication import NSL_APPROVAL_RESUME_CONTRACT_REF
 from nex_ae_api.runtime_jobs import RuntimeJobClaim
 
-_PAYLOAD_FIELDS = frozenset(
+NSL_APPROVAL_RESUME_PAYLOAD_FIELDS = frozenset(
     {
         "wait_id",
         "event_id",
@@ -82,13 +82,14 @@ def _validate_claim(
         job.get("job_type") != "RESUME_EXECUTION"
         or job.get("state") != "RUNNING"
         or not isinstance(raw_payload, Mapping)
-        or set(raw_payload) != _PAYLOAD_FIELDS
+        or set(raw_payload) != NSL_APPROVAL_RESUME_PAYLOAD_FIELDS
         or not isinstance(attempt, Mapping)
         or attempt.get("outcome") != "RUNNING"
     ):
         raise _invalid("RuntimeJob lacks exact running NSL approval resume authority.")
     payload = {
-        field: _required(field, raw_payload.get(field)) for field in _PAYLOAD_FIELDS
+        field: _required(field, raw_payload.get(field))
+        for field in NSL_APPROVAL_RESUME_PAYLOAD_FIELDS
     }
     if (
         _value(job.get("wait_id")) != payload["wait_id"]

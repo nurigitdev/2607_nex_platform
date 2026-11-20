@@ -11,7 +11,9 @@ from nex_ae_api.agent_runtime_dispatcher import (
 )
 from nex_ae_api.agent_runtime_worker import AgentRuntimeAssignment
 from nex_ae_api.multi_step_engine import SqlAlchemyMultiStepEngine
-from nex_ae_api.nsl_approval_resume import SqlAlchemyNslApprovalResumeSource
+from nex_ae_api.runtime_continuation_sources import (
+    RuntimeContinuationSourceRegistry,
+)
 from nex_ae_api.runtime_jobs import RuntimeJobClaim, SqlAlchemyRuntimeJobQueue
 from nex_ae_api.step_executors import (
     P5StepExecutionWorker,
@@ -95,7 +97,7 @@ def test_generic_composition_builds_from_non_demo_executor_profile() -> None:
     assert isinstance(runtime.runtime_jobs, SqlAlchemyRuntimeJobQueue)
     assert isinstance(runtime.engine, SqlAlchemyMultiStepEngine)
     assert isinstance(runtime.dispatcher, SqlAlchemyAgentRuntimeDispatcher)
-    assert isinstance(runtime.continuation_source, SqlAlchemyNslApprovalResumeSource)
+    assert isinstance(runtime.continuation_source, RuntimeContinuationSourceRegistry)
     assert isinstance(runtime.worker, P5StepExecutionWorker)
     assert isinstance(runtime.assignment_source, SqlAlchemyAgentRuntimeAssignmentSource)
     assert isinstance(runtime.handler, composition.InstalledStepAssignmentHandler)
@@ -203,12 +205,8 @@ def test_executor_profile_accepts_no_package_readiness() -> None:
 def test_executor_profile_rejects_invalid_in_process_package_readiness() -> None:
     with pytest.raises(TypeError, match="in_process_package_readiness"):
         composition.RuntimeExecutorProfile(
-            registry=P5StepExecutorRegistry(
-                {"DETERMINISTIC_REPORT": _FakeExecutor()}
-            ),
-            executor_backends={
-                "DETERMINISTIC_REPORT": "NSL_V02_IN_PROCESS"
-            },
+            registry=P5StepExecutorRegistry({"DETERMINISTIC_REPORT": _FakeExecutor()}),
+            executor_backends={"DETERMINISTIC_REPORT": "NSL_V02_IN_PROCESS"},
             in_process_package_readiness="invalid",  # type: ignore[arg-type]
         )
 
@@ -406,12 +404,56 @@ def test_runtime_cycle_uses_canonical_claim_counter_and_closes_results(
     assert result["status"] == expected_status
     assert result["execution_count"] == worker_result["claimed_count"]
     assert result["failed_count"] == expected_failed
+    assert result["execution_failures"] == []
     assert result["composition_mode"] == "GENERIC_INSTALLED_RUNTIME"
     assert close_calls == [{"limit": 10}]
     assert captured["max_cycles"] == 1
     assert captured["stop_on_failure"] is False
     assert captured["finalize_lifecycle"] is True
     assert captured["in_process_package_readiness"] == {"status": "PASS"}
+
+
+def test_runtime_cycle_exposes_only_bounded_worker_failure_codes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    worker_result = {
+        "claimed_count": 1,
+        "succeeded_count": 0,
+        "failed_count": 1,
+        "stop_reason": "MAX_CYCLES",
+        "executions": [
+            {
+                "status": "FAILED",
+                "error_code": "ae.runtime.failure",
+                "tenant_id": "protected-tenant",
+                "runtime_job_id": "protected-job",
+            }
+        ],
+    }
+    monkeypatch.setattr(
+        composition,
+        "AgentRuntimeWorkerLifecycle",
+        lambda **values: SimpleNamespace(**values),
+    )
+    monkeypatch.setattr(
+        composition,
+        "run_bounded_agent_runtime_worker",
+        lambda **_values: worker_result,
+    )
+
+    result = _runtime(
+        result_closer=SimpleNamespace(
+            close_ready=lambda **_values: {
+                "finalized_count": 0,
+                "published_count": 0,
+                "failed_count": 0,
+            }
+        ),
+        executor_profile=_executor_profile(),
+    ).run_cycle()
+
+    assert result["execution_failures"] == [{"error_code": "ae.runtime.failure"}]
+    assert "tenant_id" not in str(result["execution_failures"])
 
 
 def test_generic_module_has_no_demo_dependency() -> None:

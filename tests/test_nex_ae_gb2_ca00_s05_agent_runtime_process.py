@@ -261,6 +261,12 @@ def test_installed_loop_reports_bounded_result_settlement_failures() -> None:
             "status": "WORK",
             "execution_count": 1,
             "failed_count": 2,
+            "execution_failures": [
+                {
+                    "error_code": "ae.work_result_resume_invalid",
+                    "tenant_id": "protected-tenant",
+                }
+            ],
             "result_closure": {
                 "candidate_count": 1,
                 "finalized_count": 0,
@@ -302,6 +308,11 @@ def test_installed_loop_reports_bounded_result_settlement_failures() -> None:
     )
 
     work = json.loads(output.getvalue().splitlines()[1])
+    assert work["runtime_execution"] == {
+        "failed_count": 1,
+        "failures": [{"error_code": "ae.work_result_resume_invalid"}],
+        "content_included": False,
+    }
     assert work["ia_result_settlement"] == {
         "candidate_count": 1,
         "finalized_count": 0,
