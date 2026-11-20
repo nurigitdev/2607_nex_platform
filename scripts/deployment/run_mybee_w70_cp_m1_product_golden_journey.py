@@ -323,6 +323,7 @@ def execute_m1_product_golden_journey(
             failed = sorted(name for name, passed in checks.items() if not passed)
             raise M1ProductGoldenJourneyError(
                 f"M1 product database invariants failed: {','.join(failed)}"
+                f" wa_progress={_wa_database_progress_summary(database)}"
             )
         first_result = transactions[0]["result_projection"]["result"]
         live_state.update(
@@ -1263,6 +1264,33 @@ def _database_projection(
                     {"tenant": tenant_id},
                 ).scalar_one()
             )
+            wa_jobs = {
+                str(row[0]): int(row[1])
+                for row in connection.execute(
+                    text(
+                        "SELECT status, count(*) FROM service_jobs "
+                        "WHERE job_type='WA_EVIDENCE_INGEST' "
+                        "AND payload->>'tenant_id'=:tenant GROUP BY status"
+                    ),
+                    {"tenant": tenant_id},
+                ).all()
+            }
+            latest_wa_job = connection.execute(
+                text(
+                    "SELECT status, attempt_count, error->>'error_code' "
+                    "FROM service_jobs WHERE job_type='WA_EVIDENCE_INGEST' "
+                    "AND payload->>'tenant_id'=:tenant "
+                    "ORDER BY updated_at DESC, job_id DESC LIMIT 1"
+                ),
+                {"tenant": tenant_id},
+            ).first()
+            latest_wa_event = connection.execute(
+                text(
+                    "SELECT event_type, details->>'error_code' "
+                    "FROM service_operational_events WHERE service_id='nex-wa' "
+                    "ORDER BY created_at DESC, event_id DESC LIMIT 1"
+                )
+            ).first()
         return {
             "execution_count": int(ae[0]),
             "agent_result_count": int(ae[1]),
@@ -1282,10 +1310,55 @@ def _database_projection(
                 format(value, "f") for value in first_lines
             ],
             "wa_work_asset_count": wa_assets,
+            "wa_job_status_counts": wa_jobs,
+            "latest_wa_job": _bounded_wa_diagnostic_row(latest_wa_job),
+            "latest_wa_event": _bounded_wa_diagnostic_row(latest_wa_event),
         }
     finally:
         for engine in engines.values():
             engine.dispose()
+
+
+def _bounded_wa_diagnostic_row(row: object) -> list[object]:
+    if row is None:
+        return []
+    return [
+        value if isinstance(value, int) else _diagnostic_token(value)
+        for value in row
+    ]
+
+
+def _wa_database_progress_summary(database: Mapping[str, Any]) -> str:
+    counts = database.get("wa_job_status_counts")
+    safe_counts = counts if isinstance(counts, Mapping) else {}
+    statuses = "|".join(
+        f"{_diagnostic_token(key)}:{_bounded_nonnegative_int(value, maximum=1000)}"
+        for key, value in sorted(safe_counts.items())
+    ) or "none"
+    return ",".join(
+        (
+            f"jobs={statuses}",
+            f"latest_job={_wa_diagnostic_row_summary(database.get('latest_wa_job'))}",
+            f"latest_event={_wa_diagnostic_row_summary(database.get('latest_wa_event'))}",
+            "assets="
+            + str(
+                _bounded_nonnegative_int(
+                    database.get("wa_work_asset_count"), maximum=1000
+                )
+            ),
+        )
+    )
+
+
+def _wa_diagnostic_row_summary(row: object) -> str:
+    if not isinstance(row, (list, tuple)):
+        return "none"
+    return ":".join(
+        str(_bounded_nonnegative_int(value, maximum=1000))
+        if isinstance(value, int) and not isinstance(value, bool)
+        else _diagnostic_token(value)
+        for value in row
+    )
 
 
 def _wait_for_live_database_projection(
