@@ -27,7 +27,7 @@ def _capabilities():
             "NEX_AE_PRODUCT_CAPABILITY_REGISTRY_PATH": str(
                 ROOT
                 / "deployment/environments/"
-                "ae-product-capability-registry.mybee-m1.v2.json"
+                "ae-product-capability-registry.mybee-m1.v3.json"
             )
         }
     )
@@ -213,8 +213,8 @@ def test_canonical_compose_and_oci_admit_both_product_processes() -> None:
     assert compose.count("NEX_AE_PRODUCT_COORDINATOR_ACTIVATION_PATH:") == 2
     assert compose.count("NEX_AE_PRODUCT_COORDINATOR_ROLLBACK_PATH:") == 2
     assert "nex_ae_api.agent_runtime_process" in compose
-    assert "product-coordinator-activation.v1.json" in image_builder
-    assert "product-coordinator-rollback.v1.json" in image_builder
+    assert "product-coordinator-activation.v2.json" in image_builder
+    assert "product-coordinator-rollback.v2.json" in image_builder
     assert "NEX_AE_PRODUCT_COORDINATOR_ACTIVATION_PATH=" in containerfile
     assert "NEX_AE_PRODUCT_COORDINATOR_ROLLBACK_PATH=" in containerfile
 

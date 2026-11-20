@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import asyncio
 import json
 from copy import deepcopy
+from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
@@ -12,8 +14,14 @@ import nex_ae_api.mybee_m1_skill_runtime as skill_runtime
 import nex_ae_api.product_runtime_profile as runtime_profile
 import pytest
 from mybee_ax.integrations import M1_D04_CAPABILITY_ID, M1_D12_CAPABILITY_ID
-from nex_ae_api.controlled_skill_runtime import ControlledSkillRuntimeError
-from nex_ae_api.m1_installed_skill_runtime import M1InstalledSkillRuntime
+from nex_ae_api.controlled_skill_runtime import (
+    ControlledSkillRuntimeError,
+    principal_document,
+)
+from nex_ae_api.m1_installed_skill_runtime import (
+    M1InstalledSkillRuntime,
+    _required_write_tool_version,
+)
 from nex_ae_api.multi_step_engine import StepExecutionContext
 from nex_ae_api.mybee_m1_skill_runtime import build_mybee_m1_verified_skill_catalog
 from nex_ae_api.nsl_eos_project_work_code_read import (
@@ -35,6 +43,7 @@ from nex_ae_api.step_executors import (
     LocalSkillExecutorDependencies,
     P5StepExecutorError,
 )
+from nex_runtime.nsl_runtime_adapter import NslExecutionBinding
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
@@ -53,7 +62,7 @@ def _environment() -> dict[str, str]:
         "NEX_AE_PRODUCT_RUNTIME_PROFILE": VERIFIED_PRODUCT_RELEASE_PROFILE,
         "NEX_AE_PRODUCT_CAPABILITY_REGISTRY_PATH": str(
             ROOT
-            / "deployment/environments/ae-product-capability-registry.mybee-m1.v2.json"
+            / "deployment/environments/ae-product-capability-registry.mybee-m1.v3.json"
         ),
         "NEX_OA_BASE_URL": "https://oa.example",
         "NEX_EOS_BASE_URL": "https://eos.example",
@@ -94,13 +103,13 @@ def test_verified_product_release_profile_is_fail_closed_and_ready(
     assert profile.package_readiness == {
         "status": "READY",
         "backend_profile": "NSL_V02_IN_PROCESS",
-        "release_id": "nex-mybee-m1-d04-d12-checkpoint",
-        "release_hash": "sha256:0034adc847aedc5d4fe99a446f7b60dfaef5db218ebbed96ba0f96bf32feecf4",
-        "catalog_hash": "sha256:1c15866db200efb8db4807869f48c49737fe4c18f1d3ef657bed7a456721801d",
+        "release_id": "nex-mybee-m1-d04-d12-checkpoint-v2",
+        "release_hash": "sha256:df57c14d1693dc5469f18a09a1e9bdaeef404b23d601263d533c3c38cb92c234",
+        "catalog_hash": "sha256:6f17db256b58fbd0cf6ec390564c9c4ca459b7216e10fc3602043bea98b87bf2",
         "capabilities": tuple(sorted((M1_D04_CAPABILITY_ID, M1_D12_CAPABILITY_ID))),
         "runtime_profile": VERIFIED_PRODUCT_RELEASE_PROFILE,
-        "admission_hash": "sha256:912229dfc42e881e28418af9289c1a58b99677cb4e46b7975677725d2b98edc4",
-        "activation_hash": "sha256:54b7d13968adc430101095bb03581bdb453537a348babad9e690d2037fcfbe29",
+        "admission_hash": "sha256:812f68e387069654f7598bb891d14626107631008d8520f75bf3aa26612a905a",
+        "activation_hash": "sha256:bef2cb2f4314b0fd177fce1195c2bdd93c833330b3d7b00cd8908ce4cd0974f3",
         "transaction_preparation": {
             "schema_version": "ae.m1_transaction_preparation_runtime.v1",
             "status": "READY",
@@ -151,7 +160,7 @@ def test_verified_product_release_profile_is_fail_closed_and_ready(
     assert profile.in_process_package_readiness["package_version"] == "0.2.1"
 
     drifted = json.loads(
-        (ROOT / "deployment/locks/ae-mybee-m1-runtime-activation.v2.json").read_text(
+        (ROOT / "deployment/locks/ae-mybee-m1-runtime-activation.v3.json").read_text(
             encoding="utf-8"
         )
     )
@@ -164,6 +173,69 @@ def test_verified_product_release_profile_is_fail_closed_and_ready(
     }
     with pytest.raises(ValueError, match="admission hash"):
         build_product_runtime_executor_profile(_sessions(), environment)
+
+
+def test_signed_d04_prefix_suspends_only_after_real_checks_pass(
+    tmp_path: Path,
+) -> None:
+    runtime = _runtime()
+    package = replace(
+        runtime._packages[M1_D04_CAPABILITY_ID],
+        state_root=tmp_path,
+    )
+    execution = package.execution(
+        tenant_id=TENANT,
+        agent_execution_id=EXECUTION_ID,
+        executable_step_id=STEP_ID,
+        nsl_execution_id=NSL_EXECUTION_ID,
+        business_operation_id=BUSINESS_OPERATION_ID,
+        binding=NslExecutionBinding(
+            input_document={
+                "schema_version": "eos.journal_posting_command.v1",
+                "tenant_id": TENANT,
+                "company_id": "company-101",
+                "candidate_id": "candidate-101",
+                "expected_candidate_version": 1,
+                "expected_candidate_revision": 1,
+                "expected_candidate_hash": HASH,
+                "accounting_approval_evidence_id": "approval-evidence-101",
+            },
+            principal_document=principal_document(
+                tenant_id=TENANT,
+                principal_id="employee-101",
+                authorization={"roles": [], "scopes": [], "revision_hash": HASH},
+            ),
+            handlers={M1_D04_CAPABILITY_ID: lambda _arguments: {}},
+            write_tool_id=M1_D04_CAPABILITY_ID,
+            write_tool_version="1.0.0",
+            precondition_evidence_ref="EOS:VOUCHER_CANDIDATE:candidate-101",
+        ),
+    )
+
+    session = asyncio.run(execution.start(execution.file_state_port))
+
+    assert session.result.validation.status.value == "ALL_PASS"
+    assert session.checkpoint is not None
+    assert session.approval_request is not None
+    assert execution.existing_approval_request() is not None
+
+
+def test_d04_skill_version_does_not_replace_required_tool_contract_version() -> None:
+    selection = _runtime()._catalog.select(M1_D04_CAPABILITY_ID)
+
+    assert selection.release_skill.skill_version == "1.0.1"
+    assert _required_write_tool_version(selection) == "1.0.0"
+
+    invalid_skill = replace(selection.verified_skill.skill, required_tools=())
+    invalid_selection = replace(
+        selection,
+        verified_skill=replace(selection.verified_skill, skill=invalid_skill),
+    )
+    with pytest.raises(
+        ProductSkillCatalogError,
+        match="exactly one matching Tool contract",
+    ):
+        _required_write_tool_version(invalid_selection)
 
 
 class _Gateway:
@@ -939,12 +1011,12 @@ def test_controlled_skill_initial_preserves_authority_stage_failure(
 
 def test_activation_lock_and_runtime_config_fail_closed(tmp_path: Path) -> None:
     admission = json.loads(
-        (ROOT / "deployment/locks/ae-mybee-m1-runtime-admission.v2.json").read_text(
+        (ROOT / "deployment/locks/ae-mybee-m1-runtime-admission.v3.json").read_text(
             encoding="utf-8"
         )
     )
     activation = json.loads(
-        (ROOT / "deployment/locks/ae-mybee-m1-runtime-activation.v2.json").read_text(
+        (ROOT / "deployment/locks/ae-mybee-m1-runtime-activation.v3.json").read_text(
             encoding="utf-8"
         )
     )
@@ -1086,25 +1158,25 @@ def test_canonical_oci_and_compose_select_same_verified_release() -> None:
     ).read_text(encoding="utf-8")
     for expected in (
         "VERIFIED_PRODUCT_RELEASE",
-        "ae-mybee-m1-runtime-admission.v2.json",
-        "ae-mybee-m1-runtime-activation.v2.json",
-        "ae-product-capability-registry.mybee-m1.v2.json",
-        "mybee-m1-d04-d12.v1.nsp",
+        "ae-mybee-m1-runtime-admission.v3.json",
+        "ae-mybee-m1-runtime-activation.v3.json",
+        "ae-product-capability-registry.mybee-m1.v3.json",
+        "mybee-m1-d04-d12.v2.nsp",
         "tool_catalog.v1.json",
     ):
         assert expected in containerfile
     for expected in (
         "VERIFIED_PRODUCT_RELEASE",
-        "ae-mybee-m1-runtime-admission.v2.json",
-        "ae-mybee-m1-runtime-activation.v2.json",
-        "ae-product-capability-registry.mybee-m1.v2.json",
+        "ae-mybee-m1-runtime-admission.v3.json",
+        "ae-mybee-m1-runtime-activation.v3.json",
+        "ae-product-capability-registry.mybee-m1.v3.json",
         "tool_catalog.v1.json",
     ):
         assert expected in compose
     assert (
         compose.count(
             "/app/deployment/product/repository/deployment/environments/"
-            "ae-product-capability-registry.mybee-m1.v2.json"
+            "ae-product-capability-registry.mybee-m1.v3.json"
         )
         == 2
     )

@@ -136,7 +136,7 @@ def audit_product_runtime_deployment(root: Path = ROOT) -> dict[str, Any]:
     container = sources["deployment/oci/canonical-platform-ae-runtime.Containerfile"]
     if "COPY --chown=65532:65532 fixtures" in container:
         issues.append("business fixtures are packaged into the product runtime image")
-    if "ae-mybee-m1-runtime-admission.v2.json" not in container:
+    if "ae-mybee-m1-runtime-admission.v3.json" not in container:
         issues.append("generalized product runtime admission is not packaged")
     if "NEX_AE_NSL_BUNDLE_MANIFEST" in container or "golden-a" in container:
         issues.append("historical Golden A bundle remains in active image")
@@ -144,7 +144,7 @@ def audit_product_runtime_deployment(root: Path = ROOT) -> dict[str, Any]:
     registry = json.loads(
         (
             root
-            / "deployment/environments/ae-product-capability-registry.mybee-m1.v2.json"
+            / "deployment/environments/ae-product-capability-registry.mybee-m1.v3.json"
         ).read_text(encoding="utf-8")
     )
     capability_ids = [

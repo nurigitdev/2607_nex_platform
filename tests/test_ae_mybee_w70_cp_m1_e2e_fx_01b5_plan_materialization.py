@@ -41,7 +41,7 @@ def _environment() -> dict[str, str]:
     return {
         "NEX_AE_PRODUCT_CAPABILITY_REGISTRY_PATH": str(
             ROOT
-            / "deployment/environments/ae-product-capability-registry.mybee-m1.v2.json"
+            / "deployment/environments/ae-product-capability-registry.mybee-m1.v3.json"
         ),
         "NEX_OA_BASE_URL": "https://oa.example",
         "NEX_EOS_BASE_URL": "https://eos.example",

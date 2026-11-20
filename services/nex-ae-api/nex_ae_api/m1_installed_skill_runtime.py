@@ -510,6 +510,7 @@ class _M1JournalControlledRuntime(ControlledSkillRuntime):
     ) -> None:
         self._sessions = sessions
         self._selection = selection
+        self._write_tool_version = _required_write_tool_version(selection)
         self._package = package
         self._gateway = gateway
         self._config = SimpleNamespace(
@@ -587,7 +588,7 @@ class _M1JournalControlledRuntime(ControlledSkillRuntime):
                 }
             },
             write_tool_id=self._selection.capability.capability_id,
-            write_tool_version=self._selection.release_skill.skill_version,
+            write_tool_version=self._write_tool_version,
             precondition_evidence_ref=f"product-authority:{authority_hash}",
         )
         return ControlledExecutionAuthority(
@@ -1052,6 +1053,21 @@ def _context_projection(
             "audit_retention_days": 90,
         },
     )
+
+
+def _required_write_tool_version(selection: ProductSkillSelection) -> str:
+    capability_id = selection.capability.capability_id
+    required_tools = tuple(
+        tool
+        for tool in selection.verified_skill.skill.required_tools
+        if tool.tool_id == capability_id
+    )
+    if len(required_tools) != 1 or not str(required_tools[0].version).strip():
+        raise ProductSkillCatalogError(
+            "PRODUCT_SKILL_WRITE_TOOL_CONTRACT_INVALID",
+            "The signed WRITE Skill must require exactly one matching Tool contract.",
+        )
+    return str(required_tools[0].version)
 
 
 def _worker_error(detail: str) -> P5StepExecutorError:

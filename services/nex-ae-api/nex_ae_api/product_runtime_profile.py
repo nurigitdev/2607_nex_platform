@@ -121,7 +121,7 @@ def _admit_verified_product_release(
     admission_path = _path(
         environ,
         "NEX_AE_PRODUCT_RUNTIME_ADMISSION_PATH",
-        ROOT / "deployment/locks/ae-mybee-m1-runtime-admission.v2.json",
+        ROOT / "deployment/locks/ae-mybee-m1-runtime-admission.v3.json",
     )
     expected_admission = build_mybee_m1_runtime_admission(environ)
     if _json_object(admission_path) != expected_admission:
@@ -129,7 +129,7 @@ def _admit_verified_product_release(
     activation_path = _path(
         environ,
         "NEX_AE_PRODUCT_RUNTIME_ACTIVATION_PATH",
-        ROOT / "deployment/locks/ae-mybee-m1-runtime-activation.v2.json",
+        ROOT / "deployment/locks/ae-mybee-m1-runtime-activation.v3.json",
     )
     activation = _json_object(activation_path)
     _verify_activation_lock(
@@ -265,12 +265,19 @@ def _verify_activation_lock(
         != "ae.generalized_runtime_rollback_receipt.v1"
         or receipt_payload.get("golden_a_dependency") is not False
         or receipt_payload.get("runtime_admission_hash")
-        != admission.get("content_hash")
+        != rollback.get("runtime_admission_hash")
     ):
         raise ValueError("generalized rollback receipt is not admitted")
+    receipt_hash = receipt_payload.get("content_hash")
+    receipt_body = {
+        key: value for key, value in receipt_payload.items() if key != "content_hash"
+    }
+    from nex_runtime.semantic_hashes import semantic_sha256_hash_ref
+
+    if receipt_hash != semantic_sha256_hash_ref(receipt_body):
+        raise ValueError("generalized rollback receipt hash has drifted")
     expected_hash = lock.get("content_hash")
     body = {key: value for key, value in lock.items() if key != "content_hash"}
-    from nex_runtime.semantic_hashes import semantic_sha256_hash_ref
 
     if expected_hash != semantic_sha256_hash_ref(body):
         raise ValueError("verified product runtime activation hash has drifted")

@@ -1,0 +1,8 @@
+{
+  "schema_version": "nex.mybee.nsp-trust-key.v1",
+  "algorithm": "Ed25519",
+  "key_id": "release:nex-mybee-m1-checkpoint-2026-11-v2",
+  "public_key_base64": "Xa1YQUDmzKY9THfJ1WKouLA_VowORl_AWCWrfAdhcyo",
+  "usage": "VERIFY_ONLY",
+  "private_key_persisted": false
+}

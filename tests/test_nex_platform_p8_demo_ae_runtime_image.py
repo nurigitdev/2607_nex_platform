@@ -18,8 +18,8 @@ def test_demo_ae_runtime_containerfile_admits_every_embedded_asset_path() -> Non
         "NEX_AE_NSL_PLATFORM_LOCK=/app/deployment/product/repository/"
         "deployment/locks/python-production.lock"
     ) in source
-    assert "ae-mybee-m1-runtime-activation.v2.json" in source
-    assert "mybee-m1-d04-d12.v1.nsp" in source
+    assert "ae-mybee-m1-runtime-activation.v3.json" in source
+    assert "mybee-m1-d04-d12.v2.nsp" in source
     assert (
         "install -d -o 65532 -g 65532 -m 0700 /var/lib/nex-platform/ae-runtime/nsl"
     ) in source
@@ -61,20 +61,20 @@ def test_demo_ae_runtime_image_dry_run_requires_locked_bundle() -> None:
     assert result["active_runtime_profile"] == "VERIFIED_PRODUCT_RELEASE"
     assert result["verified_product_release"] == {
         "activation_state": "ACTIVE_GENERALIZED",
-        "activation_hash": "sha256:54b7d13968adc430101095bb03581bdb453537a348babad9e690d2037fcfbe29",
-        "admission_hash": "sha256:912229dfc42e881e28418af9289c1a58b99677cb4e46b7975677725d2b98edc4",
-        "release_id": "nex-mybee-m1-d04-d12-checkpoint",
-        "release_hash": "sha256:0034adc847aedc5d4fe99a446f7b60dfaef5db218ebbed96ba0f96bf32feecf4",
-        "package_hash": "sha256:96888a02ee4924b6ac1f46bf7031627afc4d4a53d04bc77e13acd1940ea25348",
-        "skill_catalog_hash": "sha256:1c15866db200efb8db4807869f48c49737fe4c18f1d3ef657bed7a456721801d",
+        "activation_hash": "sha256:bef2cb2f4314b0fd177fce1195c2bdd93c833330b3d7b00cd8908ce4cd0974f3",
+        "admission_hash": "sha256:812f68e387069654f7598bb891d14626107631008d8520f75bf3aa26612a905a",
+        "release_id": "nex-mybee-m1-d04-d12-checkpoint-v2",
+        "release_hash": "sha256:df57c14d1693dc5469f18a09a1e9bdaeef404b23d601263d533c3c38cb92c234",
+        "package_hash": "sha256:ac99192443b315699f33adc7430f0a064ad0913e5c26e268538e6bd4468e9bed",
+        "skill_catalog_hash": "sha256:6f17db256b58fbd0cf6ec390564c9c4ca459b7216e10fc3602043bea98b87bf2",
         "runtime_selectable_capabilities": [
             "FINANCE.VOUCHER.APPROVE_AND_POST",
             "PROJECT.WORK_CODE_SET.GET",
         ],
         "rollback_target": {
             "profile": "VERIFIED_PRODUCT_RELEASE",
-            "receipt_ref": "deployment/locks/ae-mybee-m1-generalized-rollback.v1.json",
-            "receipt_sha256": "sha256:bd50833137a2501ec291c5b5893ba4fcfc2ec7ac30b6ea5b454a92607cf65472",
+            "receipt_ref": "deployment/locks/ae-mybee-m1-generalized-rollback.v2.json",
+            "receipt_sha256": "sha256:73357d1311a154dea76a74ef673d8cc32a83e8f9a3e9d4548205cba74c654a75",
             "runtime_admission_hash": "sha256:912229dfc42e881e28418af9289c1a58b99677cb4e46b7975677725d2b98edc4",
             "golden_a_dependency": False,
         },

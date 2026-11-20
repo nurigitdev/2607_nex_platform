@@ -37,7 +37,7 @@ from nex_ae_api.product_preparation_persistence import (
 
 ROOT = Path(__file__).resolve().parents[1]
 CAPABILITY_REGISTRY = (
-    ROOT / "deployment/environments/ae-product-capability-registry.mybee-m1.v2.json"
+    ROOT / "deployment/environments/ae-product-capability-registry.mybee-m1.v3.json"
 )
 HASH_A = "sha256:" + "a" * 64
 HASH_B = "sha256:" + "b" * 64
@@ -180,9 +180,9 @@ def test_m1_registration_is_exact_capability_bound_and_contract_only() -> None:
         "PROJECT.WORK_CODE_SET.GET",
     }
     assert all(
-        item.bundle_id == "nex-mybee-m1-d04-d12-checkpoint"
+        item.bundle_id == "nex-mybee-m1-d04-d12-checkpoint-v2"
         and item.bundle_manifest_ref
-        == "deployment-lock://ae-mybee-m1-signed-skill-checkpoint.v1"
+        == "deployment-lock://ae-mybee-m1-signed-skill-checkpoint.v2"
         for item in first.installed_skill_bundle_locks
     )
     assert registry.registry_version == 3

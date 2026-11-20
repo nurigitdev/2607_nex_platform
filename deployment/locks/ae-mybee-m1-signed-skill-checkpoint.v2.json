@@ -1,0 +1,107 @@
+{
+  "schema_version": "nex.mybee.m1-signed-skill-checkpoint.v1",
+  "release_id": "nex-mybee-m1-d04-d12-checkpoint-v2",
+  "release_version": 2,
+  "checkpoint_id": "CP-M1-MB8-01",
+  "release_state": "SIGNED_ACTIVE_CHECKPOINT",
+  "runtime_selectable": true,
+  "admitted_at": "2026-11-20T00:00:00Z",
+  "nsl_runtime": {
+    "language_version": "0.2",
+    "package_version": "0.2.1",
+    "backend_profile": "NSL_V02_IN_PROCESS",
+    "wheel_lock_ref": "deployment/locks/nsl-v0.2.1-wheel.json",
+    "wheel_lock_sha256": "sha256:7efa6376602f1c89951657ba170a51ae7157189a0f46e607cebbb9ef949964ea"
+  },
+  "package": {
+    "path": "domains/mybee/skills/m1_checkpoint/mybee-m1-d04-d12.v2.nsp",
+    "file_sha256": "sha256:e134d34d046f7ff4cb56b47249a37c2a3fd09fdfec9ae3bd50b1ef2bb3a7cd58",
+    "package_hash": "sha256:ac99192443b315699f33adc7430f0a064ad0913e5c26e268538e6bd4468e9bed",
+    "signature_algorithm": "Ed25519",
+    "signing_key_id": "release:nex-mybee-m1-checkpoint-2026-11-v2",
+    "public_key_ref": "domains/mybee/skills/m1_checkpoint/mybee-m1-release-public-key.v2.json",
+    "public_key_sha256": "sha256:d87016a103dd03d6228da058cd00f8b77896c406469d4e75283e63165aeb11e2",
+    "signature_status": "VERIFIED"
+  },
+  "tool_catalog": {
+    "path": "domains/mybee/skills/m1_checkpoint/tool_catalog.v1.json",
+    "sha256": "sha256:29624be52a09c27ff87d8399b6b157455eb2ce6dbbaf625042ca6bce824c3bed"
+  },
+  "skills": [
+    {
+      "domain_code": "D04_ACCOUNTING",
+      "skill_id": "MYBEE.D04.JOURNAL_POSTING",
+      "skill_version": "1.0.1",
+      "semantic_hash": "sha256:25fc90a2a81499d646ab6df5bb9b2c9727343a577a1341ecf97563ac5c6519c9",
+      "artifact_hash": "sha256:87c29e51b8b2adb63b4e955d4f57c57992f80124210fe79354f9e3a6c791cace",
+      "source_ref": "domains/mybee/skills/d04_accounting/journal_posting.v1_0_1.ns",
+      "source_sha256": "sha256:592b6842172daac92734fcc838b31b12c8986ee6d823ed7358594cd19ae0d6e2",
+      "capability_id": "FINANCE.VOUCHER.APPROVE_AND_POST",
+      "operation_semantics": "GOVERNED_WRITE",
+      "approval_requirement": "ACCOUNTING_POSTING",
+      "oa_action": "finance:journal:approve",
+      "service_scope": "service:call",
+      "input_contract_ref": "contracts/schemas/service/nex_eos/journal_post_command.v1.schema.json",
+      "output_contract_ref": "contracts/schemas/service/nex_eos/journal_post_result.v1.schema.json",
+      "contract_admission_ref": "contracts/admissions/nex_eos/w70_tool_contract_admission.v1.json#/contracts/7",
+      "trust_policy_id": "policy://nex/ae/mybee/d04-accounting/m1/v1"
+    },
+    {
+      "domain_code": "D12_PROJECT",
+      "skill_id": "MYBEE.D12.PROJECT_WORK_CODE_CONTEXT",
+      "skill_version": "1.0.0",
+      "semantic_hash": "sha256:a3f4e3d97e646f5e7c8f7957cb1981fbabdc019b379c565c9d7759bfcd8fd13e",
+      "artifact_hash": "sha256:6efd51bcb415f9ddf6cb1f1caaf3a5d248d456cb85931b8b7335ac24e7b0a8c5",
+      "source_ref": "domains/mybee/skills/d12_project/work_code_context.v1.ns",
+      "source_sha256": "sha256:8a14466fd6d66fe4dba7508d55615c46ea4fbc5759708bcc351ad73ca44aba09",
+      "capability_id": "PROJECT.WORK_CODE_SET.GET",
+      "operation_semantics": "READ",
+      "approval_requirement": "NONE",
+      "oa_action": "project:work-code:read",
+      "service_scope": "service:call",
+      "input_contract_ref": "contracts/admissions/nex_eos/w70_tool_contract_admission.v1.json#/paths/~1internal~1v2~1projects~1{project_id}~1work-code-set/get#parameters",
+      "output_contract_ref": "contracts/openapi/nex-eos.openapi.yaml#/components/schemas/ProjectWorkCodeSet",
+      "contract_admission_ref": "contracts/admissions/nex_eos/w70_tool_contract_admission.v1.json#/contracts/17",
+      "trust_policy_id": "policy://nex/ae/mybee/d12-project/m1/v1"
+    }
+  ],
+  "fl_bindings": [
+    {
+      "work_code_id": "FL0004009",
+      "binding_role": "PRIMARY_ACTION",
+      "capability_id": "FINANCE.VOUCHER.APPROVE_AND_POST",
+      "skill_id": "MYBEE.D04.JOURNAL_POSTING"
+    },
+    {
+      "work_code_id": "FL0012005",
+      "binding_role": "PROJECT_CONTEXT",
+      "capability_id": "PROJECT.WORK_CODE_SET.GET",
+      "skill_id": "MYBEE.D12.PROJECT_WORK_CODE_CONTEXT"
+    }
+  ],
+  "product_capability_registry": {
+    "path": "deployment/environments/ae-product-capability-registry.mybee-m1.v3.json",
+    "file_sha256": "sha256:1f05aefe2b9319deb03f89b41222eb8eefe5959299c32828288e902f85dc5a06",
+    "registry_id": "ae-product-capabilities-mybee-m1",
+    "registry_version": 5,
+    "registry_hash": "sha256:2229424abee892547255eca4592b32376c81a46bf387b0ab1eed2a7849661384"
+  },
+  "activation_boundary": {
+    "allowed_agent_types": [
+      "PA"
+    ],
+    "allowed_project_states": [
+      "ACTIVE"
+    ],
+    "allowed_agent_statuses": [
+      "ACTIVE"
+    ],
+    "allowed_capability_modes": [
+      "ORDINARY"
+    ],
+    "full_pack_activation": "DEFERRED_TO_M2_MB8_01",
+    "canonical_compose_registry_unchanged": true,
+    "remote_provider_required": false
+  },
+  "content_hash": "sha256:df57c14d1693dc5469f18a09a1e9bdaeef404b23d601263d533c3c38cb92c234"
+}

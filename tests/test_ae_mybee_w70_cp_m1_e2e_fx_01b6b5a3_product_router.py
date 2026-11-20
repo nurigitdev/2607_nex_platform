@@ -387,7 +387,7 @@ def _registry(*, active: bool, planning_policy=DETERMINISTIC_POLICY):
         {
             "NEX_AE_PRODUCT_CAPABILITY_REGISTRY_PATH": str(
                 ROOT
-                / "deployment/environments/ae-product-capability-registry.mybee-m1.v2.json"
+                / "deployment/environments/ae-product-capability-registry.mybee-m1.v3.json"
             )
         }
     )
@@ -1684,7 +1684,7 @@ def test_contract_factory_exposes_router_without_active_worker() -> None:
         {
             "NEX_AE_PRODUCT_CAPABILITY_REGISTRY_PATH": str(
                 ROOT
-                / "deployment/environments/ae-product-capability-registry.mybee-m1.v2.json"
+                / "deployment/environments/ae-product-capability-registry.mybee-m1.v3.json"
             )
         }
     )
