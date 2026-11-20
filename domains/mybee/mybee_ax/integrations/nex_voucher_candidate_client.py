@@ -86,6 +86,7 @@ _VALIDATION_FIELDS = frozenset(
         "posting_rule_release_hash",
         "account_policy_set_hash",
         "fx_rate_set_hash",
+        "accounting_rule_profile_hash",
         "fx_evidence",
         "lines",
         "totals",
@@ -801,6 +802,7 @@ def admit_candidate_validation_result(
         "posting_rule_release_hash",
         "account_policy_set_hash",
         "fx_rate_set_hash",
+        "accounting_rule_profile_hash",
         "validation_hash",
     ):
         _hash_ref(field, result[field])

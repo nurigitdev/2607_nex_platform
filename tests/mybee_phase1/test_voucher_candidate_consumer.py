@@ -214,6 +214,7 @@ def _validation(**overrides):
         "posting_rule_release_hash": HASH_A,
         "account_policy_set_hash": HASH_B,
         "fx_rate_set_hash": HASH_D,
+        "accounting_rule_profile_hash": HASH_C,
         "fx_evidence": {
             "mode": "SAME_CURRENCY",
             "base_currency": "KRW",
@@ -426,6 +427,19 @@ def test_provider_create_validate_review_contracts_are_bound() -> None:
     assert context["candidate_id"] == CANDIDATE_ID
     assert context["validation_hash"] == HASH_E
     assert context["original_amount"] == "10000.0000"
+    assert validation["accounting_rule_profile_hash"] == HASH_C
+
+
+def test_validation_field_inventory_matches_canonical_eos_schema() -> None:
+    schema = json.loads(
+        Path(
+            "contracts/schemas/service/nex_eos/"
+            "voucher_candidate_validation.v1.schema.json"
+        ).read_text(encoding="utf-8")
+    )
+
+    assert schema["additionalProperties"] is False
+    assert consumer_module._VALIDATION_FIELDS == frozenset(schema["required"])
 
 
 def test_client_runs_create_validate_review_and_projection_journey() -> None:
@@ -655,6 +669,8 @@ def test_create_result_drift_fails_closed(mutator, expected_code) -> None:
         lambda value: value.__setitem__("candidate_version", True),
         lambda value: value["revision_ref"].__setitem__("hash", HASH_D),
         lambda value: value.__setitem__("posting_rule_release_hash", "bad"),
+        lambda value: value.pop("accounting_rule_profile_hash"),
+        lambda value: value.__setitem__("accounting_rule_profile_hash", "bad"),
         lambda value: value.__setitem__("accounting_period_id", "bad"),
         lambda value: value.__setitem__("observed_at", "bad"),
         lambda value: value.__setitem__("observed_at", None),
