@@ -432,6 +432,54 @@ def test_canonical_ae_to_wa_token_has_exact_intake_scope() -> None:
     assert grant.scopes == ("service:call", "work:evidence:ingest")
 
 
+def test_wa_consumer_trust_grants_cover_authoritative_source_admission() -> None:
+    from nex_oa.canonical_service_principal_provisioning import (
+        canonical_service_principal_specs,
+    )
+    from nex_runtime.canonical_platform_trust import CANONICAL_PLATFORM_TRUST_GRANTS
+    from nex_runtime.startup_service_token_bootstrap import (
+        startup_service_token_grants_for_owner,
+    )
+
+    expected = {
+        "NEX_WA_TO_AE_SERVICE_TOKEN": (
+            "nex-ae-api",
+            ("service:call", "work:source:read"),
+        ),
+        "NEX_WA_TO_WC_SERVICE_TOKEN": (
+            "nex-wc",
+            ("service:call", "work:source:read"),
+        ),
+        "NEX_WA_TO_OA_SERVICE_TOKEN": (
+            "nex-oa",
+            ("service:call", "authorization:read", "identity:subject:verify"),
+        ),
+        "NEX_WA_TO_EOS_SERVICE_TOKEN": (
+            "nex-eos",
+            ("service:call", "project:verify"),
+        ),
+    }
+    canonical = {
+        grant.environment_name: (grant.audience, grant.scopes)
+        for grant in CANONICAL_PLATFORM_TRUST_GRANTS
+        if grant.owner == "nex-wa"
+    }
+    startup = {
+        grant.environment_name: (grant.audience, grant.scopes)
+        for grant in startup_service_token_grants_for_owner("nex-wa")
+        if grant.environment_name != "NEX_OA_INTROSPECTION_SERVICE_TOKEN"
+    }
+    wa_spec = next(
+        spec for spec in canonical_service_principal_specs() if spec.owner == "nex-wa"
+    )
+
+    assert canonical == expected
+    assert startup == expected
+    assert set(scope for _, scopes in expected.values() for scope in scopes).issubset(
+        wa_spec.allowed_scopes
+    )
+
+
 def test_product_semantic_calibration_is_exact_revision_scoped() -> None:
     payload = json.loads(
         acceptance._semantic_calibration_json(model_ref="hf:immutable-revision")
