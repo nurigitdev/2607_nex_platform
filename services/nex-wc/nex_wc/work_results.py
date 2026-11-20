@@ -615,12 +615,14 @@ class WorkResultService:
         )
         if context is None:
             raise _not_found()
-        requester = _required(
-            "requester_ref", context["work_item"]["requester"]["entity_id"], 160
+        submitter = _required(
+            "submitted_by.entity_id",
+            result["submitted_by"]["entity_id"],
+            160,
         )
         try:
             authorization = self._authorization_source.effective_authorization(
-                tenant_id=tenant, subject_id=requester
+                tenant_id=tenant, subject_id=submitter
             )
             revision_hash = require_active_scope(
                 authorization,
@@ -629,7 +631,7 @@ class WorkResultService:
         except AuthorizationSubjectDenied as exc:
             raise WorkResultError(
                 "wc.work_result_authorization_denied",
-                "Requester lacks active work:result:submit authority.",
+                "Submitting Agent lacks active work:result:submit authority.",
                 403,
             ) from exc
         except Exception as exc:

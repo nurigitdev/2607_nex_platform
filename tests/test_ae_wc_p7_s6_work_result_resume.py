@@ -88,7 +88,11 @@ class _Agents:
 
 
 class _Authorization:
+    def __init__(self):
+        self.subject_ids = []
+
     def effective_authorization(self, **kwargs):
+        self.subject_ids.append(kwargs["subject_id"])
         return {
             "active": True,
             "scopes": ["work:delegate", "work:claim", "work:result:submit"],
@@ -808,6 +812,26 @@ def test_s6_work_result_validation_rejects_each_guarded_shape(mutation):
 def test_s6_work_result_validation_rejects_non_object():
     with pytest.raises(WorkResultError, match="must be an object"):
         validate_work_result([])
+
+
+def test_s6_work_result_authorizes_the_assignment_bound_submitting_agent():
+    _, repository, _, claimed = _wc_runtime()
+    authorization = _Authorization()
+    service = WorkResultService(
+        repository,
+        authorization_source=authorization,
+        clock=lambda: NOW_DT,
+    )
+
+    service.submit(
+        tenant_id=TENANT,
+        work_item_id=WORK_ITEM_ID,
+        expected_version=claimed["work_item"]["version"],
+        work_result=_work_result(claimed),
+    )
+
+    assert authorization.subject_ids == [AGENT_ID]
+    assert REQUESTER != AGENT_ID
 
 
 class _AuthorizationFailure:
