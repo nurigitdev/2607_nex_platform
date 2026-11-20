@@ -61,7 +61,8 @@ def _factory(*, seed=True):
                 tenant_id TEXT NOT NULL, executable_step_id TEXT NOT NULL,
                 agent_execution_id TEXT NOT NULL, executable_plan_id TEXT,
                 logical_step_id TEXT, compiled_step_key TEXT, step_index INTEGER,
-                step_type TEXT, executor_kind TEXT, state TEXT NOT NULL,
+                step_type TEXT, executor_kind TEXT, required_capability TEXT,
+                capability_version TEXT, state TEXT NOT NULL,
                 version INTEGER NOT NULL, dependency_json TEXT, input_binding_json TEXT,
                 skill_binding_json TEXT,
                 output_contract_ref TEXT, step_contract_hash TEXT,
@@ -137,15 +138,18 @@ def _factory(*, seed=True):
                 text("""INSERT INTO ae_executable_step (
                         tenant_id, executable_step_id, agent_execution_id,
                         executable_plan_id, logical_step_id, compiled_step_key,
-                        step_index, step_type, executor_kind, state, version,
+                        step_index, step_type, executor_kind, required_capability,
+                        capability_version, state, version,
                         dependency_json, input_binding_json, output_contract_ref,
                         step_contract_hash, legacy_interaction_id, updated_at
                     ) VALUES
                     (:t, :s1, :e, :p, 'S1', 'E1', 0, 'CANONICAL_CAPABILITY',
-                     'P4_CHAT_RAG_COMPATIBILITY', 'READY', 1, '[]', '[]',
+                     'P4_CHAT_RAG_COMPATIBILITY', 'AE.CHAT.COMPATIBILITY', 'p5.1',
+                     'READY', 1, '[]', '[]',
                      'contract://nex/ae/chat-result/v1', :h1, 'interaction-1', :now),
                     (:t, :s2, :e, :p, 'S2', 'E2', 1, 'REPORT',
-                     'DETERMINISTIC_REPORT', 'PENDING', 1, '[\"E1\"]', '[]',
+                     'DETERMINISTIC_REPORT', 'AE.RESULT.REPORT', 'p5.1',
+                     'PENDING', 1, '[\"E1\"]', '[]',
                      'contract://nex/ae/interactive-response/v1', :h2,
                      'interaction-1', :now)"""),
                 {
@@ -203,6 +207,8 @@ def test_engine_executes_two_steps_in_persisted_dependency_order() -> None:
     first_claim = _claim(queue)
     first_context = engine.begin_claim(tenant_id=TENANT, claim=first_claim, now=NOW)
     assert first_context.step["compiled_step_key"] == "E1"
+    assert first_context.step["required_capability"] == "AE.CHAT.COMPATIBILITY"
+    assert first_context.step["capability_version"] == "p5.1"
     assert first_context.dependency_results == ()
     first_result = engine.record_outcome(
         tenant_id=TENANT,
@@ -224,6 +230,8 @@ def test_engine_executes_two_steps_in_persisted_dependency_order() -> None:
     assert second_job["executable_step_id"] == STEP_2_ID
     second_claim = _claim(queue, now=LATER)
     second_context = engine.begin_claim(tenant_id=TENANT, claim=second_claim, now=LATER)
+    assert second_context.step["required_capability"] == "AE.RESULT.REPORT"
+    assert second_context.step["capability_version"] == "p5.1"
     assert second_context.dependency_results == (first_result,)
     engine.record_outcome(
         tenant_id=TENANT,

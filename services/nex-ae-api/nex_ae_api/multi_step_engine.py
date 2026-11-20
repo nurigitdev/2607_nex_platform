@@ -1024,7 +1024,8 @@ def _load_steps(
             text(
                 "SELECT tenant_id, executable_step_id, agent_execution_id, "
                 "executable_plan_id, logical_step_id, compiled_step_key, step_index, "
-                "step_type, executor_kind, state, version, legacy_interaction_id, "
+                "step_type, executor_kind, required_capability, capability_version, "
+                "state, version, legacy_interaction_id, "
                 "retrieval_package_ref, retrieval_package_hash, cx_generation_id, "
                 "cx_job_id, generated_response_id, result_ref, error_ref, "
                 "dependency_json, input_binding_json, skill_binding_json, "
@@ -1050,7 +1051,8 @@ def _load_step(
             text(
                 "SELECT tenant_id, executable_step_id, agent_execution_id, "
                 "executable_plan_id, logical_step_id, compiled_step_key, step_index, "
-                "step_type, executor_kind, state, version, legacy_interaction_id, "
+                "step_type, executor_kind, required_capability, capability_version, "
+                "state, version, legacy_interaction_id, "
                 "retrieval_package_ref, retrieval_package_hash, cx_generation_id, "
                 "cx_job_id, generated_response_id, result_ref, error_ref, "
                 "dependency_json, input_binding_json, skill_binding_json, "
