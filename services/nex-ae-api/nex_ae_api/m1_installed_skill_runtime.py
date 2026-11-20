@@ -97,6 +97,8 @@ _WRITE_INPUTS = frozenset(
 )
 _PREPARATION_INPUT = "m1_preparation_checkpoint"
 _WORKER_ERROR_CODE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$")
+_JOURNAL_REQUEST_SCOPE = "finance:journal:request-approval"
+_JOURNAL_APPROVE_SCOPE = "finance:journal:approve"
 
 
 @dataclass(frozen=True)
@@ -557,8 +559,10 @@ class _M1JournalControlledRuntime(ControlledSkillRuntime):
         authorization = self._oa.effective_authorization(
             tenant_id=context.job["tenant_id"], subject_id=persisted["principal_id"]
         )
-        if "finance:journal:approve" not in authorization.get("scopes", ()):
-            raise ControlledSkillRuntimeError("OA denied Journal approval authority.")
+        if _JOURNAL_REQUEST_SCOPE not in authorization.get("scopes", ()):
+            raise ControlledSkillRuntimeError(
+                "OA denied Journal approval request authority."
+            )
         principal = principal_document(
             tenant_id=context.job["tenant_id"],
             principal_id=persisted["principal_id"],
@@ -768,11 +772,35 @@ class _JournalAuthorizationSource:
     def resolve(self, request: Any) -> Mapping[str, Any]:
         if self.evidence is None:
             raise ControlledSkillRuntimeError("Platform approval evidence is missing.")
-        current = self.oa.effective_authorization(
+        approver_id = self.evidence.get("approver_id")
+        evidence_integrity = self.evidence.get("evidence_integrity")
+        if (
+            not isinstance(approver_id, str)
+            or not approver_id
+            or not isinstance(evidence_integrity, str)
+            or not evidence_integrity
+        ):
+            raise ControlledSkillRuntimeError(
+                "Platform approval principal evidence is invalid."
+            )
+        if approver_id == request.subject_id:
+            raise ControlledSkillRuntimeError(
+                "Journal requester and approver must be different principals."
+            )
+        requester = self.oa.effective_authorization(
             tenant_id=request.tenant_id, subject_id=request.subject_id
         )
-        if "finance:journal:approve" not in current.get("scopes", ()):
-            raise ControlledSkillRuntimeError("OA denied current Journal authority.")
+        if _JOURNAL_REQUEST_SCOPE not in requester.get("scopes", ()):
+            raise ControlledSkillRuntimeError(
+                "OA denied current Journal request authority."
+            )
+        approver = self.oa.effective_authorization(
+            tenant_id=request.tenant_id, subject_id=approver_id
+        )
+        if _JOURNAL_APPROVE_SCOPE not in approver.get("scopes", ()):
+            raise ControlledSkillRuntimeError(
+                "OA denied current Journal approver authority."
+            )
         descriptor = {
             "tenant_id": request.tenant_id,
             "agent_execution_id": self.evidence["agent_execution_id"],
@@ -788,15 +816,24 @@ class _JournalAuthorizationSource:
             "capability": "WRITE",
             "operation_class": "CREATE",
             "data_classification": "CONFIDENTIAL",
-            "typed_parameters": {"operation": "JOURNAL_POST"},
+            "typed_parameters": {
+                "operation": "JOURNAL_POST",
+                "approver_ref": approver_id,
+            },
             "business_object_type": "POSTED_JOURNAL",
         }
         descriptor["operation_fingerprint"] = semantic_sha256_hash_ref(descriptor)
-        revision = str(current["revision_hash"])
+        authority_revision = semantic_sha256_hash_ref(
+            {
+                "requester_revision_hash": requester["revision_hash"],
+                "approver_revision_hash": approver["revision_hash"],
+                "approval_evidence_integrity": evidence_integrity,
+            }
+        )
         return {
             "tenant_id": request.tenant_id,
             "business_operation_id": str(request.business_operation_id),
-            "oa_decision_ref": f"oa-authz:{revision}",
+            "oa_decision_ref": f"oa-journal-write:{authority_revision}",
             "oa_allowed": True,
             "protected_operation": descriptor,
             "operation_trust_decision": {
@@ -806,11 +843,20 @@ class _JournalAuthorizationSource:
                 "operation_fingerprint": descriptor["operation_fingerprint"],
                 "rule_set_ref": "policy:nex-product-journal-write",
                 "rule_set_version": "1",
-                "facts_hash": semantic_sha256_hash_ref(current),
-                "proof_ref": f"oa-revision:{revision}",
+                "facts_hash": semantic_sha256_hash_ref(
+                    {
+                        "requester_authorization": requester,
+                        "approver_authorization": approver,
+                        "approval_evidence_integrity": evidence_integrity,
+                    }
+                ),
+                "proof_ref": f"approval-evidence:{evidence_integrity}",
                 "reason_code": None,
                 "decision_hash": semantic_sha256_hash_ref(
-                    {"descriptor": descriptor, "authorization_revision_hash": revision}
+                    {
+                        "descriptor": descriptor,
+                        "authority_revision": authority_revision,
+                    }
                 ),
                 "evaluated_at": _time(self.evaluated_at),
                 "expires_at": _time(self.evaluated_at + timedelta(minutes=10)),

@@ -71,6 +71,7 @@ DEFAULT_BASELINE_PATH = (
 PROFILE_POLICY_REF = "policy://nex-platform/project-agent-lifecycle/v1"
 M1_BUSINESS_APPROVAL_POSITION_TYPE = "TEAM_LEAD"
 M1_ACCOUNTING_APPROVAL_POSITION_TYPE = "GROUP_LEAD"
+M1_NSL_WRITE_APPROVER_ROLE = "finance_approver"
 M1_APPROVAL_ORG_UNIT_KEYS = {
     "business": "org-business",
     "accounting": "org-accounting",
@@ -323,8 +324,11 @@ def _seed_oa(
         "accounting_approver": accounting_approver_password,
     }
     approval_roles = {
-        "business_approver": M1_BUSINESS_APPROVAL_POSITION_TYPE,
-        "accounting_approver": M1_ACCOUNTING_APPROVAL_POSITION_TYPE,
+        "business_approver": (M1_BUSINESS_APPROVAL_POSITION_TYPE,),
+        "accounting_approver": (
+            M1_ACCOUNTING_APPROVAL_POSITION_TYPE,
+            M1_NSL_WRITE_APPROVER_ROLE,
+        ),
     }
     for role in ("requester", "business_approver", "accounting_approver"):
         principal = baseline["principals"][role]
@@ -349,7 +353,7 @@ def _seed_oa(
                 "roles": [
                     "employee",
                     f"m1-{role}",
-                    *([approval_roles[role]] if role in approval_roles else []),
+                    *approval_roles.get(role, ()),
                 ],
                 "scopes": list(_OA_SCOPES[role]),
                 "membership_metadata": {

@@ -768,6 +768,17 @@ def test_journal_authorization_requires_evidence_and_fresh_scope() -> None:
             oa=object(), evidence=None, authority=authority, evaluated_at=now
         ).resolve(request)
 
+    with pytest.raises(ControlledSkillRuntimeError, match="principal evidence"):
+        installed._JournalAuthorizationSource(
+            oa=object(),
+            evidence={
+                "agent_execution_id": EXECUTION_ID,
+                "executable_step_id": STEP_ID,
+            },
+            authority=authority,
+            evaluated_at=now,
+        ).resolve(request)
+
     denied = installed._JournalAuthorizationSource(
         oa=SimpleNamespace(
             effective_authorization=lambda **_values: {
@@ -778,29 +789,82 @@ def test_journal_authorization_requires_evidence_and_fresh_scope() -> None:
         evidence={
             "agent_execution_id": EXECUTION_ID,
             "executable_step_id": STEP_ID,
+            "approver_id": "employee-202",
+            "evidence_integrity": HASH,
         },
         authority=authority,
         evaluated_at=now,
     )
-    with pytest.raises(ControlledSkillRuntimeError, match="denied current"):
+    with pytest.raises(ControlledSkillRuntimeError, match="request authority"):
         denied.resolve(request)
 
+    def denied_approver(*, subject_id: str, **_values):
+        return {
+            "scopes": (
+                ["finance:journal:request-approval"]
+                if subject_id == "employee-101"
+                else []
+            ),
+            "revision_hash": HASH,
+        }
+
+    with pytest.raises(ControlledSkillRuntimeError, match="approver authority"):
+        installed._JournalAuthorizationSource(
+            oa=SimpleNamespace(effective_authorization=denied_approver),
+            evidence={
+                "agent_execution_id": EXECUTION_ID,
+                "executable_step_id": STEP_ID,
+                "approver_id": "employee-202",
+                "evidence_integrity": HASH,
+            },
+            authority=authority,
+            evaluated_at=now,
+        ).resolve(request)
+
+    observed_subjects: list[str] = []
+
+    def authorization(*, subject_id: str, **_values):
+        observed_subjects.append(subject_id)
+        return {
+            "scopes": (
+                ["finance:journal:request-approval"]
+                if subject_id == "employee-101"
+                else ["finance:journal:approve"]
+            ),
+            "revision_hash": HASH if subject_id == "employee-101" else "sha256:" + "b" * 64,
+        }
+
     allowed = installed._JournalAuthorizationSource(
-        oa=SimpleNamespace(
-            effective_authorization=lambda **_values: {
-                "scopes": ["finance:journal:approve"],
-                "revision_hash": HASH,
-            }
-        ),
+        oa=SimpleNamespace(effective_authorization=authorization),
         evidence={
             "agent_execution_id": EXECUTION_ID,
             "executable_step_id": STEP_ID,
+            "approver_id": "employee-202",
+            "evidence_integrity": HASH,
         },
         authority=authority,
         evaluated_at=now,
     ).resolve(request)
     assert allowed["oa_allowed"] is True
     assert allowed["operation_trust_decision"]["decision"] == "ALLOW"
+    assert allowed["protected_operation"]["actor_ref"] == "employee-101"
+    assert allowed["protected_operation"]["typed_parameters"]["approver_ref"] == (
+        "employee-202"
+    )
+    assert observed_subjects == ["employee-101", "employee-202"]
+
+    with pytest.raises(ControlledSkillRuntimeError, match="different principals"):
+        installed._JournalAuthorizationSource(
+            oa=SimpleNamespace(effective_authorization=authorization),
+            evidence={
+                "agent_execution_id": EXECUTION_ID,
+                "executable_step_id": STEP_ID,
+                "approver_id": "employee-101",
+                "evidence_integrity": HASH,
+            },
+            authority=authority,
+            evaluated_at=now,
+        ).resolve(request)
 
 
 def test_journal_authority_rejects_input_and_scope_drift(
@@ -842,8 +906,8 @@ def test_journal_authority_rejects_input_and_scope_drift(
 
     writer._oa = SimpleNamespace(
         effective_authorization=lambda **_values: {
-            "roles": ["finance_approver"],
-            "scopes": ["finance:journal:approve"],
+            "roles": ["employee"],
+            "scopes": ["finance:journal:request-approval"],
             "org_scope_refs": ["ORG:FINANCE"],
             "revision_hash": HASH,
         }
@@ -851,6 +915,26 @@ def test_journal_authority_rejects_input_and_scope_drift(
     authority = writer._resolve_authority(_write_context(runtime))
     assert authority.project_id == PROJECT_ID
     assert authority.business_result_seed is None
+
+
+def test_controlled_skill_initial_preserves_authority_stage_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runtime = _runtime()
+    writer = runtime._writers[M1_D04_CAPABILITY_ID]
+
+    def fail_authority(_context):
+        raise ControlledSkillRuntimeError("private authority detail")
+
+    monkeypatch.setattr(writer, "_resolve_authority", fail_authority)
+    with pytest.raises(P5StepExecutorError) as captured:
+        writer.initial(_write_context(runtime), writer.dependencies)
+
+    assert captured.value.error_code == "ae.product_controlled_skill_authority_failed"
+    assert captured.value.detail == (
+        "Product controlled Skill authority resolution failed."
+    )
+    assert "private" not in captured.value.detail
 
 
 def test_activation_lock_and_runtime_config_fail_closed(tmp_path: Path) -> None:

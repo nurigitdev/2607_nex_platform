@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
@@ -81,66 +81,105 @@ class ControlledSkillRuntime:
         dependencies: LocalSkillExecutorDependencies,
     ) -> P5ExecutorOutcome:
         try:
-            authority = self._resolve_authority(context)
+            authority = _initial_stage(
+                "ae.product_controlled_skill_authority_failed",
+                "Product controlled Skill authority resolution failed.",
+                lambda: self._resolve_authority(context),
+            )
             now = _utc_now()
             binding = context.step["skill_binding"]
-            artifact = dependencies.artifact_gateway.resolve_verified(
-                tenant_id=context.job["tenant_id"],
-                skill_id=binding["skill_id"],
-                exact_version=binding["exact_skill_version"],
-                expected_semantic_hash=binding["skill_semantic_hash"],
-                runtime_contract_ref=binding["runtime_contract_ref"],
-                trust_policy_id=binding["trust_policy_id"],
-                environment="staging",
-                observed_at=now,
+            artifact = _initial_stage(
+                "ae.product_controlled_skill_artifact_failed",
+                "Product controlled Skill artifact admission failed.",
+                lambda: dependencies.artifact_gateway.resolve_verified(
+                    tenant_id=context.job["tenant_id"],
+                    skill_id=binding["skill_id"],
+                    exact_version=binding["exact_skill_version"],
+                    expected_semantic_hash=binding["skill_semantic_hash"],
+                    runtime_contract_ref=binding["runtime_contract_ref"],
+                    trust_policy_id=binding["trust_policy_id"],
+                    environment="staging",
+                    observed_at=now,
+                ),
             )
-            bound = dependencies.binding_repository.bind_request(
-                tenant_id=context.job["tenant_id"],
-                executable_step_id=context.step["executable_step_id"],
-                verified_artifact_ref=artifact["artifact_ref"],
-                context_projection=authority.context_projection,
-                compiled_inputs={
-                    "canonical_write_payload": dict(
-                        authority.canonical_write_payload
-                    )
-                },
-                input_provenance={"canonical_write_payload": "CONTEXT"},
-                now=now,
+            bound = _initial_stage(
+                "ae.product_controlled_skill_binding_failed",
+                "Product controlled Skill durable binding failed.",
+                lambda: dependencies.binding_repository.bind_request(
+                    tenant_id=context.job["tenant_id"],
+                    executable_step_id=context.step["executable_step_id"],
+                    verified_artifact_ref=artifact["artifact_ref"],
+                    context_projection=authority.context_projection,
+                    compiled_inputs={
+                        "canonical_write_payload": dict(
+                            authority.canonical_write_payload
+                        )
+                    },
+                    input_provenance={"canonical_write_payload": "CONTEXT"},
+                    now=now,
+                ),
             )
             skill_binding = bound["binding"]
-            execution = self._execution(
-                context=context,
-                skill_binding=skill_binding,
-                authority=authority,
-            )
-            publication = P8NSLApprovalPort(
-                binding_source=_ApprovalBindingSource(
+            execution = _initial_stage(
+                "ae.product_controlled_skill_execution_failed",
+                "Product controlled Skill execution construction failed.",
+                lambda: self._execution(
                     context=context,
-                    execution=execution,
-                    approver_role=self._config.approver_role,
+                    skill_binding=skill_binding,
+                    authority=authority,
                 ),
-                request_store=self._request_store,
-                wait_repository=SqlAlchemyWaitRegistrationRepository(self._sessions),
-                wc_client=build_default_wc_approval_work_item_client(),
+            )
+            publication = _initial_stage(
+                "ae.product_controlled_skill_publication_failed",
+                "Product controlled Skill approval publication setup failed.",
+                lambda: P8NSLApprovalPort(
+                    binding_source=_ApprovalBindingSource(
+                        context=context,
+                        execution=execution,
+                        approver_role=self._config.approver_role,
+                    ),
+                    request_store=self._request_store,
+                    wait_repository=SqlAlchemyWaitRegistrationRepository(
+                        self._sessions
+                    ),
+                    wc_client=build_default_wc_approval_work_item_client(),
+                ),
             )
             state_port = _PlatformControlledStatePort(
                 execution=execution,
                 publication=publication,
             )
-            request = execution.existing_approval_request()
+            request = _initial_stage(
+                "ae.product_controlled_skill_checkpoint_failed",
+                "Product controlled Skill approval checkpoint lookup failed.",
+                execution.existing_approval_request,
+            )
             if request is None:
-                session = asyncio.run(execution.start(state_port))
+                session = _initial_stage(
+                    "ae.product_controlled_skill_approval_start_failed",
+                    "Product controlled Skill approval start failed.",
+                    lambda: asyncio.run(execution.start(state_port)),
+                )
                 request = session.approval_request
                 if request is None or session.checkpoint is None:
-                    raise ControlledSkillRuntimeError(
-                        "The admitted NSL Skill did not suspend for approval."
+                    raise P5StepExecutorError(
+                        "ae.product_controlled_skill_approval_not_suspended",
+                        "Product controlled Skill did not suspend for approval.",
                     )
             else:
-                asyncio.run(state_port.publish_platform(request))
-            wait_id = _approval_wait_id(
-                context=context,
-                approval_request_id=str(request.approval_request_id),
-                checkpoint_version=execution.checkpoint_version,
+                _initial_stage(
+                    "ae.product_controlled_skill_approval_publish_failed",
+                    "Product controlled Skill approval replay publication failed.",
+                    lambda: asyncio.run(state_port.publish_platform(request)),
+                )
+            wait_id = _initial_stage(
+                "ae.product_controlled_skill_wait_failed",
+                "Product controlled Skill approval wait binding failed.",
+                lambda: _approval_wait_id(
+                    context=context,
+                    approval_request_id=str(request.approval_request_id),
+                    checkpoint_version=execution.checkpoint_version,
+                ),
             )
             return P5ExecutorOutcome(
                 state="WAITING",
@@ -452,3 +491,14 @@ def _retryable(exc: Exception) -> bool:
     return isinstance(exc, (httpx.HTTPError, OSError)) or bool(
         getattr(exc, "retryable", False)
     )
+
+
+def _initial_stage(
+    error_code: str, detail: str, operation: Callable[[], Any]
+) -> Any:
+    try:
+        return operation()
+    except P5StepExecutorError:
+        raise
+    except Exception as exc:
+        raise P5StepExecutorError(error_code, detail, _retryable(exc)) from exc

@@ -50,6 +50,7 @@ def test_product_golden_source_admission_uses_installed_m1_registry() -> None:
     ]
     assert support.M1_BUSINESS_APPROVAL_POSITION_TYPE == "TEAM_LEAD"
     assert support.M1_ACCOUNTING_APPROVAL_POSITION_TYPE == "GROUP_LEAD"
+    assert support.M1_NSL_WRITE_APPROVER_ROLE == "finance_approver"
 
 
 def test_product_acceptance_approver_roles_match_separate_eos_policy_positions() -> None:
