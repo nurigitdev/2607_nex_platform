@@ -38,6 +38,7 @@ def test_product_golden_source_admission_uses_installed_m1_registry() -> None:
     assert result["browser_process_timeout_seconds"] == 2_340
     assert support.PROJECT_REFERENCE_RESOLVE_SCOPE in support._OA_SCOPES["requester"]
     assert "finance:document:read" in support._OA_SCOPES["requester"]
+    assert "project:work-code:read" in support._OA_SCOPES["requester"]
     assert {"approval:read", "approval:decide"}.issubset(
         support._OA_SCOPES["business_approver"]
     )

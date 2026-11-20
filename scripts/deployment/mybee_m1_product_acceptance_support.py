@@ -89,6 +89,7 @@ _OA_SCOPES = {
         "finance:voucher-candidate:create",
         "finance:journal:request-approval",
         "finance:report:read",
+        "project:work-code:read",
         "project:pnl:read",
     ),
     "business_approver": (
