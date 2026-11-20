@@ -59,6 +59,8 @@ const UI = Object.freeze({
   approveButton: "승인",
   confirmApprovalButton: "승인 확정",
   decisionRecordedHeading: "결정이 기록되었습니다",
+  nextReviewButton: "다음 요청 검토",
+  refreshButton: "새로고침",
   logoutButton: "로그아웃"
 });
 
@@ -517,8 +519,7 @@ async function decideGateInUi(page, gate, timeout, comment) {
   page.on("request", observe);
   try {
     void comment;
-    await page.getByRole("link", { name: UI.approvalLink, exact: true }).click();
-    await page.getByRole("heading", { name: UI.approvalHeading, exact: true }).waitFor({ timeout });
+    await prepareApprovalInbox(page, timeout);
     const pendingList = page.getByLabel("대기 중인 승인 요청");
     const gateButton = pendingList.getByRole("button").filter({ hasText: gate.title });
     await gateButton.waitFor({ timeout });
@@ -536,6 +537,18 @@ async function decideGateInUi(page, gate, timeout, comment) {
   } finally {
     page.off("request", observe);
   }
+}
+
+export async function prepareApprovalInbox(page, timeout) {
+  await page.getByRole("link", { name: UI.approvalLink, exact: true }).click();
+  await page.getByRole("heading", { name: UI.approvalHeading, exact: true }).waitFor({ timeout });
+  const nextReview = page.getByRole("button", { name: UI.nextReviewButton, exact: true });
+  if ((await nextReview.count()) > 0 && (await nextReview.isVisible())) {
+    await nextReview.click();
+    return "NEXT_REVIEW";
+  }
+  await page.getByRole("button", { name: UI.refreshButton, exact: true }).click();
+  return "REFRESH";
 }
 
 async function submitPrompt(page, prompt, timeout, { observeWorkspace = false } = {}) {

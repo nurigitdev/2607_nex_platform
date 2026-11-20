@@ -4,7 +4,7 @@
 
 - Date: `2026-11-20`
 - Status: `SOURCE, CONTRACT, POSTGRESQL, AND SLICE GATES VERIFIED`; exact-head
-  installed replay pending
+  installed replay in progress
 - Parent boundary: `CP-M1-E2E-FX-01B.7`
 - Database migration: none
 - Remote provider: not required for the corrective Slice Gates
@@ -55,6 +55,10 @@ grants are excluded.
 - Accounting approval decision replay reconstructs the same Project Code target
   before accepting WC lineage.
 - WC's existing exact target compatibility logic remains unchanged.
+- The installed Playwright journey now advances a completed approval through
+  the product UI's `다음 요청 검토` action, or explicitly refreshes the inbox
+  before selecting a newly published gate. Clicking an already-active route is
+  not treated as an inbox refresh.
 
 ## Verification
 
@@ -85,6 +89,20 @@ grants are excluded.
   - statement coverage: `97.66%`;
   - branch coverage: `95.16%`;
   - commands: `5/5`.
+- exact-head DGX provider preflight: `PASS`, `3/3`
+  - `Qwen3-Embedding-4B`;
+  - `Qwen3-Reranker-4B`;
+  - `Qwen3.5-9B`.
+- first exact-head installed replay after the authority correction:
+  - eight actual PostgreSQL databases and `210` isolated migrations admitted;
+  - EOS advanced to `ACCOUNTING_POSTING:PENDING`;
+  - WC returned the new accounting approval to the approver inbox
+    (`pending_gate_count=1`), proving the Project Code authorization alignment;
+  - the replay then failed because the browser harness remained on the
+    completed first approval without invoking the UI's next-request refresh;
+  - all eight isolated schemas were removed (`zero_residue=true`).
+- AE Web M1 harness focused regression: `13 passed`.
+- AE Web Node regression: `388 passed`.
 
 ## Exact-Head Replay Rule
 

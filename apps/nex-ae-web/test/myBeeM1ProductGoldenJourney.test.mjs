@@ -12,6 +12,7 @@ import {
   myBeeM1RuntimeTimeouts,
   myBeeM1ProductJourneyUiContract,
   parseProductPrompts,
+  prepareApprovalInbox,
   runMyBeeM1ProductGoldenJourney,
   runMyBeeM1ProductPostRestartRecovery
 } from "../scripts/runMyBeeW70CpM1ProductGoldenJourney.mjs";
@@ -79,8 +80,26 @@ test("M1 product journey binds to the authenticated React accessibility contract
     approveButton: "승인",
     confirmApprovalButton: "승인 확정",
     decisionRecordedHeading: "결정이 기록되었습니다",
+    nextReviewButton: "다음 요청 검토",
+    refreshButton: "새로고침",
     logoutButton: "로그아웃"
   });
+});
+
+test("M1 product journey advances a completed approval before selecting the next gate", async () => {
+  const calls = [];
+  const page = approvalInboxPage({ calls, nextReviewVisible: true });
+
+  assert.equal(await prepareApprovalInbox(page, 60_000), "NEXT_REVIEW");
+  assert.deepEqual(calls, ["navigation", "heading", "next-review"]);
+});
+
+test("M1 product journey refreshes the inbox when no completed approval is selected", async () => {
+  const calls = [];
+  const page = approvalInboxPage({ calls, nextReviewVisible: false });
+
+  assert.equal(await prepareApprovalInbox(page, 60_000), "REFRESH");
+  assert.deepEqual(calls, ["navigation", "heading", "refresh"]);
 });
 
 test("M1 product runtime config keeps authenticated fetch approval mode", () => {
@@ -211,3 +230,27 @@ test("M1 product journey falls back to a bounded Playwright error name", async (
   assert.equal(evidence.failure_code, "TimeoutError");
   assert.equal(evidence.observations.stage, "launch");
 });
+
+function approvalInboxPage({ calls, nextReviewVisible }) {
+  return {
+    getByRole(role, options) {
+      if (role === "link" && options.name === "승인함") {
+        return { click: async () => calls.push("navigation") };
+      }
+      if (role === "heading" && options.name === "승인함") {
+        return { waitFor: async () => calls.push("heading") };
+      }
+      if (role === "button" && options.name === "다음 요청 검토") {
+        return {
+          count: async () => Number(nextReviewVisible),
+          isVisible: async () => nextReviewVisible,
+          click: async () => calls.push("next-review")
+        };
+      }
+      if (role === "button" && options.name === "새로고침") {
+        return { click: async () => calls.push("refresh") };
+      }
+      throw new Error(`Unexpected role lookup: ${role}:${options.name}`);
+    }
+  };
+}
