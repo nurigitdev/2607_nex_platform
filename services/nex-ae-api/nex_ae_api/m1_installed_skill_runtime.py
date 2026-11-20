@@ -23,6 +23,7 @@ from nex_runtime.nsl_package_admission import inspect_installed_nsl_package
 from nex_runtime.nsl_runtime_adapter import (
     InstalledNslExecution,
     NslExecutionBinding,
+    NslRuntimeToolError,
     execute_installed_nsl_read,
     load_installed_nsl_tool_catalog,
 )
@@ -404,16 +405,23 @@ class M1InstalledSkillRuntime:
             now=_now(),
         )
         business_operation_id = str(binding["business_operation_id"])
-        data = execute_installed_nsl_read(
-            skill=selection.verified_skill.skill,
-            tool_catalog=self._tool_catalog,
-            principal_document=dict(context_projection["verified_principal"]),
-            execution_id=str(context.step["executable_step_id"]),
-            inputs=inputs,
-            runtime_context=_json_object(self._config.context_path),
-            business_operation_id=business_operation_id,
-            handlers=adapters.tool_handlers,
-        )
+        try:
+            data = execute_installed_nsl_read(
+                skill=selection.verified_skill.skill,
+                tool_catalog=self._tool_catalog,
+                principal_document=dict(context_projection["verified_principal"]),
+                execution_id=str(context.step["executable_step_id"]),
+                inputs=inputs,
+                runtime_context=_json_object(self._config.context_path),
+                business_operation_id=business_operation_id,
+                handlers=adapters.tool_handlers,
+            )
+        except NslRuntimeToolError as exc:
+            raise P5StepExecutorError(
+                exc.error_code,
+                exc.detail,
+                exc.retryable,
+            ) from exc
         if data.get("status") != "COMPLETED" or len(data.get("outputs", ())) != 1:
             raise _worker_error("Product READ Skill did not complete exactly once.")
         payload = {item["name"]: item["value"] for item in data["outputs"][0]["fields"]}

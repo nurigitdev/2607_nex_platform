@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import re
 from collections.abc import Callable, Mapping
 from copy import deepcopy
 from dataclasses import dataclass
@@ -15,6 +16,25 @@ from .semantic_hashes import canonical_json, nsl_write_payload_hash_ref
 
 class NslRuntimeAdapterError(RuntimeError):
     pass
+
+
+@dataclass(frozen=True)
+class NslRuntimeToolError(NslRuntimeAdapterError):
+    error_code: str
+    detail: str
+    retryable: bool = False
+
+    def __str__(self) -> str:
+        return self.detail
+
+
+@dataclass
+class _ToolFailureCapture:
+    error_code: str | None = None
+    retryable: bool = False
+
+
+_TOOL_ERROR_CODE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$")
 
 
 def load_installed_nsl_tool_catalog(path: Path) -> Any:
@@ -43,7 +63,7 @@ def execute_installed_nsl_read(
     from nsl.cli_runtime import build_execution_request
     from nsl.core import BusinessOperationId
     from nsl.runtime import RuntimeEngine
-    from nsl.tools import MockToolExecutor
+    from nsl.tools import MockToolExecutor, ToolExecutionError
 
     principal = load_principal_document(dict(principal_document))
     request = build_execution_request(
@@ -53,19 +73,52 @@ def execute_installed_nsl_read(
         runtime_context=dict(runtime_context),
         business_operation_id=BusinessOperationId(_identity(business_operation_id)),
     )
+    failure = _ToolFailureCapture()
+    protected_handlers = {
+        name: _protect_tool_handler(handler, failure, ToolExecutionError)
+        for name, handler in handlers.items()
+    }
     result = asyncio.run(
         RuntimeEngine(tool_catalog).execute(
             skill,
             request,
-            MockToolExecutor(tool_catalog, handlers),
+            MockToolExecutor(tool_catalog, protected_handlers),
             InMemoryAuditSink(),
             InMemorySnapshotStore(),
         )
     )
+    if failure.error_code is not None:
+        raise NslRuntimeToolError(
+            failure.error_code,
+            "Installed Tool handler failed.",
+            failure.retryable,
+        )
     data = result.to_data()
     if not isinstance(data, Mapping):
         raise NslRuntimeAdapterError("Installed NSL READ result is invalid.")
     return dict(data)
+
+
+def _protect_tool_handler(
+    handler: Callable[[Mapping[str, Any]], Any],
+    failure: _ToolFailureCapture,
+    tool_error_type: type[Exception],
+) -> Callable[[Mapping[str, Any]], Any]:
+    def protected(arguments: Mapping[str, Any]) -> Any:
+        try:
+            return handler(arguments)
+        except Exception as exc:
+            error_code = getattr(exc, "error_code", None)
+            if not isinstance(error_code, str) or _TOOL_ERROR_CODE.fullmatch(
+                error_code
+            ) is None:
+                error_code = "ae.nsl_tool_handler_failed"
+            if failure.error_code is None:
+                failure.error_code = error_code
+                failure.retryable = getattr(exc, "retryable", False) is True
+            raise tool_error_type(error_code, "installed Tool handler failed") from exc
+
+    return protected
 
 
 def decode_nsl_document(value: Mapping[str, Any]) -> Any:

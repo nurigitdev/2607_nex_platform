@@ -15,6 +15,7 @@ from nex_ae_api.controlled_skill_runtime import ControlledSkillRuntimeError
 from nex_ae_api.m1_installed_skill_runtime import M1InstalledSkillRuntime
 from nex_ae_api.multi_step_engine import StepExecutionContext
 from nex_ae_api.mybee_m1_skill_runtime import build_mybee_m1_verified_skill_catalog
+from nex_ae_api.nsl_eos_project_work_code_read import EosProjectWorkCodeReadError
 from nex_ae_api.product_runtime_profile import (
     VERIFIED_PRODUCT_RELEASE_PROFILE,
     build_product_runtime_executor_profile,
@@ -328,6 +329,79 @@ def test_installed_runtime_executes_exact_d12_skill_and_durable_binding(
         "work_set_hash": HASH,
     }
     assert bindings.states == ["REQUEST_BOUND", "RUNNING", "SUCCEEDED"]
+
+
+@pytest.mark.parametrize(
+    ("failure", "expected_code", "expected_retryable"),
+    [
+        (
+            EosProjectWorkCodeReadError(
+                "ae.nsl_eos_project_work_code.rejected",
+                "private EOS rejection detail",
+                True,
+                503,
+            ),
+            "ae.nsl_eos_project_work_code.rejected",
+            True,
+        ),
+        (
+            RuntimeError("private unexpected detail"),
+            "ae.nsl_tool_handler_failed",
+            False,
+        ),
+    ],
+)
+def test_installed_runtime_preserves_bounded_d12_tool_failure(
+    monkeypatch: pytest.MonkeyPatch,
+    failure: Exception,
+    expected_code: str,
+    expected_retryable: bool,
+) -> None:
+    runtime = _runtime()
+    bindings = _Bindings()
+    dependencies = LocalSkillExecutorDependencies(
+        artifact_gateway=_Gateway(),
+        binding_repository=bindings,
+        request_builder=lambda **_values: {},
+        backend=runtime,
+        result_mapper=lambda value: value,
+    )
+    monkeypatch.setattr(
+        installed,
+        "_execution_context",
+        lambda *_args, **_values: {
+            "context_ref": "AE:AGENT_CONTEXT:m1:1",
+            "context_hash": HASH,
+            "principal_id": "employee-101",
+            "agent_id": "66666666-6666-4666-8666-666666666666",
+            "project_id": PROJECT_ID,
+        },
+    )
+    runtime._oa = SimpleNamespace(
+        effective_authorization=lambda **_values: {
+            "roles": ["project_member"],
+            "scopes": ["project:work-code:read"],
+            "org_scope_refs": ["ORG:FINANCE"],
+            "revision_hash": HASH,
+        }
+    )
+
+    def fail(_arguments):
+        raise failure
+
+    monkeypatch.setattr(
+        skill_runtime,
+        "HttpEosProjectWorkCodeReadAdapter",
+        lambda **_values: fail,
+    )
+
+    with pytest.raises(P5StepExecutorError) as captured:
+        runtime.initial(_read_context(runtime), dependencies)
+
+    assert captured.value.error_code == expected_code
+    assert captured.value.retryable is expected_retryable
+    assert captured.value.detail == "Installed Tool handler failed."
+    assert "private" not in str(captured.value)
 
 
 def test_installed_runtime_rejects_cross_binding_and_unknown_capability() -> None:
