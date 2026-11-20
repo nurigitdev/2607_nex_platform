@@ -286,9 +286,7 @@ def build_installed_agent_runtime_process(
         product_planning = None
         if selected in {"staging_live", "production"}:
             product_capabilities = load_product_capability_registry(env)
-            if str(
-                env.get("NEX_AE_PRODUCT_COORDINATOR_ACTIVATION_PATH") or ""
-            ).strip():
+            if str(env.get("NEX_AE_PRODUCT_COORDINATOR_ACTIVATION_PATH") or "").strip():
                 product_planning = build_activated_m1_product_planning_composition(
                     sessions=sessions,
                     product_capabilities=product_capabilities,
@@ -387,11 +385,7 @@ def run_installed_agent_runtime_process(
     if readiness["readiness_status"] != "READY":
         checks = readiness.get("checks")
         failed_checks = (
-            sorted(
-                str(name)
-                for name, passed in checks.items()
-                if passed is not True
-            )
+            sorted(str(name) for name, passed in checks.items() if passed is not True)
             if isinstance(checks, Mapping)
             else ["readiness_contract_unavailable"]
         )
@@ -421,6 +415,7 @@ def run_installed_agent_runtime_process(
         work_cycles += result.get("status") == "WORK"
         failed_count += int(result.get("failed_count") or 0)
         if result.get("status") == "WORK":
+            settlement = _bounded_settlement_diagnostics(result)
             print(
                 json.dumps(
                     {
@@ -429,6 +424,7 @@ def run_installed_agent_runtime_process(
                         "state": "WORK",
                         "execution_count": result.get("execution_count", 0),
                         "failed_count": result.get("failed_count", 0),
+                        **settlement,
                     },
                     sort_keys=True,
                 ),
@@ -455,6 +451,42 @@ def run_installed_agent_runtime_process(
     }
     print(json.dumps({**record, "state": "STOPPED"}, sort_keys=True), file=stream)
     return record
+
+
+def _bounded_settlement_diagnostics(result: Mapping[str, Any]) -> dict[str, Any]:
+    diagnostics: dict[str, Any] = {}
+    for source, target in (
+        ("result_closure", "ia_result_settlement"),
+        ("background_result_closure", "background_result_settlement"),
+    ):
+        closure = result.get(source)
+        if not isinstance(closure, Mapping):
+            continue
+        failures = closure.get("failures")
+        admitted_failures = []
+        if isinstance(failures, Sequence) and not isinstance(failures, (str, bytes)):
+            for failure in failures[:10]:
+                if not isinstance(failure, Mapping):
+                    continue
+                error_code = failure.get("error_code")
+                if not isinstance(error_code, str) or not error_code.strip():
+                    error_code = "unknown"
+                admitted_failures.append(
+                    {
+                        "error_code": error_code[:128],
+                        "retryable": bool(failure.get("retryable")),
+                    }
+                )
+        diagnostics[target] = {
+            "candidate_count": int(closure.get("candidate_count") or 0),
+            "finalized_count": int(closure.get("finalized_count") or 0),
+            "published_count": int(closure.get("published_count") or 0),
+            "replayed_count": int(closure.get("replayed_count") or 0),
+            "failed_count": int(closure.get("failed_count") or 0),
+            "failures": admitted_failures,
+            "content_included": False,
+        }
+    return diagnostics
 
 
 def run_live(

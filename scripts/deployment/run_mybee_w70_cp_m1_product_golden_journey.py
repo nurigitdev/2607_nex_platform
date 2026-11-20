@@ -42,7 +42,7 @@ from nex_ae_api.product_capabilities import (
     load_product_capability_registry,
 )
 from nex_runtime.current_platform_installation import CURRENT_JOURNEY_WORKERS
-from nex_runtime.database import psycopg_database_url
+from nex_runtime.database import psycopg_database_url, sqlalchemy_database_url
 from nex_runtime.demo_database import resolve_current_platform_database_targets
 from run_migrations import run_service_migrations
 
@@ -630,8 +630,7 @@ def _semantic_runtime_failure_summary(log_output: str, *, returncode: int) -> st
 
 def _wc_delivery_failure_summary(log_output: str, *, returncode: int) -> str:
     error_codes = re.findall(
-        r"\b(?:(?:AE|EOS|WC)_[A-Z0-9_]{3,95}|"
-        r"(?:ae|eos|wc)\.[a-z0-9_.-]{3,95})\b",
+        r"\b(?:(?:AE|EOS|WC)_[A-Z0-9_]{3,95}|" r"(?:ae|eos|wc)\.[a-z0-9_.-]{3,95})\b",
         log_output,
     )
     if error_codes:
@@ -667,7 +666,7 @@ def _wc_delivery_failure_summary(log_output: str, *, returncode: int) -> str:
 
 
 def _runtime_database_failure_summary(database_url: str, *, tenant_id: str) -> str:
-    engine = create_engine(database_url, poolclass=NullPool)
+    engine = create_engine(sqlalchemy_database_url(database_url), poolclass=NullPool)
     try:
         with engine.connect() as connection:
             executions = connection.execute(
@@ -760,7 +759,7 @@ def _runtime_database_failure_summary(database_url: str, *, tenant_id: str) -> s
 
 
 def _wc_database_progress_summary(database_url: str, *, tenant_id: str) -> str:
-    engine = create_engine(database_url, poolclass=NullPool)
+    engine = create_engine(sqlalchemy_database_url(database_url), poolclass=NullPool)
     try:
         with engine.connect() as connection:
             work = connection.execute(
@@ -828,8 +827,12 @@ def _eos_approval_authority_summary(
     *,
     tenant_id: str,
 ) -> str:
-    wc_engine = create_engine(wc_database_url, poolclass=NullPool)
-    eos_engine = create_engine(eos_database_url, poolclass=NullPool)
+    wc_engine = create_engine(
+        sqlalchemy_database_url(wc_database_url), poolclass=NullPool
+    )
+    eos_engine = create_engine(
+        sqlalchemy_database_url(eos_database_url), poolclass=NullPool
+    )
     try:
         with wc_engine.connect() as connection:
             approval = connection.execute(
@@ -927,16 +930,22 @@ def _eos_approval_authority_summary(
         )
         binding_summary = ":".join(
             (
-                "version_PASS"
-                if int(approval[4]) in {case_version, case_version + 1}
-                else "version_FAIL",
-                "role_PASS"
-                if expected_role is not None and approval[3] == expected_role
-                else "role_FAIL",
-                "requester_PASS"
-                if decision[0] != scoped_case[5]
-                else "requester_FAIL",
-                "wc_oa_PASS" if decision[1] is True or decision[1] == 1 else "wc_oa_FAIL",
+                (
+                    "version_PASS"
+                    if int(approval[4]) in {case_version, case_version + 1}
+                    else "version_FAIL"
+                ),
+                (
+                    "role_PASS"
+                    if expected_role is not None and approval[3] == expected_role
+                    else "role_FAIL"
+                ),
+                "requester_PASS" if decision[0] != scoped_case[5] else "requester_FAIL",
+                (
+                    "wc_oa_PASS"
+                    if decision[1] is True or decision[1] == 1
+                    else "wc_oa_FAIL"
+                ),
             )
         )
     return ",".join(
@@ -1045,15 +1054,13 @@ def _run_playwright(
             "requester"
         ]["employee_id"],
         "NEX_MYBEE_M1_GOLDEN_REQUESTER_PASSWORD": requester_password,
-        "NEX_MYBEE_M1_GOLDEN_BUSINESS_APPROVER_EMPLOYEE_ID": baseline[
-            "principals"
-        ]["business_approver"]["employee_id"],
-        "NEX_MYBEE_M1_GOLDEN_BUSINESS_APPROVER_PASSWORD": (
-            business_approver_password
-        ),
-        "NEX_MYBEE_M1_GOLDEN_ACCOUNTING_APPROVER_EMPLOYEE_ID": baseline[
-            "principals"
-        ]["accounting_approver"]["employee_id"],
+        "NEX_MYBEE_M1_GOLDEN_BUSINESS_APPROVER_EMPLOYEE_ID": baseline["principals"][
+            "business_approver"
+        ]["employee_id"],
+        "NEX_MYBEE_M1_GOLDEN_BUSINESS_APPROVER_PASSWORD": (business_approver_password),
+        "NEX_MYBEE_M1_GOLDEN_ACCOUNTING_APPROVER_EMPLOYEE_ID": baseline["principals"][
+            "accounting_approver"
+        ]["employee_id"],
         "NEX_MYBEE_M1_GOLDEN_ACCOUNTING_APPROVER_PASSWORD": (
             accounting_approver_password
         ),
@@ -1169,7 +1176,9 @@ def _database_projection(
     interaction_ids: Sequence[str],
 ) -> dict[str, Any]:
     engines = {
-        service: create_engine(urls[service], poolclass=NullPool)
+        service: create_engine(
+            sqlalchemy_database_url(urls[service]), poolclass=NullPool
+        )
         for service in ("nex-ae-api", "nex-wc", "nex-eos", "nex-wa")
     }
     try:

@@ -255,6 +255,76 @@ def test_installed_loop_reports_work_idle_and_bounded_stop() -> None:
     ]
 
 
+def test_installed_loop_reports_bounded_result_settlement_failures() -> None:
+    installed = _fake_process(
+        {
+            "status": "WORK",
+            "execution_count": 1,
+            "failed_count": 2,
+            "result_closure": {
+                "candidate_count": 1,
+                "finalized_count": 0,
+                "published_count": 0,
+                "replayed_count": 0,
+                "failed_count": 1,
+                "failures": [
+                    {
+                        "tenant_id": "protected-tenant",
+                        "agent_execution_id": "protected-execution",
+                        "error_code": "ae.workspace_result_lineage_invalid",
+                        "retryable": False,
+                    }
+                ],
+            },
+            "background_result_closure": {
+                "candidate_count": 1,
+                "finalized_count": 1,
+                "published_count": 0,
+                "replayed_count": 0,
+                "failed_count": 1,
+                "failures": [
+                    {
+                        "tenant_id": "protected-tenant",
+                        "agent_execution_id": "protected-execution",
+                        "error_code": "ae.wc_work_result_http_failed",
+                        "retryable": True,
+                    }
+                ],
+            },
+        }
+    )
+    output = StringIO()
+
+    process.run_installed_agent_runtime_process(
+        installed,
+        max_cycles=1,
+        out=output,
+    )
+
+    work = json.loads(output.getvalue().splitlines()[1])
+    assert work["ia_result_settlement"] == {
+        "candidate_count": 1,
+        "finalized_count": 0,
+        "published_count": 0,
+        "replayed_count": 0,
+        "failed_count": 1,
+        "failures": [
+            {
+                "error_code": "ae.workspace_result_lineage_invalid",
+                "retryable": False,
+            }
+        ],
+        "content_included": False,
+    }
+    assert work["background_result_settlement"]["failures"] == [
+        {
+            "error_code": "ae.wc_work_result_http_failed",
+            "retryable": True,
+        }
+    ]
+    assert "tenant_id" not in str(work)
+
+
 def test_installed_loop_honors_shutdown_and_rejects_bad_bounds() -> None:
     installed = _fake_process()
 
