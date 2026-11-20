@@ -3,7 +3,8 @@
 ## Status
 
 - Date: `2026-11-20`
-- Status: `SOURCE AND GATES VERIFIED`; exact-head installed replay pending
+- Status: `CORRECTIVE OBJECTIVE VERIFIED`; parent journey blocked at a later
+  authorization boundary
 - Parent boundary: `CP-M1-E2E-FX-01B.7`
 - Database migration: none
 - Public API or persisted schema change: none
@@ -79,3 +80,35 @@ projection is admitted with its exact `accounting_rule_profile_hash`, the
 accounting approval request is created, and no
 `MYBEE_CANDIDATE_VALIDATION_INVALID` attempt remains. A later failure must be
 reported as a separate typed boundary; it must not weaken this strict contract.
+
+## Exact-Head Installed Evidence
+
+The clean `5dcc4e36` exact-head release set and AE Product Runtime image were
+rebuilt and the protected installed journey was replayed against all eight
+actual PostgreSQL development databases and the live embedding, reranking, and
+generation providers.
+
+The corrective objective passed in the installed path:
+
+- EOS VoucherCandidate validation returned HTTP `200/PASS`;
+- MyBee admitted the exact projection including
+  `accounting_rule_profile_hash`;
+- the first AE `RESUME_EXECUTION` RuntimeJob finished `DONE`;
+- Product preparation advanced from `WAITING_BUSINESS_APPROVAL` to
+  `WAITING_ACCOUNTING_APPROVAL`;
+- no `MYBEE_CANDIDATE_VALIDATION_INVALID` attempt remained.
+
+The parent journey then stopped at a distinct downstream boundary. EOS created
+the `ACCOUNTING_POSTING` WC approval item, but the approver inbox did not admit
+it. Source and runtime evidence show that EOS places an internal Project UUID
+in `target_project_scope_ref`, while WC requires an exact match against OA
+effective authorization `project_scope_refs`; the current OA effective
+authorization contract does not publish that field. This is not a validation
+contract regression and must be handled by a separate authorization-alignment
+decision.
+
+Cleanup completed successfully after the expected timeout:
+
+- Docker residue: `0` running containers;
+- isolated PostgreSQL residue: `0` schemas in each of the eight databases;
+- runner evidence: `zero_residue=true` and `dropped_database_count=8`.
