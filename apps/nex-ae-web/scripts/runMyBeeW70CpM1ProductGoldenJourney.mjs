@@ -53,6 +53,11 @@ const SENSITIVE = [
 const DEFAULT_TIMEOUT_MS = 60_000;
 const DEFAULT_SEMANTIC_SUBMIT_TIMEOUT_MS = 180_000;
 const DEFAULT_RESULT_TIMEOUT_MS = 900_000;
+const M1_APPROVAL_SEQUENCE = Object.freeze([
+  Object.freeze({ domain: "BUSINESS_FORMAL", actorRole: "BUSINESS_APPROVER" }),
+  Object.freeze({ domain: "BUSINESS_FORMAL", actorRole: "ACCOUNTING_APPROVER" }),
+  Object.freeze({ domain: "NSL_WRITE", actorRole: "ACCOUNTING_APPROVER" })
+]);
 
 const UI = Object.freeze({
   loginHeading: "사번 로그인",
@@ -102,6 +107,30 @@ export function myBeeM1RuntimeTimeouts(environ = {}) {
     resultTimeout: positiveTimeout(
       environ[ENV.resultTimeoutMs],
       DEFAULT_RESULT_TIMEOUT_MS
+    )
+  };
+}
+
+export function myBeeM1ApprovalJourneyChecks(transactions) {
+  const exactApprovalSequenceObserved = transactions.every(item =>
+    item.approval_domains.length === M1_APPROVAL_SEQUENCE.length &&
+    item.approval_actor_roles.length === M1_APPROVAL_SEQUENCE.length &&
+    M1_APPROVAL_SEQUENCE.every((expected, index) =>
+      item.approval_domains[index] === expected.domain &&
+      item.approval_actor_roles[index] === expected.actorRole
+    )
+  );
+  return {
+    all_required_approval_domains_observed: exactApprovalSequenceObserved,
+    business_approval_role_separated: transactions.every(item =>
+      item.approval_domains[0] === "BUSINESS_FORMAL" &&
+      item.approval_actor_roles[0] === "BUSINESS_APPROVER"
+    ),
+    accounting_approval_role_separated: transactions.every(item =>
+      item.approval_domains[1] === "BUSINESS_FORMAL" &&
+      item.approval_actor_roles[1] === "ACCOUNTING_APPROVER" &&
+      item.approval_domains[2] === "NSL_WRITE" &&
+      item.approval_actor_roles[2] === "ACCOUNTING_APPROVER"
     )
   };
 }
@@ -319,36 +348,28 @@ export async function runMyBeeM1ProductGoldenJourney({
     await logout(businessApprover, actionTimeout);
     await logout(requester, actionTimeout);
     await captures.capture(requester, "requester-logged-out");
-    const requiredDomains = new Set(["BUSINESS_FORMAL", "ACCOUNTING_REVIEW", "NSL_WRITE"]);
     const observedDomains = new Set(transactions.flatMap(item => item.approval_domains));
+    const approvalChecks = myBeeM1ApprovalJourneyChecks(transactions);
     const checks = {
       chromium_launched: true,
       anonymous_protected_surface_hidden: anonymousProtectedSurfaceHidden,
       requester_authenticated: true,
       business_approver_authenticated: true,
       accounting_approver_authenticated: true,
+      three_distinct_principals_configured:
+        new Set([
+          environ[ENV.requesterEmployeeId],
+          environ[ENV.businessApproverEmployeeId],
+          environ[ENV.accountingApproverEmployeeId]
+        ]).size === 3,
       two_non_identical_business_requests: transactions.length >= 2,
       all_live_plans_compiled: transactions.every(item =>
         item.semantic_stages.length === 3 &&
         item.semantic_stages.every(stageItem => stageItem.directive === "CONTINUE")
       ),
-      all_required_approval_domains_observed: [...requiredDomains].every(domain =>
-        observedDomains.has(domain)
-      ),
+      ...approvalChecks,
       approval_replay_idempotent: transactions.every(item =>
         item.approval_replay_statuses.every(status => status === 200)
-      ),
-      business_approval_role_separated: transactions.every(item =>
-        item.approval_domains.every((domain, index) =>
-          domain !== "BUSINESS_FORMAL" ||
-          item.approval_actor_roles[index] === "BUSINESS_APPROVER"
-        )
-      ),
-      accounting_approval_role_separated: transactions.every(item =>
-        item.approval_domains.every((domain, index) =>
-          domain !== "ACCOUNTING_REVIEW" ||
-          item.approval_actor_roles[index] === "ACCOUNTING_APPROVER"
-        )
       ),
       all_results_terminal: transactions.every(item =>
         item.result_projection.terminal === true

@@ -10,6 +10,7 @@ import {
   journeyProgressReporter,
   myBeeM1RuntimeConfig,
   myBeeM1RuntimeTimeouts,
+  myBeeM1ApprovalJourneyChecks,
   myBeeM1ProductJourneyUiContract,
   parseProductPrompts,
   pendingApprovalGates,
@@ -17,6 +18,47 @@ import {
   runMyBeeM1ProductGoldenJourney,
   runMyBeeM1ProductPostRestartRecovery
 } from "../scripts/runMyBeeW70CpM1ProductGoldenJourney.mjs";
+
+test("M1 product journey distinguishes authority kind from WC approval domain", () => {
+  const valid = myBeeM1ApprovalJourneyChecks([
+    {
+      approval_domains: ["BUSINESS_FORMAL", "BUSINESS_FORMAL", "NSL_WRITE"],
+      approval_actor_roles: [
+        "BUSINESS_APPROVER",
+        "ACCOUNTING_APPROVER",
+        "ACCOUNTING_APPROVER"
+      ]
+    }
+  ]);
+  assert.deepEqual(valid, {
+    all_required_approval_domains_observed: true,
+    business_approval_role_separated: true,
+    accounting_approval_role_separated: true
+  });
+
+  const wrongActor = myBeeM1ApprovalJourneyChecks([
+    {
+      approval_domains: ["BUSINESS_FORMAL", "BUSINESS_FORMAL", "NSL_WRITE"],
+      approval_actor_roles: ["BUSINESS_APPROVER", "BUSINESS_APPROVER", "ACCOUNTING_APPROVER"]
+    }
+  ]);
+  assert.equal(wrongActor.all_required_approval_domains_observed, false);
+  assert.equal(wrongActor.business_approval_role_separated, true);
+  assert.equal(wrongActor.accounting_approval_role_separated, false);
+
+  const falseDomain = myBeeM1ApprovalJourneyChecks([
+    {
+      approval_domains: ["BUSINESS_FORMAL", "ACCOUNTING_REVIEW", "NSL_WRITE"],
+      approval_actor_roles: [
+        "BUSINESS_APPROVER",
+        "ACCOUNTING_APPROVER",
+        "ACCOUNTING_APPROVER"
+      ]
+    }
+  ]);
+  assert.equal(falseDomain.all_required_approval_domains_observed, false);
+  assert.equal(falseDomain.accounting_approval_role_separated, false);
+});
 
 test("M1 product journey writes only bounded atomic progress evidence", () => {
   const directory = mkdtempSync(path.join(tmpdir(), "mybee-m1-progress-"));
