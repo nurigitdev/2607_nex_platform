@@ -172,7 +172,10 @@ CANONICAL_PLATFORM_TRUST_GRANTS = (
         "NEX_AE_TO_EOS_SERVICE_TOKEN", "nex-ae-api", "nex-eos", ("service:call",)
     ),
     CanonicalTrustGrant(
-        "NEX_AE_TO_WA_SERVICE_TOKEN", "nex-ae-api", "nex-wa", ("service:call",)
+        "NEX_AE_TO_WA_SERVICE_TOKEN",
+        "nex-ae-api",
+        "nex-wa",
+        ("service:call", "work:evidence:ingest"),
     ),
     CanonicalTrustGrant(
         "NEX_CX_TO_MO_SERVICE_TOKEN", "nex-cx", "nex-mo", ("service:call",)

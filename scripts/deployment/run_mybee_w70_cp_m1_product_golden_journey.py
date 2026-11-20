@@ -8,6 +8,7 @@ import re
 import secrets
 import subprocess
 import sys
+import time
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
@@ -72,6 +73,8 @@ BROWSER_PROCESS_TIMEOUT_SECONDS = (
     BROWSER_PROCESS_MARGIN_SECONDS
     + ((BROWSER_SEMANTIC_SUBMIT_TIMEOUT_MS + BROWSER_RESULT_TIMEOUT_MS) // 1000) * 2
 )
+DATABASE_PROJECTION_MAX_ATTEMPTS = 120
+DATABASE_PROJECTION_POLL_SECONDS = 0.5
 GOLDEN_JOURNEY_EVIDENCE_CONTRACT = {
     "platform_integrated": True,
     "runtime_transition_fixture": False,
@@ -309,14 +312,11 @@ def execute_m1_product_golden_journey(
             raise M1ProductGoldenJourneyError(
                 "M1 product browser journey omitted interaction lineage"
             )
-        database = _database_projection(
+        database, checks = _wait_for_live_database_projection(
             urls,
             tenant_id=baseline["tenant"]["tenant_id"],
             interaction_ids=interaction_ids,
-        )
-        checks = _live_checks(
             browser=browser,
-            database=database,
             baseline=baseline,
         )
         if not all(checks.values()):
@@ -1188,10 +1188,27 @@ def _database_projection(
                     "SELECT "
                     "(SELECT count(*) FROM ae_agent_execution WHERE tenant_id=:tenant "
                     " AND CAST(legacy_interaction_id AS text)=ANY(:interactions)), "
-                    "(SELECT count(*) FROM ae_agent_result WHERE tenant_id=:tenant), "
-                    "(SELECT count(*) FROM ae_result_delivery WHERE tenant_id=:tenant), "
-                    "(SELECT count(*) FROM ae_result_delivery WHERE tenant_id=:tenant "
-                    " AND state='ACKNOWLEDGED')"
+                    "(SELECT count(*) FROM ae_agent_result AS result "
+                    " JOIN ae_agent_execution AS execution "
+                    " ON execution.tenant_id=result.tenant_id "
+                    " AND execution.agent_execution_id=result.agent_execution_id "
+                    " WHERE result.tenant_id=:tenant AND result.agent_type='IA' "
+                    " AND CAST(execution.legacy_interaction_id AS text)=ANY(:interactions)), "
+                    "(SELECT count(*) FROM ae_result_delivery AS delivery "
+                    " JOIN ae_agent_execution AS execution "
+                    " ON execution.tenant_id=delivery.tenant_id "
+                    " AND execution.agent_execution_id=delivery.agent_execution_id "
+                    " WHERE delivery.tenant_id=:tenant "
+                    " AND delivery.target_type='WORKSPACE_RESULT' "
+                    " AND CAST(execution.legacy_interaction_id AS text)=ANY(:interactions)), "
+                    "(SELECT count(*) FROM ae_result_delivery AS delivery "
+                    " JOIN ae_agent_execution AS execution "
+                    " ON execution.tenant_id=delivery.tenant_id "
+                    " AND execution.agent_execution_id=delivery.agent_execution_id "
+                    " WHERE delivery.tenant_id=:tenant "
+                    " AND delivery.target_type='WORKSPACE_RESULT' "
+                    " AND delivery.state='ACKNOWLEDGED' "
+                    " AND CAST(execution.legacy_interaction_id AS text)=ANY(:interactions))"
                 ),
                 {"tenant": tenant_id, "interactions": list(interaction_ids)},
             ).one()
@@ -1269,6 +1286,38 @@ def _database_projection(
     finally:
         for engine in engines.values():
             engine.dispose()
+
+
+def _wait_for_live_database_projection(
+    urls: Mapping[str, str],
+    *,
+    tenant_id: str,
+    interaction_ids: Sequence[str],
+    browser: Mapping[str, Any],
+    baseline: Mapping[str, Any],
+    max_attempts: int = DATABASE_PROJECTION_MAX_ATTEMPTS,
+    poll_seconds: float = DATABASE_PROJECTION_POLL_SECONDS,
+    sleeper: Any = time.sleep,
+) -> tuple[dict[str, Any], dict[str, bool]]:
+    if max_attempts < 1 or poll_seconds < 0:
+        raise ValueError("database projection polling bounds are invalid")
+    database: dict[str, Any] = {}
+    checks: dict[str, bool] = {}
+    for attempt in range(max_attempts):
+        database = _database_projection(
+            urls,
+            tenant_id=tenant_id,
+            interaction_ids=interaction_ids,
+        )
+        checks = _live_checks(
+            browser=browser,
+            database=database,
+            baseline=baseline,
+        )
+        if all(checks.values()) or attempt + 1 == max_attempts:
+            return database, checks
+        sleeper(poll_seconds)
+    raise AssertionError("bounded database projection loop did not return")
 
 
 def _live_checks(

@@ -372,6 +372,66 @@ def test_product_live_checks_require_exact_product_outcomes() -> None:
     )
 
 
+def test_product_database_projection_waits_for_wa_consumer_convergence(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    baseline = support.load_acceptance_baseline()
+    database = {
+        "execution_count": 2,
+        "agent_result_count": 2,
+        "result_delivery_count": 2,
+        "acknowledged_delivery_count": 2,
+        "approval_decision_count": 6,
+        "voucher_candidate_count": 2,
+        "journal_count": 2,
+        "distinct_journal_count": 2,
+        "allocation_batch_count": 2,
+        "distinct_allocation_batch_count": 2,
+        "allocation_line_count": 4,
+        "pnl_projection_count": 2,
+        "wa_work_asset_count": 0,
+        "first_batch_allocated_total": "13502000.0000",
+        "first_batch_unallocated_total": "0.0000",
+        "first_batch_project_amounts": ["5400800.0000", "8101200.0000"],
+    }
+    projections = iter((database, {**database, "wa_work_asset_count": 2}))
+    monkeypatch.setattr(
+        acceptance,
+        "_database_projection",
+        lambda *args, **kwargs: next(projections),
+    )
+    sleeps: list[float] = []
+
+    settled, checks = acceptance._wait_for_live_database_projection(
+        {},
+        tenant_id="TEN1",
+        interaction_ids=("00000000-0000-4000-8000-000000000001",),
+        browser={"status": "PASS"},
+        baseline=baseline,
+        max_attempts=2,
+        poll_seconds=0.25,
+        sleeper=sleeps.append,
+    )
+
+    assert settled["wa_work_asset_count"] == 2
+    assert all(checks.values())
+    assert sleeps == [0.25]
+
+
+def test_canonical_ae_to_wa_token_has_exact_intake_scope() -> None:
+    from nex_runtime.canonical_platform_trust import CANONICAL_PLATFORM_TRUST_GRANTS
+
+    grant = next(
+        item
+        for item in CANONICAL_PLATFORM_TRUST_GRANTS
+        if item.environment_name == "NEX_AE_TO_WA_SERVICE_TOKEN"
+    )
+
+    assert grant.owner == "nex-ae-api"
+    assert grant.audience == "nex-wa"
+    assert grant.scopes == ("service:call", "work:evidence:ingest")
+
+
 def test_product_semantic_calibration_is_exact_revision_scoped() -> None:
     payload = json.loads(
         acceptance._semantic_calibration_json(model_ref="hf:immutable-revision")
