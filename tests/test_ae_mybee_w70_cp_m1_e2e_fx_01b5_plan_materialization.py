@@ -10,6 +10,7 @@ import pytest
 from mybee_ax.integrations import M1_D04_CAPABILITY_ID, M1_D12_CAPABILITY_ID
 from nex_ae_api.m1_installed_skill_runtime import M1InstalledSkillRuntime
 from nex_ae_api.m1_plan_materialization import (
+    M1_PLAN_MATERIALIZATION_ERROR_FAMILY,
     M1PlanMaterializationError,
     materialize_m1_transaction_plan,
 )
@@ -262,8 +263,18 @@ def test_01b5_materializes_d12_then_d04_through_existing_compiler() -> None:
     assert first.projection()["compiled_step_keys"] == ["E1", "E2"]
 
 
-@pytest.mark.parametrize("mutation", ("stage", "authority", "context", "lineage"))
-def test_01b5_rejects_stale_or_tampered_authority_before_compile(mutation) -> None:
+@pytest.mark.parametrize(
+    ("mutation", "expected_code"),
+    (
+        ("stage", "M1_PLAN_READY_CHECKPOINT_REQUIRED"),
+        ("authority", "M1_PLAN_PREPARATION_INTEGRITY_INVALID"),
+        ("context", "M1_PLAN_WORK_INTENT_INVALID"),
+        ("lineage", "M1_PLAN_IDENTITY_MISMATCH"),
+    ),
+)
+def test_01b5_rejects_stale_or_tampered_authority_before_compile(
+    mutation, expected_code
+) -> None:
     runtime = _runtime()
     intent = _work_intent()
     context = _agent_context(intent)
@@ -285,13 +296,15 @@ def test_01b5_rejects_stale_or_tampered_authority_before_compile(mutation) -> No
             {key: value for key, value in context.items() if key != "context_hash"}
         )
 
-    with pytest.raises(M1PlanMaterializationError):
+    with pytest.raises(M1PlanMaterializationError) as caught:
         runtime.materialize_transaction_plan(
             work_intent=intent,
             agent_context=context,
             capability_snapshot=snapshot,
             preparation_checkpoint=preparation,
         )
+    assert caught.value.error_code == expected_code
+    assert caught.value.error_family == M1_PLAN_MATERIALIZATION_ERROR_FAMILY
 
 
 def test_01b5_rejects_capability_revision_drift() -> None:
@@ -328,8 +341,48 @@ def test_01b5_normalizes_invalid_capability_snapshot_error() -> None:
             preparation_checkpoint=_preparation(intent),
         )
 
-    assert caught.value.error_code == "M1_PLAN_MATERIALIZATION_INVALID"
+    assert caught.value.error_code == "M1_PLAN_CAPABILITY_SNAPSHOT_INVALID"
+    assert caught.value.error_family == M1_PLAN_MATERIALIZATION_ERROR_FAMILY
     assert str(caught.value) == caught.value.detail
+
+
+@pytest.mark.parametrize(
+    ("mutation", "expected_code"),
+    (
+        ("project", "M1_PLAN_PRIMARY_PROJECT_MISSING"),
+        ("execution", "M1_PLAN_EXECUTION_MISMATCH"),
+        ("conflict", "M1_PLAN_CONTEXT_CONFLICT"),
+        ("degradation", "M1_PLAN_CONTEXT_DEGRADED"),
+    ),
+)
+def test_01b7n_emits_bounded_lineage_diagnostics(mutation, expected_code) -> None:
+    runtime = _runtime()
+    intent = _work_intent()
+    context = _agent_context(intent)
+    preparation = _preparation(intent)
+
+    if mutation == "project":
+        context["resolved_entities"] = []
+    elif mutation == "execution":
+        context["execution_id"] = "41000000-0000-4000-8000-000000000099"
+    elif mutation == "conflict":
+        context["conflicts"] = [{"reason_code": "TEST_CONFLICT"}]
+    else:
+        context["degradations"] = [{"reason_code": "TEST_DEGRADATION"}]
+    context["context_hash"] = semantic_sha256_hash_ref(
+        {key: value for key, value in context.items() if key != "context_hash"}
+    )
+
+    with pytest.raises(M1PlanMaterializationError) as caught:
+        runtime.materialize_transaction_plan(
+            work_intent=intent,
+            agent_context=context,
+            capability_snapshot=_snapshot(runtime),
+            preparation_checkpoint=preparation,
+        )
+
+    assert caught.value.error_code == expected_code
+    assert caught.value.error_family == M1_PLAN_MATERIALIZATION_ERROR_FAMILY
 
 
 @pytest.mark.parametrize(

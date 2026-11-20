@@ -15,6 +15,7 @@ from mybee_ax.integrations.nex_business_approval_client import (
 from mybee_ax.orchestration import load_m1_transaction_preparation_registration
 from nex_ae_api.agent_context import TrustedContextResolution
 from nex_ae_api.agent_runtime_worker import AgentRuntimeAssignment
+from nex_ae_api.m1_plan_materialization import M1PlanMaterializationError
 from nex_ae_api.m1_product_planning_coordinator import (
     build_m1_product_planning_coordinator_registry,
 )
@@ -1059,6 +1060,16 @@ def test_product_assignment_resumes_and_only_activates_exact_ready_state(ready) 
             None,
             None,
             "EOS_APPROVED_DOCUMENT_AUTHORIZATION_DENIED",
+        ),
+        (
+            M1PlanMaterializationError(
+                "M1_PLAN_CONTEXT_DEGRADED",
+                "M1 AgentContext contains unresolved degradations.",
+            ),
+            ProductPlanningRuntimeError,
+            None,
+            None,
+            "M1_PLAN_CONTEXT_DEGRADED",
         ),
         (
             _LegacyProductBoundaryError(

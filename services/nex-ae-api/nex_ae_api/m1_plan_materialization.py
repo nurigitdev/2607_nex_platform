@@ -25,6 +25,7 @@ from nex_ae_api.product_planning_proposals import (
 )
 
 M1_PLAN_MATERIALIZATION_SCHEMA_VERSION = "ae.m1_plan_materialization.v1"
+M1_PLAN_MATERIALIZATION_ERROR_FAMILY = "M1_PLAN_MATERIALIZATION_INVALID"
 M1_PREPARATION_SCHEMA_VERSION = "nex.mybee.m1-transaction-preparation.v1"
 M1_D04_COMMAND_SCHEMA_VERSION = "eos.journal_posting_command.v1"
 _CAPABILITY_IDS = (M1_D12_CAPABILITY_ID, M1_D04_CAPABILITY_ID)
@@ -46,6 +47,7 @@ _M1_PREPARATION_INPUT = "m1_preparation_checkpoint"
 class M1PlanMaterializationError(ValueError):
     error_code: str
     detail: str
+    error_family: str = M1_PLAN_MATERIALIZATION_ERROR_FAMILY
 
     def __str__(self) -> str:
         return self.detail
@@ -89,7 +91,7 @@ def materialize_m1_transaction_plan(
     try:
         snapshot = validate_capability_snapshot_contract(capability_snapshot)
     except CapabilitySnapshotError as exc:
-        raise _invalid(exc.detail) from exc
+        raise _invalid("M1_PLAN_CAPABILITY_SNAPSHOT_INVALID", exc.detail) from exc
     capabilities = _capabilities(snapshot, installed_capabilities)
     proposal_ref = (
         None
@@ -140,7 +142,10 @@ def materialize_m1_transaction_plan(
         validated_at=prepared_at,
     )
     if validation["status"] != "VALID" or validation["issues"]:
-        raise _invalid("M1 AgentPlan did not receive issue-free compile authority.")
+        raise _invalid(
+            "M1_PLAN_VALIDATION_REJECTED",
+            "M1 AgentPlan did not receive issue-free compile authority.",
+        )
     step_ids = iter((identities["d12-step"], identities["d04-step"]))
     executable = compile_executable_plan(
         agent_plan=plan,
@@ -298,7 +303,7 @@ def _work_intent_context(value: Mapping[str, Any]) -> Mapping[str, Any]:
             value.get("business_request_context")
         )
     except BusinessContextValidationError as exc:
-        raise _invalid(exc.detail) from exc
+        raise _invalid("M1_PLAN_WORK_INTENT_INVALID", exc.detail) from exc
     if (
         value.get("schema_version") != "1.2"
         or value.get("intent_label") != "FINANCE.VOUCHER.APPROVE_AND_POST"
@@ -308,7 +313,10 @@ def _work_intent_context(value: Mapping[str, Any]) -> Mapping[str, Any]:
             {key: item for key, item in value.items() if key != "intent_hash"}
         )
     ):
-        raise _invalid("M1 WorkIntent authority is invalid or stale.")
+        raise _invalid(
+            "M1_PLAN_WORK_INTENT_INVALID",
+            "M1 WorkIntent authority is invalid or stale.",
+        )
     return context
 
 
@@ -330,7 +338,10 @@ def _preparation(value: Mapping[str, Any]) -> Mapping[str, Any]:
         or value.get("schema_version") != M1_PREPARATION_SCHEMA_VERSION
         or value.get("stage") != "READY_FOR_D04"
     ):
-        raise _invalid("M1 READY_FOR_D04 checkpoint is required.")
+        raise _invalid(
+            "M1_PLAN_READY_CHECKPOINT_REQUIRED",
+            "M1 READY_FOR_D04 checkpoint is required.",
+        )
     record = dict(value)
     expected = semantic_sha256_hash_ref(
         {key: item for key, item in record.items() if key != "preparation_hash"}
@@ -343,7 +354,10 @@ def _preparation(value: Mapping[str, Any]) -> Mapping[str, Any]:
         or not isinstance(references, Mapping)
         or not _D04_REFERENCE_FIELDS.issubset(references)
     ):
-        raise _invalid("M1 preparation checkpoint integrity is invalid.")
+        raise _invalid(
+            "M1_PLAN_PREPARATION_INTEGRITY_INVALID",
+            "M1 preparation checkpoint integrity is invalid.",
+        )
     expected_authority = semantic_sha256_hash_ref(
         {key: item for key, item in authority.items() if key != "authority_hash"}
     )
@@ -351,7 +365,10 @@ def _preparation(value: Mapping[str, Any]) -> Mapping[str, Any]:
         authority.get("authority_hash") != expected_authority
         or record.get("authority_hash") != expected_authority
     ):
-        raise _invalid("M1 preparation authority integrity is invalid.")
+        raise _invalid(
+            "M1_PLAN_AUTHORITY_INTEGRITY_INVALID",
+            "M1 preparation authority integrity is invalid.",
+        )
     for field in (
         "candidate_hash",
         "accounting_proof_hash",
@@ -360,7 +377,10 @@ def _preparation(value: Mapping[str, Any]) -> Mapping[str, Any]:
         try:
             validate_hash_ref(references[field])
         except (TypeError, ValueError) as exc:
-            raise _invalid(f"M1 preparation {field} is invalid.") from exc
+            raise _invalid(
+                "M1_PLAN_REFERENCE_INVALID",
+                f"M1 preparation {field} is invalid.",
+            ) from exc
     return record
 
 
@@ -369,7 +389,10 @@ def _capabilities(
     installed: Mapping[str, Mapping[str, Any]],
 ) -> dict[str, Mapping[str, Any]]:
     if set(installed) != set(_CAPABILITY_IDS):
-        raise _invalid("Installed M1 capability set is incomplete.")
+        raise _invalid(
+            "M1_PLAN_CAPABILITY_SET_INCOMPLETE",
+            "Installed M1 capability set is incomplete.",
+        )
     resolved: dict[str, Mapping[str, Any]] = {}
     for capability_id in _CAPABILITY_IDS:
         expected = dict(installed[capability_id])
@@ -380,9 +403,12 @@ def _capabilities(
                 str(expected.get("capability_version") or ""),
             )
         except CapabilitySnapshotError as exc:
-            raise _invalid(exc.detail) from exc
+            raise _invalid("M1_PLAN_CAPABILITY_SNAPSHOT_INVALID", exc.detail) from exc
         if observed != expected:
-            raise _invalid("M1 capability snapshot differs from the installed release.")
+            raise _invalid(
+                "M1_PLAN_CAPABILITY_DRIFT",
+                "M1 capability snapshot differs from the installed release.",
+            )
         resolved[capability_id] = observed
     return resolved
 
@@ -404,17 +430,40 @@ def _require_lineage(
         and isinstance((resource := item.get("resource_ref")), Mapping)
         and resource.get("resource_type") == "PROJECT"
     }
+    if preparation["business_context_hash"] != context["context_hash"]:
+        raise _invalid(
+            "M1_PLAN_BUSINESS_CONTEXT_MISMATCH",
+            "M1 preparation business context differs from WorkIntent.",
+        )
     if (
-        preparation["business_context_hash"] != context["context_hash"]
-        or not isinstance(identity, Mapping)
+        not isinstance(identity, Mapping)
         or identity.get("tenant_id") != authority.get("tenant_id")
         or identity.get("subject_id") != authority.get("requester_subject_id")
-        or authority.get("primary_project_id") not in project_ids
-        or agent_context.get("execution_id") != work_intent.get("execution_id")
-        or agent_context.get("conflicts")
-        or agent_context.get("degradations")
     ):
-        raise _invalid("M1 preparation and planning lineage do not match.")
+        raise _invalid(
+            "M1_PLAN_IDENTITY_MISMATCH",
+            "M1 preparation requester differs from AgentContext identity.",
+        )
+    if authority.get("primary_project_id") not in project_ids:
+        raise _invalid(
+            "M1_PLAN_PRIMARY_PROJECT_MISSING",
+            "M1 primary Project is absent from AgentContext authority.",
+        )
+    if agent_context.get("execution_id") != work_intent.get("execution_id"):
+        raise _invalid(
+            "M1_PLAN_EXECUTION_MISMATCH",
+            "M1 WorkIntent and AgentContext executions differ.",
+        )
+    if agent_context.get("conflicts"):
+        raise _invalid(
+            "M1_PLAN_CONTEXT_CONFLICT",
+            "M1 AgentContext contains unresolved conflicts.",
+        )
+    if agent_context.get("degradations"):
+        raise _invalid(
+            "M1_PLAN_CONTEXT_DEGRADED",
+            "M1 AgentContext contains unresolved degradations.",
+        )
 
 
 def _versioned_ref(
@@ -431,14 +480,19 @@ def _uuid(field: str, value: object) -> str:
     try:
         return str(uuid.UUID(str(value)))
     except (TypeError, ValueError, AttributeError) as exc:
-        raise _invalid(f"M1 {field} is invalid.") from exc
+        raise _invalid(
+            "M1_PLAN_EXECUTION_ID_INVALID", f"M1 {field} is invalid."
+        ) from exc
 
 
 def _timestamp(value: object) -> str:
     if not isinstance(value, str) or not value.endswith("Z"):
-        raise _invalid("M1 preparation effective timestamp is invalid.")
+        raise _invalid(
+            "M1_PLAN_EFFECTIVE_TIMESTAMP_INVALID",
+            "M1 preparation effective timestamp is invalid.",
+        )
     return value
 
 
-def _invalid(detail: str) -> M1PlanMaterializationError:
-    return M1PlanMaterializationError("M1_PLAN_MATERIALIZATION_INVALID", detail)
+def _invalid(error_code: str, detail: str) -> M1PlanMaterializationError:
+    return M1PlanMaterializationError(error_code, detail)
