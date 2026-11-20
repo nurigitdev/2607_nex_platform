@@ -39,6 +39,24 @@ materialization failed but cannot identify the violated contract.
 7. Reuse current RuntimeJob and Product preparation persistence; add no table
    or migration.
 
+## Diagnosed Contract Drift
+
+The exact-head diagnostic replay persisted `M1_PLAN_IDENTITY_MISMATCH`. A
+bounded read of the same execution proved:
+
+- AgentExecution principal: `employee-8101`;
+- AgentExecution requester: `employee-8101`;
+- READY checkpoint requester subject: `employee-8101`;
+- canonical AgentContext identity field: `principal_id=employee-8101`.
+
+The materializer alone read the non-canonical field `identity.subject_id`.
+Canonical AgentContext admission has always required `tenant_id`,
+`principal_id`, `agent_id`, and `agent_type`, so this was field-name drift, not
+an authority mismatch. The materializer now compares `principal_id` to the
+authoritative requester subject. It does not add a legacy `subject_id`
+fallback, because accepting an unvalidated identity shape would weaken the
+planning authority boundary.
+
 ## Exit Rule
 
 The Slice closes only when focused regression and the AE Slice Gate pass, the

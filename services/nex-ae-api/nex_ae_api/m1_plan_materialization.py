@@ -438,7 +438,7 @@ def _require_lineage(
     if (
         not isinstance(identity, Mapping)
         or identity.get("tenant_id") != authority.get("tenant_id")
-        or identity.get("subject_id") != authority.get("requester_subject_id")
+        or identity.get("principal_id") != authority.get("requester_subject_id")
     ):
         raise _invalid(
             "M1_PLAN_IDENTITY_MISMATCH",

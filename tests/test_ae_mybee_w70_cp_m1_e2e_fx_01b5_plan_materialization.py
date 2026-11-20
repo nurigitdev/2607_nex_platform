@@ -75,7 +75,12 @@ def _agent_context(work_intent: dict) -> dict:
         "context_id": CONTEXT_ID,
         "context_generation": 2,
         "execution_id": work_intent["execution_id"],
-        "identity": {"tenant_id": TENANT, "subject_id": SUBJECT},
+        "identity": {
+            "tenant_id": TENANT,
+            "principal_id": SUBJECT,
+            "agent_id": "41000000-0000-4000-8000-000000000014",
+            "agent_type": "PA",
+        },
         "runtime_policy_ref": {"policy_id": "m1", "rule_hash": HASH_A},
         "authority_ref": "oa.authorization:m1-project-set",
         "resolved_entities": [
@@ -291,7 +296,7 @@ def test_01b5_rejects_stale_or_tampered_authority_before_compile(
             {key: value for key, value in intent.items() if key != "intent_hash"}
         )
     else:
-        context["identity"]["subject_id"] = "other-user"
+        context["identity"]["principal_id"] = "other-user"
         context["context_hash"] = semantic_sha256_hash_ref(
             {key: value for key, value in context.items() if key != "context_hash"}
         )
@@ -305,6 +310,27 @@ def test_01b5_rejects_stale_or_tampered_authority_before_compile(
         )
     assert caught.value.error_code == expected_code
     assert caught.value.error_family == M1_PLAN_MATERIALIZATION_ERROR_FAMILY
+
+
+def test_01b7n_rejects_legacy_subject_only_agent_identity() -> None:
+    runtime = _runtime()
+    intent = _work_intent()
+    context = _agent_context(intent)
+    context["identity"].pop("principal_id")
+    context["identity"]["subject_id"] = SUBJECT
+    context["context_hash"] = semantic_sha256_hash_ref(
+        {key: value for key, value in context.items() if key != "context_hash"}
+    )
+
+    with pytest.raises(M1PlanMaterializationError) as caught:
+        runtime.materialize_transaction_plan(
+            work_intent=intent,
+            agent_context=context,
+            capability_snapshot=_snapshot(runtime),
+            preparation_checkpoint=_preparation(intent),
+        )
+
+    assert caught.value.error_code == "M1_PLAN_IDENTITY_MISMATCH"
 
 
 def test_01b5_rejects_capability_revision_drift() -> None:
