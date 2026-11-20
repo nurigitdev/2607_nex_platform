@@ -31,6 +31,15 @@ status `NO_CHECK`; the runtime correctly refused to publish an approval request
 and persisted `ae.product_controlled_skill_approval_not_suspended`. This was a
 Skill contract mismatch, not an approval-authority or publication failure.
 
+The next protected replay admitted D04 Skill `1.0.1`, persisted the approval
+request, consumed the approved generalized wait/event, and resumed the
+controlled WRITE. It then failed with typed result `eos.write_not_committed`.
+The EOS posting client and public schema require
+`eos_journal_post_command.v1`, while M1 plan materialization and D04 `1.0.1`
+still emitted and checked `eos.journal_posting_command.v1`. The command builder
+therefore failed before the EOS posting HTTP request. No Journal mutation was
+attempted.
+
 ## Decision
 
 1. Preserve bounded stage-specific D04 initial failure codes across the P5
@@ -61,29 +70,36 @@ Skill contract mismatch, not an approval-authority or publication failure.
    public key, Product Capability Registry, runtime admission, runtime
    activation, and Product coordinator activation. Preserve every v1 artifact
    unchanged as controlled rollback evidence.
-10. Keep Skill and Tool contract versions independent. D04 Skill `1.0.1`
+10. Keep Skill and Tool contract versions independent. D04 Skill `1.0.2`
     continues to require the admitted Journal Tool contract `1.0.0`; the
     runtime resolves that version from the signed NSO `required_tools` record
     and fails closed unless exactly one matching WRITE Tool is present.
+11. Use the EOS-owned `EOS_JOURNAL_POST_COMMAND_SCHEMA` constant when M1
+    materializes D04 input. Publish D04 Skill `1.0.2` with the same canonical
+    schema check. Do not add a dotted compatibility alias or mutate release v2.
 
 ## Implemented Boundary
 
-- D04 `1.0.1` semantic hash:
-  `sha256:25fc90a2a81499d646ab6df5bb9b2c9727343a577a1341ecf97563ac5c6519c9`.
-- Signed release: `nex-mybee-m1-d04-d12-checkpoint-v2`; private signing key was
+- D04 `1.0.2` semantic hash:
+  `sha256:54ed4365a9abb2646a8bc5ced81550fe6a27a9dbac363d925449a27198ee718c`.
+- Signed release: `nex-mybee-m1-d04-d12-checkpoint-v3`; private signing key was
   not persisted, and only the Ed25519 verification key is packaged.
 - Active immutable bindings:
-  - Product Capability Registry `v3`, registry version `5`;
-  - runtime admission `v3`;
-  - runtime activation `v3`;
-  - Product coordinator activation/rollback `v2`.
-- Rollback remains bound to signed release v1, registry v2, and runtime
-  admission v2. Active OCI contexts package both current and rollback artifacts.
+  - Product Capability Registry `v4`, registry version `6`;
+  - runtime admission `v4`;
+  - runtime activation `v4`;
+  - Product coordinator activation/rollback `v3`.
+- Rollback is now bound to signed release v2, registry v3, and runtime
+  admission v3. Active OCI contexts package current, immediate rollback, and
+  historical v1 artifacts.
 - The source-level controlled-prefix test executes the actual signed D04 Skill,
   proves `ALL_PASS`, and requires both checkpoint and approval request output.
 - Installed authority composition no longer substitutes the Skill version for
-  the Tool contract version; the distinct `1.0.1`/`1.0.0` pair is covered by a
+  the Tool contract version; the distinct `1.0.2`/`1.0.0` pair is covered by a
   fail-closed regression test.
+- M1 plan materialization imports the EOS-owned canonical schema constant, so
+  planning, signed Skill validation, command construction, OpenAPI, and EOS
+  posting admission share one schema identity.
 
 ## Verification In Progress
 
@@ -93,11 +109,18 @@ Skill contract mismatch, not an approval-authority or publication failure.
   `284 passed`.
 - Product runtime deployment audit: `PASS`; no business fixture is used by the
   active runtime.
+- D04 `1.0.2` release-chain and changed-path regression:
+  `470 passed, 1 skipped`; the skip is the separately protected AE PostgreSQL
+  smoke.
 - AE Slice Gate: `PASS`; `6,896 passed, 53 skipped`, statement coverage
   `96.46%`, branch coverage `94.71%`, and all six contract/audit commands
   completed.
-- Remaining exit work: exact-head OCI rebuild, DGX preflight, installed
-  protected replay, and eight-database/Compose zero-residue check.
+- First installed replay evidence: D04 approval request persisted and was
+  approved/consumed; the prior suspension blocker is closed. The downstream
+  schema mismatch was typed as `eos.write_not_committed`, and the isolated
+  Compose/PostgreSQL run was cleaned without residue.
+- Remaining exit work: exact-head OCI rebuild for release v3, DGX preflight,
+  installed protected replay, and eight-database/Compose zero-residue check.
 
 ## Exit Rule
 

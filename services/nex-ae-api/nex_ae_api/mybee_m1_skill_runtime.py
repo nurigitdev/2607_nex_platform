@@ -38,7 +38,7 @@ from nex_ae_api.product_skill_catalog import (
 MYBEE_M1_BACKEND_PROFILE = "NSL_V02_IN_PROCESS"
 ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_M1_RELEASE_LOCK = (
-    ROOT / "deployment/locks/ae-mybee-m1-signed-skill-checkpoint.v2.json"
+    ROOT / "deployment/locks/ae-mybee-m1-signed-skill-checkpoint.v3.json"
 )
 
 

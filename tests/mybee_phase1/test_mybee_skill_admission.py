@@ -26,12 +26,12 @@ from nex_ae_api.product_capabilities import (
 from nex_runtime.semantic_hashes import semantic_sha256_hash_ref
 
 ROOT = Path(__file__).resolve().parents[2]
-LOCK = ROOT / "deployment/locks/ae-mybee-m1-signed-skill-checkpoint.v2.json"
+LOCK = ROOT / "deployment/locks/ae-mybee-m1-signed-skill-checkpoint.v3.json"
 SIGNED_RELEASE_REGISTRY = (
-    ROOT / "deployment/environments/ae-product-capability-registry.mybee-m1.v3.json"
+    ROOT / "deployment/environments/ae-product-capability-registry.mybee-m1.v4.json"
 )
 CANONICAL_REGISTRY = (
-    ROOT / "deployment/environments/ae-product-capability-registry.mybee-m1.v3.json"
+    ROOT / "deployment/environments/ae-product-capability-registry.mybee-m1.v4.json"
 )
 
 TENANT = "VO00"
@@ -111,12 +111,12 @@ def test_signed_d04_d12_release_is_source_backed_and_production_verified() -> No
     release = load_m1_signed_skill_release()
 
     assert release.checkpoint_id == M1_CHECKPOINT_ID
-    assert release.release_id == "nex-mybee-m1-d04-d12-checkpoint-v2"
-    assert release.release_version == 2
+    assert release.release_id == "nex-mybee-m1-d04-d12-checkpoint-v3"
+    assert release.release_version == 3
     assert release.package_hash == (
-        "sha256:ac99192443b315699f33adc7430f0a064ad0913e5c26e268538e6bd4468e9bed"
+        "sha256:a2397cc11559d882e11bfaaa4ecf742ab965158b1cbcebb8dc32bf0eaf477b9c"
     )
-    assert release.signing_key_id == "release:nex-mybee-m1-checkpoint-2026-11-v2"
+    assert release.signing_key_id == "release:nex-mybee-m1-checkpoint-2026-11-v3"
     assert {item.capability_id for item in release.skills} == {
         M1_D04_CAPABILITY_ID,
         M1_D12_CAPABILITY_ID,
@@ -129,7 +129,7 @@ def test_signed_d04_d12_release_is_source_backed_and_production_verified() -> No
         (M1_D12_WORK_CODE_ID, "PROJECT_CONTEXT", M1_D12_CAPABILITY_ID),
     }
     d04 = release.verified_skill_for_capability(M1_D04_CAPABILITY_ID).skill
-    assert d04.skill_version == "1.0.1"
+    assert d04.skill_version == "1.0.2"
     assert [type(statement).__name__ for statement in d04.body[:4]] == [
         "CheckStatement",
         "CheckStatement",
@@ -157,7 +157,7 @@ def test_canonical_m1_registry_admits_signed_subset_without_retired_golden_a() -
     )
 
     assert registry.registry_id == "ae-product-capabilities-mybee-m1"
-    assert registry.registry_version == 5
+    assert registry.registry_version == 6
     assert [item.capability_id for item in registry.registrations] == [
         M1_D04_CAPABILITY_ID,
         M1_D12_CAPABILITY_ID,
@@ -187,7 +187,7 @@ def test_candidate_packs_remain_unpromoted_while_compose_selects_m1_release() ->
     )
     assert (
         "/app/deployment/product/repository/deployment/environments/"
-        "ae-product-capability-registry.mybee-m1.v3.json"
+        "ae-product-capability-registry.mybee-m1.v4.json"
     ) in compose
     assert "/app/deployment/product/config/ae-product-capability-registry.v1.json" not in compose
 
@@ -526,7 +526,7 @@ def test_release_lock_hash_drift_fails_before_artifact_admission(
     tmp_path: Path,
 ) -> None:
     payload = json.loads(LOCK.read_text(encoding="utf-8"))
-    payload["release_version"] = 3
+    payload["release_version"] = 4
     path = tmp_path / "release.json"
     path.write_text(json.dumps(payload), encoding="utf-8")
 

@@ -121,7 +121,7 @@ def _admit_verified_product_release(
     admission_path = _path(
         environ,
         "NEX_AE_PRODUCT_RUNTIME_ADMISSION_PATH",
-        ROOT / "deployment/locks/ae-mybee-m1-runtime-admission.v3.json",
+        ROOT / "deployment/locks/ae-mybee-m1-runtime-admission.v4.json",
     )
     expected_admission = build_mybee_m1_runtime_admission(environ)
     if _json_object(admission_path) != expected_admission:
@@ -129,7 +129,7 @@ def _admit_verified_product_release(
     activation_path = _path(
         environ,
         "NEX_AE_PRODUCT_RUNTIME_ACTIVATION_PATH",
-        ROOT / "deployment/locks/ae-mybee-m1-runtime-activation.v3.json",
+        ROOT / "deployment/locks/ae-mybee-m1-runtime-activation.v4.json",
     )
     activation = _json_object(activation_path)
     _verify_activation_lock(

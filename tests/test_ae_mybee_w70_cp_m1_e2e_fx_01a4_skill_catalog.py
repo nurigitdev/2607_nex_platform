@@ -37,9 +37,9 @@ from nex_ae_api.product_skill_catalog import (
 
 ROOT = Path(__file__).resolve().parents[1]
 REGISTRY = (
-    ROOT / "deployment/environments/ae-product-capability-registry.mybee-m1.v3.json"
+    ROOT / "deployment/environments/ae-product-capability-registry.mybee-m1.v4.json"
 )
-ADMISSION_LOCK = ROOT / "deployment/locks/ae-mybee-m1-runtime-admission.v3.json"
+ADMISSION_LOCK = ROOT / "deployment/locks/ae-mybee-m1-runtime-admission.v4.json"
 TENANT = "VO00"
 PROJECT_ID = "11111111-1111-4111-8111-111111111114"
 HASH = "sha256:" + "a" * 64

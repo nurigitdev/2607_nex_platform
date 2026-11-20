@@ -124,11 +124,11 @@ def run_gate(root: Path = ROOT) -> dict[str, Any]:
         ),
         "canonical_compose_has_completed_retirement": (
             PRODUCT_CAPABILITY_RETIREMENT_PATH_ENV not in compose
-            and "ae-product-capability-registry.mybee-m1.v3.json" in compose
+            and "ae-product-capability-registry.mybee-m1.v4.json" in compose
         ),
         "canonical_image_has_completed_retirement": (
             PRODUCT_CAPABILITY_RETIREMENT_PATH_ENV not in containerfile
-            and "ae-mybee-m1-runtime-activation.v3.json" in containerfile
+            and "ae-mybee-m1-runtime-activation.v4.json" in containerfile
         ),
     }
     return {

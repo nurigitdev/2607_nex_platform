@@ -182,7 +182,7 @@ def test_golden_a_receipt_is_historical_while_m1_selection_is_active() -> None:
         ROOT / "deployment/compose/canonical-platform.override.yaml"
     ).read_text(encoding="utf-8")
     assert "NEX_AE_PRODUCT_RUNTIME_PROFILE: VERIFIED_PRODUCT_RELEASE" in compose
-    assert "ae-product-capability-registry.mybee-m1.v3.json" in compose
+    assert "ae-product-capability-registry.mybee-m1.v4.json" in compose
     assert "/app/deployment/product/config/ae-product-capability-registry.v1.json" not in compose
     assert "ae-product-capability-registry.v2.json" not in compose
     assert "NEX_AE_PRODUCT_CAPABILITY_RETIREMENT_PATH" not in compose

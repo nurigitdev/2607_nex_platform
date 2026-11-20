@@ -35,7 +35,7 @@ M1_D12_CAPABILITY_ID = "PROJECT.WORK_CODE_SET.GET"
 
 _ROOT = Path(__file__).resolve().parents[4]
 DEFAULT_M1_SIGNED_SKILL_LOCK = (
-    _ROOT / "deployment/locks/ae-mybee-m1-signed-skill-checkpoint.v2.json"
+    _ROOT / "deployment/locks/ae-mybee-m1-signed-skill-checkpoint.v3.json"
 )
 _PROJECT_CODE = re.compile(r"^[A-Z0-9][A-Z0-9._-]{2,63}$")
 _UUID_TEXT = re.compile(

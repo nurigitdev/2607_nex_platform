@@ -163,7 +163,7 @@ def test_w70_deployed_runtime_points_to_verified_m1_registry_with_rollback() -> 
 
     expected = (
         "/app/deployment/product/repository/deployment/environments/"
-        "ae-product-capability-registry.mybee-m1.v3.json"
+        "ae-product-capability-registry.mybee-m1.v4.json"
     )
     assert expected in compose
     assert expected in containerfile

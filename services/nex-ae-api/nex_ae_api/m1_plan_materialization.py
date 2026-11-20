@@ -14,6 +14,7 @@ from nex_runtime.business_context import (
 from nex_runtime.semantic_hashes import semantic_sha256_hash_ref, validate_hash_ref
 
 from nex_ae_api.executable_plans import compile_executable_plan
+from nex_ae_api.nsl_eos_journal_execution import EOS_JOURNAL_POST_COMMAND_SCHEMA
 from nex_ae_api.plan_validation import validate_agent_plan
 from nex_ae_api.planning_capabilities import (
     CapabilitySnapshotError,
@@ -27,7 +28,7 @@ from nex_ae_api.product_planning_proposals import (
 M1_PLAN_MATERIALIZATION_SCHEMA_VERSION = "ae.m1_plan_materialization.v1"
 M1_PLAN_MATERIALIZATION_ERROR_FAMILY = "M1_PLAN_MATERIALIZATION_INVALID"
 M1_PREPARATION_SCHEMA_VERSION = "nex.mybee.m1-transaction-preparation.v1"
-M1_D04_COMMAND_SCHEMA_VERSION = "eos.journal_posting_command.v1"
+M1_D04_COMMAND_SCHEMA_VERSION = EOS_JOURNAL_POST_COMMAND_SCHEMA
 _CAPABILITY_IDS = (M1_D12_CAPABILITY_ID, M1_D04_CAPABILITY_ID)
 _D04_REFERENCE_FIELDS = {
     "candidate_id",

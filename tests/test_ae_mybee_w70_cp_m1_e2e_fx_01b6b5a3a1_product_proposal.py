@@ -27,7 +27,7 @@ from nex_runtime.semantic_hashes import semantic_sha256_hash_ref
 
 ROOT = Path(__file__).resolve().parents[1]
 CAPABILITY_REGISTRY = (
-    ROOT / "deployment/environments/ae-product-capability-registry.mybee-m1.v3.json"
+    ROOT / "deployment/environments/ae-product-capability-registry.mybee-m1.v4.json"
 )
 CAPABILITY_ID = "FINANCE.VOUCHER.APPROVE_AND_POST"
 

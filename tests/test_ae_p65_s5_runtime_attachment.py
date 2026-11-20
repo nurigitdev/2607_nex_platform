@@ -173,7 +173,7 @@ def test_required_attachment_registers_canonical_project_delegation(
             NEX_AE_SEMANTIC_CANDIDATE_STORAGE_ROOT=str(tmp_path),
             NEX_AE_PRODUCT_CAPABILITY_REGISTRY_PATH=str(
                 ROOT / "deployment/environments/"
-                "ae-product-capability-registry.mybee-m1.v3.json"
+                "ae-product-capability-registry.mybee-m1.v4.json"
             ),
             NEX_EOS_BASE_URL="https://eos.nex.test",
             NEX_OA_BASE_URL="https://oa.nex.test",

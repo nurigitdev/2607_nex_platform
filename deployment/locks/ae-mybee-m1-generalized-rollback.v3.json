@@ -1,0 +1,23 @@
+{
+  "schema_version": "ae.generalized_runtime_rollback_receipt.v1",
+  "receipt_id": "mybee-m1-previous-admitted-generalized-release",
+  "receipt_version": 3,
+  "captured_at": "2026-11-20T00:00:00Z",
+  "runtime_profile": "VERIFIED_PRODUCT_RELEASE",
+  "runtime_admission_ref": "deployment/locks/ae-mybee-m1-runtime-admission.v3.json",
+  "runtime_admission_hash": "sha256:812f68e387069654f7598bb891d14626107631008d8520f75bf3aa26612a905a",
+  "product_registry_ref": "deployment/environments/ae-product-capability-registry.mybee-m1.v3.json",
+  "product_registry_hash": "sha256:2229424abee892547255eca4592b32376c81a46bf387b0ab1eed2a7849661384",
+  "signed_release_ref": "deployment/locks/ae-mybee-m1-signed-skill-checkpoint.v2.json",
+  "signed_release_hash": "sha256:df57c14d1693dc5469f18a09a1e9bdaeef404b23d601263d533c3c38cb92c234",
+  "runtime_selectable_capabilities": [
+    "FINANCE.VOUCHER.APPROVE_AND_POST",
+    "PROJECT.WORK_CODE_SET.GET"
+  ],
+  "golden_a_dependency": false,
+  "allowed_use": [
+    "CONTROLLED_ROLLBACK",
+    "RESTART_RECOVERY"
+  ],
+  "content_hash": "sha256:b02ac2267e75027cceddf13368714d5a86050dc3efc9eee42ed63ae607378d42"
+}

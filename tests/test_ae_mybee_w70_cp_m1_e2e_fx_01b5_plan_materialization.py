@@ -41,7 +41,7 @@ def _environment() -> dict[str, str]:
     return {
         "NEX_AE_PRODUCT_CAPABILITY_REGISTRY_PATH": str(
             ROOT
-            / "deployment/environments/ae-product-capability-registry.mybee-m1.v3.json"
+            / "deployment/environments/ae-product-capability-registry.mybee-m1.v4.json"
         ),
         "NEX_OA_BASE_URL": "https://oa.example",
         "NEX_EOS_BASE_URL": "https://eos.example",
@@ -252,7 +252,7 @@ def test_01b5_materializes_d12_then_d04_through_existing_compiler() -> None:
     }
     assert d04_inputs.pop("m1_preparation_checkpoint") == preparation
     assert d04_inputs == {
-        "schema_version": "eos.journal_posting_command.v1",
+        "schema_version": "eos_journal_post_command.v1",
         "tenant_id": TENANT,
         "company_id": COMPANY_ID,
         "candidate_id": CANDIDATE_ID,

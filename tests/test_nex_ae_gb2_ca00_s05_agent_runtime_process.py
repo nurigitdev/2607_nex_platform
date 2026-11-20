@@ -205,7 +205,7 @@ def test_protected_profile_selects_product_executor_composition(monkeypatch) -> 
             "NEX_AE_DATABASE_URL": "sqlite+pysqlite:///:memory:",
             "NEX_AE_PRODUCT_CAPABILITY_REGISTRY_PATH": str(
                 process.ROOT
-                / "deployment/environments/ae-product-capability-registry.mybee-m1.v3.json"
+                / "deployment/environments/ae-product-capability-registry.mybee-m1.v4.json"
             ),
         },
         engine_factory=lambda *_args, **_kwargs: engine,

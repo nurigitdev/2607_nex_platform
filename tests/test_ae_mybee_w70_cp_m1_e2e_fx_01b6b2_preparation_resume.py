@@ -326,7 +326,7 @@ def _inputs():
         {
             "NEX_AE_PRODUCT_CAPABILITY_REGISTRY_PATH": str(
                 ROOT
-                / "deployment/environments/ae-product-capability-registry.mybee-m1.v3.json"
+                / "deployment/environments/ae-product-capability-registry.mybee-m1.v4.json"
             )
         }
     )
@@ -345,7 +345,7 @@ def _coordinator(*, authority_source=None, planning_policy=DETERMINISTIC_POLICY)
         {
             "NEX_AE_PRODUCT_CAPABILITY_REGISTRY_PATH": str(
                 ROOT
-                / "deployment/environments/ae-product-capability-registry.mybee-m1.v3.json"
+                / "deployment/environments/ae-product-capability-registry.mybee-m1.v4.json"
             )
         }
     )

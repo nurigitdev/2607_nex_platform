@@ -62,7 +62,7 @@ def _environment() -> dict[str, str]:
         "NEX_AE_PRODUCT_RUNTIME_PROFILE": VERIFIED_PRODUCT_RELEASE_PROFILE,
         "NEX_AE_PRODUCT_CAPABILITY_REGISTRY_PATH": str(
             ROOT
-            / "deployment/environments/ae-product-capability-registry.mybee-m1.v3.json"
+            / "deployment/environments/ae-product-capability-registry.mybee-m1.v4.json"
         ),
         "NEX_OA_BASE_URL": "https://oa.example",
         "NEX_EOS_BASE_URL": "https://eos.example",
@@ -103,13 +103,13 @@ def test_verified_product_release_profile_is_fail_closed_and_ready(
     assert profile.package_readiness == {
         "status": "READY",
         "backend_profile": "NSL_V02_IN_PROCESS",
-        "release_id": "nex-mybee-m1-d04-d12-checkpoint-v2",
-        "release_hash": "sha256:df57c14d1693dc5469f18a09a1e9bdaeef404b23d601263d533c3c38cb92c234",
-        "catalog_hash": "sha256:6f17db256b58fbd0cf6ec390564c9c4ca459b7216e10fc3602043bea98b87bf2",
+        "release_id": "nex-mybee-m1-d04-d12-checkpoint-v3",
+        "release_hash": "sha256:7011c13b883137d15c930adc64b62e2cdf6c8ba2e78880d5404c239e1bf12b4c",
+        "catalog_hash": "sha256:1bc19745f7a93844e59b70a20bbd7ce28e6a23d0723c4fcff399eef95b9a5a0a",
         "capabilities": tuple(sorted((M1_D04_CAPABILITY_ID, M1_D12_CAPABILITY_ID))),
         "runtime_profile": VERIFIED_PRODUCT_RELEASE_PROFILE,
-        "admission_hash": "sha256:812f68e387069654f7598bb891d14626107631008d8520f75bf3aa26612a905a",
-        "activation_hash": "sha256:bef2cb2f4314b0fd177fce1195c2bdd93c833330b3d7b00cd8908ce4cd0974f3",
+        "admission_hash": "sha256:7158792d96d7496d7b1ba4091491b053613d68623f32ab39a75c56532a14b309",
+        "activation_hash": "sha256:ce6f8b858b6a432bf661aa1cc0c67b3454b0d8062950203251d805915a481b65",
         "transaction_preparation": {
             "schema_version": "ae.m1_transaction_preparation_runtime.v1",
             "status": "READY",
@@ -160,7 +160,7 @@ def test_verified_product_release_profile_is_fail_closed_and_ready(
     assert profile.in_process_package_readiness["package_version"] == "0.2.1"
 
     drifted = json.loads(
-        (ROOT / "deployment/locks/ae-mybee-m1-runtime-activation.v3.json").read_text(
+        (ROOT / "deployment/locks/ae-mybee-m1-runtime-activation.v4.json").read_text(
             encoding="utf-8"
         )
     )
@@ -191,7 +191,7 @@ def test_signed_d04_prefix_suspends_only_after_real_checks_pass(
         business_operation_id=BUSINESS_OPERATION_ID,
         binding=NslExecutionBinding(
             input_document={
-                "schema_version": "eos.journal_posting_command.v1",
+                "schema_version": "eos_journal_post_command.v1",
                 "tenant_id": TENANT,
                 "company_id": "company-101",
                 "candidate_id": "candidate-101",
@@ -223,7 +223,7 @@ def test_signed_d04_prefix_suspends_only_after_real_checks_pass(
 def test_d04_skill_version_does_not_replace_required_tool_contract_version() -> None:
     selection = _runtime()._catalog.select(M1_D04_CAPABILITY_ID)
 
-    assert selection.release_skill.skill_version == "1.0.1"
+    assert selection.release_skill.skill_version == "1.0.2"
     assert _required_write_tool_version(selection) == "1.0.0"
 
     invalid_skill = replace(selection.verified_skill.skill, required_tools=())
@@ -308,7 +308,7 @@ def _read_context(runtime: M1InstalledSkillRuntime, *, project_id: str = PROJECT
 
 def _write_inputs(*, tenant_id: str = TENANT) -> dict[str, object]:
     return {
-        "schema_version": "eos.journal_posting_command.v1",
+        "schema_version": "eos_journal_post_command.v1",
         "tenant_id": tenant_id,
         "company_id": "77777777-7777-4777-8777-777777777777",
         "candidate_id": "88888888-8888-4888-8888-888888888888",
@@ -1011,12 +1011,12 @@ def test_controlled_skill_initial_preserves_authority_stage_failure(
 
 def test_activation_lock_and_runtime_config_fail_closed(tmp_path: Path) -> None:
     admission = json.loads(
-        (ROOT / "deployment/locks/ae-mybee-m1-runtime-admission.v3.json").read_text(
+        (ROOT / "deployment/locks/ae-mybee-m1-runtime-admission.v4.json").read_text(
             encoding="utf-8"
         )
     )
     activation = json.loads(
-        (ROOT / "deployment/locks/ae-mybee-m1-runtime-activation.v3.json").read_text(
+        (ROOT / "deployment/locks/ae-mybee-m1-runtime-activation.v4.json").read_text(
             encoding="utf-8"
         )
     )
@@ -1158,25 +1158,25 @@ def test_canonical_oci_and_compose_select_same_verified_release() -> None:
     ).read_text(encoding="utf-8")
     for expected in (
         "VERIFIED_PRODUCT_RELEASE",
-        "ae-mybee-m1-runtime-admission.v3.json",
-        "ae-mybee-m1-runtime-activation.v3.json",
-        "ae-product-capability-registry.mybee-m1.v3.json",
-        "mybee-m1-d04-d12.v2.nsp",
+        "ae-mybee-m1-runtime-admission.v4.json",
+        "ae-mybee-m1-runtime-activation.v4.json",
+        "ae-product-capability-registry.mybee-m1.v4.json",
+        "mybee-m1-d04-d12.v3.nsp",
         "tool_catalog.v1.json",
     ):
         assert expected in containerfile
     for expected in (
         "VERIFIED_PRODUCT_RELEASE",
-        "ae-mybee-m1-runtime-admission.v3.json",
-        "ae-mybee-m1-runtime-activation.v3.json",
-        "ae-product-capability-registry.mybee-m1.v3.json",
+        "ae-mybee-m1-runtime-admission.v4.json",
+        "ae-mybee-m1-runtime-activation.v4.json",
+        "ae-product-capability-registry.mybee-m1.v4.json",
         "tool_catalog.v1.json",
     ):
         assert expected in compose
     assert (
         compose.count(
             "/app/deployment/product/repository/deployment/environments/"
-            "ae-product-capability-registry.mybee-m1.v3.json"
+            "ae-product-capability-registry.mybee-m1.v4.json"
         )
         == 2
     )

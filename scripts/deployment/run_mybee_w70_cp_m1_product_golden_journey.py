@@ -148,7 +148,7 @@ def _source_admission(root: Path) -> dict[str, Any]:
         {
             PRODUCT_CAPABILITY_REGISTRY_PATH_ENV: str(
                 root
-                / "deployment/environments/ae-product-capability-registry.mybee-m1.v3.json"
+                / "deployment/environments/ae-product-capability-registry.mybee-m1.v4.json"
             )
         }
     )

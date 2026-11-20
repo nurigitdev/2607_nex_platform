@@ -27,7 +27,7 @@ def _capabilities():
             "NEX_AE_PRODUCT_CAPABILITY_REGISTRY_PATH": str(
                 ROOT
                 / "deployment/environments/"
-                "ae-product-capability-registry.mybee-m1.v3.json"
+                "ae-product-capability-registry.mybee-m1.v4.json"
             )
         }
     )
