@@ -33,7 +33,7 @@ _SAFE_NAME = re.compile(r"^[A-Za-z][A-Za-z0-9_]{0,127}$")
 _SELECTOR = re.compile(r"^[\x21-\x7e]{1,256}$")
 _CONTEXT_PATH = re.compile(r"^[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*){0,7}$")
 _CLASSIFICATIONS = frozenset({"PUBLIC", "INTERNAL", "CONFIDENTIAL", "RESTRICTED"})
-_PROVENANCE = frozenset({"USER", "CONTEXT", "DEFAULT"})
+_PROVENANCE = frozenset({"USER", "CONTEXT", "DEFAULT", "EXECUTABLE_PLAN"})
 _BINDING_STATES = frozenset(
     {
         "ALLOCATED",

@@ -50,7 +50,9 @@
       "type": "object",
       "maxProperties": 128,
       "propertyNames": {"$ref": "#/$defs/safeName"},
-      "additionalProperties": {"enum": ["USER", "CONTEXT", "DEFAULT"]}
+      "additionalProperties": {
+        "enum": ["USER", "CONTEXT", "DEFAULT", "EXECUTABLE_PLAN"]
+      }
     },
     "explicit_resource_refs": {
       "type": "array",
