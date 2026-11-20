@@ -3,8 +3,8 @@
 ## Status
 
 - Date: `2026-11-20`
-- Status: `SOURCE, CONTRACT, POSTGRESQL, AND SLICE GATES VERIFIED`; exact-head
-  installed replay in progress
+- Status: `CLOSED`; exact-head installed Project-scope authorization alignment
+  verified
 - Parent boundary: `CP-M1-E2E-FX-01B.7`
 - Database migration: none
 - Remote provider: not required for the corrective Slice Gates
@@ -103,6 +103,25 @@ grants are excluded.
   - all eight isolated schemas were removed (`zero_residue=true`).
 - AE Web M1 harness focused regression: `13 passed`.
 - AE Web Node regression: `388 passed`.
+- second exact-head installed replay after sequential-inbox refresh hardening:
+  - eight actual PostgreSQL databases and `210` isolated migrations admitted;
+  - first BUSINESS_FORMAL approval completed through the authenticated UI;
+  - the Project-scoped ACCOUNTING_POSTING approval was returned to the same
+    approver inbox and completed through the authenticated UI;
+  - WC/EOS lineage checks were `version_PASS`, `role_PASS`, `requester_PASS`,
+    and `wc_oa_PASS`;
+  - the Product path therefore crossed the `.7L` authorization boundary with
+    `approval_count=2`;
+  - all eight isolated schemas were removed (`zero_residue=true`).
+
+The overall Product journey then stopped at a separate fail-closed boundary:
+WC delivery of the accounting decision received
+`EOS_ACCOUNTING_APPROVAL_DENIED`. The acceptance baseline currently assigns
+both the sole business approval and the sole accounting approval to one
+`TEAM_LEAD` principal, while EOS correctly prohibits a sole business approver
+from also acting as the sole accounting approver. This must be corrected by a
+separate SoD principal/role alignment Slice; Project Code matching must not be
+weakened to bypass it.
 
 ## Exact-Head Replay Rule
 
@@ -111,3 +130,7 @@ authorization contains the canonical Project Code, the EOS accounting approval
 WorkItem carries the same code, WC exposes the second approval, and Product
 execution advances beyond `WAITING_ACCOUNTING_APPROVAL`. Any later failure is a
 separate typed boundary and must not weaken this exact-match contract.
+
+That exact-match rule is now proven. The next corrective boundary is
+`CP-M1-E2E-FX-01B.7M: Accounting Approval SoD Principal and Role Separation
+Alignment` before the parent `.7` journey is resumed.
