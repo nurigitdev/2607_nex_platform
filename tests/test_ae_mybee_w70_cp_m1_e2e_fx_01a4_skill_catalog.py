@@ -198,6 +198,7 @@ def test_d12_operation_adapter_reads_authoritative_eos_projection() -> None:
         }
     )
 
+    assert type(result) is dict
     assert dict(result) == {
         "project_id": PROJECT_ID,
         "revision": 3,

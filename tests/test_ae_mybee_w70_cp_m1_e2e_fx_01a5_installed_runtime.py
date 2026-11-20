@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
 
+import httpx
 import nex_ae_api.m1_installed_skill_runtime as installed
 import nex_ae_api.mybee_m1_skill_runtime as skill_runtime
 import nex_ae_api.product_runtime_profile as runtime_profile
@@ -15,7 +16,10 @@ from nex_ae_api.controlled_skill_runtime import ControlledSkillRuntimeError
 from nex_ae_api.m1_installed_skill_runtime import M1InstalledSkillRuntime
 from nex_ae_api.multi_step_engine import StepExecutionContext
 from nex_ae_api.mybee_m1_skill_runtime import build_mybee_m1_verified_skill_catalog
-from nex_ae_api.nsl_eos_project_work_code_read import EosProjectWorkCodeReadError
+from nex_ae_api.nsl_eos_project_work_code_read import (
+    EosProjectWorkCodeReadError,
+    HttpEosProjectWorkCodeReadAdapter,
+)
 from nex_ae_api.product_runtime_profile import (
     VERIFIED_PRODUCT_RELEASE_PROFILE,
     build_product_runtime_executor_profile,
@@ -305,17 +309,26 @@ def test_installed_runtime_executes_exact_d12_skill_and_durable_binding(
             "revision_hash": HASH,
         }
     )
+    adapter = HttpEosProjectWorkCodeReadAdapter(
+        base_url="https://eos.example",
+        service_token="eos-token",
+        transport=httpx.MockTransport(
+            lambda _request: httpx.Response(
+                200,
+                json={
+                    "tenant_id": TENANT,
+                    "project_id": PROJECT_ID,
+                    "revision": 7,
+                    "state": "APPROVED",
+                    "work_set_hash": HASH,
+                },
+            )
+        ),
+    )
     monkeypatch.setattr(
         skill_runtime,
         "HttpEosProjectWorkCodeReadAdapter",
-        lambda **_values: (
-            lambda arguments: {
-                "project_id": arguments["project_id"],
-                "revision": 7,
-                "state": "APPROVED",
-                "work_set_hash": HASH,
-            }
-        ),
+        lambda **_values: adapter,
     )
 
     result = runtime.initial(_read_context(runtime), dependencies)

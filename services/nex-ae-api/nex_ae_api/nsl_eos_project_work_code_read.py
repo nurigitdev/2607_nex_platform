@@ -4,7 +4,6 @@ import re
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import date
-from types import MappingProxyType
 from typing import Any
 
 import httpx
@@ -122,7 +121,7 @@ class HttpEosProjectWorkCodeReadAdapter:
                 response.status_code >= 500,
                 response.status_code,
             )
-        return MappingProxyType(_result(payload, values))
+        return _result(payload, values)
 
 
 def _arguments(value: Mapping[str, Any]) -> dict[str, str | None]:
