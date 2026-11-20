@@ -400,8 +400,54 @@ def test_installed_runtime_preserves_bounded_d12_tool_failure(
 
     assert captured.value.error_code == expected_code
     assert captured.value.retryable is expected_retryable
-    assert captured.value.detail == "Installed Tool handler failed."
+    assert captured.value.detail == "Product READ Tool execution failed."
     assert "private" not in str(captured.value)
+
+
+def test_installed_runtime_read_stage_preserves_typed_error_and_bounds_unknown() -> None:
+    typed = EosProjectWorkCodeReadError(
+        "ae.nsl_eos_project_work_code.timeout",
+        "private timeout detail",
+        True,
+    )
+
+    with pytest.raises(P5StepExecutorError) as captured:
+        installed._read_stage(
+            "ae.product_m1_read_fallback",
+            "Bounded stage failure.",
+            lambda: (_ for _ in ()).throw(typed),
+        )
+
+    assert captured.value.error_code == "ae.nsl_eos_project_work_code.timeout"
+    assert captured.value.retryable is True
+    assert captured.value.detail == "Bounded stage failure."
+
+    with pytest.raises(P5StepExecutorError) as captured:
+        installed._read_stage(
+            "ae.product_m1_read_context_resolution_failed",
+            "Context resolution failed.",
+            lambda: (_ for _ in ()).throw(RuntimeError("private context detail")),
+        )
+
+    assert (
+        captured.value.error_code
+        == "ae.product_m1_read_context_resolution_failed"
+    )
+    assert captured.value.retryable is False
+    assert "private" not in str(captured.value)
+
+
+def test_installed_runtime_read_stage_preserves_existing_worker_error() -> None:
+    existing = P5StepExecutorError("ae.existing", "existing bounded detail", True)
+
+    with pytest.raises(P5StepExecutorError) as captured:
+        installed._read_stage(
+            "ae.product_m1_read_fallback",
+            "fallback",
+            lambda: (_ for _ in ()).throw(existing),
+        )
+
+    assert captured.value is existing
 
 
 def test_installed_runtime_rejects_cross_binding_and_unknown_capability() -> None:

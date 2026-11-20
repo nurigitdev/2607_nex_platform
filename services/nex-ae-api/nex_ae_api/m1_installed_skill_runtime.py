@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 import uuid
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -95,6 +96,7 @@ _WRITE_INPUTS = frozenset(
     }
 )
 _PREPARATION_INPUT = "m1_preparation_checkpoint"
+_WORKER_ERROR_CODE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$")
 
 
 @dataclass(frozen=True)
@@ -343,13 +345,22 @@ class M1InstalledSkillRuntime:
         dependencies: LocalSkillExecutorDependencies,
         selection: ProductSkillSelection,
     ) -> P5ExecutorOutcome:
-        persisted = _execution_context(
-            self._sessions,
-            tenant_id=context.job["tenant_id"],
-            execution_id=context.step["agent_execution_id"],
+        persisted = _read_stage(
+            "ae.product_m1_read_context_resolution_failed",
+            "Product READ execution context resolution failed.",
+            lambda: _execution_context(
+                self._sessions,
+                tenant_id=context.job["tenant_id"],
+                execution_id=context.step["agent_execution_id"],
+            ),
         )
-        authorization = self._oa.effective_authorization(
-            tenant_id=context.job["tenant_id"], subject_id=persisted["principal_id"]
+        authorization = _read_stage(
+            "ae.product_m1_read_authorization_failed",
+            "Product READ authorization resolution failed.",
+            lambda: self._oa.effective_authorization(
+                tenant_id=context.job["tenant_id"],
+                subject_id=persisted["principal_id"],
+            ),
         )
         required_scope = str(
             selection.verified_skill.skill.required_tools[0].required_scope
@@ -369,40 +380,58 @@ class M1InstalledSkillRuntime:
             },
             authorization=authorization,
         )
-        adapters = selection.build_adapters(
-            ProductOperationAdapterContext(
-                environ={
-                    "NEX_EOS_BASE_URL": self._config.eos_base_url,
-                    "NEX_AE_TO_EOS_SERVICE_TOKEN": self._config.ae_to_eos_service_token,
-                }
-            )
+        adapters = _read_stage(
+            "ae.product_m1_read_adapter_composition_failed",
+            "Product READ adapter composition failed.",
+            lambda: selection.build_adapters(
+                ProductOperationAdapterContext(
+                    environ={
+                        "NEX_EOS_BASE_URL": self._config.eos_base_url,
+                        "NEX_AE_TO_EOS_SERVICE_TOKEN": (
+                            self._config.ae_to_eos_service_token
+                        ),
+                    }
+                )
+            ),
         )
-        artifact = dependencies.artifact_gateway.resolve_verified(
-            tenant_id=context.job["tenant_id"],
-            skill_id=selection.release_skill.skill_id,
-            exact_version=selection.release_skill.skill_version,
-            expected_semantic_hash=selection.release_skill.semantic_hash,
-            runtime_contract_ref=selection.capability.capability["local_skill_binding"][
-                "runtime_contract_ref"
-            ],
-            trust_policy_id=selection.release_skill.trust_policy_id,
-            environment="staging",
-            observed_at=_now(),
+        artifact = _read_stage(
+            "ae.product_m1_read_artifact_admission_failed",
+            "Product READ Skill artifact admission failed.",
+            lambda: dependencies.artifact_gateway.resolve_verified(
+                tenant_id=context.job["tenant_id"],
+                skill_id=selection.release_skill.skill_id,
+                exact_version=selection.release_skill.skill_version,
+                expected_semantic_hash=selection.release_skill.semantic_hash,
+                runtime_contract_ref=selection.capability.capability[
+                    "local_skill_binding"
+                ]["runtime_contract_ref"],
+                trust_policy_id=selection.release_skill.trust_policy_id,
+                environment="staging",
+                observed_at=_now(),
+            ),
         )
-        bound = dependencies.binding_repository.bind_request(
-            tenant_id=context.job["tenant_id"],
-            executable_step_id=context.step["executable_step_id"],
-            verified_artifact_ref=artifact["artifact_ref"],
-            context_projection=context_projection,
-            compiled_inputs=inputs,
-            input_provenance={name: "EXECUTABLE_PLAN" for name in inputs},
-            now=_now(),
+        bound = _read_stage(
+            "ae.product_m1_read_binding_failed",
+            "Product READ execution binding failed.",
+            lambda: dependencies.binding_repository.bind_request(
+                tenant_id=context.job["tenant_id"],
+                executable_step_id=context.step["executable_step_id"],
+                verified_artifact_ref=artifact["artifact_ref"],
+                context_projection=context_projection,
+                compiled_inputs=inputs,
+                input_provenance={name: "EXECUTABLE_PLAN" for name in inputs},
+                now=_now(),
+            ),
         )
         binding = bound["binding"]
-        dependencies.binding_repository.mark_invocation_started(
-            tenant_id=context.job["tenant_id"],
-            executable_step_id=context.step["executable_step_id"],
-            now=_now(),
+        _read_stage(
+            "ae.product_m1_read_binding_failed",
+            "Product READ invocation binding failed.",
+            lambda: dependencies.binding_repository.mark_invocation_started(
+                tenant_id=context.job["tenant_id"],
+                executable_step_id=context.step["executable_step_id"],
+                now=_now(),
+            ),
         )
         business_operation_id = str(binding["business_operation_id"])
         try:
@@ -417,10 +446,10 @@ class M1InstalledSkillRuntime:
                 handlers=adapters.tool_handlers,
             )
         except NslRuntimeToolError as exc:
-            raise P5StepExecutorError(
-                exc.error_code,
-                exc.detail,
-                exc.retryable,
+            raise _bounded_worker_error(
+                exc,
+                fallback_code="ae.product_m1_read_execution_failed",
+                detail="Product READ Tool execution failed.",
             ) from exc
         if data.get("status") != "COMPLETED" or len(data.get("outputs", ())) != 1:
             raise _worker_error("Product READ Skill did not complete exactly once.")
@@ -965,6 +994,42 @@ def _context_projection(
 
 def _worker_error(detail: str) -> P5StepExecutorError:
     return P5StepExecutorError("ae.product_m1_runtime_invalid", detail)
+
+
+def _read_stage(
+    fallback_code: str,
+    detail: str,
+    callback: Callable[[], Any],
+) -> Any:
+    try:
+        return callback()
+    except P5StepExecutorError:
+        raise
+    except Exception as exc:
+        raise _bounded_worker_error(
+            exc,
+            fallback_code=fallback_code,
+            detail=detail,
+        ) from exc
+
+
+def _bounded_worker_error(
+    exc: Exception,
+    *,
+    fallback_code: str,
+    detail: str,
+) -> P5StepExecutorError:
+    candidate = getattr(exc, "error_code", None)
+    error_code = (
+        candidate
+        if isinstance(candidate, str) and _WORKER_ERROR_CODE.fullmatch(candidate)
+        else fallback_code
+    )
+    return P5StepExecutorError(
+        error_code,
+        detail,
+        getattr(exc, "retryable", False) is True,
+    )
 
 
 def _json_object(path: Path) -> dict[str, Any]:
