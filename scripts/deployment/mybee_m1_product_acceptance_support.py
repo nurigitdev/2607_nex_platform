@@ -80,6 +80,7 @@ _OA_SCOPES = {
     "requester": (
         "workspace:use",
         PROJECT_REFERENCE_RESOLVE_SCOPE,
+        "finance:document:read",
         "finance:voucher-candidate:create",
         "finance:journal:request-approval",
         "finance:report:read",

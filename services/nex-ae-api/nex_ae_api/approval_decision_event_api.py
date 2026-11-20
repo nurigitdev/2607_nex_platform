@@ -8,6 +8,7 @@ from typing import Any, Protocol
 from urllib.error import HTTPError, URLError
 from urllib.request import Request as UrlRequest
 from urllib.request import urlopen
+from uuid import UUID
 
 from fastapi import FastAPI, Header, Request
 from fastapi.responses import JSONResponse
@@ -499,6 +500,8 @@ def _product_authority_receipt(
             _mapping(evidence, evidence_field).get(evidence_id_field),
             evidence_id_field,
         )
+        if evidence_id_field == "envelope_id":
+            evidence_ref = _approved_document_envelope_ref(evidence_ref)
     elif authority_state == "REJECTED":
         if evidence is not None:
             raise _invalid("Rejected EOS authority receipt contains approval evidence.")
@@ -543,6 +546,17 @@ def _product_resume_error(exc: Exception) -> ApprovalDecisionEventError:
         status_code=503 if retryable else 409,
         retryable=retryable,
     )
+
+
+def _approved_document_envelope_ref(value: object) -> str:
+    candidate = _required(value, "envelope_id")
+    try:
+        admitted = str(UUID(candidate))
+    except ValueError as exc:
+        raise _invalid("EOS ApprovedDocument envelope reference is invalid.") from exc
+    if candidate != admitted:
+        raise _invalid("EOS ApprovedDocument envelope reference is not canonical.")
+    return admitted
 
 
 def _mapping(value: object, field: str) -> Mapping[str, Any]:

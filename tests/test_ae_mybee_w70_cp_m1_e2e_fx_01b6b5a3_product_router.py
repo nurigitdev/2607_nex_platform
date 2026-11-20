@@ -9,6 +9,9 @@ import pytest
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 from fastapi.testclient import TestClient
+from mybee_ax.integrations.nex_business_approval_client import (
+    BusinessApprovalConsumerError,
+)
 from mybee_ax.orchestration import load_m1_transaction_preparation_registration
 from nex_ae_api.agent_context import TrustedContextResolution
 from nex_ae_api.agent_runtime_worker import AgentRuntimeAssignment
@@ -82,6 +85,16 @@ OPTIONAL_POLICY = ProductPlanningPolicy(
     deterministic_fallback_ref="nex-ae:test-product-fallback:v1",
     proposal_consumers=("PREPARATION",),
 )
+
+
+class _LegacyProductBoundaryError(RuntimeError):
+    def __init__(self, code: str, detail: str, *, retryable: bool = False) -> None:
+        self.code = code
+        self.detail = detail
+        self.retryable = retryable
+        super().__init__(detail)
+
+
 REQUIRED_POLICY = replace(
     OPTIONAL_POLICY,
     mode="PROVIDER_ASSISTED_REQUIRED",
@@ -1027,19 +1040,53 @@ def test_product_assignment_resumes_and_only_activates_exact_ready_state(ready) 
 
 
 @pytest.mark.parametrize(
-    ("error", "retry_at", "retry_ref", "error_ref"),
+    ("error", "raised_type", "retry_at", "retry_ref", "error_ref"),
     (
         (
             ProductPlanningRuntimeError("product.unavailable", "unavailable", True),
+            ProductPlanningRuntimeError,
             "2026-11-20T01:00:05Z",
             "ae.product_coordinator.retryable",
             "product.unavailable",
         ),
-        (ValueError("invalid Product state"), None, None, "ae.product_coordinator_assignment_failed"),
+        (
+            BusinessApprovalConsumerError(
+                "EOS_APPROVED_DOCUMENT_AUTHORIZATION_DENIED",
+                "EOS rejected the ApprovedDocument read",
+                status_code=403,
+            ),
+            ProductPlanningRuntimeError,
+            None,
+            None,
+            "EOS_APPROVED_DOCUMENT_AUTHORIZATION_DENIED",
+        ),
+        (
+            _LegacyProductBoundaryError(
+                "legacy.product.unavailable", "legacy unavailable", retryable=True
+            ),
+            ProductPlanningRuntimeError,
+            "2026-11-20T01:00:05Z",
+            "ae.product_coordinator.retryable",
+            "legacy.product.unavailable",
+        ),
+        (
+            _LegacyProductBoundaryError("unsafe error code!", "unsafe"),
+            _LegacyProductBoundaryError,
+            None,
+            None,
+            "ae.product_coordinator_assignment_failed",
+        ),
+        (
+            ValueError("invalid Product state"),
+            ValueError,
+            None,
+            None,
+            "ae.product_coordinator_assignment_failed",
+        ),
     ),
 )
 def test_product_assignment_settles_failure_with_bounded_retry_policy(
-    error, retry_at, retry_ref, error_ref
+    error, raised_type, retry_at, retry_ref, error_ref
 ) -> None:
     registry, registration, coordinator, _activation, runtime = _runtime()
     coordinator.resume_approval = lambda **_values: (_ for _ in ()).throw(error)
@@ -1052,7 +1099,7 @@ def test_product_assignment_settles_failure_with_bounded_retry_policy(
         clock=lambda: datetime(2026, 11, 20, 1, 0, tzinfo=UTC),
     )
 
-    with pytest.raises(type(error), match=str(error)):
+    with pytest.raises(raised_type, match=str(error)):
         handler(_assignment())
 
     assert runtime_jobs.complete_calls == []

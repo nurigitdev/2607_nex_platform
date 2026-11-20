@@ -854,12 +854,29 @@ def _eos_approval_authority_summary(
             scoped_case = connection.execute(
                 text(
                     "SELECT purpose, state, active_stage_order, stage_count, "
-                    "target_role_ref, requester_id, version "
+                    "target_role_ref, requester_id, version, approval_policy_id "
                     "FROM eos_scoped_approval_case "
                     "WHERE tenant_id=:tenant AND case_id=:case_id"
                 ),
                 {"tenant": tenant_id, "case_id": case_id},
             ).first()
+            policy_stage = (
+                connection.execute(
+                    text(
+                        "SELECT position_type FROM eos_approval_policy_stage "
+                        "WHERE tenant_id=:tenant "
+                        "AND approval_policy_id=:approval_policy_id "
+                        "AND stage_order=:stage_order"
+                    ),
+                    {
+                        "tenant": tenant_id,
+                        "approval_policy_id": scoped_case[7],
+                        "stage_order": int(stage_order),
+                    },
+                ).first()
+                if scoped_case is not None
+                else None
+            )
             counts = {
                 name: connection.execute(
                     text(
@@ -893,13 +910,17 @@ def _eos_approval_authority_summary(
     )
     binding_summary = "unavailable"
     if scoped_case is not None and decision is not None:
+        case_version = int(scoped_case[6])
+        expected_role = scoped_case[4] or (
+            None if policy_stage is None else policy_stage[0]
+        )
         binding_summary = ":".join(
             (
                 "version_PASS"
-                if int(approval[4]) == int(scoped_case[6]) + 1
+                if int(approval[4]) in {case_version, case_version + 1}
                 else "version_FAIL",
                 "role_PASS"
-                if approval[3] == scoped_case[4]
+                if expected_role is not None and approval[3] == expected_role
                 else "role_FAIL",
                 "requester_PASS"
                 if decision[0] != scoped_case[5]

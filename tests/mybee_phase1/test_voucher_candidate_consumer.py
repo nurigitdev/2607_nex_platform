@@ -51,6 +51,7 @@ PERIOD_ID = "26000000-0000-4000-8000-000000000011"
 DEBIT_ACCOUNT_ID = "26000000-0000-4000-8000-000000000012"
 CREDIT_ACCOUNT_ID = "26000000-0000-4000-8000-000000000013"
 EVENT_ID = "26000000-0000-4000-8000-000000000014"
+APPROVAL_WORK_ITEM_ID = "26000000-0000-4000-8000-000000000015"
 HASH_A = "sha256:" + "a" * 64
 HASH_B = "sha256:" + "b" * 64
 HASH_C = "sha256:" + "c" * 64
@@ -350,6 +351,7 @@ def _review_receipt(request=None, **overrides):
             "created": True,
             "work_item": {
                 "tenant_id": TENANT,
+                "approval_work_item_id": APPROVAL_WORK_ITEM_ID,
                 "approval_domain": "BUSINESS_FORMAL",
                 "approval_provider_type": "EOS",
                 "approval_request_id": CASE_ID,
@@ -642,6 +644,7 @@ def test_create_result_drift_fails_closed(mutator, expected_code) -> None:
     with pytest.raises(VoucherCandidateConsumerError) as error:
         admit_candidate_create_result(result, draft=draft, request=request)
     assert error.value.code == expected_code
+    assert error.value.error_code == error.value.code
 
 
 @pytest.mark.parametrize(

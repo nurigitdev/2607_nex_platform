@@ -278,6 +278,24 @@ def test_7f_rejects_receipt_lineage_and_evidence_drift() -> None:
     with pytest.raises(ApprovalDecisionEventError, match="must be an object"):
         admission.ingest(_delivery())
 
+    receipt = _document_receipt()
+    receipt["approved_document_envelope"] = {
+        "envelope_id": f"eos.scoped-approval-case:{CASE_ID}"
+    }
+    admission, *_ = _admission(receipt)
+    with pytest.raises(
+        ApprovalDecisionEventError, match="ApprovedDocument envelope reference"
+    ):
+        admission.ingest(_delivery())
+
+    receipt = _document_receipt()
+    receipt["approved_document_envelope"] = {
+        "envelope_id": "71000000000040008000000000000007"
+    }
+    admission, *_ = _admission(receipt)
+    with pytest.raises(ApprovalDecisionEventError, match="not canonical"):
+        admission.ingest(_delivery())
+
 
 def test_7f_terminal_execution_transition_is_idempotent_and_fail_closed() -> None:
     class Executions:

@@ -35,6 +35,7 @@ def test_product_golden_source_admission_uses_installed_m1_registry() -> None:
     assert result["browser_result_timeout_ms"] == 900_000
     assert result["browser_process_timeout_seconds"] == 2_340
     assert support.PROJECT_REFERENCE_RESOLVE_SCOPE in support._OA_SCOPES["requester"]
+    assert "finance:document:read" in support._OA_SCOPES["requester"]
     assert {"approval:read", "approval:decide"}.issubset(support._OA_SCOPES["approver"])
     assert support.M1_APPROVAL_POSITION_TYPE == "TEAM_LEAD"
 
@@ -624,8 +625,23 @@ def test_product_wc_database_progress_summary_is_bounded(tmp_path: Path) -> None
     )
 
 
-def test_product_eos_approval_authority_summary_is_bounded(tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+    ("case_state", "active_stage", "target_role", "case_version", "case_summary"),
+    (
+        ("PENDING", 1, "TEAM_LEAD", 1, "DOCUMENT_SIGNOFF:PENDING:1:1"),
+        ("APPROVED", None, None, 2, "DOCUMENT_SIGNOFF:APPROVED:none:1"),
+    ),
+)
+def test_product_eos_approval_authority_summary_is_bounded(
+    tmp_path: Path,
+    case_state: str,
+    active_stage: int | None,
+    target_role: str | None,
+    case_version: int,
+    case_summary: str,
+) -> None:
     case_id = "71000000-0000-4000-8000-000000000001"
+    policy_id = "71000000-0000-4000-8000-000000000010"
     wc_database = tmp_path / "wc-authority.sqlite"
     eos_database = tmp_path / "eos-authority.sqlite"
     wc_engine = create_engine(f"sqlite+pysqlite:///{wc_database}")
@@ -666,7 +682,14 @@ def test_product_eos_approval_authority_summary_is_bounded(tmp_path: Path) -> No
                 "CREATE TABLE eos_scoped_approval_case (tenant_id TEXT, "
                 "case_id TEXT, purpose TEXT, state TEXT, "
                 "active_stage_order INTEGER, stage_count INTEGER, "
-                "target_role_ref TEXT, requester_id TEXT, version INTEGER)"
+                "target_role_ref TEXT, requester_id TEXT, version INTEGER, "
+                "approval_policy_id TEXT)"
+            )
+        )
+        connection.execute(
+            text(
+                "CREATE TABLE eos_approval_policy_stage (tenant_id TEXT, "
+                "approval_policy_id TEXT, stage_order INTEGER, position_type TEXT)"
             )
         )
         for table in (
@@ -682,10 +705,25 @@ def test_product_eos_approval_authority_summary_is_bounded(tmp_path: Path) -> No
         connection.execute(
             text(
                 "INSERT INTO eos_scoped_approval_case VALUES "
-                "('V101', :case_id, 'DOCUMENT_SIGNOFF', 'PENDING', 1, 1, "
-                "'TEAM_LEAD', 'requester-1', 1)"
+                "('V101', :case_id, 'DOCUMENT_SIGNOFF', :case_state, "
+                ":active_stage, 1, :target_role, 'requester-1', :case_version, "
+                ":policy_id)"
             ),
-            {"case_id": case_id},
+            {
+                "case_id": case_id,
+                "case_state": case_state,
+                "active_stage": active_stage,
+                "target_role": target_role,
+                "case_version": case_version,
+                "policy_id": policy_id,
+            },
+        )
+        connection.execute(
+            text(
+                "INSERT INTO eos_approval_policy_stage VALUES "
+                "('V101', :policy_id, 1, 'TEAM_LEAD')"
+            ),
+            {"policy_id": policy_id},
         )
         connection.execute(
             text(
@@ -703,7 +741,7 @@ def test_product_eos_approval_authority_summary_is_bounded(tmp_path: Path) -> No
         tenant_id="V101",
     ) == (
         "target=scoped_case,stage=1,wc_state=APPROVED,"
-        "case=DOCUMENT_SIGNOFF:PENDING:1:1,"
+        f"case={case_summary},"
         "binding=version_PASS:role_PASS:requester_PASS:wc_oa_PASS,"
         "context=1,decisions=0,evidence=0"
     )

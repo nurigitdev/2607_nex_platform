@@ -38,6 +38,7 @@ CASE_ID = "26000000-0000-4000-8000-000000000004"
 POLICY_ID = "26000000-0000-4000-8000-000000000005"
 OPERATION_ID = "26000000-0000-4000-8000-000000000006"
 ENVELOPE_ID = "26000000-0000-4000-8000-000000000007"
+APPROVAL_WORK_ITEM_ID = "26000000-0000-4000-8000-000000000008"
 NOW = datetime(2026, 11, 11, 6, 0, tzinfo=UTC)
 
 
@@ -149,6 +150,7 @@ def _receipt(request=None):
             "created": True,
             "work_item": {
                 "tenant_id": TENANT,
+                "approval_work_item_id": APPROVAL_WORK_ITEM_ID,
                 "approval_domain": "BUSINESS_FORMAL",
                 "approval_provider_type": "EOS",
                 "approval_request_id": CASE_ID,
@@ -522,6 +524,7 @@ def test_http_transport_redacts_rejection_unavailability_and_bad_response(
     with pytest.raises(BusinessApprovalConsumerError) as conflict:
         transport.send(request)
     assert conflict.value.code == "EOS_CASE_CONFLICT"
+    assert conflict.value.error_code == conflict.value.code
     assert conflict.value.status_code == 409
     assert conflict.value.retryable is False
 

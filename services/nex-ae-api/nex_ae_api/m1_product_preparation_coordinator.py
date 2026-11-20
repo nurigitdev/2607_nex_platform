@@ -4,7 +4,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any, Protocol
-from uuid import NAMESPACE_URL, uuid5
+from uuid import NAMESPACE_URL, UUID, uuid5
 
 from mybee_ax.orchestration import M1PreparationAuthority
 from nex_runtime.semantic_hashes import semantic_sha256_hash_ref, validate_hash_ref
@@ -329,7 +329,7 @@ class InstalledM1ProductPlanningCoordinator:
                 business_context_hash=work_intent["business_context_hash"],
                 authority=authority,
                 parent_execution_id=lineage["agent_execution_id"],
-                envelope_id=evidence_ref,
+                envelope_id=_approved_document_envelope_ref(evidence_ref),
             )
         else:
             candidate_id = _text(
@@ -881,6 +881,17 @@ def _timestamp(value: datetime) -> str:
     if not isinstance(value, datetime) or value.tzinfo is None:
         raise _invalid("M1 Product Coordinator clock must be timezone-aware.")
     return value.astimezone(UTC).isoformat().replace("+00:00", "Z")
+
+
+def _approved_document_envelope_ref(value: object) -> str:
+    candidate = _text(value, "approved_document_envelope_id", 36)
+    try:
+        admitted = str(UUID(candidate))
+    except ValueError as exc:
+        raise _invalid("approved_document_envelope_id is invalid.") from exc
+    if candidate != admitted:
+        raise _invalid("approved_document_envelope_id is not canonical.")
+    return admitted
 
 
 def _text(value: object, field: str, maximum: int) -> str:

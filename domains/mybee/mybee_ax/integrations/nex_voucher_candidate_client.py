@@ -104,6 +104,7 @@ class VoucherCandidateConsumerError(RuntimeError):
         status_code: int,
         retryable: bool = False,
     ) -> None:
+        self.error_code = code
         self.code = code
         self.detail = detail
         self.status_code = status_code

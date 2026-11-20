@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -30,6 +31,7 @@ PRODUCT_PLANNING_ADMISSION_SCHEMA_VERSION = "ae.product_planning_admission.v1"
 PRODUCT_COORDINATOR_ASSIGNMENT_SCHEMA_VERSION = "ae.product_coordinator_assignment.v1"
 PRODUCT_COORDINATOR_RETRY_DELAY_SECONDS = 5
 PRODUCT_COORDINATOR_MAX_ATTEMPTS = 3
+_PRODUCT_ERROR_CODE = re.compile(r"^[A-Za-z][A-Za-z0-9_.-]{0,127}$")
 
 
 @dataclass
@@ -524,9 +526,9 @@ class InstalledProductCoordinatorAssignmentHandler:
     ) -> None:
         observed_at = self._clock().astimezone(UTC)
         retryable = bool(getattr(error, "retryable", False))
-        error_code = getattr(error, "error_code", None)
-        if not isinstance(error_code, str) or not error_code.strip():
-            error_code = "ae.product_coordinator_assignment_failed"
+        error_code = _typed_product_error_code(error) or (
+            "ae.product_coordinator_assignment_failed"
+        )
         self._runtime_jobs.fail(
             tenant_id=assignment.tenant_id,
             runtime_job_id=assignment.runtime_job_id,
@@ -822,15 +824,25 @@ def _call_product_boundary(operation: Any, **values: Any) -> Any:
     except ProductPlanningRuntimeError:
         raise
     except Exception as exc:
-        error_code = getattr(exc, "error_code", None)
+        error_code = _typed_product_error_code(exc)
         detail = getattr(exc, "detail", None)
-        if isinstance(error_code, str) and isinstance(detail, str):
+        if error_code is not None and isinstance(detail, str):
             raise ProductPlanningRuntimeError(
                 error_code=error_code,
                 detail=detail,
                 retryable=bool(getattr(exc, "retryable", False)),
             ) from exc
         raise
+
+
+def _typed_product_error_code(error: object) -> str | None:
+    for attribute in ("error_code", "code"):
+        value = getattr(error, attribute, None)
+        if isinstance(value, str):
+            candidate = value.strip()
+            if _PRODUCT_ERROR_CODE.fullmatch(candidate):
+                return candidate
+    return None
 
 
 def _text(value: object, field: str) -> str:

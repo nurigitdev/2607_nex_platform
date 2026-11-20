@@ -500,6 +500,52 @@ def test_6b2_reaches_ready_through_two_fresh_authority_resumes() -> None:
     ]
 
 
+def test_business_resume_requires_canonical_approved_document_envelope_ref() -> None:
+    coordinator, adapter, _source, _checkpoints, waits = _coordinator()
+    work_intent, context, snapshot, execution = _inputs()
+    values = {
+        "work_intent": work_intent,
+        "agent_context": context,
+        "capability_snapshot": snapshot,
+        "execution": execution,
+    }
+    waiting = coordinator.begin(**values)
+    _notify(
+        coordinator,
+        waiting["checkpoint"],
+        event_id="business-invalid-envelope-100",
+        evidence_ref=f"eos.scoped-approval-case:{BUSINESS_POLICY_ID}",
+    )
+    runtime_job_id = _match(waits, event_id="business-invalid-envelope-100")
+
+    with pytest.raises(
+        M1ProductPreparationCoordinatorError,
+        match="approved_document_envelope_id is invalid",
+    ):
+        coordinator.resume_approval(
+            event_id="business-invalid-envelope-100",
+            runtime_job_id=runtime_job_id,
+            **values,
+        )
+
+    assert adapter.calls == [("BEGIN", None)]
+
+
+@pytest.mark.parametrize(
+    ("value", "message"),
+    (
+        ("x" * 36, "is invalid"),
+        ("41000000000040008000000000000009", "is not canonical"),
+        ("AAAAAAAA-0000-4000-8000-000000000009", "is not canonical"),
+    ),
+)
+def test_approved_document_envelope_ref_rejects_malformed_or_compact_uuid(
+    value: str, message: str
+) -> None:
+    with pytest.raises(M1ProductPreparationCoordinatorError, match=message):
+        coordinator_module._approved_document_envelope_ref(value)
+
+
 def test_7f_rejected_authority_creates_terminal_checkpoint_without_mutation() -> None:
     coordinator, adapter, source, checkpoints, waits = _coordinator()
     work_intent, context, snapshot, execution = _inputs()
