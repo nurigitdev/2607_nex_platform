@@ -208,6 +208,41 @@ def test_w40_write_actions_require_project_role_and_matching_global_scope(
     assert decision["applicable_global_scopes"] == [action]
 
 
+def test_accounting_approval_requires_member_project_grant_and_global_scope() -> None:
+    action = "finance:journal:approve"
+    repository = InMemoryOaProjectGrantRepository()
+    repository.apply_grant(_grant(project_role="MEMBER"))
+    service = OaProjectAuthorizationDecisionService(
+        repository,
+        AuthorizationSource(scopes=[action]),
+        clock=lambda: NOW,
+    )
+
+    allowed = service.decide(_decision(action=action))
+
+    assert allowed["allowed"] is True
+    assert allowed["project_role"] == "MEMBER"
+    assert allowed["applicable_global_scopes"] == [action]
+
+    viewer_repository = InMemoryOaProjectGrantRepository()
+    viewer_repository.apply_grant(_grant(project_role="VIEWER"))
+    viewer = OaProjectAuthorizationDecisionService(
+        viewer_repository,
+        AuthorizationSource(scopes=[action]),
+        clock=lambda: NOW,
+    ).decide(_decision(action=action))
+    assert viewer["allowed"] is False
+    assert viewer["reason_code"] == "PROJECT_ROLE_INSUFFICIENT"
+
+    missing_scope = OaProjectAuthorizationDecisionService(
+        repository,
+        AuthorizationSource(scopes=[]),
+        clock=lambda: NOW,
+    ).decide(_decision(action=action))
+    assert missing_scope["allowed"] is False
+    assert missing_scope["reason_code"] == "GLOBAL_SCOPE_MISSING"
+
+
 @pytest.mark.parametrize(
     "payload",
     (

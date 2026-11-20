@@ -52,6 +52,7 @@ _ACTION_ROLES = {
     "finance:voucher-draft:create": frozenset({"OWNER", "MANAGER", "MEMBER"}),
     "finance:voucher-draft:read": PROJECT_ROLES,
     "finance:journal:request-approval": frozenset({"OWNER", "MANAGER", "MEMBER"}),
+    "finance:journal:approve": frozenset({"OWNER", "MANAGER", "MEMBER"}),
     "finance:report:read": PROJECT_ROLES,
     "project:pnl:read": PROJECT_ROLES,
 }
