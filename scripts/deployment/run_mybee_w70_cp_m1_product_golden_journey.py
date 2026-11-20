@@ -177,6 +177,8 @@ def _source_admission(root: Path) -> dict[str, Any]:
         "browser_result_timeout_ms": BROWSER_RESULT_TIMEOUT_MS,
         "browser_process_timeout_seconds": BROWSER_PROCESS_TIMEOUT_SECONDS,
         "non_identical_positive_request_count": 2,
+        "distinct_human_principal_count": 3,
+        "business_accounting_approver_separation_required": True,
         "post_request_direct_transition_allowed": False,
         "isolated_eight_database_schema_required": True,
         "secret_included": False,
@@ -200,8 +202,14 @@ def execute_m1_product_golden_journey(
         for index in range(2)
     ]
     requester_password = secrets.token_urlsafe(28)
-    approver_password = secrets.token_urlsafe(28)
-    sensitive = {requester_password, approver_password, *prompts}
+    business_approver_password = secrets.token_urlsafe(28)
+    accounting_approver_password = secrets.token_urlsafe(28)
+    sensitive = {
+        requester_password,
+        business_approver_password,
+        accounting_approver_password,
+        *prompts,
+    }
     live_state: dict[str, Any] = {}
     _prepare_screenshot_directory(SCREENSHOT_DIR)
 
@@ -221,7 +229,8 @@ def execute_m1_product_golden_journey(
         seeded = seed_acceptance_authority(
             urls,
             requester_password=requester_password,
-            approver_password=approver_password,
+            business_approver_password=business_approver_password,
+            accounting_approver_password=accounting_approver_password,
             baseline=baseline,
         )
         synchronized = wait_for_installed_authority(
@@ -234,7 +243,8 @@ def execute_m1_product_golden_journey(
             baseline=baseline,
             prompts=prompts,
             requester_password=requester_password,
-            approver_password=approver_password,
+            business_approver_password=business_approver_password,
+            accounting_approver_password=accounting_approver_password,
         )
         installed._write_report(
             DEFAULT_BROWSER_REPORT, _public_browser_evidence(browser)
@@ -345,7 +355,8 @@ def execute_m1_product_golden_journey(
             baseline=baseline,
             prompts=prompts,
             requester_password=requester_password,
-            approver_password=approver_password,
+            business_approver_password=business_approver_password,
+            accounting_approver_password=accounting_approver_password,
             recovery_interaction_id=str(live_state["interaction_id"]),
         )
         runtime = recovered.get("runtime")
@@ -1021,7 +1032,8 @@ def _run_playwright(
     baseline: Mapping[str, Any],
     prompts: Sequence[str],
     requester_password: str,
-    approver_password: str,
+    business_approver_password: str,
+    accounting_approver_password: str,
     recovery_interaction_id: str | None = None,
 ) -> dict[str, Any]:
     _prepare_browser_progress_file(DEFAULT_BROWSER_PROGRESS_REPORT)
@@ -1033,10 +1045,18 @@ def _run_playwright(
             "requester"
         ]["employee_id"],
         "NEX_MYBEE_M1_GOLDEN_REQUESTER_PASSWORD": requester_password,
-        "NEX_MYBEE_M1_GOLDEN_APPROVER_EMPLOYEE_ID": baseline["principals"]["approver"][
-            "employee_id"
-        ],
-        "NEX_MYBEE_M1_GOLDEN_APPROVER_PASSWORD": approver_password,
+        "NEX_MYBEE_M1_GOLDEN_BUSINESS_APPROVER_EMPLOYEE_ID": baseline[
+            "principals"
+        ]["business_approver"]["employee_id"],
+        "NEX_MYBEE_M1_GOLDEN_BUSINESS_APPROVER_PASSWORD": (
+            business_approver_password
+        ),
+        "NEX_MYBEE_M1_GOLDEN_ACCOUNTING_APPROVER_EMPLOYEE_ID": baseline[
+            "principals"
+        ]["accounting_approver"]["employee_id"],
+        "NEX_MYBEE_M1_GOLDEN_ACCOUNTING_APPROVER_PASSWORD": (
+            accounting_approver_password
+        ),
         "NEX_MYBEE_M1_GOLDEN_PROMPTS_JSON": json.dumps(
             list(prompts), ensure_ascii=False
         ),

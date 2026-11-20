@@ -69,7 +69,8 @@ DEFAULT_BASELINE_PATH = (
     ROOT / "scripts/deployment/data/mybee_m1_product_acceptance.v1.json"
 )
 PROFILE_POLICY_REF = "policy://nex-platform/project-agent-lifecycle/v1"
-M1_APPROVAL_POSITION_TYPE = "TEAM_LEAD"
+M1_BUSINESS_APPROVAL_POSITION_TYPE = "TEAM_LEAD"
+M1_ACCOUNTING_APPROVAL_POSITION_TYPE = "GROUP_LEAD"
 HASH_A = "sha256:" + "a" * 64
 HASH_B = "sha256:" + "b" * 64
 HASH_C = "sha256:" + "c" * 64
@@ -86,7 +87,14 @@ _OA_SCOPES = {
         "finance:report:read",
         "project:pnl:read",
     ),
-    "approver": (
+    "business_approver": (
+        "workspace:use",
+        "approval:read",
+        "approval:decide",
+        "finance:report:read",
+        "project:pnl:read",
+    ),
+    "accounting_approver": (
         "workspace:use",
         "approval:read",
         "approval:decide",
@@ -135,6 +143,33 @@ def load_acceptance_baseline(path: Path = DEFAULT_BASELINE_PATH) -> dict[str, An
         raise M1ProductAcceptanceSupportError(
             "M1 product acceptance Project codes must be distinct"
         )
+    principals = value.get("principals")
+    required_principals = (
+        "requester",
+        "business_approver",
+        "accounting_approver",
+    )
+    if not isinstance(principals, Mapping) or any(
+        not isinstance(principals.get(role), Mapping)
+        for role in required_principals
+    ):
+        raise M1ProductAcceptanceSupportError(
+            "M1 product acceptance requires three separated principals"
+        )
+    subject_ids = {
+        str(principals[role].get("subject_id") or "")
+        for role in required_principals
+    }
+    employee_ids = {
+        str(principals[role].get("employee_id") or "")
+        for role in required_principals
+    }
+    if "" in subject_ids or "" in employee_ids or len(subject_ids) != 3 or len(
+        employee_ids
+    ) != 3:
+        raise M1ProductAcceptanceSupportError(
+            "M1 product acceptance SoD principals must be non-empty and distinct"
+        )
     return value
 
 
@@ -163,7 +198,8 @@ def seed_acceptance_authority(
     urls: Mapping[str, str],
     *,
     requester_password: str,
-    approver_password: str,
+    business_approver_password: str,
+    accounting_approver_password: str,
     baseline: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     data = dict(baseline or load_acceptance_baseline())
@@ -175,7 +211,8 @@ def seed_acceptance_authority(
             oa_engine,
             data,
             requester_password=requester_password,
-            approver_password=approver_password,
+            business_approver_password=business_approver_password,
+            accounting_approver_password=accounting_approver_password,
         )
         eos = _seed_eos(eos_engine, data)
         return {
@@ -183,7 +220,12 @@ def seed_acceptance_authority(
             "tenant_id": tenant_id,
             "baseline_digest": baseline_digest(data),
             "requester_subject_id": data["principals"]["requester"]["subject_id"],
-            "approver_subject_id": data["principals"]["approver"]["subject_id"],
+            "business_approver_subject_id": data["principals"][
+                "business_approver"
+            ]["subject_id"],
+            "accounting_approver_subject_id": data["principals"][
+                "accounting_approver"
+            ]["subject_id"],
             "project_codes": [item["project_code"] for item in data["projects"]],
             "authority_records": eos,
             "post_request_business_mutations": 0,
@@ -258,7 +300,8 @@ def _seed_oa(
     baseline: Mapping[str, Any],
     *,
     requester_password: str,
-    approver_password: str,
+    business_approver_password: str,
+    accounting_approver_password: str,
 ) -> None:
     factory = sessionmaker(bind=engine, expire_on_commit=False)
     subjects = SqlAlchemyOaSubjectRegistry(factory)
@@ -271,9 +314,14 @@ def _seed_oa(
     tenant_id = baseline["tenant"]["tenant_id"]
     passwords = {
         "requester": requester_password,
-        "approver": approver_password,
+        "business_approver": business_approver_password,
+        "accounting_approver": accounting_approver_password,
     }
-    for role in ("requester", "approver"):
+    approval_roles = {
+        "business_approver": M1_BUSINESS_APPROVAL_POSITION_TYPE,
+        "accounting_approver": M1_ACCOUNTING_APPROVAL_POSITION_TYPE,
+    }
+    for role in ("requester", "business_approver", "accounting_approver"):
         principal = baseline["principals"][role]
         credentials.ensure_credential(
             {
@@ -296,11 +344,7 @@ def _seed_oa(
                 "roles": [
                     "employee",
                     f"m1-{role}",
-                    *(
-                        [M1_APPROVAL_POSITION_TYPE]
-                        if role == "approver"
-                        else []
-                    ),
+                    *([approval_roles[role]] if role in approval_roles else []),
                 ],
                 "scopes": list(_OA_SCOPES[role]),
                 "membership_metadata": {
@@ -315,7 +359,8 @@ def _seed_eos(engine: Engine, baseline: Mapping[str, Any]) -> dict[str, int]:
     tenant_id = str(baseline["tenant"]["tenant_id"])
     company = baseline["company"]
     requester = baseline["principals"]["requester"]
-    approver = baseline["principals"]["approver"]
+    business_approver = baseline["principals"]["business_approver"]
+    accounting_approver = baseline["principals"]["accounting_approver"]
     projects = baseline["projects"]
     effective_on = date(2026, 1, 1)
     now = datetime(2026, 11, 18, 1, 0, tzinfo=UTC)
@@ -373,7 +418,11 @@ def _seed_eos(engine: Engine, baseline: Mapping[str, Any]) -> dict[str, int]:
                 HASH_A,
             )
         )
-        for role, member_role in (("requester", "OWNER"), ("approver", "MEMBER")):
+        for role, member_role in (
+            ("requester", "OWNER"),
+            ("business_approver", "MEMBER"),
+            ("accounting_approver", "MEMBER"),
+        ):
             principal = baseline["principals"][role]
             memberships.add_membership(
                 ProjectMembershipInput(
@@ -389,33 +438,49 @@ def _seed_eos(engine: Engine, baseline: Mapping[str, Any]) -> dict[str, int]:
                 )
             )
 
-    organization.create_org_unit(
-        OrgUnitInput(
-            tenant_id,
-            _id("org"),
+    for key, code, name, position_type, principal in (
+        (
+            "business",
+            "M1-BUSINESS",
+            "M1 Business",
+            M1_BUSINESS_APPROVAL_POSITION_TYPE,
+            business_approver,
+        ),
+        (
+            "accounting",
             "M1-FINANCE",
             "M1 Finance",
-            "TEAM",
-            now,
+            M1_ACCOUNTING_APPROVAL_POSITION_TYPE,
+            accounting_approver,
+        ),
+    ):
+        organization.create_org_unit(
+            OrgUnitInput(
+                tenant_id,
+                _id(f"org-{key}"),
+                code,
+                name,
+                "TEAM",
+                now,
+            )
         )
-    )
-    organization.create_position(
-        PositionInput(
-            tenant_id,
-            _id("position"),
-            M1_APPROVAL_POSITION_TYPE,
-            _id("org"),
+        organization.create_position(
+            PositionInput(
+                tenant_id,
+                _id(f"position-{key}"),
+                position_type,
+                _id(f"org-{key}"),
+            )
         )
-    )
-    organization.assign_position(
-        PositionAssignmentInput(
-            tenant_id,
-            _id("position-assignment"),
-            _id("position"),
-            {"type": "oa.user", "id": approver["subject_id"]},
-            now,
+        organization.assign_position(
+            PositionAssignmentInput(
+                tenant_id,
+                _id(f"position-assignment-{key}"),
+                _id(f"position-{key}"),
+                {"type": "oa.user", "id": principal["subject_id"]},
+                now,
+            )
         )
-    )
     SqlAlchemyEosAccountingPeriodRepository(factory).create_open_period(
         AccountingPeriodInput(
             tenant_id,
@@ -449,7 +514,11 @@ def _seed_eos(engine: Engine, baseline: Mapping[str, Any]) -> dict[str, int]:
                         "project_role": "OWNER",
                     },
                     {
-                        "subject_id": approver["subject_id"],
+                        "subject_id": business_approver["subject_id"],
+                        "project_role": "MEMBER",
+                    },
+                    {
+                        "subject_id": accounting_approver["subject_id"],
                         "project_role": "MEMBER",
                     },
                 ),
@@ -474,7 +543,7 @@ def _seed_eos(engine: Engine, baseline: Mapping[str, Any]) -> dict[str, int]:
     return {
         "legal_entity": 1,
         "projects": len(projects),
-        "project_memberships": len(projects) * 2,
+        "project_memberships": len(projects) * 3,
         "project_agents_expected": len(project_agent_ids),
         "approval_policies": 2,
         "allocation_plans": 1,
@@ -676,7 +745,7 @@ def _seed_fx(factory: Any, baseline: Mapping[str, Any]) -> None:
         "max_staleness_business_days": 3,
         "rounding_mode": "HALF_EVEN",
         "rate_decimal_scale": 6,
-        "approved_by": baseline["principals"]["approver"]["subject_id"],
+        "approved_by": baseline["principals"]["accounting_approver"]["subject_id"],
         "approval_proof_hash": HASH_A,
     }
     repository = SqlAlchemyEosFxRateRepository(factory)
@@ -697,7 +766,7 @@ def _seed_fx(factory: Any, baseline: Mapping[str, Any]) -> None:
             3,
             "HALF_EVEN",
             6,
-            baseline["principals"]["approver"]["subject_id"],
+            baseline["principals"]["accounting_approver"]["subject_id"],
             HASH_A,
             fx_policy_hash(policy_semantics),
         )
@@ -737,9 +806,17 @@ def _seed_approval_policies(
     tenant_id = baseline["tenant"]["tenant_id"]
     primary_project_id = baseline["projects"][0]["project_id"]
     repository = SqlAlchemyEosApprovalPolicyRepository(factory)
-    for key, transaction_type in (
-        ("business", "DOCUMENT_SIGNOFF"),
-        ("accounting", "ACCOUNTING_POSTING"),
+    for key, transaction_type, position_type in (
+        (
+            "business",
+            "DOCUMENT_SIGNOFF",
+            M1_BUSINESS_APPROVAL_POSITION_TYPE,
+        ),
+        (
+            "accounting",
+            "ACCOUNTING_POSTING",
+            M1_ACCOUNTING_APPROVAL_POSITION_TYPE,
+        ),
     ):
         project_id = (
             None if transaction_type == "DOCUMENT_SIGNOFF" else primary_project_id
@@ -752,7 +829,7 @@ def _seed_approval_policies(
                 f"M1 acceptance {key} approval",
                 "BUSINESS_FORMAL",
                 now,
-                (ApprovalPolicyStageInput(M1_APPROVAL_POSITION_TYPE),),
+                (ApprovalPolicyStageInput(position_type),),
                 transaction_type=transaction_type,
                 project_id=project_id,
             )
@@ -901,7 +978,7 @@ def _seed_allocation_plan(
                 approval_instance_id=instance_id,
                 stage_order=1,
                 policy_stage_order=1,
-                position_type="TEAM_LEAD",
+                position_type=M1_ACCOUNTING_APPROVAL_POSITION_TYPE,
                 quorum_count=1,
                 separation_policy="REQUESTER_EXCLUDED",
                 state="APPROVED",
@@ -923,7 +1000,9 @@ def _seed_allocation_plan(
                 decision="APPROVE",
                 decision_version=1,
                 decided_by_ref_type="oa.user",
-                decided_by_id=baseline["principals"]["approver"]["subject_id"],
+                decided_by_id=baseline["principals"]["accounting_approver"][
+                    "subject_id"
+                ],
                 decision_comment="M1 acceptance allocation authority",
                 authorized_by_oa=True,
                 oa_decision_ref=f"oa.decision:{decision_id}",

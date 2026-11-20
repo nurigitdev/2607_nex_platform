@@ -12,6 +12,7 @@ import {
   myBeeM1RuntimeTimeouts,
   myBeeM1ProductJourneyUiContract,
   parseProductPrompts,
+  pendingApprovalGates,
   prepareApprovalInbox,
   runMyBeeM1ProductGoldenJourney,
   runMyBeeM1ProductPostRestartRecovery
@@ -180,8 +181,10 @@ test("M1 product journey reports a bounded launch failure without secrets", asyn
       NEX_MYBEE_M1_GOLDEN_TENANT_ID: "M1A7",
       NEX_MYBEE_M1_GOLDEN_REQUESTER_EMPLOYEE_ID: "8101",
       NEX_MYBEE_M1_GOLDEN_REQUESTER_PASSWORD: "requester-private-password",
-      NEX_MYBEE_M1_GOLDEN_APPROVER_EMPLOYEE_ID: "8201",
-      NEX_MYBEE_M1_GOLDEN_APPROVER_PASSWORD: "approver-private-password",
+      NEX_MYBEE_M1_GOLDEN_BUSINESS_APPROVER_EMPLOYEE_ID: "8201",
+      NEX_MYBEE_M1_GOLDEN_BUSINESS_APPROVER_PASSWORD: "business-private-password",
+      NEX_MYBEE_M1_GOLDEN_ACCOUNTING_APPROVER_EMPLOYEE_ID: "8301",
+      NEX_MYBEE_M1_GOLDEN_ACCOUNTING_APPROVER_PASSWORD: "accounting-private-password",
       NEX_MYBEE_M1_GOLDEN_PROMPTS_JSON: JSON.stringify([
         "첫 번째 제품 전표 처리 요청은 충분히 긴 업무 문장입니다.",
         "두 번째 제품 전표 처리 요청도 서로 다른 충분히 긴 업무 문장입니다."
@@ -208,8 +211,10 @@ test("M1 product journey falls back to a bounded Playwright error name", async (
       NEX_MYBEE_M1_GOLDEN_TENANT_ID: "M1A7",
       NEX_MYBEE_M1_GOLDEN_REQUESTER_EMPLOYEE_ID: "8101",
       NEX_MYBEE_M1_GOLDEN_REQUESTER_PASSWORD: "requester-private-password",
-      NEX_MYBEE_M1_GOLDEN_APPROVER_EMPLOYEE_ID: "8201",
-      NEX_MYBEE_M1_GOLDEN_APPROVER_PASSWORD: "approver-private-password",
+      NEX_MYBEE_M1_GOLDEN_BUSINESS_APPROVER_EMPLOYEE_ID: "8201",
+      NEX_MYBEE_M1_GOLDEN_BUSINESS_APPROVER_PASSWORD: "business-private-password",
+      NEX_MYBEE_M1_GOLDEN_ACCOUNTING_APPROVER_EMPLOYEE_ID: "8301",
+      NEX_MYBEE_M1_GOLDEN_ACCOUNTING_APPROVER_PASSWORD: "accounting-private-password",
       NEX_MYBEE_M1_GOLDEN_PROMPTS_JSON: JSON.stringify([
         "첫 번째 제품 전표 처리 요청은 충분히 긴 업무 문장입니다.",
         "두 번째 제품 전표 처리 요청도 서로 다른 충분히 긴 업무 문장입니다."
@@ -229,6 +234,39 @@ test("M1 product journey falls back to a bounded Playwright error name", async (
   assert.equal(evidence.status, "FAIL");
   assert.equal(evidence.failure_code, "TimeoutError");
   assert.equal(evidence.observations.stage, "launch");
+});
+
+test("M1 product journey keeps business and accounting approval principals separated", async () => {
+  const businessPage = approvalGatePage([
+    { gate_id: "business-1", state: "PENDING", approval_domain: "BUSINESS_FORMAL" },
+    { gate_id: "done-1", state: "APPROVED", approval_domain: "NSL_WRITE" }
+  ]);
+  const accountingPage = approvalGatePage([
+    { gate_id: "accounting-1", state: "PENDING", approval_domain: "ACCOUNTING_REVIEW" }
+  ]);
+
+  const pending = await pendingApprovalGates(
+    [
+      { role: "BUSINESS_APPROVER", page: businessPage },
+      { role: "ACCOUNTING_APPROVER", page: accountingPage }
+    ],
+    new Set(["business-1"])
+  );
+
+  assert.deepEqual(
+    pending.map(item => [item.role, item.gate.gate_id]),
+    [["ACCOUNTING_APPROVER", "accounting-1"]]
+  );
+});
+
+test("M1 product journey fails closed when one approver inbox is unavailable", async () => {
+  await assert.rejects(
+    pendingApprovalGates([
+      { role: "BUSINESS_APPROVER", page: approvalGatePage([], 503) },
+      { role: "ACCOUNTING_APPROVER", page: approvalGatePage([]) }
+    ]),
+    /ApprovalGateListStatus503/
+  );
 });
 
 function approvalInboxPage({ calls, nextReviewVisible }) {
@@ -252,5 +290,11 @@ function approvalInboxPage({ calls, nextReviewVisible }) {
       }
       throw new Error(`Unexpected role lookup: ${role}:${options.name}`);
     }
+  };
+}
+
+function approvalGatePage(gates, status = 200) {
+  return {
+    evaluate: async () => ({ status, payload: { gates } })
   };
 }

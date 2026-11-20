@@ -16,10 +16,15 @@
       "subject_id": "employee-8101",
       "display_name": "M1 Requester"
     },
-    "approver": {
+    "business_approver": {
       "employee_id": "8201",
       "subject_id": "employee-8201",
-      "display_name": "M1 Approver"
+      "display_name": "M1 Business Approver"
+    },
+    "accounting_approver": {
+      "employee_id": "8301",
+      "subject_id": "employee-8301",
+      "display_name": "M1 Accounting Approver"
     }
   },
   "projects": [

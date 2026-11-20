@@ -28,6 +28,8 @@ def test_product_golden_source_admission_uses_installed_m1_registry() -> None:
     assert result["manual_domain_transition"] is False
     assert result["installed_process_continuity"] is True
     assert result["non_identical_positive_request_count"] == 2
+    assert result["distinct_human_principal_count"] == 3
+    assert result["business_accounting_approver_separation_required"] is True
     assert result["post_request_direct_transition_allowed"] is False
     assert result["isolated_eight_database_schema_required"] is True
     assert result["browser_action_timeout_ms"] == 60_000
@@ -36,16 +38,25 @@ def test_product_golden_source_admission_uses_installed_m1_registry() -> None:
     assert result["browser_process_timeout_seconds"] == 2_340
     assert support.PROJECT_REFERENCE_RESOLVE_SCOPE in support._OA_SCOPES["requester"]
     assert "finance:document:read" in support._OA_SCOPES["requester"]
-    assert {"approval:read", "approval:decide"}.issubset(support._OA_SCOPES["approver"])
-    assert support.M1_APPROVAL_POSITION_TYPE == "TEAM_LEAD"
+    assert {"approval:read", "approval:decide"}.issubset(
+        support._OA_SCOPES["business_approver"]
+    )
+    assert "finance:journal:approve" not in support._OA_SCOPES[
+        "business_approver"
+    ]
+    assert "finance:journal:approve" in support._OA_SCOPES[
+        "accounting_approver"
+    ]
+    assert support.M1_BUSINESS_APPROVAL_POSITION_TYPE == "TEAM_LEAD"
+    assert support.M1_ACCOUNTING_APPROVAL_POSITION_TYPE == "GROUP_LEAD"
 
 
-def test_product_acceptance_approver_role_matches_eos_policy_position() -> None:
+def test_product_acceptance_approver_roles_match_separate_eos_policy_positions() -> None:
     source = Path(support.__file__).read_text(encoding="utf-8")
 
-    assert "ApprovalPolicyStageInput(M1_APPROVAL_POSITION_TYPE)" in source
-    assert "[M1_APPROVAL_POSITION_TYPE]" in source
-    assert 'ApprovalPolicyStageInput("TEAM_LEAD")' not in source
+    assert "ApprovalPolicyStageInput(position_type)" in source
+    assert "M1_BUSINESS_APPROVAL_POSITION_TYPE" in source
+    assert "M1_ACCOUNTING_APPROVAL_POSITION_TYPE" in source
 
 
 def test_product_golden_projects_structured_cleanup_failure_evidence() -> None:
@@ -210,6 +221,8 @@ def test_product_seed_uses_scope_compatible_approval_policies(monkeypatch) -> No
         by_type["ACCOUNTING_POSTING"].project_id
         == baseline["projects"][0]["project_id"]
     )
+    assert by_type["DOCUMENT_SIGNOFF"].stages[0].position_type == "TEAM_LEAD"
+    assert by_type["ACCOUNTING_POSTING"].stages[0].position_type == "GROUP_LEAD"
 
 
 def test_product_golden_execution_is_protected_and_contains_failures() -> None:
@@ -269,6 +282,31 @@ def test_product_acceptance_baseline_is_typed_hash_bound_and_non_identical() -> 
     )
     assert "USD 10000.00" in prompts[0]
     assert "USD 12000.00" in prompts[1]
+    principals = baseline["principals"]
+    assert set(principals) == {
+        "requester",
+        "business_approver",
+        "accounting_approver",
+    }
+    assert len({item["subject_id"] for item in principals.values()}) == 3
+    assert len({item["employee_id"] for item in principals.values()}) == 3
+
+
+def test_product_acceptance_baseline_rejects_collapsed_sod_principals(
+    tmp_path: Path,
+) -> None:
+    baseline = support.load_acceptance_baseline()
+    baseline["principals"]["accounting_approver"]["subject_id"] = baseline[
+        "principals"
+    ]["business_approver"]["subject_id"]
+    path = tmp_path / "collapsed-sod.json"
+    path.write_text(json.dumps(baseline), encoding="utf-8")
+
+    with pytest.raises(
+        support.M1ProductAcceptanceSupportError,
+        match="SoD principals must be non-empty and distinct",
+    ):
+        support.load_acceptance_baseline(path)
 
 
 def test_product_live_checks_require_exact_product_outcomes() -> None:
@@ -813,6 +851,15 @@ def test_product_playwright_timeout_returns_last_bounded_progress(
             kwargs["env"]["NEX_MYBEE_M1_GOLDEN_SEMANTIC_SUBMIT_TIMEOUT_MS"] == "180000"
         )
         assert kwargs["env"]["NEX_MYBEE_M1_GOLDEN_RESULT_TIMEOUT_MS"] == "900000"
+        assert (
+            kwargs["env"]["NEX_MYBEE_M1_GOLDEN_BUSINESS_APPROVER_EMPLOYEE_ID"]
+            == "8201"
+        )
+        assert (
+            kwargs["env"]["NEX_MYBEE_M1_GOLDEN_ACCOUNTING_APPROVER_EMPLOYEE_ID"]
+            == "8301"
+        )
+        assert "NEX_MYBEE_M1_GOLDEN_APPROVER_EMPLOYEE_ID" not in kwargs["env"]
         raise subprocess.TimeoutExpired(_arguments, kwargs["timeout"])
 
     monkeypatch.setattr(acceptance.subprocess, "run", timeout_run)
@@ -820,7 +867,8 @@ def test_product_playwright_timeout_returns_last_bounded_progress(
         "tenant": {"tenant_id": "V101"},
         "principals": {
             "requester": {"employee_id": "8101"},
-            "approver": {"employee_id": "8201"},
+            "business_approver": {"employee_id": "8201"},
+            "accounting_approver": {"employee_id": "8301"},
         },
     }
 
@@ -829,7 +877,8 @@ def test_product_playwright_timeout_returns_last_bounded_progress(
         baseline=baseline,
         prompts=("first bounded prompt", "second bounded prompt"),
         requester_password="private-requester",
-        approver_password="private-approver",
+        business_approver_password="private-business-approver",
+        accounting_approver_password="private-accounting-approver",
     )
 
     assert result["failure_code"] == "PLAYWRIGHT_PROCESS_TIMEOUT"
@@ -888,7 +937,8 @@ def test_product_playwright_failure_merges_last_bounded_progress(
         "tenant": {"tenant_id": "V101"},
         "principals": {
             "requester": {"employee_id": "8101"},
-            "approver": {"employee_id": "8201"},
+            "business_approver": {"employee_id": "8201"},
+            "accounting_approver": {"employee_id": "8301"},
         },
     }
 
@@ -897,7 +947,8 @@ def test_product_playwright_failure_merges_last_bounded_progress(
         baseline=baseline,
         prompts=("first bounded prompt", "second bounded prompt"),
         requester_password="private-requester",
-        approver_password="private-approver",
+        business_approver_password="private-business-approver",
+        accounting_approver_password="private-accounting-approver",
     )
 
     assert result["failure_code"] == "ProductResultTimeout"

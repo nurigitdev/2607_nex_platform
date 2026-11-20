@@ -14,8 +14,10 @@ const ENV = {
   tenantId: "NEX_MYBEE_M1_GOLDEN_TENANT_ID",
   requesterEmployeeId: "NEX_MYBEE_M1_GOLDEN_REQUESTER_EMPLOYEE_ID",
   requesterPassword: "NEX_MYBEE_M1_GOLDEN_REQUESTER_PASSWORD",
-  approverEmployeeId: "NEX_MYBEE_M1_GOLDEN_APPROVER_EMPLOYEE_ID",
-  approverPassword: "NEX_MYBEE_M1_GOLDEN_APPROVER_PASSWORD",
+  businessApproverEmployeeId: "NEX_MYBEE_M1_GOLDEN_BUSINESS_APPROVER_EMPLOYEE_ID",
+  businessApproverPassword: "NEX_MYBEE_M1_GOLDEN_BUSINESS_APPROVER_PASSWORD",
+  accountingApproverEmployeeId: "NEX_MYBEE_M1_GOLDEN_ACCOUNTING_APPROVER_EMPLOYEE_ID",
+  accountingApproverPassword: "NEX_MYBEE_M1_GOLDEN_ACCOUNTING_APPROVER_PASSWORD",
   promptsJson: "NEX_MYBEE_M1_GOLDEN_PROMPTS_JSON",
   recoveryInteractionId: "NEX_MYBEE_M1_GOLDEN_RECOVERY_INTERACTION_ID",
   screenshotDir: "NEX_MYBEE_M1_GOLDEN_SCREENSHOT_DIR",
@@ -29,8 +31,10 @@ const REQUIRED = [
   ENV.tenantId,
   ENV.requesterEmployeeId,
   ENV.requesterPassword,
-  ENV.approverEmployeeId,
-  ENV.approverPassword,
+  ENV.businessApproverEmployeeId,
+  ENV.businessApproverPassword,
+  ENV.accountingApproverEmployeeId,
+  ENV.accountingApproverPassword,
   ENV.promptsJson
 ];
 const RECOVERY_REQUIRED = [
@@ -40,7 +44,12 @@ const RECOVERY_REQUIRED = [
   ENV.requesterPassword,
   ENV.recoveryInteractionId
 ];
-const SENSITIVE = [ENV.requesterPassword, ENV.approverPassword, ENV.promptsJson];
+const SENSITIVE = [
+  ENV.requesterPassword,
+  ENV.businessApproverPassword,
+  ENV.accountingApproverPassword,
+  ENV.promptsJson
+];
 const DEFAULT_TIMEOUT_MS = 60_000;
 const DEFAULT_SEMANTIC_SUBMIT_TIMEOUT_MS = 180_000;
 const DEFAULT_RESULT_TIMEOUT_MS = 900_000;
@@ -173,9 +182,11 @@ export async function runMyBeeM1ProductGoldenJourney({
   const progress = journeyProgressReporter(environ[ENV.progressPath]);
   let browser;
   let requesterContext;
-  let approverContext;
+  let businessApproverContext;
+  let accountingApproverContext;
   let requesterPage;
-  let approverPage;
+  let businessApproverPage;
+  let accountingApproverPage;
   let stage = "launch";
   let semanticFailureStage = null;
   const responses = [];
@@ -189,11 +200,18 @@ export async function runMyBeeM1ProductGoldenJourney({
     const playwright = await importPlaywright();
     browser = await launchBrowser(playwright, environ);
     requesterContext = await browser.newContext(contextOptions());
-    approverContext = await browser.newContext(contextOptions());
+    businessApproverContext = await browser.newContext(contextOptions());
+    accountingApproverContext = await browser.newContext(contextOptions());
     const requester = requesterPage = await configuredPage(requesterContext);
-    const approver = approverPage = await configuredPage(approverContext);
+    const businessApprover = businessApproverPage = await configuredPage(
+      businessApproverContext
+    );
+    const accountingApprover = accountingApproverPage = await configuredPage(
+      accountingApproverContext
+    );
     observeResponses(requester, responses);
-    observeResponses(approver, responses);
+    observeResponses(businessApprover, responses);
+    observeResponses(accountingApprover, responses);
 
     markStage("anonymous_boundary");
     await requester.goto(environ[ENV.webUrl], { waitUntil: "domcontentloaded", timeout: actionTimeout });
@@ -212,15 +230,31 @@ export async function runMyBeeM1ProductGoldenJourney({
     });
     await captures.capture(requester, "requester-workspace");
 
-    markStage("approver_login");
-    await approver.goto(environ[ENV.webUrl], { waitUntil: "domcontentloaded", timeout: actionTimeout });
-    await login(approver, {
-      tenantId: environ[ENV.tenantId],
-      employeeId: environ[ENV.approverEmployeeId],
-      password: environ[ENV.approverPassword],
+    markStage("business_approver_login");
+    await businessApprover.goto(environ[ENV.webUrl], {
+      waitUntil: "domcontentloaded",
       timeout: actionTimeout
     });
-    await captures.capture(approver, "approver-workspace");
+    await login(businessApprover, {
+      tenantId: environ[ENV.tenantId],
+      employeeId: environ[ENV.businessApproverEmployeeId],
+      password: environ[ENV.businessApproverPassword],
+      timeout: actionTimeout
+    });
+    await captures.capture(businessApprover, "business-approver-workspace");
+
+    markStage("accounting_approver_login");
+    await accountingApprover.goto(environ[ENV.webUrl], {
+      waitUntil: "domcontentloaded",
+      timeout: actionTimeout
+    });
+    await login(accountingApprover, {
+      tenantId: environ[ENV.tenantId],
+      employeeId: environ[ENV.accountingApproverEmployeeId],
+      password: environ[ENV.accountingApproverPassword],
+      timeout: actionTimeout
+    });
+    await captures.capture(accountingApprover, "accounting-approver-workspace");
 
     let workspace = null;
     for (let index = 0; index < prompts.length; index += 1) {
@@ -252,7 +286,10 @@ export async function runMyBeeM1ProductGoldenJourney({
       });
       const completed = await driveApprovalsUntilResult({
         requester,
-        approver,
+        approvers: [
+          { role: "BUSINESS_APPROVER", page: businessApprover },
+          { role: "ACCOUNTING_APPROVER", page: accountingApprover }
+        ],
         interactionId,
         actionTimeout,
         resultTimeout,
@@ -270,6 +307,7 @@ export async function runMyBeeM1ProductGoldenJourney({
         interaction_id: interactionId,
         semantic_stages: admitted.payload.generation.semantic_planning.stages || [],
         approval_domains: completed.approvalDomains,
+        approval_actor_roles: completed.approvalActorRoles,
         approval_replay_statuses: completed.replayStatuses,
         result_projection: completed
       });
@@ -277,7 +315,8 @@ export async function runMyBeeM1ProductGoldenJourney({
     }
 
     markStage("logout", { transaction_index: transactions.length });
-    await logout(approver, actionTimeout);
+    await logout(accountingApprover, actionTimeout);
+    await logout(businessApprover, actionTimeout);
     await logout(requester, actionTimeout);
     await captures.capture(requester, "requester-logged-out");
     const requiredDomains = new Set(["BUSINESS_FORMAL", "ACCOUNTING_REVIEW", "NSL_WRITE"]);
@@ -286,7 +325,8 @@ export async function runMyBeeM1ProductGoldenJourney({
       chromium_launched: true,
       anonymous_protected_surface_hidden: anonymousProtectedSurfaceHidden,
       requester_authenticated: true,
-      approver_authenticated: true,
+      business_approver_authenticated: true,
+      accounting_approver_authenticated: true,
       two_non_identical_business_requests: transactions.length >= 2,
       all_live_plans_compiled: transactions.every(item =>
         item.semantic_stages.length === 3 &&
@@ -297,6 +337,18 @@ export async function runMyBeeM1ProductGoldenJourney({
       ),
       approval_replay_idempotent: transactions.every(item =>
         item.approval_replay_statuses.every(status => status === 200)
+      ),
+      business_approval_role_separated: transactions.every(item =>
+        item.approval_domains.every((domain, index) =>
+          domain !== "BUSINESS_FORMAL" ||
+          item.approval_actor_roles[index] === "BUSINESS_APPROVER"
+        )
+      ),
+      accounting_approval_role_separated: transactions.every(item =>
+        item.approval_domains.every((domain, index) =>
+          domain !== "ACCOUNTING_REVIEW" ||
+          item.approval_actor_roles[index] === "ACCOUNTING_APPROVER"
+        )
       ),
       all_results_terminal: transactions.every(item =>
         item.result_projection.terminal === true
@@ -309,8 +361,10 @@ export async function runMyBeeM1ProductGoldenJourney({
       ),
       requester_logout_returned_to_login:
         await requester.getByRole("heading", { name: UI.loginHeading }).isVisible(),
-      approver_logout_returned_to_login:
-        await approver.getByRole("heading", { name: UI.loginHeading }).isVisible()
+      business_approver_logout_returned_to_login:
+        await businessApprover.getByRole("heading", { name: UI.loginHeading }).isVisible(),
+      accounting_approver_logout_returned_to_login:
+        await accountingApprover.getByRole("heading", { name: UI.loginHeading }).isVisible()
     };
     const evidence = {
       smoke_schema_version: MYBEE_M1_PRODUCT_GOLDEN_SCHEMA_VERSION,
@@ -320,7 +374,7 @@ export async function runMyBeeM1ProductGoldenJourney({
         browser: "chromium",
         headless: true,
         client_mode: "fetch",
-        session_count: 2
+        session_count: 3
       },
       observations: {
         transaction_count: transactions.length,
@@ -342,7 +396,11 @@ export async function runMyBeeM1ProductGoldenJourney({
     return evidence;
   } catch (error) {
     progress.record(stage, "FAIL");
-    const failedPage = stage.startsWith("approver") ? approverPage : requesterPage;
+    const failedPage = stage.startsWith("business_approver")
+      ? businessApproverPage
+      : stage.startsWith("accounting_approver")
+        ? accountingApproverPage
+        : requesterPage;
     if (failedPage) {
       try {
         await captures.capture(failedPage, `${stage}-failure`);
@@ -361,7 +419,8 @@ export async function runMyBeeM1ProductGoldenJourney({
     assertRedacted(evidence, environ);
     return evidence;
   } finally {
-    if (approverContext) await approverContext.close();
+    if (accountingApproverContext) await accountingApproverContext.close();
+    if (businessApproverContext) await businessApproverContext.close();
     if (requesterContext) await requesterContext.close();
     if (browser) await browser.close();
   }
@@ -435,7 +494,7 @@ export async function runMyBeeM1ProductPostRestartRecovery({
 
 async function driveApprovalsUntilResult({
   requester,
-  approver,
+  approvers,
   interactionId,
   actionTimeout,
   resultTimeout,
@@ -445,6 +504,7 @@ async function driveApprovalsUntilResult({
 }) {
   const deadline = Date.now() + resultTimeout;
   const approvalDomains = [];
+  const approvalActorRoles = [];
   const replayStatuses = [];
   const decidedGateIds = new Set();
   let pollCount = 0;
@@ -458,34 +518,29 @@ async function driveApprovalsUntilResult({
         approval_count: approvalDomains.length,
         pending_gate_count: 0
       });
-      return { ...current, approvalDomains, replayStatuses };
+      return { ...current, approvalDomains, approvalActorRoles, replayStatuses };
     }
-    const gates = await browserJson(approver, "/ae-api/api/v1/approval-gates?limit=100");
-    if (gates.status !== 200) {
-      throw new Error(apiFailureCode(gates, `ApprovalGateListStatus${gates.status}`));
-    }
-    const pending = (gates.payload?.gates || []).filter(
-      item => item.state === "PENDING" && !decidedGateIds.has(item.gate_id)
-    );
+    const pending = await pendingApprovalGates(approvers, decidedGateIds);
     if (pending.length > 1) throw new Error("ApprovalGateAmbiguous");
     if (pending.length === 1) {
-      const gate = pending[0];
+      const { gate, role, page } = pending[0];
       onProgress({
         poll_count: pollCount,
         approval_count: approvalDomains.length,
         pending_gate_count: 1
       });
       const decision = await decideGateInUi(
-        approver,
+        page,
         gate,
         actionTimeout,
         `M1 product acceptance ${transactionIndex}`
       );
       decidedGateIds.add(gate.gate_id);
       approvalDomains.push(gate.approval_domain);
+      approvalActorRoles.push(role);
       replayStatuses.push(decision.replayStatus);
       await captures.capture(
-        approver,
+        page,
         `transaction-${transactionIndex}-approval-${approvalDomains.length}-${gate.approval_domain}`
       );
       onProgress({
@@ -506,6 +561,26 @@ async function driveApprovalsUntilResult({
     await requester.waitForTimeout(500);
   }
   throw new Error("ProductResultTimeout");
+}
+
+export async function pendingApprovalGates(approvers, decidedGateIds = new Set()) {
+  const responses = await Promise.all(
+    approvers.map(async ({ role, page }) => ({
+      role,
+      page,
+      response: await browserJson(page, "/ae-api/api/v1/approval-gates?limit=100")
+    }))
+  );
+  return responses.flatMap(({ role, page, response }) => {
+    if (response.status !== 200) {
+      throw new Error(
+        apiFailureCode(response, `ApprovalGateListStatus${response.status}`)
+      );
+    }
+    return (response.payload?.gates || [])
+      .filter(item => item.state === "PENDING" && !decidedGateIds.has(item.gate_id))
+      .map(gate => ({ role, page, gate }));
+  });
 }
 
 async function decideGateInUi(page, gate, timeout, comment) {
