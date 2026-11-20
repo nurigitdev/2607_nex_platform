@@ -301,7 +301,11 @@ class M1InstalledSkillRuntime:
         context: Any,
         dependencies: LocalSkillExecutorDependencies,
     ) -> P5ExecutorOutcome:
-        selection = self._selection(context)
+        selection = _read_stage(
+            "ae.product_m1_capability_selection_failed",
+            "Product capability selection failed.",
+            lambda: self._selection(context),
+        )
         if selection.operation_adapter.operation_semantics == "READ":
             return self._execute_read(context, dependencies, selection)
         writer = self._writers.get(selection.capability.capability_id)
@@ -362,23 +366,35 @@ class M1InstalledSkillRuntime:
                 subject_id=persisted["principal_id"],
             ),
         )
-        required_scope = str(
-            selection.verified_skill.skill.required_tools[0].required_scope
+        required_scope = _read_stage(
+            "ae.product_m1_read_scope_contract_failed",
+            "Product READ scope contract resolution failed.",
+            lambda: str(
+                selection.verified_skill.skill.required_tools[0].required_scope
+            ),
         )
         if required_scope not in authorization.get("scopes", ()):
             raise _worker_error("OA denied the product READ scope.")
-        inputs = _compiled_inputs(context)
-        context_projection = _context_projection(
-            persisted=persisted,
-            principal_document={
-                **principal_document(
-                    tenant_id=context.job["tenant_id"],
-                    principal_id=persisted["principal_id"],
-                    authorization=authorization,
-                ),
-                "on_behalf_of": None,
-            },
-            authorization=authorization,
+        inputs = _read_stage(
+            "ae.product_m1_read_input_resolution_failed",
+            "Product READ input resolution failed.",
+            lambda: _compiled_inputs(context),
+        )
+        context_projection = _read_stage(
+            "ae.product_m1_read_context_projection_failed",
+            "Product READ context projection failed.",
+            lambda: _context_projection(
+                persisted=persisted,
+                principal_document={
+                    **principal_document(
+                        tenant_id=context.job["tenant_id"],
+                        principal_id=persisted["principal_id"],
+                        authorization=authorization,
+                    ),
+                    "on_behalf_of": None,
+                },
+                authorization=authorization,
+            ),
         )
         adapters = _read_stage(
             "ae.product_m1_read_adapter_composition_failed",

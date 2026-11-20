@@ -464,8 +464,10 @@ def test_installed_runtime_rejects_cross_binding_and_unknown_capability() -> Non
 
     context = _read_context(runtime)
     context.step["required_capability"] = "UNKNOWN.CAPABILITY.GET"
-    with pytest.raises(Exception, match="outside the verified product release"):
+    with pytest.raises(P5StepExecutorError) as captured:
         runtime.initial(context, runtime.dependencies)
+    assert captured.value.error_code == "PRODUCT_SKILL_CAPABILITY_NOT_ADMITTED"
+    assert captured.value.detail == "Product capability selection failed."
 
 
 def test_installed_runtime_rejects_missing_handlers_and_invalid_read_results(

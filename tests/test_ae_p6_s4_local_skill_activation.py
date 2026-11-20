@@ -500,3 +500,20 @@ def test_local_skill_executor_rejects_invalid_handler_outcome() -> None:
     )
     with pytest.raises(P5StepExecutorError, match="invalid outcome"):
         executor.execute(_context())
+
+
+def test_local_skill_executor_bounds_unexpected_handler_failure() -> None:
+    executor = P6LocalSkillExecutor(
+        dependencies=_dependencies(),
+        handler=lambda _context, _dependencies: (_ for _ in ()).throw(
+            RuntimeError("private LOCAL_SKILL failure detail")
+        ),
+    )
+
+    with pytest.raises(P5StepExecutorError) as captured:
+        executor.execute(_context())
+
+    assert captured.value.error_code == "ae.local_skill_handler_failed"
+    assert captured.value.retryable is False
+    assert captured.value.detail == "LOCAL_SKILL handler failed."
+    assert "private" not in str(captured.value)
