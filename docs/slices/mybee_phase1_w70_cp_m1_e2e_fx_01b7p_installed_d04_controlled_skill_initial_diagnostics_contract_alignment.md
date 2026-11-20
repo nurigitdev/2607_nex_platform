@@ -3,7 +3,7 @@
 ## Status
 
 - Date: `2026-11-20`
-- Status: `IN PROGRESS`
+- Status: `COMPLETE`
 - Parent boundary: `CP-M1-E2E-FX-01B.7`
 - Predecessor: `CP-M1-E2E-FX-01B.7O`
 - Database migration: none
@@ -101,7 +101,7 @@ attempted.
   planning, signed Skill validation, command construction, OpenAPI, and EOS
   posting admission share one schema identity.
 
-## Verification In Progress
+## Verification
 
 - Focused Product runtime, coordinator, planning, deployment, and historical
   compatibility regression: `451 passed, 1 skipped`.
@@ -119,13 +119,38 @@ attempted.
   approved/consumed; the prior suspension blocker is closed. The downstream
   schema mismatch was typed as `eos.write_not_committed`, and the isolated
   Compose/PostgreSQL run was cleaned without residue.
-- Remaining exit work: exact-head OCI rebuild for release v3, DGX preflight,
-  installed protected replay, and eight-database/Compose zero-residue check.
+- Exact-head OCI evidence for Git revision `2f68c72e3d80`:
+  - canonical nine-image release set: `PASS`, release-set digest
+    `sha256:09b1ea91cd8383569f3acaf87b379d08921c48693606ce9ee914ab49a271d04d`;
+  - AE product runtime image:
+    `sha256:4acc4ece1ec27d8d913e93a5efb8eec079bfd350851d11a844dae30facd4a04d`;
+  - packaged product admission proves signed release v3, Skill `1.0.2`, Tool
+    `1.0.0`, immediate rollback to release v2, non-root execution, and no
+    registry push or secret inclusion.
+- Protected DGX preflight: `PASS`, `3/3` for Qwen3-Embedding-4B,
+  Qwen3-Reranker-4B, and Qwen3.5-9B with immutable model revisions.
+- Exact-head installed protected replay against eight isolated PostgreSQL
+  schemas, OpenBao, RustFS, Compose, DGX, and Playwright proved:
+  - three approval boundaries were created and consumed;
+  - D12 `E1` and D04 `E2` both reached `SUCCEEDED`;
+  - the VoucherCandidate reached `POSTED`;
+  - immutable Journal `M1A7-2026-000001` was created with two lines;
+  - the canonical command reached EOS rather than failing before HTTP
+    execution.
+- The replay was intentionally stopped after this Slice boundary because the
+  completed steps did not advance to `RESULT_VERIFY` and IA AgentResult
+  publication. That is a distinct downstream settlement/finalization boundary,
+  not a D04 controlled-Skill admission or EOS posting failure.
+- Cleanup evidence: every Compose container stopped and all eight isolated
+  schemas were removed; AE and EOS residue queries returned no rows.
+- Final AE Slice Gate: `PASS`, `6,896 passed`, `53 skipped`, statement
+  `96.46%`, branch `94.71%`, and all six contract/audit commands passed.
 
 ## Exit Rule
 
-The Slice closes only when focused regression and the AE Slice Gate pass, an
-exact-head installed replay enters the D04 NSL approval wait with separate
-requester and accounting approver authority, and any later failure is preserved
-as a distinct downstream typed boundary. All Compose and isolated PostgreSQL
-state must be removed after the protected run.
+The exit rule is satisfied. Focused regression and the AE Slice Gate pass; the
+exact-head installed replay entered and consumed the D04 NSL approval wait with
+separate requester and accounting approver authority; the controlled WRITE
+posted an immutable EOS Journal; and the later result-finalization gap is
+isolated as a distinct downstream boundary. All Compose and isolated
+PostgreSQL state was removed after the protected run.

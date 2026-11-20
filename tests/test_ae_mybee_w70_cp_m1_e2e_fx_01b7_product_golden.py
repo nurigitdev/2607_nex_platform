@@ -22,7 +22,7 @@ def test_product_golden_source_admission_uses_installed_m1_registry() -> None:
     assert result["status"] == "SOURCE_ADMITTED"
     assert result["executed"] is False
     assert result["product_capability_id"] == "FINANCE.VOUCHER.APPROVE_AND_POST"
-    assert result["product_capability_version"] == "1.0.1"
+    assert result["product_capability_version"] == "1.0.2"
     assert result["platform_integrated"] is True
     assert result["runtime_transition_fixture"] is False
     assert result["manual_domain_transition"] is False
