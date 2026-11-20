@@ -71,6 +71,10 @@ DEFAULT_BASELINE_PATH = (
 PROFILE_POLICY_REF = "policy://nex-platform/project-agent-lifecycle/v1"
 M1_BUSINESS_APPROVAL_POSITION_TYPE = "TEAM_LEAD"
 M1_ACCOUNTING_APPROVAL_POSITION_TYPE = "GROUP_LEAD"
+M1_APPROVAL_ORG_UNIT_KEYS = {
+    "business": "org-business",
+    "accounting": "org-accounting",
+}
 HASH_A = "sha256:" + "a" * 64
 HASH_B = "sha256:" + "b" * 64
 HASH_C = "sha256:" + "c" * 64
@@ -457,7 +461,7 @@ def _seed_eos(engine: Engine, baseline: Mapping[str, Any]) -> dict[str, int]:
         organization.create_org_unit(
             OrgUnitInput(
                 tenant_id,
-                _id(f"org-{key}"),
+                _approval_org_unit_id(key),
                 code,
                 name,
                 "TEAM",
@@ -469,7 +473,7 @@ def _seed_eos(engine: Engine, baseline: Mapping[str, Any]) -> dict[str, int]:
                 tenant_id,
                 _id(f"position-{key}"),
                 position_type,
-                _id(f"org-{key}"),
+                _approval_org_unit_id(key),
             )
         )
         organization.assign_position(
@@ -957,7 +961,7 @@ def _seed_allocation_plan(
                 write_intent_hash=HASH_A,
                 requester_ref_type="oa.user",
                 requester_id=baseline["principals"]["requester"]["subject_id"],
-                org_unit_id=_id("org"),
+                org_unit_id=_approval_org_unit_id("accounting"),
                 project_id=projects[0]["project_id"],
                 state="APPROVED",
                 active_stage_order=None,
@@ -1052,6 +1056,16 @@ def _id(name: str) -> str:
             f"https://nex-platform.local/acceptance/m1/{name}",
         )
     )
+
+
+def _approval_org_unit_id(authority_kind: str) -> str:
+    try:
+        key = M1_APPROVAL_ORG_UNIT_KEYS[authority_kind]
+    except KeyError as exc:
+        raise M1ProductAcceptanceSupportError(
+            "M1 approval authority kind is not registered"
+        ) from exc
+    return _id(key)
 
 
 def _project_agent_id(tenant_id: str, project_id: str) -> str:

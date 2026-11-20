@@ -59,6 +59,20 @@ def test_product_acceptance_approver_roles_match_separate_eos_policy_positions()
     assert "M1_ACCOUNTING_APPROVAL_POSITION_TYPE" in source
 
 
+def test_product_acceptance_approval_org_units_are_role_bound_and_fail_closed() -> None:
+    business_org_unit_id = support._approval_org_unit_id("business")
+    accounting_org_unit_id = support._approval_org_unit_id("accounting")
+
+    assert business_org_unit_id == support._id("org-business")
+    assert accounting_org_unit_id == support._id("org-accounting")
+    assert business_org_unit_id != accounting_org_unit_id
+    with pytest.raises(
+        support.M1ProductAcceptanceSupportError,
+        match="approval authority kind is not registered",
+    ):
+        support._approval_org_unit_id("unregistered")
+
+
 def test_product_golden_projects_structured_cleanup_failure_evidence() -> None:
     def runner(_env, *, root):
         assert root == ROOT
