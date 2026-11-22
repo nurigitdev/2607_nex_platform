@@ -1,0 +1,174 @@
+{
+  "schema_version": "mybee_cp_m1_e2e_fx_01_closure_evidence.v1",
+  "slice_id": "CP-M1-E2E-FX-01",
+  "status": "PASS",
+  "milestone_scope": "M1_CHECKPOINT_ONLY",
+  "recorded_date": "2026-11-22",
+  "runtime_source_revision": "8f59e29ba0a04fa372c14e1df0c28cfc37331594",
+  "evidence": {
+    "protected_journey": {
+      "path": "reports/deployment/mybee-w70-cp-m1-01b7q-product-golden-journey.json",
+      "sha256": "sha256:87d28b894f3bb5cabc14dfb4d77a0b922f322187be4735f160a917f196a815ab"
+    },
+    "canonical_image_build": {
+      "path": "reports/deployment/canonical-platform-oci-image-build.json",
+      "sha256": "sha256:3b8752c06fd2624661ef25bb7b6ad0e6fa15498171754fd0effded16ff980460"
+    },
+    "ae_product_runtime_image": {
+      "path": "reports/deployment/canonical-platform-ae-runtime-image.json",
+      "sha256": "sha256:c874a9b3baa85983046f84586e82d5ef95f0962048e262f5febd191bbc5274ab"
+    },
+    "ae_slice_gate": {
+      "path": "reports/quality/mybee-w70-cp-m1-01b7q-ae-slice-gate.json",
+      "sha256": "sha256:49f16eaa61452bacc958435ef15be2081a7cb1b159d76e46ab74552569170289"
+    }
+  },
+  "checkpoints": [
+    {
+      "id": "CP-M1-PA-WORK",
+      "status": "PASS",
+      "evidence_refs": [
+        "docs/slices/mybee_phase1_w70_cp_m1_e2e_fx_01b6b5b5_protected_postgres_gate.md",
+        "docs/slices/mybee_phase1_w70_cp_m1_e2e_fx_01b7q_result_finalization_wa_settlement.md"
+      ]
+    },
+    {
+      "id": "CP-M1-BUSINESS-PROOF",
+      "status": "PASS",
+      "evidence_refs": [
+        "docs/slices/mybee_phase1_s2_03_accounting_human_sod.md",
+        "docs/slices/mybee_phase1_w70_cp_m1_e2e_fx_01b7m_accounting_approval_sod_principal_role_separation_alignment.md",
+        "docs/slices/mybee_phase1_w70_cp_m1_e2e_fx_01b7q_result_finalization_wa_settlement.md"
+      ]
+    },
+    {
+      "id": "CP-M1-JOURNAL",
+      "status": "PASS",
+      "evidence_refs": [
+        "docs/slices/mybee_phase1_w40_s4_04_cross_service_postgres_full_gate.md",
+        "docs/slices/mybee_phase1_w70_cp_m1_e2e_fx_01b7p_installed_d04_controlled_skill_initial_diagnostics_contract_alignment.md",
+        "docs/slices/mybee_phase1_w70_cp_m1_e2e_fx_01b7q_result_finalization_wa_settlement.md"
+      ]
+    },
+    {
+      "id": "CP-M1-PNL",
+      "status": "PASS",
+      "evidence_refs": [
+        "docs/slices/mybee_phase1_w60_s7_03a_protected_e2e_closure.md",
+        "docs/slices/mybee_phase1_w70_cp_m1_e2e_fx_01b7q_result_finalization_wa_settlement.md"
+      ]
+    },
+    {
+      "id": "CP-M1-S8-02",
+      "status": "PASS",
+      "evidence_refs": [
+        "docs/slices/mybee_phase1_cp_m1_s8_02_journal_controlled_write_checkpoint.md",
+        "docs/slices/mybee_phase1_w70_cp_m1_e2e_fx_01b7q_result_finalization_wa_settlement.md"
+      ]
+    },
+    {
+      "id": "CP-M1-MB8-01",
+      "status": "PASS",
+      "evidence_refs": [
+        "docs/slices/mybee_phase1_cp_m1_mb8_01_signed_skill_pa_orchestration.md",
+        "docs/slices/mybee_phase1_w70_s8_01e_foundation_gate.md",
+        "docs/slices/mybee_phase1_w70_cp_m1_e2e_fx_01b7q_result_finalization_wa_settlement.md"
+      ]
+    },
+    {
+      "id": "CP-M1-E2E-FX-01",
+      "status": "PASS",
+      "evidence_refs": [
+        "docs/slices/mybee_phase1_w70_cp_m1_e2e_fx_01b7q_result_finalization_wa_settlement.md"
+      ]
+    }
+  ],
+  "execution": {
+    "platform_integrated": true,
+    "runtime_transition_fixture": false,
+    "manual_domain_transition": false,
+    "direct_runtime_transition_sql": false,
+    "actual_postgres": true,
+    "database_count": 8,
+    "migration_count": 210,
+    "actual_openbao": true,
+    "actual_rustfs": true,
+    "actual_playwright": true,
+    "actual_remote_generation": true,
+    "provider": {
+      "model": "Qwen3.5-9B",
+      "revision": "hf:c202236235762e1c871ad0ccb60c8ee5ba337b9a",
+      "deployment_id": "dgx-qwen3-5-9b-9111",
+      "reasoning_mode": "disabled"
+    },
+    "non_identical_transaction_count": 2,
+    "distinct_human_principal_count": 3,
+    "approval_decision_count": 6,
+    "voucher_candidate_count": 2,
+    "immutable_journal_count": 2,
+    "allocation_batch_count": 2,
+    "allocation_line_count": 4,
+    "pnl_projection_count": 4,
+    "agent_result_count": 2,
+    "acknowledged_delivery_count": 2,
+    "wa_successful_job_count": 4,
+    "wa_work_asset_count": 4,
+    "first_batch": {
+      "allocated_total": "13502000.0000",
+      "project_amounts": [
+        "5400800.0000",
+        "8101200.0000"
+      ],
+      "unallocated_total": "0.0000"
+    }
+  },
+  "restart_acceptance": {
+    "authoritative_result_recovered": true,
+    "result_hash_stable": true,
+    "business_refs_stable": true,
+    "exactly_once_journal_count": 2,
+    "exactly_once_allocation_batch_count": 2,
+    "exactly_once_agent_result_count": 2
+  },
+  "release_set": {
+    "image_count": 9,
+    "manifest_count": 9,
+    "non_root_image_count": 9,
+    "background_check_count": 12,
+    "release_set_digest": "sha256:fd1f2367cbef88c09504b539e300e4cf8a048a013850a89b832938960f215507",
+    "ae_product_runtime_image_id": "sha256:1cfe4625f2b3370aa4789415ffcfaab572ea573c72e878a63fa0b690bae89aab",
+    "registry_push_performed": false
+  },
+  "quality": {
+    "ae_test_passed": 6914,
+    "ae_protected_test_skipped": 53,
+    "ae_statement_coverage_percent": 96.45558425841887,
+    "ae_branch_coverage_percent": 94.68648807771564,
+    "contract_schema_count": 274,
+    "contract_example_count": 320,
+    "contract_negative_example_count": 260,
+    "openapi_document_count": 10
+  },
+  "cleanup": {
+    "isolated_schema_count_dropped": 8,
+    "residue_service_ids": [],
+    "compose_residue": false,
+    "zero_residue": true
+  },
+  "deferred_to_m2": [
+    "S5-01",
+    "S5-02",
+    "S5-03",
+    "S5-04",
+    "S6-04",
+    "S7-04",
+    "S8-02_FULL",
+    "S8-03_FULL",
+    "S8-04",
+    "S8-05",
+    "MB8-01_FULL",
+    "MB8-02"
+  ],
+  "secret_included": false,
+  "token_value_included": false
+}

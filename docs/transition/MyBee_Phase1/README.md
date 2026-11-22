@@ -610,6 +610,16 @@ restart-safe exactly-once evidence, live Qwen3.5-9B generation, actual eight
 PostgreSQL databases, authenticated Playwright, and zero residue. The parent
 `CP-M1-E2E-FX-01B.7` boundary is closed.
 
+The original top-level `CP-M1-E2E-FX-01` M1 checkpoint is closed by
+[`mybee_phase1_w70_cp_m1_e2e_fx_01_closure.md`](../../slices/mybee_phase1_w70_cp_m1_e2e_fx_01_closure.md)
+and the machine-readable redacted evidence projection at
+[`cp_m1_e2e_fx_01_evidence.v1.json`](../../mybee_phase1/closure/cp_m1_e2e_fx_01_evidence.v1.json).
+It adopts the exact-source `.01B.7Q` live evidence, reconciles all seven M1
+checkpoints, and explicitly retains full S8-02, S8-03, MB8-01, and formal
+release obligations for M2. No product runtime source, migration, or provider
+call is added by the closure. The next W70 boundary is `W70-M1-GATE-01`, the
+exact-head Repository Full Gate and release-set reconciliation.
+
 `CP-M1-E2E-FX-01B.6A.1` implementation evidence is recorded in
 [`mybee_phase1_w70_cp_m1_e2e_fx_01b6a1_refresh_contract_source_resolver.md`](../../slices/mybee_phase1_w70_cp_m1_e2e_fx_01b6a1_refresh_contract_source_resolver.md).
 It closes the canonical protected contract and the mutation-free EOS source
