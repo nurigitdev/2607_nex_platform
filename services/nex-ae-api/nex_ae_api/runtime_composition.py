@@ -6,7 +6,11 @@ from datetime import UTC, datetime
 from types import MappingProxyType
 from typing import Any
 
-from nex_runtime import WorkerHeartbeatEmitter
+from nex_runtime import (
+    DiagnosticEvidenceRecorder,
+    WorkerHeartbeatEmitter,
+    diagnostic_evidence_recorder_from_environment,
+)
 from sqlalchemy.orm import Session, sessionmaker
 
 from nex_ae_api.agent_runtime_dispatcher import (
@@ -129,16 +133,47 @@ class InstalledStepAssignmentHandler:
         engine: SqlAlchemyMultiStepEngine,
         *,
         clock: Callable[[], str] | None = None,
+        diagnostic_evidence: DiagnosticEvidenceRecorder | None = None,
     ) -> None:
         self._worker = worker
         self._engine = engine
         self._clock = clock or _utc_now
+        self._diagnostic_evidence = diagnostic_evidence
 
     def __call__(self, assignment: AgentRuntimeAssignment) -> Mapping[str, Any]:
-        execution = self._worker.run_claim(
-            tenant_id=assignment.tenant_id,
-            claim=assignment.claim,
-        )
+        if self._diagnostic_evidence is not None:
+            self._diagnostic_evidence.emit(
+                "runtime.step.started",
+                {
+                    "assignment_kind": assignment.assignment_kind,
+                    "executor_kind": assignment.executor_kind,
+                    "backend_profile": assignment.backend_profile,
+                    "step_input": {"runtime_job": assignment.claim.job},
+                },
+                agent_execution_id=str(assignment.claim.job.get("execution_id") or "")
+                or None,
+                runtime_job_id=assignment.runtime_job_id,
+            )
+        try:
+            execution = self._worker.run_claim(
+                tenant_id=assignment.tenant_id,
+                claim=assignment.claim,
+            )
+        except Exception as exc:
+            if self._diagnostic_evidence is not None:
+                self._diagnostic_evidence.emit(
+                    "runtime.step.failed",
+                    {
+                        "step_input": {"runtime_job": assignment.claim.job},
+                        "failure_type": type(exc).__name__,
+                    },
+                    agent_execution_id=str(
+                        assignment.claim.job.get("execution_id") or ""
+                    )
+                    or None,
+                    runtime_job_id=assignment.runtime_job_id,
+                )
+            raise
         scheduled = None
         if execution.disposition != "WAITING":
             scheduled = self._engine.schedule_next(
@@ -148,7 +183,7 @@ class InstalledStepAssignmentHandler:
             )
         step_result = execution.step_result or {}
         step = execution.step or {}
-        return {
+        result = {
             "schema_version": AE_INSTALLED_STEP_ASSIGNMENT_SCHEMA_VERSION,
             "runtime_job_id": assignment.runtime_job_id,
             "executable_step_id": step.get("executable_step_id"),
@@ -159,6 +194,25 @@ class InstalledStepAssignmentHandler:
             "successor_scheduled": scheduled is not None,
             "content_included": False,
         }
+        if self._diagnostic_evidence is not None:
+            self._diagnostic_evidence.emit(
+                "runtime.step.completed",
+                {
+                    "step_input": {
+                        "runtime_job": assignment.claim.job,
+                        "executable_step": step,
+                    },
+                    "step_output": {
+                        "step_result": step_result,
+                        "runtime_job": execution.runtime_job,
+                        "assignment_result": result,
+                    },
+                },
+                agent_execution_id=str(assignment.claim.job.get("execution_id") or "")
+                or None,
+                runtime_job_id=assignment.runtime_job_id,
+            )
+        return result
 
 
 @dataclass(frozen=True)
@@ -276,7 +330,15 @@ def build_installed_runtime_composition(
         executors=executor_profile.registry,
         continuation_source=continuation_source,
     )
-    step_handler = InstalledStepAssignmentHandler(worker, engine)
+    step_handler = InstalledStepAssignmentHandler(
+        worker,
+        engine,
+        diagnostic_evidence=diagnostic_evidence_recorder_from_environment(
+            service_id="nex-ae-api",
+            component="agent-runtime-worker",
+            environ=environ,
+        ),
+    )
     handlers = {"EXECUTABLE_STEP": step_handler}
     if product_planning is not None and product_planning.assignment_handler is not None:
         handlers["PRODUCT_COORDINATOR"] = product_planning.assignment_handler

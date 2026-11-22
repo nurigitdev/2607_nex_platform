@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -10,6 +11,7 @@ import subprocess
 import sys
 import time
 from collections.abc import Mapping, Sequence
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -45,6 +47,10 @@ from nex_ae_api.product_capabilities import (
 from nex_runtime.current_platform_installation import CURRENT_JOURNEY_WORKERS
 from nex_runtime.database import psycopg_database_url, sqlalchemy_database_url
 from nex_runtime.demo_database import resolve_current_platform_database_targets
+from nex_runtime.diagnostic_evidence import (
+    DiagnosticEvidencePolicy,
+    write_diagnostic_evidence_manifest,
+)
 from run_migrations import run_service_migrations
 
 EXECUTION_ENV = "NEX_MYBEE_M1_PRODUCT_GOLDEN_LIVE"
@@ -60,6 +66,9 @@ PLAYWRIGHT_RUNNER = (
     ROOT / "apps/nex-ae-web/scripts/runMyBeeW70CpM1ProductGoldenJourney.mjs"
 )
 SCREENSHOT_DIR = ROOT / "reports/deployment/mybee-w70-cp-m1-product-golden-screens"
+DEFAULT_DIAGNOSTIC_EVIDENCE_ROOT = (
+    ROOT / "reports/deployment/mybee-w70-m1-diagnostic-evidence"
+)
 MODEL_PROFILE = "general-llm-default"
 MODEL_REF_ENV = "NEX_MO_VLLM_MODEL"
 MODEL_REVISION_ENV = "NEX_MO_VLLM_MODEL_REVISION"
@@ -81,6 +90,25 @@ GOLDEN_JOURNEY_EVIDENCE_CONTRACT = {
     "manual_domain_transition": False,
     "installed_process_continuity": True,
 }
+DIAGNOSTIC_SERVICE_IDS = (
+    "openbao",
+    "traefik",
+    "rustfs",
+    "nex-oa",
+    "nex-ag",
+    "nex-ae-api",
+    "nex-cx",
+    "nex-mo",
+    "nex-ae-web",
+    "nex-wa",
+    "nex-wa-evidence-consumer",
+    "nex-wc",
+    "nex-eos",
+    "nex-ae-agent-runtime-worker",
+    "nex-wc-event-delivery-worker",
+    "nex-wc-assignment-dispatch-worker",
+    "nex-eos-outbox-publisher",
+)
 
 
 class M1ProductGoldenJourneyError(RuntimeError):
@@ -213,12 +241,27 @@ def execute_m1_product_golden_journey(
         accounting_approver_password,
         *prompts,
     }
+    diagnostic_secret_values = {
+        requester_password,
+        business_approver_password,
+        accounting_approver_password,
+    }
+    diagnostic_session_id = (
+        "mybee-w70-m1-"
+        + datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+        + "-"
+        + secrets.token_hex(4)
+    )
     live_state: dict[str, Any] = {}
     _prepare_screenshot_directory(SCREENSHOT_DIR)
 
     runtime_env = {
         **env,
         "NEX_AE_WEB_TENANT_ID": str(baseline["tenant"]["tenant_id"]),
+        "NEX_DIAGNOSTIC_EVIDENCE_MODE": "LIVE_JOURNEY",
+        "NEX_DIAGNOSTIC_EVIDENCE_SESSION_ID": diagnostic_session_id,
+        "NEX_DIAGNOSTIC_EVIDENCE_INCLUDE_RAW": "true",
+        "NEX_DIAGNOSTIC_EVIDENCE_RETENTION_DAYS": "7",
         "NEX_CANONICAL_PLATFORM_SEMANTIC_CALIBRATION_POLICIES_JSON": (
             _semantic_calibration_json(model_ref=model_revision)
         ),
@@ -397,6 +440,14 @@ def execute_m1_product_golden_journey(
             "secret_included": False,
         }
 
+    def finalization_hook(**values: Any) -> Mapping[str, Any]:
+        return _collect_live_journey_diagnostics(
+            values["runtime_env"],
+            root=values["root"],
+            session_id=diagnostic_session_id,
+            forbidden_values=diagnostic_secret_values,
+        )
+
     execution_error: Exception | None = None
     result: dict[str, Any] | None = None
     try:
@@ -421,6 +472,7 @@ def execute_m1_product_golden_journey(
                 "nex-wa-evidence-consumer",
             ),
             post_restart_hook=post_restart_hook,
+            finalization_hook=finalization_hook,
             worker_inventory=CURRENT_JOURNEY_WORKERS,
         )
         result = {
@@ -995,7 +1047,11 @@ def _collect_ae_runtime_logs(env: Mapping[str, str], *, root: Path) -> tuple[str
 
 
 def _collect_compose_service_logs(
-    env: Mapping[str, str], *, root: Path, service: str
+    env: Mapping[str, str],
+    *,
+    root: Path,
+    service: str,
+    tail_lines: int | None = 2000,
 ) -> tuple[str, int]:
     lookup = subprocess.run(
         (
@@ -1023,8 +1079,13 @@ def _collect_compose_service_logs(
     ]
     if not container_ids:
         return lookup.stdout, lookup.returncode
+    log_command = (
+        ("docker", "logs", container_ids[0])
+        if tail_lines is None
+        else ("docker", "logs", "--tail", str(tail_lines), container_ids[0])
+    )
     completed = subprocess.run(
-        ("docker", "logs", "--tail", "2000", container_ids[0]),
+        log_command,
         cwd=root,
         env=dict(env),
         text=True,
@@ -1034,6 +1095,199 @@ def _collect_compose_service_logs(
         timeout=60,
     )
     return completed.stdout, completed.returncode
+
+
+def _collect_live_journey_diagnostics(
+    env: Mapping[str, str],
+    *,
+    root: Path,
+    session_id: str,
+    forbidden_values: set[str] | frozenset[str] = frozenset(),
+    evidence_root: Path | None = None,
+) -> dict[str, Any]:
+    evidence_root = evidence_root or (
+        root / DEFAULT_DIAGNOSTIC_EVIDENCE_ROOT.relative_to(ROOT)
+    )
+    session_root = evidence_root / session_id
+    session_root.mkdir(parents=True, exist_ok=True, mode=0o700)
+    os.chmod(evidence_root, 0o700)
+    os.chmod(session_root, 0o700)
+
+    copied = False
+    ae_container = _compose_container_id(env, root=root, service="nex-ae-api")
+    if ae_container:
+        copied_result = subprocess.run(
+            (
+                "docker",
+                "cp",
+                f"{ae_container}:/var/lib/nex-platform/diagnostics/{session_id}/.",
+                str(session_root),
+            ),
+            cwd=root,
+            env=dict(env),
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            check=False,
+            timeout=60,
+        )
+        copied = copied_result.returncode == 0
+
+    docker_log_root = session_root / "docker"
+    docker_log_root.mkdir(exist_ok=True, mode=0o700)
+    os.chmod(docker_log_root, 0o700)
+    service_log_status: dict[str, int] = {}
+    redacted_value_count = 0
+    for service in DIAGNOSTIC_SERVICE_IDS:
+        output, returncode = _collect_compose_service_logs(
+            env,
+            root=root,
+            service=service,
+            tail_lines=None,
+        )
+        for value in sorted(forbidden_values, key=len, reverse=True):
+            if value and value in output:
+                redacted_value_count += output.count(value)
+                output = output.replace(value, "<redacted>")
+        target = docker_log_root / f"{service}.log"
+        target.write_text(output, encoding="utf-8")
+        os.chmod(target, 0o600)
+        service_log_status[service] = returncode
+
+    policy = DiagnosticEvidencePolicy.from_environment(
+        {
+            "NEX_DIAGNOSTIC_EVIDENCE_MODE": "LIVE_JOURNEY",
+            "NEX_DIAGNOSTIC_EVIDENCE_ROOT": str(evidence_root),
+            "NEX_DIAGNOSTIC_EVIDENCE_SESSION_ID": session_id,
+            "NEX_DIAGNOSTIC_EVIDENCE_INCLUDE_RAW": "true",
+            "NEX_DIAGNOSTIC_EVIDENCE_RETENTION_DAYS": "7",
+        }
+    )
+    manifest = write_diagnostic_evidence_manifest(
+        policy,
+        metadata={
+            "git_commit": _git_revision(root),
+            "compose_digest": _compose_source_digest(root),
+            "docker_log_service_count": len(DIAGNOSTIC_SERVICE_IDS),
+            "container_evidence_copied": copied,
+            "redacted_secret_value_count": redacted_value_count,
+        },
+    )
+    mandatory_agent_evidence = {
+        name: _diagnostic_evidence_contains_key(session_root, name)
+        for name in ("raw_prompt", "agent_plan", "executable_plan")
+    }
+    if not all(mandatory_agent_evidence.values()):
+        missing = sorted(
+            name for name, present in mandatory_agent_evidence.items() if not present
+        )
+        raise M1ProductGoldenJourneyError(
+            "live diagnostic evidence omitted mandatory Agent data: "
+            + ",".join(missing)
+        )
+    return {
+        "status": "PASS",
+        "session_id": session_id,
+        "relative_path": session_root.relative_to(root).as_posix(),
+        "manifest_sha256": manifest["manifest_sha256"],
+        "evidence_file_count": len(manifest["files"]),
+        "raw_prompt_included": mandatory_agent_evidence["raw_prompt"],
+        "agent_plan_included": mandatory_agent_evidence["agent_plan"],
+        "executable_plan_included": mandatory_agent_evidence["executable_plan"],
+        "secrets_forbidden": True,
+        "redacted_secret_value_count": redacted_value_count,
+        "service_log_status": service_log_status,
+    }
+
+
+def _diagnostic_evidence_contains_key(session_root: Path, expected_key: str) -> bool:
+    for path in session_root.glob("*.jsonl"):
+        try:
+            lines = path.read_text(encoding="utf-8").splitlines()
+        except OSError:
+            continue
+        for line in lines:
+            try:
+                payload = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if _nested_evidence_key_present(payload, expected_key):
+                return True
+    return False
+
+
+def _nested_evidence_key_present(value: object, expected_key: str) -> bool:
+    if isinstance(value, Mapping):
+        for key, child in value.items():
+            if (
+                key == expected_key
+                and child not in (None, "", "<omitted:metadata-mode>")
+                and not (
+                    isinstance(child, Mapping)
+                    and child.get("value") == "<omitted:metadata-mode>"
+                )
+            ):
+                return True
+            if _nested_evidence_key_present(child, expected_key):
+                return True
+    elif isinstance(value, list):
+        return any(_nested_evidence_key_present(child, expected_key) for child in value)
+    return False
+
+
+def _compose_container_id(
+    env: Mapping[str, str], *, root: Path, service: str
+) -> str | None:
+    completed = subprocess.run(
+        (
+            "docker",
+            "ps",
+            "--filter",
+            f"label=com.docker.compose.project={installed.PROJECT_NAME}",
+            "--filter",
+            f"label=com.docker.compose.service={service}",
+            "--format",
+            "{{.ID}}",
+        ),
+        cwd=root,
+        env=dict(env),
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        check=False,
+        timeout=30,
+    )
+    for line in completed.stdout.splitlines():
+        candidate = line.strip()
+        if re.fullmatch(r"[a-f0-9]{12,64}", candidate):
+            return candidate
+    return None
+
+
+def _git_revision(root: Path) -> str:
+    completed = subprocess.run(
+        ("git", "rev-parse", "HEAD"),
+        cwd=root,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        check=False,
+        timeout=30,
+    )
+    return completed.stdout.strip() if completed.returncode == 0 else "unknown"
+
+
+def _compose_source_digest(root: Path) -> str:
+    digest = hashlib.sha256()
+    for relative in (
+        "deployment/compose/s143-staging.compose.yaml",
+        "deployment/compose/s146-object-storage.override.yaml",
+        "deployment/compose/p9-wa.override.yaml",
+        "deployment/compose/canonical-platform.override.yaml",
+    ):
+        digest.update(relative.encode("utf-8"))
+        digest.update((root / relative).read_bytes())
+    return f"sha256:{digest.hexdigest()}"
 
 
 def _run_playwright(
@@ -1333,18 +1587,20 @@ def _bounded_wa_diagnostic_row(row: object) -> list[object]:
     if row is None:
         return []
     return [
-        value if isinstance(value, int) else _diagnostic_token(value)
-        for value in row
+        value if isinstance(value, int) else _diagnostic_token(value) for value in row
     ]
 
 
 def _wa_database_progress_summary(database: Mapping[str, Any]) -> str:
     counts = database.get("wa_job_status_counts")
     safe_counts = counts if isinstance(counts, Mapping) else {}
-    statuses = "|".join(
-        f"{_diagnostic_token(key)}:{_bounded_nonnegative_int(value, maximum=1000)}"
-        for key, value in sorted(safe_counts.items())
-    ) or "none"
+    statuses = (
+        "|".join(
+            f"{_diagnostic_token(key)}:{_bounded_nonnegative_int(value, maximum=1000)}"
+            for key, value in sorted(safe_counts.items())
+        )
+        or "none"
+    )
     return ",".join(
         (
             f"jobs={statuses}",

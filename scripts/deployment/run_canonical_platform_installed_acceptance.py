@@ -217,6 +217,7 @@ def execute_canonical_platform_acceptance(
     live_hook: Callable[..., Mapping[str, Any]] | None = None,
     restart_services: Sequence[str] = CURRENT_DOMAIN_PROCESSES,
     post_restart_hook: Callable[..., Mapping[str, Any]] | None = None,
+    finalization_hook: Callable[..., Mapping[str, Any]] | None = None,
     worker_inventory: Mapping[str, tuple[str, str, str]] = CURRENT_JOURNEY_WORKERS,
 ) -> dict[str, Any]:
     admitted_restart_services = tuple(dict.fromkeys(restart_services))
@@ -274,6 +275,7 @@ def execute_canonical_platform_acceptance(
     key_id: str | None = None
     created_principal_ids: tuple[str, ...] = ()
     oa_engine: Any = None
+    result: dict[str, Any] | None = None
     with TemporaryDirectory(prefix="nex-canonical-platform-s10-") as temporary:
         runtime_dir = Path(temporary) / "runtime"
         prepare_staging_runtime_directory(runtime_dir, owners=CANONICAL_PLATFORM_OWNERS)
@@ -527,6 +529,22 @@ def execute_canonical_platform_acceptance(
             _assert_redacted(result, sensitive)
             return result
         finally:
+            active_failure = sys.exc_info()[0] is not None
+            finalization_error: Exception | None = None
+            try:
+                if runtime_env is not None and finalization_hook is not None:
+                    finalization = dict(
+                        finalization_hook(
+                            runtime_env=runtime_env,
+                            root=root,
+                            runtime_dir=runtime_dir,
+                            urls=urls,
+                        )
+                    )
+                    if result is not None:
+                        result["finalization_evidence"] = finalization
+            except Exception as exc:  # noqa: BLE001 - cleanup must still run
+                finalization_error = exc
             if runtime_env is not None:
                 _compose(
                     runtime_env,
@@ -542,6 +560,8 @@ def execute_canonical_platform_acceptance(
                     created_principal_ids=created_principal_ids,
                 )
                 oa_engine.dispose()
+            if finalization_error is not None and not active_failure:
+                raise finalization_error
 
 
 def _secret_values(

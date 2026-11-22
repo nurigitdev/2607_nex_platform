@@ -1,6 +1,21 @@
 name: nex-platform-canonical
 
+x-canonical-platform-diagnostic-environment: &canonical-platform-diagnostic-environment
+  NEX_DIAGNOSTIC_EVIDENCE_MODE: ${NEX_DIAGNOSTIC_EVIDENCE_MODE:-OFF}
+  NEX_DIAGNOSTIC_EVIDENCE_ROOT: /var/lib/nex-platform/diagnostics
+  NEX_DIAGNOSTIC_EVIDENCE_SESSION_ID: ${NEX_DIAGNOSTIC_EVIDENCE_SESSION_ID:-canonical-disabled}
+  NEX_DIAGNOSTIC_EVIDENCE_INCLUDE_RAW: ${NEX_DIAGNOSTIC_EVIDENCE_INCLUDE_RAW:-false}
+  NEX_DIAGNOSTIC_EVIDENCE_RETENTION_DAYS: ${NEX_DIAGNOSTIC_EVIDENCE_RETENTION_DAYS:-7}
+
+x-canonical-platform-logging: &canonical-platform-logging
+  driver: local
+  options:
+    max-size: ${NEX_CANONICAL_LOG_MAX_SIZE:-20m}
+    max-file: ${NEX_CANONICAL_LOG_MAX_FILES:-10}
+    compress: "true"
+
 x-canonical-platform-common-environment: &canonical-platform-common-environment
+  <<: *canonical-platform-diagnostic-environment
   NEX_PROFILE: staging_live
   NEX_DEPLOYMENT_BOUNDARY: CANONICAL_PLATFORM
   NEX_PERSISTENCE_MODE: postgres
@@ -60,6 +75,7 @@ x-canonical-platform-wa-environment: &canonical-platform-wa-environment
 
 x-canonical-platform-service: &canonical-platform-service
   restart: unless-stopped
+  logging: *canonical-platform-logging
   read_only: true
   tmpfs: [/tmp]
   cap_drop: [ALL]
@@ -75,12 +91,17 @@ x-canonical-platform-service: &canonical-platform-service
       condition: service_healthy
 
 services:
+  openbao-data-init:
+    logging: *canonical-platform-logging
+
   openbao:
     restart: unless-stopped
+    logging: *canonical-platform-logging
     networks: [control, admin, identity]
 
   traefik:
     restart: unless-stopped
+    logging: *canonical-platform-logging
     volumes:
       - ${NEX_CANONICAL_PLATFORM_TRAEFIK_DYNAMIC_FILE:-../compose/traefik/canonical-platform-dynamic.yaml}:/etc/traefik/dynamic.yaml:ro
     networks:
@@ -105,10 +126,13 @@ services:
 
   rustfs:
     restart: unless-stopped
+    logging: *canonical-platform-logging
 
   nex-oa:
     restart: unless-stopped
+    logging: *canonical-platform-logging
     environment:
+      <<: *canonical-platform-diagnostic-environment
       NEX_DEPLOYMENT_BOUNDARY: CANONICAL_PLATFORM
       NEX_SERVICE_TOKEN_BOOTSTRAP_PROFILE: STARTUP_24H
       NEX_OA_SIGNING_PROVIDER: OPENBAO_TRANSIT
@@ -125,10 +149,14 @@ services:
         target: openbao_transit_role_id
       - source: oa_transit_secret_id
         target: openbao_transit_secret_id
+    volumes:
+      - canonical_diagnostic_evidence:/var/lib/nex-platform/diagnostics
 
   nex-ag:
     restart: unless-stopped
+    logging: *canonical-platform-logging
     environment:
+      <<: *canonical-platform-diagnostic-environment
       NEX_DEPLOYMENT_BOUNDARY: CANONICAL_PLATFORM
       NEX_SERVICE_TOKEN_BOOTSTRAP_PROFILE: STARTUP_24H
       NEX_STARTUP_SERVICE_TOKEN_BOOTSTRAP: "true"
@@ -137,10 +165,14 @@ services:
     depends_on:
       nex-oa:
         condition: service_healthy
+    volumes:
+      - canonical_diagnostic_evidence:/var/lib/nex-platform/diagnostics
 
   nex-ae-api:
     restart: unless-stopped
+    logging: *canonical-platform-logging
     environment:
+      <<: *canonical-platform-diagnostic-environment
       NEX_DEPLOYMENT_BOUNDARY: CANONICAL_PLATFORM
       NEX_SERVICE_TOKEN_BOOTSTRAP_PROFILE: STARTUP_24H
       NEX_STARTUP_SERVICE_TOKEN_BOOTSTRAP: "true"
@@ -178,10 +210,14 @@ services:
     depends_on:
       nex-oa:
         condition: service_healthy
+    volumes:
+      - canonical_diagnostic_evidence:/var/lib/nex-platform/diagnostics
 
   nex-cx:
     restart: unless-stopped
+    logging: *canonical-platform-logging
     environment:
+      <<: *canonical-platform-diagnostic-environment
       NEX_DEPLOYMENT_BOUNDARY: CANONICAL_PLATFORM
       NEX_CX_ANSWER_SUPPORT_POLICY_MODE: ${NEX_CX_ANSWER_SUPPORT_POLICY_MODE:-CONTROLLED}
       NEX_CX_ANSWER_SUPPORT_POLICY_AUTHORIZATION_PATH: /app/services/nex-cx/nex_cx/data/answer_support_policy_cutover_authorization.v1.json
@@ -207,10 +243,14 @@ services:
     depends_on:
       nex-oa:
         condition: service_healthy
+    volumes:
+      - canonical_diagnostic_evidence:/var/lib/nex-platform/diagnostics
 
   nex-mo:
     restart: unless-stopped
+    logging: *canonical-platform-logging
     environment:
+      <<: *canonical-platform-diagnostic-environment
       NEX_DEPLOYMENT_BOUNDARY: CANONICAL_PLATFORM
       NEX_SERVICE_TOKEN_BOOTSTRAP_PROFILE: STARTUP_24H
       NEX_STARTUP_SERVICE_TOKEN_BOOTSTRAP: "true"
@@ -237,15 +277,24 @@ services:
     depends_on:
       nex-oa:
         condition: service_healthy
+    volumes:
+      - canonical_diagnostic_evidence:/var/lib/nex-platform/diagnostics
 
   nex-ae-web:
     restart: unless-stopped
+    logging: *canonical-platform-logging
 
   nex-wa:
     environment: *canonical-platform-wa-environment
+    logging: *canonical-platform-logging
+    volumes:
+      - canonical_diagnostic_evidence:/var/lib/nex-platform/diagnostics
 
   nex-wa-evidence-consumer:
     environment: *canonical-platform-wa-environment
+    logging: *canonical-platform-logging
+    volumes:
+      - canonical_diagnostic_evidence:/var/lib/nex-platform/diagnostics
 
   nex-wc:
     <<: *canonical-platform-service
@@ -253,6 +302,8 @@ services:
     entrypoint: [python, -m, nex_runtime.production_container_bootstrap, --owner, nex-wc, --]
     command: [python, -m, uvicorn, nex_wc.main:app, --host, 0.0.0.0, --port, "8106"]
     environment: *canonical-platform-wc-environment
+    volumes:
+      - canonical_diagnostic_evidence:/var/lib/nex-platform/diagnostics
     secrets:
       - openbao_ca
       - platform_ca
@@ -272,6 +323,8 @@ services:
     entrypoint: [python, -m, nex_runtime.production_container_bootstrap, --owner, nex-eos, --]
     command: [python, -m, uvicorn, nex_eos.main:app, --host, 0.0.0.0, --port, "8107"]
     environment: *canonical-platform-eos-environment
+    volumes:
+      - canonical_diagnostic_evidence:/var/lib/nex-platform/diagnostics
     secrets:
       - openbao_ca
       - platform_ca
@@ -333,6 +386,7 @@ services:
         target: openbao_secret_id
     volumes:
       - canonical_ae_runtime_state:/var/lib/nex-platform/ae-runtime
+      - canonical_diagnostic_evidence:/var/lib/nex-platform/diagnostics
     depends_on:
       openbao:
         condition: service_healthy
@@ -353,6 +407,8 @@ services:
       NEX_WC_AE_RESULT_TIMEOUT_SECONDS: "15"
       NEX_WC_AE_APPROVAL_TIMEOUT_SECONDS: "15"
       NEX_WC_CLAIM_LEASE_SECONDS: "600"
+    volumes:
+      - canonical_diagnostic_evidence:/var/lib/nex-platform/diagnostics
     secrets:
       - openbao_ca
       - platform_ca
@@ -379,6 +435,8 @@ services:
       NEX_WC_ASSIGNMENT_DISPATCH_POLL_SECONDS: "1"
       NEX_WC_ASSIGNMENT_DISPATCH_SCAN_LIMIT: "100"
       NEX_WC_CLAIM_LEASE_SECONDS: "600"
+    volumes:
+      - canonical_diagnostic_evidence:/var/lib/nex-platform/diagnostics
     secrets:
       - openbao_ca
       - platform_ca
@@ -410,6 +468,8 @@ services:
     environment:
       <<: *canonical-platform-eos-environment
       NEX_EOS_OUTBOX_PUBLISHER_WORKER_ID: eos-outbox-publisher-1
+    volumes:
+      - canonical_diagnostic_evidence:/var/lib/nex-platform/diagnostics
     secrets:
       - openbao_ca
       - platform_ca
@@ -443,3 +503,4 @@ networks:
 
 volumes:
   canonical_ae_runtime_state:
+  canonical_diagnostic_evidence:

@@ -162,6 +162,24 @@ def _canonical_rendered() -> dict:
             "NEX_WC_AE_DELIVERY_TIMEOUT_SECONDS": "240",
         }
     )
+    for service in rendered["services"].values():
+        service["logging"] = {
+            "driver": "local",
+            "options": {"max-size": "20m", "max-file": "10", "compress": "true"},
+        }
+    for service_id in check.CANONICAL_DIAGNOSTIC_SERVICES:
+        rendered["services"][service_id]["environment"].update(
+            {
+                "NEX_DIAGNOSTIC_EVIDENCE_MODE": "OFF",
+                "NEX_DIAGNOSTIC_EVIDENCE_ROOT": check.CANONICAL_DIAGNOSTIC_ROOT,
+                "NEX_DIAGNOSTIC_EVIDENCE_SESSION_ID": "canonical-disabled",
+                "NEX_DIAGNOSTIC_EVIDENCE_INCLUDE_RAW": "false",
+                "NEX_DIAGNOSTIC_EVIDENCE_RETENTION_DAYS": "7",
+            }
+        )
+        rendered["services"][service_id]["volumes"] = [
+            "canonical_diagnostic_evidence:/var/lib/nex-platform/diagnostics"
+        ]
     return rendered
 
 

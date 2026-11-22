@@ -46,6 +46,22 @@ DEFAULT_IMAGE_REPORT = (
 )
 DEFAULT_REPORT = ROOT / "reports/deployment/canonical-platform-compose-render.json"
 CANONICAL_AE_WORKER_LEASE_SECONDS = 600
+CANONICAL_DIAGNOSTIC_ROOT = "/var/lib/nex-platform/diagnostics"
+CANONICAL_DIAGNOSTIC_SERVICES = (
+    "nex-oa",
+    "nex-ag",
+    "nex-ae-api",
+    "nex-cx",
+    "nex-mo",
+    "nex-wa",
+    "nex-wa-evidence-consumer",
+    "nex-wc",
+    "nex-eos",
+    "nex-ae-agent-runtime-worker",
+    "nex-wc-event-delivery-worker",
+    "nex-wc-assignment-dispatch-worker",
+    "nex-eos-outbox-publisher",
+)
 
 
 def check_canonical_platform_compose(
@@ -174,6 +190,34 @@ def _admit_rendered_canonical_compose(
     }
     if not expected_references.issubset(observed_references):
         raise ValueError("canonical rendered image references drift")
+    for process_id, service in services.items():
+        if not isinstance(service, Mapping):
+            raise TypeError(f"canonical service is invalid: {process_id}")
+        logging_policy = service.get("logging")
+        if not isinstance(logging_policy, Mapping) or logging_policy.get("driver") != "local":
+            raise ValueError(f"canonical logging policy drift: {process_id}")
+        logging_options = logging_policy.get("options")
+        if not isinstance(logging_options, Mapping) or not all(
+            str(logging_options.get(name) or "").strip()
+            for name in ("max-size", "max-file", "compress")
+        ):
+            raise ValueError(f"canonical log rotation policy drift: {process_id}")
+    for process_id in CANONICAL_DIAGNOSTIC_SERVICES:
+        service = services.get(process_id)
+        if not isinstance(service, Mapping):
+            raise TypeError(f"canonical diagnostic service is missing: {process_id}")
+        environment = service.get("environment")
+        if not isinstance(environment, Mapping) or (
+            environment.get("NEX_DIAGNOSTIC_EVIDENCE_ROOT")
+            != CANONICAL_DIAGNOSTIC_ROOT
+        ):
+            raise ValueError(f"canonical diagnostic environment drift: {process_id}")
+        mounts = service.get("volumes")
+        if not isinstance(mounts, list) or not any(
+            CANONICAL_DIAGNOSTIC_ROOT in json.dumps(mount, sort_keys=True)
+            for mount in mounts
+        ):
+            raise ValueError(f"canonical diagnostic volume drift: {process_id}")
     for process_id in (
         "nex-wa-evidence-consumer",
         "nex-ae-agent-runtime-worker",

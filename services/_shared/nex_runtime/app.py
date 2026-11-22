@@ -18,6 +18,8 @@ from .auth import (
     validate_mock_service_token,
 )
 from .database import check_database_readiness
+from .diagnostic_evidence import diagnostic_evidence_recorder_from_environment
+from .diagnostic_http import DiagnosticHttpEvidenceMiddleware
 from .problem import problem_response
 from .service_token_admission import (
     ServiceTokenAdmissionError,
@@ -135,6 +137,14 @@ def build_service_app(
     )
     app.state.service_token_admission = service_token_admission
     _configure_cors(app, environ=env)
+    app.add_middleware(
+        DiagnosticHttpEvidenceMiddleware,
+        recorder=diagnostic_evidence_recorder_from_environment(
+            service_id=spec.service_id,
+            component="http-api",
+            environ=env,
+        ),
+    )
 
     @app.get("/")
     def root() -> dict[str, Any]:

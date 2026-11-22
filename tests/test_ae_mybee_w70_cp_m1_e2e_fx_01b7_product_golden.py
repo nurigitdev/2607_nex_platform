@@ -282,6 +282,73 @@ def test_product_golden_execution_is_protected_and_contains_failures() -> None:
     assert failed["token_value_included"] is False
 
 
+def test_live_diagnostic_finalization_collects_raw_plan_and_rotated_service_logs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        acceptance, "DEFAULT_DIAGNOSTIC_EVIDENCE_ROOT", tmp_path / "diagnostics"
+    )
+    monkeypatch.setattr(
+        acceptance,
+        "_compose_container_id",
+        lambda *_args, **_kwargs: "a" * 12,
+    )
+    monkeypatch.setattr(
+        acceptance,
+        "_collect_compose_service_logs",
+        lambda *_args, service, **_kwargs: (
+            f"service={service} password=journey-secret",
+            0,
+        ),
+    )
+    monkeypatch.setattr(acceptance, "_git_revision", lambda _root: "git-head")
+    monkeypatch.setattr(
+        acceptance, "_compose_source_digest", lambda _root: "sha256:compose"
+    )
+
+    def run(command, **_kwargs):
+        assert command[:2] == ("docker", "cp")
+        target = Path(command[-1])
+        target.mkdir(parents=True, exist_ok=True)
+        (target / "nex-ae-api--semantic-candidate-admission--1.jsonl").write_text(
+            json.dumps(
+                {
+                    "sequence": 1,
+                    "raw_prompt": "전표를 생성해줘",
+                    "agent_plan": {"steps": ["S1"]},
+                    "executable_plan": {"steps": ["S1"]},
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr(acceptance.subprocess, "run", run)
+
+    result = acceptance._collect_live_journey_diagnostics(
+        {},
+        root=tmp_path,
+        session_id="w80-live-test",
+        forbidden_values={"journey-secret"},
+        evidence_root=tmp_path / "diagnostics",
+    )
+
+    assert result["status"] == "PASS"
+    assert result["raw_prompt_included"] is True
+    assert result["agent_plan_included"] is True
+    assert result["executable_plan_included"] is True
+    assert result["redacted_secret_value_count"] == len(
+        acceptance.DIAGNOSTIC_SERVICE_IDS
+    )
+    session = tmp_path / "diagnostics" / "w80-live-test"
+    assert "journey-secret" not in (session / "docker/nex-ae-api.log").read_text()
+    manifest = json.loads((session / "manifest.json").read_text())
+    names = {item["name"] for item in manifest["files"]}
+    assert "nex-ae-api--semantic-candidate-admission--1.jsonl" in names
+    assert "docker/nex-ae-api.log" in names
+
+
 def test_product_acceptance_baseline_is_typed_hash_bound_and_non_identical() -> None:
     baseline = support.load_acceptance_baseline()
     prompts = tuple(

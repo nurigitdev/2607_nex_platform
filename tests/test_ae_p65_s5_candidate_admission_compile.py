@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import hashlib
+import json
 from dataclasses import replace
 from datetime import UTC, datetime
+from pathlib import Path
 from types import SimpleNamespace
 
 import nex_ae_api.semantic_candidate_admission as admission_module
@@ -31,6 +33,7 @@ from nex_ae_api.semantic_candidates import (
     SemanticCalibrationPolicy,
     SemanticCalibrationRegistry,
 )
+from nex_runtime import DiagnosticEvidencePolicy, DiagnosticEvidenceRecorder
 from nex_runtime.prompts import PromptRegistryStore
 from nex_runtime.semantic_hashes import canonical_json, semantic_sha256_hash_ref
 from sqlalchemy import create_engine, text
@@ -402,6 +405,38 @@ def test_required_pipeline_compiles_and_replays_without_provider_calls() -> None
     assert client.calls == []
     assert validations.save_calls == 1
     assert admission.calls == 2
+
+
+def test_live_diagnostic_evidence_captures_raw_prompt_and_compiled_plan(
+    tmp_path: Path,
+) -> None:
+    service, *_ = _components()
+    recorder = DiagnosticEvidenceRecorder(
+        DiagnosticEvidencePolicy.from_environment(
+            {
+                "NEX_DIAGNOSTIC_EVIDENCE_MODE": "LIVE_JOURNEY",
+                "NEX_DIAGNOSTIC_EVIDENCE_ROOT": str(tmp_path),
+                "NEX_DIAGNOSTIC_EVIDENCE_SESSION_ID": "p65-live-001",
+                "NEX_DIAGNOSTIC_EVIDENCE_INCLUDE_RAW": "true",
+            }
+        ),
+        service_id="nex-ae-api",
+        component="semantic-candidate-admission",
+    )
+
+    result = replace(service, diagnostic_evidence=recorder).admit_and_compile(_request())
+
+    assert result.status == "COMPILED"
+    evidence_path = next((tmp_path / "p65-live-001").glob("*.jsonl"))
+    events = [json.loads(line) for line in evidence_path.read_text().splitlines()]
+    assert events[0]["event_type"] == "semantic.admission.requested"
+    assert events[0]["payload"]["raw_prompt"] == _request().user_prompt
+    compiled = events[-1]
+    assert compiled["event_type"] == "semantic.executable_plan.compiled"
+    assert compiled["payload"]["plan_candidate"]["logical_steps"]
+    assert compiled["payload"]["agent_plan"]["steps"]
+    assert compiled["payload"]["executable_plan"]["steps"]
+    assert compiled["raw_payload_included"] is True
 
 
 def test_required_pipeline_applies_and_replays_domain_intent_activation() -> None:

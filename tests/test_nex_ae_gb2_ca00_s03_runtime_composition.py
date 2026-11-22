@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import inspect
+import json
+from pathlib import Path
 from types import SimpleNamespace
 
 import nex_ae_api.runtime_composition as composition
@@ -24,6 +26,7 @@ from nex_ae_api.workspace_result_publication import (
     SqlAlchemyInstalledIaResultCloser,
     SqlAlchemyWorkspaceResultPublisher,
 )
+from nex_runtime import diagnostic_evidence_recorder_from_environment
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
@@ -320,6 +323,66 @@ def test_waiting_assignment_does_not_schedule_successor() -> None:
     assert result["successor_scheduled"] is False
     assert result["executable_step_id"] is None
     assert result["step_result_id"] is None
+
+
+def test_installed_step_handler_captures_runtime_input_and_output(
+    tmp_path: Path,
+) -> None:
+    worker = SimpleNamespace(
+        run_claim=lambda **_values: P5WorkerExecution(
+            disposition="TERMINAL",
+            step={
+                "executable_step_id": "step-1",
+                "compiled_input_bindings": [{"target_name": "amount"}],
+            },
+            step_result={
+                "step_result_id": "result-1",
+                "status": "SUCCEEDED",
+                "result_payload": {"voucher_id": "voucher-1"},
+            },
+            runtime_job={"state": "DONE"},
+        )
+    )
+    engine = SimpleNamespace(schedule_next=lambda **_values: None)
+    recorder = diagnostic_evidence_recorder_from_environment(
+        service_id="nex-ae-api",
+        component="agent-runtime-worker",
+        environ={
+            "NEX_DIAGNOSTIC_EVIDENCE_MODE": "LIVE_JOURNEY",
+            "NEX_DIAGNOSTIC_EVIDENCE_ROOT": str(tmp_path),
+            "NEX_DIAGNOSTIC_EVIDENCE_SESSION_ID": "step-live-001",
+            "NEX_DIAGNOSTIC_EVIDENCE_INCLUDE_RAW": "true",
+        },
+    )
+
+    result = composition.InstalledStepAssignmentHandler(
+        worker,
+        engine,
+        diagnostic_evidence=recorder,
+    )(
+        AgentRuntimeAssignment(
+            tenant_id="VO00",
+            executor_kind="LOCAL_SKILL",
+            backend_profile="NSL_V02_IN_PROCESS",
+            claim=_claim(),
+        )
+    )
+
+    assert result["step_result_status"] == "SUCCEEDED"
+    path = next((tmp_path / "step-live-001").glob("*.jsonl"))
+    events = [json.loads(line) for line in path.read_text().splitlines()]
+    assert [event["event_type"] for event in events] == [
+        "runtime.step.started",
+        "runtime.step.completed",
+    ]
+    completed = events[-1]["payload"]
+    assert completed["step_input"]["executable_step"]["executable_step_id"] == (
+        "step-1"
+    )
+    assert completed["step_input"]["runtime_job"]["lease_token"] == "<redacted>"
+    assert completed["step_output"]["step_result"]["result_payload"] == {
+        "voucher_id": "voucher-1"
+    }
 
 
 @pytest.mark.parametrize(

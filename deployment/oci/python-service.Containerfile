@@ -42,6 +42,7 @@ COPY --chown=65532:65532 services /app/services
 COPY --chown=65532:65532 database /app/database
 COPY --chown=65532:65532 scripts/db /app/scripts/db
 COPY --chown=65532:65532 deployment/security /app/deployment/security
+RUN install -d -o 65532 -g 65532 -m 0700 /var/lib/nex-platform/diagnostics
 ENV HOME=/tmp
 USER 65532:65532
 

@@ -31,10 +31,18 @@ MyBee office-work AX Service Phase-1 program.
 24. `NeX_MyBee_CP_M1_E2E_FX_01B_6B_Installed_M1_Preparation_and_Deterministic_Plan_Activation_Closure_v1.0.md`
 25. `NeX_MyBee_Post_Wave_UIUX_Compatibility_Performance_Backlog_v1.0.md`
 26. `NeX_MyBee_M1_Final_AsBuilt_Baseline_and_W80_Handoff_v1.0.md`
+27. `NeX_MyBee_W80_CA00_Platform_Diagnostic_Logging_and_Live_Journey_Evidence_Boundary_v1.0.md`
 
 The Markdown Slice Plan and its Execution Matrix JSON are one planning set.
 The JSON is machine-readable traceability input, not runtime configuration or
 evidence that an implementation gate has passed.
+
+W80-CA00 is the diagnostic and live-evidence amendment applied after the M1
+As-Built freeze and before W80-CA01. It keeps ordinary service logs content-safe
+while admitting raw prompt, AgentPlan, ExecutablePlan, API payload, and runtime
+step evidence only in an explicitly enabled restricted `LIVE_JOURNEY` session.
+Secrets remain forbidden, multipart/binary content remains digest-only, and no
+business schema, public API, or authority boundary changes.
 
 The W30-CA01 pair is the source-backed post-W20 delta. It takes precedence
 only for W30 entry ordering, current migration-number reservations, the

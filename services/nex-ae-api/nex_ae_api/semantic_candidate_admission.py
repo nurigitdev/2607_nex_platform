@@ -8,7 +8,11 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import NAMESPACE_URL, uuid5
 
-from nex_runtime import ServiceLogEmitter
+from nex_runtime import (
+    DiagnosticEvidenceRecorder,
+    ServiceLogEmitter,
+    diagnostic_evidence_recorder_from_environment,
+)
 from nex_runtime.semantic_hashes import semantic_sha256_hash_ref, validate_hash_ref
 
 from nex_ae_api.agent_context import (
@@ -363,6 +367,9 @@ class DeterministicCandidateAdmissionService:
         default_factory=ProductCapabilityRetirementProjection, repr=False
     )
     product_planning_router: Any | None = field(default=None, repr=False)
+    diagnostic_evidence: DiagnosticEvidenceRecorder | None = field(
+        default=None, repr=False
+    )
     clock: Callable[[], datetime] = field(default=lambda: datetime.now(UTC), repr=False)
 
     def __post_init__(self) -> None:
@@ -374,6 +381,18 @@ class DeterministicCandidateAdmissionService:
     def admit_and_compile(
         self, request: SemanticCandidateAdmissionRequest
     ) -> SemanticCandidateAdmissionResult:
+        self._emit_diagnostic(
+            "semantic.admission.requested",
+            request,
+            payload={
+                "raw_prompt": request.user_prompt,
+                "base_context": request.base_context,
+                "runtime_policy_ref": request.runtime_policy_ref,
+                "planning_source_type": request.planning_source_type,
+                "planning_source": request.planning_source,
+                "capability_snapshot": request.capability_snapshot,
+            },
+        )
         if self.mode == "disabled":
             return SemanticCandidateAdmissionResult(
                 mode="disabled",
@@ -545,6 +564,16 @@ class DeterministicCandidateAdmissionService:
                 work_intent=work_intent,
                 created_at=now,
             )
+        self._emit_diagnostic(
+            "semantic.work_intent.admitted",
+            request,
+            agent_execution_id=execution_id,
+            payload={
+                "raw_prompt": request.user_prompt,
+                "work_intent": work_intent,
+                "intent_candidate": intent_candidate,
+            },
+        )
 
         context_evidence, context_candidate, context_result, resumed = self._stage(
             request=request,
@@ -817,6 +846,17 @@ class DeterministicCandidateAdmissionService:
                 expected_execution_version=int(current_execution["version"]),
             )
         if validation["status"] != "VALID":
+            self._emit_diagnostic(
+                "semantic.plan.validation_blocked",
+                request,
+                agent_execution_id=execution_id,
+                payload={
+                    "raw_prompt": request.user_prompt,
+                    "plan_candidate": plan_candidate,
+                    "agent_plan": agent_plan,
+                    "validation_result": validation,
+                },
+            )
             return SemanticCandidateAdmissionResult(
                 mode=self.mode,
                 status="VALIDATION_BLOCKED",
@@ -848,6 +888,21 @@ class DeterministicCandidateAdmissionService:
                 tenant_id=request.tenant_id,
                 executable_plan=executable_plan,
             )
+        self._emit_diagnostic(
+            "semantic.executable_plan.compiled",
+            request,
+            agent_execution_id=execution_id,
+            payload={
+                "raw_prompt": request.user_prompt,
+                "work_intent": work_intent,
+                "agent_context": agent_context,
+                "capability_snapshot": capability_snapshot,
+                "plan_candidate": plan_candidate,
+                "agent_plan": agent_plan,
+                "validation_result": validation,
+                "executable_plan": executable_plan,
+            },
+        )
         return SemanticCandidateAdmissionResult(
             mode=self.mode,
             status="COMPILED",
@@ -894,6 +949,16 @@ class DeterministicCandidateAdmissionService:
                     "CANDIDATE_PAYLOAD_MISSING",
                     "Persisted candidate evidence has no private payload.",
                 )
+            self._emit_diagnostic(
+                "semantic.candidate.replayed",
+                request,
+                agent_execution_id=execution_id,
+                payload={
+                    "semantic_stage": semantic_stage,
+                    "candidate": candidate,
+                    "candidate_evidence": existing,
+                },
+            )
             return existing, candidate, None, True
 
         try:
@@ -954,12 +1019,37 @@ class DeterministicCandidateAdmissionService:
                 created_at=now,
             )
             saved = self.evidence.save(evidence)
+            self._emit_diagnostic(
+                "semantic.candidate.admitted",
+                request,
+                agent_execution_id=execution_id,
+                payload={
+                    "semantic_stage": semantic_stage,
+                    "candidate": result.candidate,
+                    "candidate_evidence": saved,
+                    "provider_output_sha256": result.provider_output_sha256,
+                    "prompt_provenance": result.prompt_provenance,
+                    "model_provenance": result.model_provenance,
+                },
+            )
         except Exception as exc:
             failure = project_semantic_candidate_failure(
                 exc, semantic_stage=semantic_stage
             )
             if failure is None:
                 raise
+            self._emit_diagnostic(
+                "semantic.candidate.rejected",
+                request,
+                agent_execution_id=execution_id,
+                payload={
+                    "semantic_stage": semantic_stage,
+                    "exception_type": type(exc).__name__,
+                    "error_code": failure.error_code,
+                    "detail": failure.detail,
+                    "retryable": failure.retryable,
+                },
+            )
             diagnostic_code = getattr(exc, "diagnostic_code", None)
             if isinstance(diagnostic_code, str):
                 LOGGER.warning(
@@ -980,6 +1070,25 @@ class DeterministicCandidateAdmissionService:
                 retry_after_seconds=failure.retry_after_seconds,
             ) from exc
         return saved, dict(result.candidate), result, False
+
+    def _emit_diagnostic(
+        self,
+        event_type: str,
+        request: SemanticCandidateAdmissionRequest,
+        *,
+        payload: Mapping[str, Any],
+        agent_execution_id: str | None = None,
+    ) -> None:
+        if self.diagnostic_evidence is None:
+            return
+        self.diagnostic_evidence.emit(
+            event_type,
+            payload,
+            trace_id=request.trace_id,
+            request_id=request.request_id,
+            interaction_id=request.interaction_id,
+            agent_execution_id=agent_execution_id,
+        )
 
 
 @dataclass(frozen=True)
@@ -1277,6 +1386,11 @@ def attach_semantic_candidate_admission(
         domain_intent_activator_registry=domain_intent_activators,
         product_capability_registry=product_capabilities,
         product_capability_retirements=product_capability_retirements,
+        diagnostic_evidence=diagnostic_evidence_recorder_from_environment(
+            service_id="nex-ae-api",
+            component="semantic-candidate-admission",
+            environ=resolved_environ,
+        ),
     )
     runtime = SemanticCandidateAdmissionRuntime(
         mode=mode,
