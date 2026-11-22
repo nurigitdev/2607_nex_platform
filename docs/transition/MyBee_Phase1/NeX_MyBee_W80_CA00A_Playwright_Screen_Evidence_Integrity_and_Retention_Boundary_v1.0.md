@@ -1,6 +1,6 @@
 # NeX MyBee W80-CA00A Playwright Screen Evidence Integrity and Retention Boundary v1.0
 
-**Status:** CONTROLLED AMENDMENT / IMPLEMENTATION IN PROGRESS
+**Status:** CONTROLLED AMENDMENT / IMPLEMENTED / LIVE CLOSURE BLOCKED
 
 **Boundary:** W80-CA00 diagnostic evidence -> W80-CA01 entry
 
@@ -108,3 +108,36 @@ RESTRICTED SESSION COLLECTION    = REQUIRED
 DATABASE MIGRATION               = NONE
 BACKEND BUSINESS API CHANGE      = NONE
 ```
+
+## 9. Exact-Head Verification and Live Finding
+
+The screen-evidence implementation was frozen in commit `128048a3` and passed:
+
+- focused Node and React tests;
+- AE Web regression, typecheck, and production build;
+- the AE Slice Gate with statement coverage `96.45%` and branch coverage
+  `94.67%`;
+- exact-head nine-image OCI build and AE product-runtime image admission;
+- live DGX preflight for Qwen3.5-9B, Qwen3-Embedding-4B, and
+  Qwen3-Reranker-4B.
+
+The actual eight-database PostgreSQL/OpenBao/RustFS/DGX/Playwright run then
+failed closed on the first transaction result assertion. The protected product
+flow reached all three approvals and completed the authoritative EOS voucher,
+journal, allocation, and P&L calls. The IA AgentResult was terminal
+`SUCCEEDED`, but its public projection contained neither `business_refs` nor
+`business_summary`; AE Web therefore rendered the admitted generic
+`request-processing result` card instead of the required voucher-result card.
+
+Source-backed diagnosis found that the existing WC `WORK_RESULT_SUBMITTED`
+event and AE delegated-result continuation preserve technical and business
+outcomes plus lineage references, but do not carry the background AgentResult
+structured business result. The screen-evidence boundary correctly rejected
+this visually incomplete success. Relaxing the DOM assertion is forbidden.
+
+The run retained failure evidence, removed all eight isolated schemas, and
+reported `zero_residue=true`. W80-CA00A remains implemented, but its live
+closure and W80 entry require a separate corrective contract for durable,
+typed business-result propagation from the PA WorkResult to the originating IA
+AgentResult. No database or backend business API change is authorized by this
+amendment.
