@@ -15,6 +15,8 @@ import type { GenerationFeedbackState, GenerationFeedbackValue } from "./Respons
 import {
   executeWorkspaceDraft,
   issueFromStatus,
+  workStateFromAgentProjection,
+  workspaceResultFromAgentProjection,
   type GroundedGenerationClientPort,
   type InteractionAgentResultPort,
   type WorkspaceExecutionIssue,
@@ -51,13 +53,17 @@ const createRepairedResponseDecisionRequest = buildRepairedResponseDecisionReque
 export function WorkspaceRuntimeRoute() {
   const runtime = useOptionalInstalledRuntime();
   if (!runtime) return <WorkspacePage />;
-  return <InstalledWorkspaceRuntime runtime={runtime} />;
+  const interactionId = new URLSearchParams(globalThis.location?.search ?? "")
+    .get("interaction_id")?.trim() || null;
+  return <InstalledWorkspaceRuntime runtime={runtime} recoveryInteractionId={interactionId} />;
 }
 
 export function InstalledWorkspaceRuntime({
   runtime,
+  recoveryInteractionId = null,
 }: {
   readonly runtime: NonNullable<ReturnType<typeof useOptionalInstalledRuntime>>;
+  readonly recoveryInteractionId?: string | null;
 }) {
   const { sessionState } = useSession();
   const [workState, setWorkState] = useState(() => mapWorkState("IDLE"));
@@ -71,8 +77,43 @@ export function InstalledWorkspaceRuntime({
   const workspacePromise = useRef<ReturnType<typeof runtime.clients.workspace.createWorkspace> | null>(null);
   const activeExecution = useRef<{ abort: AbortController; interactionId: string | null } | null>(null);
   const lastDraft = useRef<WorkspaceDraft | null>(null);
+  const recoveredInteraction = useRef<string | null>(null);
 
   useEffect(() => () => activeExecution.current?.abort.abort(), []);
+  useEffect(() => {
+    if (!recoveryInteractionId || recoveredInteraction.current === recoveryInteractionId) return;
+    recoveredInteraction.current = recoveryInteractionId;
+    let cancelled = false;
+    setWorkState(mapWorkState("VERIFYING"));
+    setProgressHistory([mapWorkState("VERIFYING")]);
+    setMessages([]);
+    setResult(null);
+    setIssue(null);
+    void (async () => {
+      try {
+        const projection = await (
+          runtime.clients.interactionAgentResult as InteractionAgentResultPort
+        ).getInteractionAgentResult(recoveryInteractionId);
+        if (cancelled) return;
+        const recoveredState = workStateFromAgentProjection(projection);
+        setWorkState(recoveredState);
+        setProgressHistory(current => appendActualState(current, recoveredState));
+        setMessages(projection.terminal ? [{
+          id: `assistant:${recoveryInteractionId}`,
+          role: "assistant",
+          content: "보관된 Agent 업무 처리 결과를 복구했습니다.",
+        }] : []);
+        setResult(projection.terminal ? workspaceResultFromAgentProjection(projection) : null);
+        setIssue(projection.terminal ? null : issueFromStatus(projection.executionState, false));
+      } catch (error) {
+        if (!cancelled) {
+          setWorkState(mapWorkState("FAILED"));
+          setIssue(issueFromStatus(statusOf(error), isRetryable(error)));
+        }
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [recoveryInteractionId, runtime.clients.interactionAgentResult]);
 
   function applyUpdate(update: WorkspaceExecutionUpdate) {
     setWorkState(update.workState);

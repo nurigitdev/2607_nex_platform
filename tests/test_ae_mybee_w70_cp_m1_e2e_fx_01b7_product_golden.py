@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import subprocess
 import sys
@@ -326,6 +327,54 @@ def test_live_diagnostic_finalization_collects_raw_plan_and_rotated_service_logs
 
     monkeypatch.setattr(acceptance.subprocess, "run", run)
 
+    screen_root = tmp_path / acceptance.SCREENSHOT_DIR.relative_to(acceptance.ROOT)
+    screen_root.mkdir(parents=True)
+    journey_states = [
+        "LOGIN_REQUIRED",
+        "REQUESTER_WORKSPACE_READY",
+        "BUSINESS_APPROVER_WORKSPACE_READY",
+        "ACCOUNTING_APPROVER_WORKSPACE_READY",
+        "REQUEST_ADMITTED",
+        *("APPROVAL_RECORDED" for _ in range(3)),
+        "RESULT_RENDERED",
+        "REQUEST_ADMITTED",
+        *("APPROVAL_RECORDED" for _ in range(3)),
+        "RESULT_RENDERED",
+        "LOGIN_REQUIRED",
+    ]
+
+    def write_screen_manifest(prefix: str, states: list[str]) -> None:
+        captures = []
+        for index, state in enumerate(states, start=1):
+            file_name = f"mybee-m1-{prefix}-{index:02d}-{state.lower()}.png"
+            content = f"{prefix}:{index}:{state}".encode()
+            (screen_root / file_name).write_bytes(content)
+            captures.append(
+                {
+                    "stage": state.lower(),
+                    "file": file_name,
+                    "captured_at": "2026-11-23T00:00:00Z",
+                    "size_bytes": len(content),
+                    "sha256": f"sha256:{hashlib.sha256(content).hexdigest()}",
+                    "expected_state": state,
+                    "assertion": "semantic-state-visible",
+                }
+            )
+        (screen_root / f"mybee-m1-{prefix}-screen-manifest.json").write_text(
+            json.dumps(
+                {
+                    "schema_version": acceptance.SCREEN_EVIDENCE_SCHEMA_VERSION,
+                    "prefix": prefix,
+                    "capture_count": len(captures),
+                    "captures": captures,
+                }
+            ),
+            encoding="utf-8",
+        )
+
+    write_screen_manifest("journey", journey_states)
+    write_screen_manifest("recovery", ["RESULT_RECOVERED"])
+
     result = acceptance._collect_live_journey_diagnostics(
         {},
         root=tmp_path,
@@ -341,12 +390,16 @@ def test_live_diagnostic_finalization_collects_raw_plan_and_rotated_service_logs
     assert result["redacted_secret_value_count"] == len(
         acceptance.DIAGNOSTIC_SERVICE_IDS
     )
+    assert result["screen_evidence"]["capture_count"] == 16
+    assert result["screen_evidence"]["manifest_count"] == 2
     session = tmp_path / "diagnostics" / "w80-live-test"
     assert "journey-secret" not in (session / "docker/nex-ae-api.log").read_text()
     manifest = json.loads((session / "manifest.json").read_text())
     names = {item["name"] for item in manifest["files"]}
     assert "nex-ae-api--semantic-candidate-admission--1.jsonl" in names
     assert "docker/nex-ae-api.log" in names
+    assert "screens/mybee-m1-recovery-01-result_recovered.png" in names
+    assert "screens/mybee-m1-journey-screen-manifest.json" in names
 
 
 def test_product_acceptance_baseline_is_typed_hash_bound_and_non_identical() -> None:

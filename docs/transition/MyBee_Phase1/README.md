@@ -32,6 +32,7 @@ MyBee office-work AX Service Phase-1 program.
 25. `NeX_MyBee_Post_Wave_UIUX_Compatibility_Performance_Backlog_v1.0.md`
 26. `NeX_MyBee_M1_Final_AsBuilt_Baseline_and_W80_Handoff_v1.0.md`
 27. `NeX_MyBee_W80_CA00_Platform_Diagnostic_Logging_and_Live_Journey_Evidence_Boundary_v1.0.md`
+28. `NeX_MyBee_W80_CA00A_Playwright_Screen_Evidence_Integrity_and_Retention_Boundary_v1.0.md`
 
 The Markdown Slice Plan and its Execution Matrix JSON are one planning set.
 The JSON is machine-readable traceability input, not runtime configuration or
@@ -43,6 +44,13 @@ while admitting raw prompt, AgentPlan, ExecutablePlan, API payload, and runtime
 step evidence only in an explicitly enabled restricted `LIVE_JOURNEY` session.
 Secrets remain forbidden, multipart/binary content remains digest-only, and no
 business schema, public API, or authority boundary changes.
+
+W80-CA00A is the screen-evidence corrective amendment. It requires each
+Playwright screenshot to follow a semantic DOM assertion, records a private
+hash-bound manifest, proves restart recovery on the visible owner-scoped result
+surface, and moves the PNG and manifest files into the same restricted
+live-journey evidence session before teardown. It adds no database migration or
+backend business API.
 
 The W30-CA01 pair is the source-backed post-W20 delta. It takes precedence
 only for W30 entry ordering, current migration-number reservations, the

@@ -1,6 +1,7 @@
 #!/usr/bin/env node
+import { createHash } from "node:crypto";
 import { mkdirSync, renameSync, writeFileSync } from "node:fs";
-import { mkdir } from "node:fs/promises";
+import { chmod, mkdir, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
@@ -26,6 +27,8 @@ const ENV = {
   semanticSubmitTimeoutMs: "NEX_MYBEE_M1_GOLDEN_SEMANTIC_SUBMIT_TIMEOUT_MS",
   resultTimeoutMs: "NEX_MYBEE_M1_GOLDEN_RESULT_TIMEOUT_MS"
 };
+export const MYBEE_M1_SCREEN_EVIDENCE_SCHEMA_VERSION =
+  "mybee_m1_playwright_screen_evidence.v1";
 const REQUIRED = [
   ENV.webUrl,
   ENV.tenantId,
@@ -248,7 +251,10 @@ export async function runMyBeeM1ProductGoldenJourney({
     const anonymousProtectedSurfaceHidden =
       (await requester.getByRole("navigation", { name: UI.primaryNavigation }).count()) === 0 &&
       (await requester.getByRole("heading", { name: UI.approvalHeading }).count()) === 0;
-    await captures.capture(requester, "login");
+    await captures.capture(requester, "login", {
+      expectedState: "LOGIN_REQUIRED",
+      assertion: "login-heading-visible"
+    });
 
     markStage("requester_login");
     await login(requester, {
@@ -257,7 +263,10 @@ export async function runMyBeeM1ProductGoldenJourney({
       password: environ[ENV.requesterPassword],
       timeout: actionTimeout
     });
-    await captures.capture(requester, "requester-workspace");
+    await captures.capture(requester, "requester-workspace", {
+      expectedState: "REQUESTER_WORKSPACE_READY",
+      assertion: "workspace-heading-visible"
+    });
 
     markStage("business_approver_login");
     await businessApprover.goto(environ[ENV.webUrl], {
@@ -270,7 +279,10 @@ export async function runMyBeeM1ProductGoldenJourney({
       password: environ[ENV.businessApproverPassword],
       timeout: actionTimeout
     });
-    await captures.capture(businessApprover, "business-approver-workspace");
+    await captures.capture(businessApprover, "business-approver-workspace", {
+      expectedState: "BUSINESS_APPROVER_WORKSPACE_READY",
+      assertion: "workspace-heading-visible"
+    });
 
     markStage("accounting_approver_login");
     await accountingApprover.goto(environ[ENV.webUrl], {
@@ -283,7 +295,10 @@ export async function runMyBeeM1ProductGoldenJourney({
       password: environ[ENV.accountingApproverPassword],
       timeout: actionTimeout
     });
-    await captures.capture(accountingApprover, "accounting-approver-workspace");
+    await captures.capture(accountingApprover, "accounting-approver-workspace", {
+      expectedState: "ACCOUNTING_APPROVER_WORKSPACE_READY",
+      assertion: "workspace-heading-visible"
+    });
 
     let workspace = null;
     for (let index = 0; index < prompts.length; index += 1) {
@@ -297,7 +312,6 @@ export async function runMyBeeM1ProductGoldenJourney({
           throw new Error("ProductWorkspaceObservationMissing");
         }
       }
-      await captures.capture(requester, `transaction-${index + 1}-submitted`);
       if (
         admitted.status !== 202 ||
         admitted.payload?.generation?.semantic_planning?.status !== "COMPILED" ||
@@ -307,6 +321,15 @@ export async function runMyBeeM1ProductGoldenJourney({
         throw new Error(apiFailureCode(admitted, `ProductAdmissionStatus${admitted.status}`));
       }
       const interactionId = admitted.payload.interaction_id;
+      await requester.getByText(prompts[index], { exact: true }).waitFor({
+        timeout: actionTimeout
+      });
+      await captures.capture(requester, `transaction-${index + 1}-submitted`, {
+        expectedState: "REQUEST_ADMITTED",
+        assertion: "request-message-visible",
+        interactionId,
+        transactionIndex: index + 1
+      });
       markStage(`transaction_${index + 1}_approval_and_result`, {
         transaction_index: index + 1,
         approval_count: 0,
@@ -340,14 +363,23 @@ export async function runMyBeeM1ProductGoldenJourney({
         approval_replay_statuses: completed.replayStatuses,
         result_projection: completed
       });
-      await captures.capture(requester, `transaction-${index + 1}-result`);
+      await waitForRenderedResult(requester, prompts[index], actionTimeout);
+      await captures.capture(requester, `transaction-${index + 1}-result`, {
+        expectedState: "RESULT_RENDERED",
+        assertion: "request-and-voucher-result-visible",
+        interactionId,
+        transactionIndex: index + 1
+      });
     }
 
     markStage("logout", { transaction_index: transactions.length });
     await logout(accountingApprover, actionTimeout);
     await logout(businessApprover, actionTimeout);
     await logout(requester, actionTimeout);
-    await captures.capture(requester, "requester-logged-out");
+    await captures.capture(requester, "requester-logged-out", {
+      expectedState: "LOGIN_REQUIRED",
+      assertion: "logout-returned-to-login"
+    });
     const observedDomains = new Set(transactions.flatMap(item => item.approval_domains));
     const approvalChecks = myBeeM1ApprovalJourneyChecks(transactions);
     const checks = {
@@ -424,7 +456,10 @@ export async function runMyBeeM1ProductGoldenJourney({
         : requesterPage;
     if (failedPage) {
       try {
-        await captures.capture(failedPage, `${stage}-failure`);
+        await captures.capture(failedPage, `${stage}-failure`, {
+          expectedState: "FAILURE_DIAGNOSTIC",
+          assertion: "failure-surface-captured"
+        });
       } catch {
         // The original bounded failure remains authoritative if capture also fails.
       }
@@ -476,12 +511,24 @@ export async function runMyBeeM1ProductPostRestartRecovery({
       password: environ[ENV.requesterPassword],
       timeout: actionTimeout
     });
+    const interactionId = environ[ENV.recoveryInteractionId];
     const projection = await waitForResult(
       page,
-      environ[ENV.recoveryInteractionId],
+      interactionId,
       resultTimeout
     );
-    await captures.capture(page, "recovered-result");
+    const recoveryUrl = new URL("/workspace", environ[ENV.webUrl]);
+    recoveryUrl.searchParams.set("interaction_id", interactionId);
+    await page.goto(recoveryUrl.toString(), {
+      waitUntil: "domcontentloaded",
+      timeout: actionTimeout
+    });
+    await waitForRenderedResult(page, null, actionTimeout);
+    await captures.capture(page, "recovered-result", {
+      expectedState: "RESULT_RECOVERED",
+      assertion: "authoritative-voucher-result-visible-after-restart",
+      interactionId
+    });
     const checks = {
       authenticated_after_restart: true,
       authoritative_result_recovered: projection.terminal === true,
@@ -496,7 +543,7 @@ export async function runMyBeeM1ProductPostRestartRecovery({
       screen_capture: captures.evidence(),
       checks,
       runtime: {
-        interaction_id: environ[ENV.recoveryInteractionId],
+        interaction_id: interactionId,
         result_projection: projection
       }
     };
@@ -562,7 +609,14 @@ async function driveApprovalsUntilResult({
       replayStatuses.push(decision.replayStatus);
       await captures.capture(
         page,
-        `transaction-${transactionIndex}-approval-${approvalDomains.length}-${gate.approval_domain}`
+        `transaction-${transactionIndex}-approval-${approvalDomains.length}-${gate.approval_domain}`,
+        {
+          expectedState: "APPROVAL_RECORDED",
+          assertion: "decision-recorded-heading-visible",
+          interactionId,
+          transactionIndex,
+          approvalDomain: gate.approval_domain
+        }
       );
       onProgress({
         poll_count: pollCount,
@@ -692,6 +746,17 @@ async function waitForResult(page, interactionId, timeout) {
   throw new Error("AgentResultTimeout");
 }
 
+async function waitForRenderedResult(page, prompt, timeout) {
+  if (prompt) {
+    await page.getByText(prompt, { exact: true }).waitFor({ timeout });
+  }
+  const result = page.locator('[data-ux-region="primary-result"]');
+  await result.getByRole("heading", { name: "전표 등록 결과", exact: true }).waitFor({
+    timeout
+  });
+  await result.getByText("완료", { exact: true }).waitFor({ timeout });
+}
+
 async function login(page, { tenantId, employeeId, password, timeout }) {
   void tenantId;
   await page.locator(`input[name="${UI.employeeInputName}"]`).fill(employeeId);
@@ -762,26 +827,74 @@ function observeResponses(page, responses) {
   });
 }
 
-function screenCapture(directory, prefix) {
+export function screenCapture(directory, prefix) {
   const captures = [];
   let index = 0;
+  const manifestFile = `mybee-m1-${prefix}-screen-manifest.json`;
   return {
-    async capture(page, stage) {
+    async capture(page, stage, metadata = {}) {
       if (!directory) return;
-      await mkdir(directory, { recursive: true });
+      await mkdir(directory, { recursive: true, mode: 0o700 });
+      await chmod(directory, 0o700);
       index += 1;
       const file = `mybee-m1-${prefix}-${String(index).padStart(2, "0")}-${stage}.png`;
-      await page.screenshot({
-        path: path.join(directory, file),
+      const bytes = await page.screenshot({
         fullPage: true,
         animations: "disabled"
       });
-      captures.push({ stage, file });
+      const target = path.join(directory, file);
+      await writeFile(target, bytes, { mode: 0o600 });
+      await chmod(target, 0o600);
+      const viewport = page.viewportSize?.() ?? null;
+      captures.push({
+        stage,
+        file,
+        captured_at: new Date().toISOString(),
+        size_bytes: bytes.length,
+        sha256: `sha256:${createHash("sha256").update(bytes).digest("hex")}`,
+        viewport: viewport && Number.isInteger(viewport.width) && Number.isInteger(viewport.height)
+          ? { width: viewport.width, height: viewport.height }
+          : null,
+        expected_state: boundedMetadata(metadata.expectedState),
+        assertion: boundedMetadata(metadata.assertion),
+        interaction_id: boundedMetadata(metadata.interactionId),
+        transaction_index: Number.isSafeInteger(metadata.transactionIndex)
+          ? metadata.transactionIndex
+          : null,
+        approval_domain: boundedMetadata(metadata.approvalDomain)
+      });
+      await writeScreenManifest(directory, manifestFile, prefix, captures);
     },
     evidence() {
-      return { enabled: Boolean(directory), count: captures.length, captures: [...captures] };
+      return {
+        enabled: Boolean(directory),
+        count: captures.length,
+        manifest_file: manifestFile,
+        captures: [...captures]
+      };
     }
   };
+}
+
+async function writeScreenManifest(directory, file, prefix, captures) {
+  const target = path.join(directory, file);
+  const temporary = `${target}.tmp-${process.pid}`;
+  const payload = {
+    schema_version: MYBEE_M1_SCREEN_EVIDENCE_SCHEMA_VERSION,
+    prefix,
+    updated_at: new Date().toISOString(),
+    capture_count: captures.length,
+    captures
+  };
+  await writeFile(temporary, `${JSON.stringify(payload, null, 2)}\n`, { mode: 0o600 });
+  await rename(temporary, target);
+  await chmod(target, 0o600);
+}
+
+function boundedMetadata(value) {
+  if (value == null) return null;
+  const normalized = String(value).trim();
+  return /^[A-Za-z0-9_.:/-]{1,160}$/.test(normalized) ? normalized : null;
 }
 
 async function browserJson(page, route, { method = "GET", body = null } = {}) {

@@ -7,6 +7,63 @@ import { SessionProvider } from "../../app/providers/SessionProvider";
 import { InstalledWorkspaceRuntime } from "./WorkspaceRuntimeRoute";
 
 describe("installed Workspace runtime route", () => {
+  it("restores an owner-scoped terminal interaction into the visible result surface", async () => {
+    const getInteractionAgentResult = vi.fn(async (interactionId: string) => ({
+      interactionId,
+      executionState: "SUCCEEDED",
+      executionPhase: "FINALIZE",
+      terminal: true,
+      result: {
+        status: "SUCCEEDED",
+        artifactRefs: [],
+        warnings: [],
+        businessSummary: {
+          resultType: "FINANCE.VOUCHER_DRAFT",
+          schemaVersion: "ae_business_result_summary.v1",
+          outcome: "COMMITTED",
+          verificationStatus: "VERIFIED",
+          approvalState: "APPROVED",
+          businessOperationId: "private-operation",
+          voucherNumber: "V-2026-RECOVERED",
+          amount: "12500.00",
+          currency: "KRW",
+          accountCodes: ["TRAVEL"],
+          projectCode: "NVT",
+          businessObjectLink: null,
+        },
+      },
+    }));
+    const runtime = {
+      clients: {
+        interactionAgentResult: { clientMode: "fetch", getInteractionAgentResult },
+      },
+    } as unknown as InstalledBrowserRuntime;
+
+    render(
+      <SessionProvider initialSession={{
+        status: "authenticated",
+        sessionId: "session-1",
+        tenantRef: { type: "oa.tenant", id: "VO00" },
+        subjectRef: { type: "oa.user", id: "employee-1" },
+        scopes: [],
+        roles: [],
+      }}>
+        <InstalledWorkspaceRuntime
+          runtime={runtime}
+          recoveryInteractionId="interaction-recovered"
+        />
+      </SessionProvider>,
+    );
+
+    await waitFor(() => expect(
+      screen.getByRole("heading", { name: "전표 등록 결과" }),
+    ).toBeInTheDocument());
+    expect(screen.getByText("V-2026-RECOVERED")).toBeInTheDocument();
+    expect(screen.getByText("보관된 Agent 업무 처리 결과를 복구했습니다.")).toBeInTheDocument();
+    expect(screen.queryByText("private-operation")).not.toBeInTheDocument();
+    expect(getInteractionAgentResult).toHaveBeenCalledWith("interaction-recovered");
+  });
+
   it("connects the installed clients to an owner-scoped typed result", async () => {
     const user = userEvent.setup();
     const createWorkspace = vi.fn(async () => ({

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -12,12 +12,48 @@ import {
   myBeeM1RuntimeTimeouts,
   myBeeM1ApprovalJourneyChecks,
   myBeeM1ProductJourneyUiContract,
+  MYBEE_M1_SCREEN_EVIDENCE_SCHEMA_VERSION,
   parseProductPrompts,
   pendingApprovalGates,
   prepareApprovalInbox,
   runMyBeeM1ProductGoldenJourney,
-  runMyBeeM1ProductPostRestartRecovery
+  runMyBeeM1ProductPostRestartRecovery,
+  screenCapture
 } from "../scripts/runMyBeeW70CpM1ProductGoldenJourney.mjs";
+
+test("M1 screen evidence is private, hash-bound, and semantically described", async () => {
+  const directory = mkdtempSync(path.join(tmpdir(), "mybee-m1-screens-"));
+  try {
+    const recorder = screenCapture(directory, "journey");
+    await recorder.capture({
+      screenshot: async options => {
+        assert.equal("path" in options, false);
+        return Buffer.from("deterministic-screen-bytes");
+      },
+      viewportSize: () => ({ width: 1440, height: 1000 })
+    }, "transaction-1-result", {
+      expectedState: "RESULT_RENDERED",
+      assertion: "request-and-voucher-result-visible",
+      interactionId: "interaction-001",
+      transactionIndex: 1
+    });
+
+    const evidence = recorder.evidence();
+    const manifest = JSON.parse(readFileSync(path.join(directory, evidence.manifest_file), "utf8"));
+    assert.equal(manifest.schema_version, MYBEE_M1_SCREEN_EVIDENCE_SCHEMA_VERSION);
+    assert.equal(manifest.capture_count, 1);
+    assert.equal(manifest.captures[0].expected_state, "RESULT_RENDERED");
+    assert.equal(manifest.captures[0].assertion, "request-and-voucher-result-visible");
+    assert.equal(manifest.captures[0].interaction_id, "interaction-001");
+    assert.equal(manifest.captures[0].size_bytes, 26);
+    assert.match(manifest.captures[0].sha256, /^sha256:[a-f0-9]{64}$/);
+    assert.equal(statSync(directory).mode & 0o777, 0o700);
+    assert.equal(statSync(path.join(directory, evidence.manifest_file)).mode & 0o777, 0o600);
+    assert.equal(statSync(path.join(directory, evidence.captures[0].file)).mode & 0o777, 0o600);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
 
 test("M1 product journey distinguishes authority kind from WC approval domain", () => {
   const valid = myBeeM1ApprovalJourneyChecks([

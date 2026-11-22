@@ -7,6 +7,7 @@ import json
 import os
 import re
 import secrets
+import shutil
 import subprocess
 import sys
 import time
@@ -66,6 +67,7 @@ PLAYWRIGHT_RUNNER = (
     ROOT / "apps/nex-ae-web/scripts/runMyBeeW70CpM1ProductGoldenJourney.mjs"
 )
 SCREENSHOT_DIR = ROOT / "reports/deployment/mybee-w70-cp-m1-product-golden-screens"
+SCREEN_EVIDENCE_SCHEMA_VERSION = "mybee_m1_playwright_screen_evidence.v1"
 DEFAULT_DIAGNOSTIC_EVIDENCE_ROOT = (
     ROOT / "reports/deployment/mybee-w70-m1-diagnostic-evidence"
 )
@@ -1154,6 +1156,11 @@ def _collect_live_journey_diagnostics(
         os.chmod(target, 0o600)
         service_log_status[service] = returncode
 
+    screen_evidence = _collect_playwright_screen_evidence(
+        root=root,
+        session_root=session_root,
+    )
+
     policy = DiagnosticEvidencePolicy.from_environment(
         {
             "NEX_DIAGNOSTIC_EVIDENCE_MODE": "LIVE_JOURNEY",
@@ -1171,6 +1178,8 @@ def _collect_live_journey_diagnostics(
             "docker_log_service_count": len(DIAGNOSTIC_SERVICE_IDS),
             "container_evidence_copied": copied,
             "redacted_secret_value_count": redacted_value_count,
+            "screen_capture_count": screen_evidence["capture_count"],
+            "screen_manifest_count": screen_evidence["manifest_count"],
         },
     )
     mandatory_agent_evidence = {
@@ -1197,6 +1206,110 @@ def _collect_live_journey_diagnostics(
         "secrets_forbidden": True,
         "redacted_secret_value_count": redacted_value_count,
         "service_log_status": service_log_status,
+        "screen_evidence": screen_evidence,
+    }
+
+
+def _collect_playwright_screen_evidence(
+    *,
+    root: Path,
+    session_root: Path,
+) -> dict[str, Any]:
+    source_root = root / SCREENSHOT_DIR.relative_to(ROOT)
+    manifest_paths = sorted(source_root.glob("mybee-m1-*-screen-manifest.json"))
+    if len(manifest_paths) != 2:
+        raise M1ProductGoldenJourneyError(
+            "Playwright screen evidence requires journey and recovery manifests"
+        )
+    target_root = session_root / "screens"
+    target_root.mkdir(exist_ok=True, mode=0o700)
+    os.chmod(target_root, 0o700)
+    state_counts: dict[str, int] = {}
+    capture_count = 0
+    copied_files: list[str] = []
+    for manifest_path in manifest_paths:
+        try:
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise M1ProductGoldenJourneyError(
+                f"invalid Playwright screen manifest: {manifest_path.name}"
+            ) from exc
+        if manifest.get("schema_version") != SCREEN_EVIDENCE_SCHEMA_VERSION:
+            raise M1ProductGoldenJourneyError(
+                f"unsupported Playwright screen manifest: {manifest_path.name}"
+            )
+        captures = manifest.get("captures")
+        if (
+            not isinstance(captures, list)
+            or manifest.get("capture_count") != len(captures)
+        ):
+            raise M1ProductGoldenJourneyError(
+                f"Playwright screen manifest count mismatch: {manifest_path.name}"
+            )
+        for item in captures:
+            if not isinstance(item, Mapping):
+                raise M1ProductGoldenJourneyError(
+                    f"invalid Playwright screen capture entry: {manifest_path.name}"
+                )
+            file_name = str(item.get("file") or "")
+            if Path(file_name).name != file_name or not file_name.endswith(".png"):
+                raise M1ProductGoldenJourneyError(
+                    f"unsafe Playwright screenshot path: {file_name}"
+                )
+            source = source_root / file_name
+            if not source.is_file() or source.is_symlink():
+                raise M1ProductGoldenJourneyError(
+                    f"Playwright screenshot is missing: {file_name}"
+                )
+            content = source.read_bytes()
+            expected_digest = f"sha256:{hashlib.sha256(content).hexdigest()}"
+            if item.get("sha256") != expected_digest or item.get("size_bytes") != len(content):
+                raise M1ProductGoldenJourneyError(
+                    f"Playwright screenshot integrity mismatch: {file_name}"
+                )
+            expected_state = str(item.get("expected_state") or "")
+            assertion = str(item.get("assertion") or "")
+            if not expected_state or not assertion:
+                raise M1ProductGoldenJourneyError(
+                    f"Playwright screenshot omitted semantic assertion: {file_name}"
+                )
+            state_counts[expected_state] = state_counts.get(expected_state, 0) + 1
+            target = target_root / file_name
+            target.write_bytes(content)
+            os.chmod(target, 0o600)
+            copied_files.append(file_name)
+            capture_count += 1
+        manifest_target = target_root / manifest_path.name
+        shutil.copyfile(manifest_path, manifest_target)
+        os.chmod(manifest_target, 0o600)
+        copied_files.append(manifest_path.name)
+
+    required_state_counts = {
+        "LOGIN_REQUIRED": 2,
+        "REQUESTER_WORKSPACE_READY": 1,
+        "BUSINESS_APPROVER_WORKSPACE_READY": 1,
+        "ACCOUNTING_APPROVER_WORKSPACE_READY": 1,
+        "REQUEST_ADMITTED": 2,
+        "APPROVAL_RECORDED": 6,
+        "RESULT_RENDERED": 2,
+        "RESULT_RECOVERED": 1,
+    }
+    missing = {
+        name: count
+        for name, count in required_state_counts.items()
+        if state_counts.get(name, 0) < count
+    }
+    if missing:
+        raise M1ProductGoldenJourneyError(
+            "Playwright screen evidence omitted required states: "
+            + ",".join(f"{name}:{count}" for name, count in sorted(missing.items()))
+        )
+    return {
+        "status": "PASS",
+        "capture_count": capture_count,
+        "manifest_count": len(manifest_paths),
+        "state_counts": dict(sorted(state_counts.items())),
+        "files": sorted(copied_files),
     }
 
 
@@ -1713,9 +1826,13 @@ def _semantic_calibration_json(*, model_ref: str) -> str:
 
 
 def _prepare_screenshot_directory(directory: Path) -> None:
-    directory.mkdir(parents=True, exist_ok=True)
-    for screenshot in directory.glob("mybee-m1-*.png"):
-        screenshot.unlink()
+    directory.mkdir(parents=True, exist_ok=True, mode=0o700)
+    os.chmod(directory, 0o700)
+    for evidence in directory.glob("mybee-m1-*"):
+        if evidence.is_file() and (
+            evidence.suffix == ".png" or evidence.name.endswith("-screen-manifest.json")
+        ):
+            evidence.unlink()
 
 
 def _public_browser_evidence(evidence: Mapping[str, Any]) -> dict[str, Any]:

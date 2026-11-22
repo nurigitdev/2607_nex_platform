@@ -225,7 +225,7 @@ async function pollAgentResult({
     if (projection.terminal) {
       const status = projection.result?.status || projection.executionState;
       const terminalState = mapSourceWorkState("AgentExecution", status);
-      const result = resultProjection(projection, status);
+      const result = workspaceResultFromAgentProjection(projection, status);
       const succeeded = ["SUCCEEDED", "PARTIAL"].includes(status);
       const outcome: WorkspaceExecutionOutcome = {
         status: status === "PARTIAL" ? "PARTIAL" : succeeded ? "COMPLETED" : "FAILED",
@@ -291,7 +291,10 @@ function update(state: string, interactionId: string): WorkspaceExecutionUpdate 
   return { workState: mapWorkState(state), interactionId, issue: null };
 }
 
-function resultProjection(projection: AgentResultProjection, status: string): WorkspaceResultProjection {
+export function workspaceResultFromAgentProjection(
+  projection: AgentResultProjection,
+  status = projection.result?.status || projection.executionState,
+): WorkspaceResultProjection {
   const artifactCount = projection.result?.artifactRefs.length ?? 0;
   const warningCount = projection.result?.warnings.length ?? 0;
   return {
