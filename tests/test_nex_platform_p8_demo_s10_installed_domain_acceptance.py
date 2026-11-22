@@ -153,6 +153,15 @@ def test_runtime_traefik_config_uses_operator_provider_endpoints(
     assert services["generation"]["loadBalancer"]["servers"] == [
         {"url": "http://192.168.20.243:9116"}
     ]
+    assert payload["http"]["routers"]["wa"] == {
+        "rule": "Host(`wa.nex-staging.test`)",
+        "entryPoints": ["websecure"],
+        "service": "wa",
+        "tls": {},
+    }
+    assert services["wa"] == {
+        "loadBalancer": {"servers": [{"url": "http://nex-wa:8108"}]}
+    }
     assert path.stat().st_mode & 0o777 == 0o644
 
 

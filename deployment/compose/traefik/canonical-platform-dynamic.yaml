@@ -17,6 +17,7 @@ http:
     mo: {rule: "Host(`mo.nex-staging.test`)", entryPoints: [websecure], service: mo, tls: {}}
     wc: {rule: "Host(`wc.nex-staging.test`)", entryPoints: [websecure], service: wc, tls: {}}
     eos: {rule: "Host(`eos.nex-staging.test`)", entryPoints: [websecure], service: eos, tls: {}}
+    wa: {rule: "Host(`wa.nex-staging.test`)", entryPoints: [websecure], service: wa, tls: {}}
     ae-web: {rule: "Host(`ae.nex-staging.test`)", entryPoints: [websecure], service: ae-web, tls: {}}
     embedding: {rule: "Host(`embedding.nex-staging.test`)", entryPoints: [websecure], service: embedding, tls: {}}
     reranker: {rule: "Host(`reranker.nex-staging.test`)", entryPoints: [websecure], service: reranker, tls: {}}
@@ -32,6 +33,7 @@ http:
     mo: {loadBalancer: {servers: [{url: "http://nex-mo:8105"}]}}
     wc: {loadBalancer: {servers: [{url: "http://nex-wc:8106"}]}}
     eos: {loadBalancer: {servers: [{url: "http://nex-eos:8107"}]}}
+    wa: {loadBalancer: {servers: [{url: "http://nex-wa:8108"}]}}
     ae-web: {loadBalancer: {servers: [{url: "http://nex-ae-web:5173"}]}}
     embedding: {loadBalancer: {passHostHeader: false, servers: [{url: "http://192.168.20.243:9112"}]}}
     reranker: {loadBalancer: {passHostHeader: false, servers: [{url: "http://192.168.20.243:9113"}]}}

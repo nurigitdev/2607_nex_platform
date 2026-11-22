@@ -40,6 +40,7 @@ DEMO_ROUTE_IDS = (
     "mo",
     "wc",
     "eos",
+    "wa",
     "ae-web",
     "embedding",
     "reranker",
@@ -166,7 +167,7 @@ def admit_demo_compose_sources(
     route_services = _mapping(http.get("services"), "Demo Traefik services")
     if tuple(routers) != DEMO_ROUTE_IDS or tuple(route_services) != DEMO_ROUTE_IDS:
         errors.append("Demo Traefik route coverage or order drift")
-    for route_id, port in (("wc", 8106), ("eos", 8107)):
+    for route_id, port in (("wc", 8106), ("eos", 8107), ("wa", 8108)):
         router = _mapping(routers.get(route_id), f"router {route_id}")
         service = _mapping(route_services.get(route_id), f"route service {route_id}")
         if router.get("service") != route_id or router.get("tls") != {}:
