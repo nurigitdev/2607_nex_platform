@@ -1,0 +1,37 @@
+language NSL "0.2";
+
+skill W70.FOUNDATION.D04_WRITE_PROFILE {
+    version "1.0.0";
+    risk WRITE;
+
+    requires {
+        tool FINANCE.COST_ALLOCATION.RUN version "1.0.0";
+    }
+
+    limits {
+        tool_calls 1;
+        loop_iterations 1;
+        emitted_rows 1;
+        collection_size 1;
+    }
+
+    input {
+        payload: String classification INTERNAL;
+    }
+
+    output {
+        operation_id: String classification INTERNAL;
+    }
+
+    approve FOUNDATION_WRITE {
+        message "Admit the governed WRITE compiler profile?";
+    }
+
+    let written = write FINANCE.COST_ALLOCATION.RUN(
+        payload = payload
+    ) approved_by FOUNDATION_WRITE;
+
+    emit {
+        operation_id: written.operation_id;
+    }
+}

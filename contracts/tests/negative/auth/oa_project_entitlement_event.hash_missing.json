@@ -1,0 +1,20 @@
+{
+  "event_id": "33333333-3333-4333-8333-333333333333",
+  "tenant_id": "VO00",
+  "business_operation_id": "44444444-4444-4444-8444-444444444444",
+  "event_type": "PROJECT_ENTITLEMENT_SNAPSHOT",
+  "event_payload": {
+    "schema_version": "eos.project_entitlement_snapshot.v1",
+    "tenant_id": "VO00",
+    "project_id": "11111111-1111-4111-8111-111111111111",
+    "project_code": "VO00D260001",
+    "project_status": "ACTIVE",
+    "source_version": 1,
+    "members": [
+      { "subject_id": "employee-100", "project_role": "OWNER" }
+    ],
+    "correlation_id": "wc-work-1",
+    "causation_id": "wc-event-1",
+    "occurred_at": "2026-11-12T05:00:00Z"
+  }
+}

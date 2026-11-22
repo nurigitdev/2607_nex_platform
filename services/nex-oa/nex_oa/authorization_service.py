@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import json
 from collections.abc import Mapping
 from dataclasses import dataclass
+from hashlib import sha256
 from typing import Any
 
 from fastapi import FastAPI, Header, Request, Response
@@ -19,6 +21,7 @@ from nex_oa.authorization import OaAuthorizationError
 from nex_oa.authorization_repository import OaAuthorizationRepository
 from nex_oa.authorization_resolver import OaEffectiveAuthorizationResolver
 from nex_oa.memberships import OaMembershipError, OaTenantMembershipRegistry
+from nex_oa.project_entitlements import OaProjectGrantRepository
 
 OA_AUTHORIZATION_ADMIN_SCOPE = "authorization:admin"
 OA_AUTHORIZATION_READ_SCOPE = "authorization:read"
@@ -40,6 +43,7 @@ class OaAuthorizationService:
     repository: OaAuthorizationRepository
     resolver: OaEffectiveAuthorizationResolver
     membership_registry: OaTenantMembershipRegistry
+    project_grant_repository: OaProjectGrantRepository | None = None
 
     def upsert_role(
         self,
@@ -135,10 +139,37 @@ class OaAuthorizationService:
                 error_code="oa.authorization_membership_not_found",
                 detail="authorization membership was not found.",
             )
+        resolved = dict(self.resolver.resolve(membership))
+        grants = (
+            self.project_grant_repository.list_subject_grants(
+                tenant_id=tenant_id,
+                subject_id=subject_id,
+            )
+            if self.project_grant_repository is not None
+            else []
+        )
+        project_scope_refs = tuple(
+            sorted(
+                {
+                    str(grant["project_code"])
+                    for grant in grants
+                    if grant.get("grant_status") == "ACTIVE"
+                    and grant.get("project_status") in {"ACTIVE", "CLOSING"}
+                }
+            )
+        )
+        resolved["project_scope_refs"] = project_scope_refs
+        resolved["revision_hash"] = _project_bound_revision_hash(
+            str(resolved["revision_hash"]),
+            grants,
+        )
+        source_counts = dict(resolved["source_counts"])
+        source_counts["project_scope_count"] = len(project_scope_refs)
+        resolved["source_counts"] = source_counts
         return {
             "response_schema_version": OA_AUTHORIZATION_READ_RESPONSE_SCHEMA_VERSION,
             "service_id": "nex-oa",
-            "authorization": self.resolver.resolve(membership),
+            "authorization": resolved,
         }
 
     def list_events(self, *, tenant_id: str, limit: object = 100) -> dict[str, Any]:
@@ -284,6 +315,28 @@ def register_authorization_routes(
             authorization,
             lambda: service.list_events(tenant_id=tenant_id, limit=limit),
         )
+
+
+def _project_bound_revision_hash(
+    base_revision_hash: str,
+    grants: list[dict[str, Any]],
+) -> str:
+    snapshot = {
+        "base_revision_hash": base_revision_hash,
+        "project_grants": sorted(
+            (
+                str(grant["project_code"]),
+                str(grant["grant_status"]),
+                str(grant["project_status"]),
+                int(grant["source_version"]),
+                str(grant["source_event_hash"]),
+            )
+            for grant in grants
+        ),
+    }
+    return sha256(
+        json.dumps(snapshot, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
 
 
 def _mutation_route(

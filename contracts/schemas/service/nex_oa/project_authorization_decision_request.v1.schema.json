@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_oa/project_authorization_decision_request.v1.schema.json",
+  "title": "NeX OA Project Authorization Decision Request",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["tenant_id", "subject_id", "project_code", "action", "correlation_id"],
+  "properties": {
+    "tenant_id": {"$ref": "#/$defs/scoped_id"},
+    "subject_id": {"$ref": "#/$defs/scoped_id"},
+    "project_code": {"type": "string", "pattern": "^[A-Z0-9]{4}[DMSOIG][0-9]{6}$"},
+    "action": {"type": "string", "pattern": "^[a-z][a-z0-9_-]*(?::[a-z0-9_-]+){1,4}$"},
+    "correlation_id": {"$ref": "#/$defs/scoped_id"},
+    "minimum_source_version": {"type": "integer", "minimum": 1}
+  },
+  "$defs": {
+    "scoped_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:@-]{0,127}$"
+    }
+  }
+}

@@ -1,0 +1,136 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_eos/project_pnl_projection.v1.schema.json",
+  "title": "EOS Project P&L Projection v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "tenant_id", "company_id", "projection_id",
+    "project_id", "project_code", "period_id", "projection_version",
+    "functional_currency", "as_of", "posting_watermark",
+    "posting_watermark_at", "allocation_watermark", "allocation_watermark_at",
+    "budget_watermark", "budget_watermark_at", "payroll_evidence_watermark",
+    "payroll_evidence_watermark_at", "labor_effort_watermark",
+    "labor_effort_watermark_at", "material_commitment_watermark",
+    "material_commitment_watermark_at", "reconciliation_status",
+    "freshness_status", "staleness_seconds", "posted_revenue",
+    "posted_direct_cost", "posted_allocated_cost", "posted_operating_result",
+    "operating_unallocated_cost", "planned_budget", "budget_actual",
+    "budget_variance", "approved_not_posted", "forecast",
+    "data_classification", "projection_hash", "components"
+  ],
+  "properties": {
+    "schema_version": {"const": "eos_project_pnl_projection.v1"},
+    "tenant_id": {"type": "string", "minLength": 1, "maxLength": 128},
+    "company_id": {"type": "string", "format": "uuid"},
+    "projection_id": {"type": "string", "format": "uuid"},
+    "project_id": {"type": "string", "format": "uuid"},
+    "project_code": {"type": "string", "pattern": "^[A-Z0-9]{4}[DMSOIG][0-9]{6}$"},
+    "period_id": {"type": "string", "format": "uuid"},
+    "projection_version": {"type": "integer", "minimum": 1},
+    "functional_currency": {"type": "string", "pattern": "^[A-Z]{3}$"},
+    "as_of": {"type": "string", "format": "date-time"},
+    "posting_watermark": {"type": "string", "minLength": 1, "maxLength": 256},
+    "posting_watermark_at": {"type": "string", "format": "date-time"},
+    "allocation_watermark": {"type": "string", "minLength": 1, "maxLength": 256},
+    "allocation_watermark_at": {"type": "string", "format": "date-time"},
+    "budget_watermark": {"$ref": "#/$defs/nullable_watermark"},
+    "budget_watermark_at": {"$ref": "#/$defs/nullable_datetime"},
+    "payroll_evidence_watermark": {"$ref": "#/$defs/nullable_watermark"},
+    "payroll_evidence_watermark_at": {"$ref": "#/$defs/nullable_datetime"},
+    "labor_effort_watermark": {"$ref": "#/$defs/nullable_watermark"},
+    "labor_effort_watermark_at": {"$ref": "#/$defs/nullable_datetime"},
+    "material_commitment_watermark": {"$ref": "#/$defs/nullable_watermark"},
+    "material_commitment_watermark_at": {"$ref": "#/$defs/nullable_datetime"},
+    "reconciliation_status": {"enum": ["VERIFIED", "PENDING", "BLOCKED", "PARTIAL"]},
+    "freshness_status": {"enum": ["CURRENT", "STALE", "UNKNOWN"]},
+    "staleness_seconds": {"type": "integer", "minimum": 0},
+    "posted_revenue": {"$ref": "#/$defs/amount"},
+    "posted_direct_cost": {"$ref": "#/$defs/amount"},
+    "posted_allocated_cost": {"$ref": "#/$defs/amount"},
+    "posted_operating_result": {"$ref": "#/$defs/amount"},
+    "operating_unallocated_cost": {"$ref": "#/$defs/amount"},
+    "planned_budget": {"$ref": "#/$defs/amount"},
+    "budget_actual": {"$ref": "#/$defs/amount"},
+    "budget_variance": {"$ref": "#/$defs/amount"},
+    "approved_not_posted": {"$ref": "#/$defs/amount"},
+    "forecast": {"$ref": "#/$defs/amount"},
+    "data_classification": {"$ref": "#/$defs/data_classification"},
+    "projection_hash": {"$ref": "#/$defs/hash_ref"},
+    "components": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/component"}
+    }
+  },
+  "$defs": {
+    "amount": {"type": "string", "pattern": "^-?[0-9]+\\.[0-9]{4}$"},
+    "hash_ref": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "nullable_watermark": {
+      "anyOf": [
+        {"type": "null"},
+        {"type": "string", "minLength": 1, "maxLength": 256}
+      ]
+    },
+    "nullable_datetime": {
+      "anyOf": [
+        {"type": "null"},
+        {"type": "string", "format": "date-time"}
+      ]
+    },
+    "data_classification": {
+      "enum": ["INTERNAL_FINANCIAL", "CONFIDENTIAL_FINANCIAL", "PAYROLL_SENSITIVE"]
+    },
+    "component": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "line_no", "classification", "rollup_class", "source_kind",
+        "account_id", "work_code", "functional_amount", "confirmed",
+        "source_ref", "source_hash", "data_classification", "component_hash"
+      ],
+      "properties": {
+        "line_no": {"type": "integer", "minimum": 1},
+        "classification": {
+          "enum": [
+            "POSTED_REVENUE", "POSTED_DIRECT_COST", "POSTED_ALLOCATED_COST",
+            "POSTED_LABOR_ALLOCATED", "UNALLOCATED",
+            "POSTED_PAYROLL_UNALLOCATED", "UNALLOCATED_LABOR_OVERHEAD",
+            "APPROVED_NOT_POSTED", "LABOR_ALLOCATION_PROVISIONAL",
+            "PLANNED_BUDGET", "FORECAST", "PLANNED_LABOR", "BOM_FORECAST",
+            "MATERIAL_COMMITTED", "UNASSIGNED_INVENTORY", "LABOR_ADJUSTMENT",
+            "MATERIAL_VARIANCE", "FX_REALIZED_GAIN_LOSS",
+            "FX_UNREALIZED_GAIN_LOSS"
+          ]
+        },
+        "rollup_class": {
+          "enum": [
+            "REVENUE", "DIRECT_COST", "ALLOCATED_COST", "UNALLOCATED_COST",
+            "NONFINAL", "PROVISIONAL", "BUDGET", "FORECAST", "COMMITMENT",
+            "ADJUSTMENT"
+          ]
+        },
+        "source_kind": {
+          "enum": [
+            "REVENUE", "PAYROLL", "MATERIAL", "SERVICE", "SHARED_EXPENSE",
+            "FX_GAIN_LOSS", "OTHER"
+          ]
+        },
+        "account_id": {
+          "anyOf": [{"type": "null"}, {"type": "string", "format": "uuid"}]
+        },
+        "work_code": {
+          "anyOf": [
+            {"type": "null"},
+            {"type": "string", "minLength": 1, "maxLength": 32}
+          ]
+        },
+        "functional_amount": {"$ref": "#/$defs/amount"},
+        "confirmed": {"type": "boolean"},
+        "source_ref": {"type": "string", "minLength": 1, "maxLength": 256},
+        "source_hash": {"$ref": "#/$defs/hash_ref"},
+        "data_classification": {"$ref": "#/$defs/data_classification"},
+        "component_hash": {"$ref": "#/$defs/hash_ref"}
+      }
+    }
+  }
+}

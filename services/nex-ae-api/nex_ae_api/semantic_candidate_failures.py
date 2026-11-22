@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from nex_ae_api.mo_generation_client import AeMoGenerationClientError
 from nex_ae_api.semantic_candidate_evidence import SemanticCandidateEvidenceError
 from nex_ae_api.semantic_candidates import SemanticCandidateStageError
+from nex_ae_api.work_intent import WorkIntentError
 
 _PROVIDER_FAILURES = {
     "PROVIDER_NOT_READY": (
@@ -36,6 +37,7 @@ _CANDIDATE_FAILURES = frozenset(
         "CANDIDATE_AUTHORITY_VIOLATION",
         "CANDIDATE_PRIVATE_DATA_VIOLATION",
         "CANDIDATE_CAPABILITY_UNKNOWN",
+        "CANDIDATE_CAPABILITY_RETIRED",
         "CANDIDATE_DEPENDENCY_INVALID",
         "CANDIDATE_BOUNDS_EXCEEDED",
         "CANDIDATE_PLAN_INVALID",
@@ -50,6 +52,7 @@ _REPLAN_FAILURES = frozenset(
         "CANDIDATE_JSON_INVALID",
         "CANDIDATE_SCHEMA_INVALID",
         "CANDIDATE_CAPABILITY_UNKNOWN",
+        "CANDIDATE_CAPABILITY_RETIRED",
         "CANDIDATE_DEPENDENCY_INVALID",
         "CANDIDATE_BOUNDS_EXCEEDED",
         "CANDIDATE_PLAN_INVALID",
@@ -145,6 +148,16 @@ def project_semantic_candidate_failure(
             status_code=503 if exc.retryable else 409,
             error_code="SEMANTIC_ADMISSION_FAILED",
             detail="Semantic candidate evidence could not be admitted.",
+            directive="RETRY_PERSISTENCE" if exc.retryable else "BLOCKED",
+            retryable=bool(exc.retryable),
+        )
+    if isinstance(exc, WorkIntentError):
+        return SemanticCandidateFailureProjection(
+            semantic_stage=semantic_stage,
+            category="WORK_INTENT",
+            status_code=503 if exc.retryable else 422,
+            error_code=exc.error_code,
+            detail="Generated intent candidate could not form a durable WorkIntent.",
             directive="RETRY_PERSISTENCE" if exc.retryable else "BLOCKED",
             retryable=bool(exc.retryable),
         )

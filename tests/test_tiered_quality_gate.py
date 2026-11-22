@@ -11,16 +11,37 @@ def _minimal_root(tmp_path: Path) -> Path:
     for path in (
         "tests/test_nex_cx_alpha.py",
         "tests/test_cx_beta.py",
+        "tests/test_nex_wc_alpha.py",
         "tests/test_focused.py",
         "tests/test_nex_ae_web_static.py",
         "tests/test_ae_web_runtime_audit.py",
         "tests/test_ae_p4_contract.py",
         "tests/test_ae_p5_plan.py",
         "tests/test_ae_p6_runtime.py",
+        "tests/mybee_phase1/test_boundary_imports.py",
+        "tests/mybee_phase1/test_mybee_skill_admission.py",
+        "tests/mybee_phase1/test_w40_ca02_installed_configuration_wiring.py",
+        "tests/mybee_phase1/test_w40_ca02_installed_product_integration.py",
+        "tests/mybee_phase1/test_w40_ca02_runtime_ownership_audit.py",
+        "tests/mybee_phase1/test_w70_cp_m1_ga_ret_01.py",
+        "tests/mybee_phase1/test_w70_cp_m1_ga_ret_02.py",
+        "tests/mybee_phase1/test_w70_s8_01b_tool_contract_admission.py",
+        "tests/mybee_phase1/test_w70_s8_01d_registry_bundle_locks.py",
+        "tests/mybee_phase1/test_w70_s8_01e_foundation_gate.py",
+        "tests/test_gb2_ca00_s20b_trust_approval_boundaries.py",
+        "tests/test_gb2_ca00_s20a_active_runtime_branches.py",
+        "tests/test_gb2_ca00_s20c_wc_durable_boundaries.py",
+        "tests/test_nex_eos_alpha.py",
+        "tests/test_nex_oa_eos_mybee_project_entitlement_lifecycle.py",
+        "tests/test_nex_oa_eos_mybee_project_entitlement_sync.py",
+        "tests/test_nex_platform_p8_demo_domain_composition.py",
+        "tests/test_nex_runtime_p8_demo_domain_activation.py",
         "tests/test_platform_alpha.py",
         "tests/test_s97_example_closure.py",
         "scripts/smoke/run_current_smoke.py",
+        "scripts/quality/report_ae_coverage_ownership.py",
         "services/nex-cx/nex_cx/module.py",
+        "domains/mybee/mybee_ax/module.py",
         "scripts/smoke/extra.py",
     ):
         target = tmp_path / path
@@ -129,9 +150,128 @@ def test_ae_api_slice_profile_includes_owned_transition_runtime_regression(
         "test_nex_ae_*.py",
         "test_ae_*.py",
     )
+    assert gate.SERVICE_PROFILES["nex-ae-api"].owned_tests == (
+        "tests/mybee_phase1/test_mybee_skill_admission.py",
+        "tests/mybee_phase1/test_w40_ca02_installed_configuration_wiring.py",
+        "tests/mybee_phase1/test_w40_ca02_runtime_ownership_audit.py",
+        "tests/mybee_phase1/test_w70_cp_m1_ga_ret_02.py",
+        "tests/mybee_phase1/test_w70_s8_01d_registry_bundle_locks.py",
+        "tests/mybee_phase1/test_w70_s8_01e_foundation_gate.py",
+    )
+    assert gate.SERVICE_PROFILES["nex-ae-api"].coverage_reporters == (
+        "scripts/quality/report_ae_coverage_ownership.py",
+    )
     assert "tests/test_ae_p4_contract.py" in plan.commands[0]
     assert "tests/test_ae_p5_plan.py" in plan.commands[0]
     assert "tests/test_ae_p6_runtime.py" in plan.commands[0]
+    assert set(gate.AE_EXPLICIT_OWNED_TESTS) <= set(plan.commands[0])
+    assert plan.test_count == 11
+    assert plan.commands[-1] == (
+        "python-test",
+        "scripts/quality/report_ae_coverage_ownership.py",
+        "--coverage",
+        "reports/quality/slice-nex-ae-api.coverage.json",
+        "--output",
+        (
+            "reports/coverage/slice-nex-ae-api.coverage."
+            "report_ae_coverage_ownership.json"
+        ),
+        "--summary",
+    )
+
+
+def test_ae_api_owned_tests_are_stable_deduplicated_and_narrow(
+    tmp_path: Path,
+) -> None:
+    root = _minimal_root(tmp_path)
+
+    first = gate.build_slice_plan(
+        root=root,
+        python_bin="python-test",
+        service="nex-ae-api",
+        focused_tests=[
+            "tests/mybee_phase1/test_w70_s8_01d_registry_bundle_locks.py"
+        ],
+    )
+    second = gate.build_slice_plan(
+        root=root,
+        python_bin="python-test",
+        service="nex-ae-api",
+        focused_tests=[
+            "tests/mybee_phase1/test_w70_s8_01d_registry_bundle_locks.py"
+        ],
+    )
+
+    selected = first.commands[0]
+    assert selected == second.commands[0]
+    assert selected.count(
+        "tests/mybee_phase1/test_w70_s8_01d_registry_bundle_locks.py"
+    ) == 1
+    assert first.test_count == 11
+    assert "tests/mybee_phase1/test_boundary_imports.py" not in selected
+    assert (
+        "tests/mybee_phase1/test_w40_ca02_installed_product_integration.py"
+        not in selected
+    )
+    assert "tests/mybee_phase1/test_w70_cp_m1_ga_ret_01.py" not in selected
+    assert (
+        "tests/mybee_phase1/test_w70_s8_01b_tool_contract_admission.py"
+        not in selected
+    )
+
+
+def test_wc_slice_profile_includes_cross_named_product_boundaries(
+    tmp_path: Path,
+) -> None:
+    root = _minimal_root(tmp_path)
+
+    plan = gate.build_slice_plan(
+        root=root,
+        python_bin="python-test",
+        service="nex-wc",
+    )
+
+    assert gate.SERVICE_PROFILES["nex-wc"].owned_tests == (
+        "tests/test_gb2_ca00_s20a_active_runtime_branches.py",
+        "tests/test_gb2_ca00_s20c_wc_durable_boundaries.py",
+    )
+    assert set(gate.WC_EXPLICIT_OWNED_TESTS) <= set(plan.commands[0])
+    assert plan.test_count == 3
+    assert "--cov=services/nex-wc/nex_wc" in plan.commands[0]
+
+
+def test_supplemental_coverage_report_path_is_deterministic() -> None:
+    assert gate._supplemental_coverage_report_path(
+        "reports/quality/custom.coverage.json",
+        "scripts/quality/report_ae_coverage_ownership.py",
+    ) == (
+        "reports/coverage/custom.coverage.report_ae_coverage_ownership.json"
+    )
+
+
+def test_eos_slice_profile_includes_cross_service_owned_regression(
+    tmp_path: Path,
+) -> None:
+    root = _minimal_root(tmp_path)
+
+    plan = gate.build_slice_plan(
+        root=root,
+        python_bin="python-test",
+        service="nex-eos",
+    )
+
+    pytest_command = plan.commands[0]
+    expected = {
+        "tests/test_nex_eos_alpha.py",
+        "tests/test_gb2_ca00_s20b_trust_approval_boundaries.py",
+        "tests/test_nex_oa_eos_mybee_project_entitlement_lifecycle.py",
+        "tests/test_nex_oa_eos_mybee_project_entitlement_sync.py",
+        "tests/test_nex_platform_p8_demo_domain_composition.py",
+        "tests/test_nex_runtime_p8_demo_domain_activation.py",
+    }
+    assert expected <= set(pytest_command)
+    assert plan.test_count == len(expected)
+    assert "--cov=services/nex-eos/nex_eos" in pytest_command
 
 
 def test_platform_slice_profile_requires_explicit_changed_coverage_scope(
@@ -186,7 +326,7 @@ def test_platform_slice_profile_requires_explicit_changed_coverage_scope(
         (
             gate.build_slice_plan,
             {"service": "nex-cx", "coverage_targets": ["nex_cx.module"]},
-            "services/, providers/, or scripts/ path",
+            "services/, providers/, scripts/, or domains/ path",
         ),
         (
             gate.build_slice_plan,
@@ -271,6 +411,7 @@ def test_execute_plan_stops_on_failure_and_writes_safe_evidence(
 
 
 def test_execute_plan_success_and_helpers(tmp_path: Path) -> None:
+    source_root = _minimal_root(tmp_path / "source")
     plan = gate.GatePlan(
         tier="checkpoint",
         service=None,
@@ -306,9 +447,18 @@ def test_execute_plan_success_and_helpers(tmp_path: Path) -> None:
         )
         == "nex_compatible_provider.app"
     )
+    assert (
+        gate._coverage_source_argument(
+            "domains/mybee/mybee_ax/compatibility.py"
+        )
+        == "mybee_ax.compatibility"
+    )
     assert gate._coverage_source_argument("services/nex-cx/nex_cx") == (
         "services/nex-cx/nex_cx"
     )
+    assert gate._validated_coverage_target(
+        source_root, "domains/mybee/mybee_ax"
+    ) == "domains/mybee/mybee_ax"
     with pytest.raises(ValueError, match="outside an import root"):
         gate._coverage_source_argument("scripts/nested/path/module.py")
 

@@ -834,5 +834,7 @@ npm --prefix apps/nex-ae-web run acceptance:v2-full-web
 "$PYTHON_BIN" scripts/smoke/run_p5_planning_execution_foundation_closure.py --summary
 "$PYTHON_BIN" scripts/smoke/run_p6_ca02_s8_runtime_profile_acceptance.py --summary
 "$PYTHON_BIN" scripts/smoke/run_p8_s06_nsl_compatibility.py --summary
+"$PYTHON_BIN" scripts/quality/build_mybee_w70_golden_a_quarantine.py
+"$PYTHON_BIN" scripts/quality/run_mybee_w70_golden_a_quarantine_gate.py --summary
 "$PYTHON_BIN" scripts/smoke/run_p8_s68_golden_a_evidence_package.py --execute --summary
 "$PYTHON_BIN" scripts/deployment/run_p8_demo_s12_release_operations_closure.py --summary

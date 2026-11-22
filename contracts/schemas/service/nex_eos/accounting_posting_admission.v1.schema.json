@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_eos/accounting_posting_admission.v1.schema.json",
+  "title": "EOS Accounting Posting Admission v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "operation_id", "admission_id", "tenant_id", "company_id",
+    "candidate_id", "candidate_version", "candidate_revision", "candidate_hash",
+    "project_id", "project_code", "accounting_approval_evidence_id",
+    "accounting_proof_hash", "approval_case_id", "approver_subject_id",
+    "validation_hash", "review_hash", "submitted_event_id",
+    "fresh_oa_decision_ref", "fresh_oa_revision_hash",
+    "fresh_project_authorization", "snapshot_hash", "correlation_id",
+    "admitted_at", "expires_at", "admission_hash"
+  ],
+  "properties": {
+    "schema_version": {"const": "eos_accounting_posting_admission.v1"},
+    "operation_id": {"const": "FINANCE.VOUCHER.APPROVE_AND_POST.ADMISSION"},
+    "admission_id": {"$ref": "#/$defs/uuid"},
+    "tenant_id": {"$ref": "#/$defs/scoped_id"},
+    "company_id": {"$ref": "#/$defs/uuid"},
+    "candidate_id": {"$ref": "#/$defs/uuid"},
+    "candidate_version": {"type": "integer", "minimum": 1},
+    "candidate_revision": {"type": "integer", "minimum": 1},
+    "candidate_hash": {"$ref": "#/$defs/hash_ref"},
+    "project_id": {"$ref": "#/$defs/uuid"},
+    "project_code": {"type": "string", "pattern": "^[A-Z0-9]{4}[DMSOIG][0-9]{6}$"},
+    "accounting_approval_evidence_id": {"$ref": "#/$defs/uuid"},
+    "accounting_proof_hash": {"$ref": "#/$defs/hash_ref"},
+    "approval_case_id": {"$ref": "#/$defs/uuid"},
+    "approver_subject_id": {"$ref": "#/$defs/scoped_id"},
+    "validation_hash": {"$ref": "#/$defs/hash_ref"},
+    "review_hash": {"$ref": "#/$defs/hash_ref"},
+    "submitted_event_id": {"$ref": "#/$defs/uuid"},
+    "fresh_oa_decision_ref": {"$ref": "#/$defs/scoped_id"},
+    "fresh_oa_revision_hash": {"$ref": "#/$defs/hash_ref"},
+    "fresh_project_authorization": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "decision_ref", "project_code", "project_role", "project_status",
+        "source_version", "projection_event_hash", "authorization_revision_hash",
+        "decided_at"
+      ],
+      "properties": {
+        "decision_ref": {"$ref": "#/$defs/hash_ref"},
+        "project_code": {"type": "string", "pattern": "^[A-Z0-9]{4}[DMSOIG][0-9]{6}$"},
+        "project_role": {"type": "string", "minLength": 1, "maxLength": 64},
+        "project_status": {"enum": ["ACTIVE", "CLOSING"]},
+        "source_version": {"type": "integer", "minimum": 1},
+        "projection_event_hash": {"$ref": "#/$defs/hash_ref"},
+        "authorization_revision_hash": {"$ref": "#/$defs/hash_ref"},
+        "decided_at": {"type": "string", "format": "date-time"}
+      }
+    },
+    "snapshot_hash": {"$ref": "#/$defs/hash_ref"},
+    "correlation_id": {"$ref": "#/$defs/scoped_id"},
+    "admitted_at": {"type": "string", "format": "date-time"},
+    "expires_at": {"type": "string", "format": "date-time"},
+    "admission_hash": {"$ref": "#/$defs/hash_ref"}
+  },
+  "$defs": {
+    "uuid": {"type": "string", "format": "uuid"},
+    "hash_ref": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "scoped_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:@/-]{0,255}$"}
+  }
+}

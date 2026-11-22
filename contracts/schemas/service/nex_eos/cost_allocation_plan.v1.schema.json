@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_eos/cost_allocation_plan.v1.schema.json",
+  "title": "EOS Cost Allocation Plan v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "operation", "idempotency_disposition", "tenant_id",
+    "company_id", "plan_id", "plan_revision", "source_kind", "scope_type",
+    "basis_kind", "basis_priority", "rule_release_hash", "basis_source_ref",
+    "basis_source_hash", "effective_start", "effective_end", "approved_by",
+    "approved_proof", "state", "plan_hash", "created_at", "lines",
+    "release_authorization_revision_hash"
+  ],
+  "properties": {
+    "schema_version": {"const": "eos_cost_allocation_plan.v1"},
+    "operation": {
+      "enum": ["FINANCE.COST_ALLOCATION_PLAN.RELEASE", "FINANCE.COST_ALLOCATION_PLAN.GET"]
+    },
+    "idempotency_disposition": {"enum": ["CREATED", "EXACT_REPLAY"]},
+    "tenant_id": {"type": "string", "minLength": 1, "maxLength": 128},
+    "company_id": {"type": "string", "format": "uuid"},
+    "plan_id": {"type": "string", "format": "uuid"},
+    "plan_revision": {"type": "integer", "minimum": 1},
+    "source_kind": {"type": "string"},
+    "scope_type": {"enum": ["COMPANY", "PROJECT_SET", "PROJECT"]},
+    "basis_kind": {
+      "enum": [
+        "ACTUAL_WORK", "APPROVED_PLAN", "USAGE",
+        "HEADCOUNT_CASCADE", "JUSTIFIED_PERCENTAGE"
+      ]
+    },
+    "basis_priority": {"type": "integer", "minimum": 1, "maximum": 4},
+    "rule_release_hash": {"$ref": "#/$defs/hash_ref"},
+    "basis_source_ref": {"type": "string", "minLength": 1, "maxLength": 256},
+    "basis_source_hash": {"$ref": "#/$defs/hash_ref"},
+    "effective_start": {"type": "string", "format": "date"},
+    "effective_end": {"type": ["string", "null"], "format": "date"},
+    "approved_by": {"type": "string", "minLength": 1, "maxLength": 128},
+    "approved_proof": {"type": "string", "pattern": "^eos\\.approval-proof:[0-9a-f-]{36}$"},
+    "state": {"const": "APPROVED"},
+    "plan_hash": {"$ref": "#/$defs/hash_ref"},
+    "created_at": {"type": "string", "format": "date-time"},
+    "release_authorization_revision_hash": {
+      "type": ["string", "null"], "pattern": "^[0-9a-f]{64}$"
+    },
+    "lines": {
+      "type": "array", "minItems": 1, "items": {"$ref": "#/$defs/line"}
+    }
+  },
+  "$defs": {
+    "hash_ref": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "line": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "line_no", "project_id", "project_code", "work_code", "basis_units",
+        "allocation_ratio", "eligibility_hash", "confidentiality_class", "line_hash"
+      ],
+      "properties": {
+        "line_no": {"type": "integer", "minimum": 1},
+        "project_id": {"type": "string", "format": "uuid"},
+        "project_code": {"type": "string"},
+        "work_code": {"type": ["string", "null"]},
+        "basis_units": {"type": "string"},
+        "allocation_ratio": {"type": "string"},
+        "eligibility_hash": {"$ref": "#/$defs/hash_ref"},
+        "confidentiality_class": {
+          "enum": ["INTERNAL", "CONFIDENTIAL", "RESTRICTED"]
+        },
+        "line_hash": {"$ref": "#/$defs/hash_ref"}
+      }
+    }
+  }
+}

@@ -41,7 +41,7 @@ from nex_ae_api.nsl_backend_profiles import (
     NSL_V01_PROCESS_ISOLATED_BACKEND,
     NSL_V02_IN_PROCESS_BACKEND,
 )
-from nex_ae_api.runtime_jobs import RuntimeJobClaim
+from nex_ae_api.runtime_jobs import RUNTIME_ASSIGNMENT_KINDS, RuntimeJobClaim
 
 AE_AGENT_RUNTIME_WORKER_PROFILE_SCHEMA_VERSION = "1.0"
 AE_AGENT_RUNTIME_WORKER_READINESS_SCHEMA_VERSION = (
@@ -167,9 +167,10 @@ class AgentRuntimeWorkerConfig:
 @dataclass(frozen=True)
 class AgentRuntimeAssignment:
     tenant_id: str
-    executor_kind: str
-    backend_profile: str
+    executor_kind: str | None
+    backend_profile: str | None
     claim: RuntimeJobClaim
+    assignment_kind: str = "EXECUTABLE_STEP"
 
     @property
     def runtime_job_id(self) -> str:
@@ -558,6 +559,7 @@ def validate_agent_runtime_worker_startup(
         "mode": config.mode,
         "worker_id": profile["worker_id"],
         "profile_hash": config.profile.profile_hash,
+        "lease_seconds": config.lease_seconds,
         "configured_executor_kinds": profile["supported_executor_kinds"],
         "configured_backend_profiles": profile["supported_backend_profiles"],
         "missing_executor_kinds": missing_executors,
@@ -576,18 +578,11 @@ def validate_agent_runtime_assignment(
     if not isinstance(assignment, AgentRuntimeAssignment):
         raise _invalid("assignment source returned an invalid assignment.")
     _required_text(assignment.tenant_id, "tenant_id")
-    executor_kind = _required_text(assignment.executor_kind, "executor_kind")
-    backend_profile = _required_text(assignment.backend_profile, "backend_profile")
-    if executor_kind not in profile.supported_executor_kinds:
-        raise AgentRuntimeWorkerError(
-            "ae.agent_runtime_worker.executor_unsupported",
-            "Worker cannot execute the assigned executor kind.",
-        )
-    if backend_profile not in profile.supported_backend_profiles:
-        raise AgentRuntimeWorkerError(
-            "ae.agent_runtime_worker.backend_unsupported",
-            "Worker cannot execute the assigned backend profile.",
-        )
+    assignment_kind = _required_text(
+        assignment.assignment_kind, "assignment_kind"
+    ).upper()
+    if assignment_kind not in RUNTIME_ASSIGNMENT_KINDS:
+        raise _invalid("assignment kind is unsupported.")
     job = assignment.claim.job
     if job.get("tenant_id") != assignment.tenant_id:
         raise _invalid("assignment tenant does not match the RuntimeJob claim.")
@@ -595,6 +590,35 @@ def validate_agent_runtime_assignment(
         raise _invalid("assignment RuntimeJob claim must be RUNNING.")
     _required_text(job.get("lease_token"), "claim.lease_token")
     _required_text(job.get("lease_owner"), "claim.lease_owner")
+    if assignment_kind == "EXECUTABLE_STEP":
+        executor_kind = _required_text(assignment.executor_kind, "executor_kind")
+        backend_profile = _required_text(assignment.backend_profile, "backend_profile")
+        if executor_kind not in profile.supported_executor_kinds:
+            raise AgentRuntimeWorkerError(
+                "ae.agent_runtime_worker.executor_unsupported",
+                "Worker cannot execute the assigned executor kind.",
+            )
+        if backend_profile not in profile.supported_backend_profiles:
+            raise AgentRuntimeWorkerError(
+                "ae.agent_runtime_worker.backend_unsupported",
+                "Worker cannot execute the assigned backend profile.",
+            )
+    else:
+        if (
+            assignment.executor_kind is not None
+            or assignment.backend_profile is not None
+        ):
+            raise _invalid(
+                "Product Coordinator assignments must not carry step capabilities."
+            )
+        if (
+            job.get("job_type") != "RESUME_EXECUTION"
+            or job.get("executable_step_id") is not None
+        ):
+            raise _invalid(
+                "Product Coordinator assignments require a step-free resume job."
+            )
+        _required_text(job.get("wait_id"), "claim.wait_id")
     return assignment
 
 
@@ -971,9 +995,7 @@ def load_in_process_nsl_package_readiness(
         lock_path
         if lock_path is not None
         else (
-            Path(configured_path).expanduser()
-            if configured_path
-            else selected_default
+            Path(configured_path).expanduser() if configured_path else selected_default
         )
     )
     try:
@@ -1005,9 +1027,7 @@ def load_in_process_nsl_package_readiness(
         }
 
 
-def _in_process_package_status(
-    value: Mapping[str, Any] | None, *, profile: str
-) -> str:
+def _in_process_package_status(value: Mapping[str, Any] | None, *, profile: str) -> str:
     if not isinstance(value, Mapping):
         return "MISSING"
     expected = (
@@ -1072,6 +1092,7 @@ def _execution_record(
         "cycle_number": cycle_number,
         "tenant_id": assignment.tenant_id,
         "runtime_job_id": assignment.runtime_job_id,
+        "assignment_kind": assignment.assignment_kind,
         "executor_kind": assignment.executor_kind,
         "backend_profile": assignment.backend_profile,
         "status": status,

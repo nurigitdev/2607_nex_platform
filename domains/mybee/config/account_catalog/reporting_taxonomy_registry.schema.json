@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/mybee/reporting-taxonomy-registry-v1.json",
+  "title": "MyBee approved reporting taxonomy registry",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "registry_id",
+    "admission_state",
+    "approved_releases",
+    "constraints"
+  ],
+  "properties": {
+    "schema_version": {"const": "mybee.reporting_taxonomy_registry.v1"},
+    "registry_id": {"const": "MYBEE-KIFRS-DART"},
+    "admission_state": {"const": "SOURCE_PENDING_NOT_ADMITTED"},
+    "approved_releases": {"type": "array", "maxItems": 0},
+    "constraints": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "invented_concept_ids",
+        "regulated_export_when_pending",
+        "gl_account_code_is_taxonomy_id"
+      ],
+      "properties": {
+        "invented_concept_ids": {"const": "FORBIDDEN"},
+        "regulated_export_when_pending": {"const": "FAIL_CLOSED"},
+        "gl_account_code_is_taxonomy_id": {"const": false}
+      }
+    }
+  }
+}

@@ -10,13 +10,18 @@ import {
   AE_API_PROXY_PREFIX,
   createAeWebServer,
   cacheControlFor,
+  injectTenantMeta,
   isProxyPath
 } from "../scripts/serve.mjs";
 
 async function staticFixture() {
   const root = await mkdtemp(join(tmpdir(), "ae-web-static-"));
   await mkdir(join(root, "assets"));
-  await writeFile(join(root, "index.html"), '<div id="modern-root"></div>', "utf8");
+  await writeFile(
+    join(root, "index.html"),
+    '<meta name="nex-ae-tenant-id" content="tenant-local" /><div id="modern-root"></div>',
+    "utf8"
+  );
   await writeFile(join(root, "assets", "app-abc123.js"), "export {};", "utf8");
   return root;
 }
@@ -51,6 +56,29 @@ describe("AE Web dev server same-origin proxy", () => {
       assert.equal(response.status, 200);
       assert.match(body, /modern-root/);
       assert.equal(response.headers.get("cache-control"), "no-cache, no-store, must-revalidate");
+    } finally {
+      await close(server);
+      await rm(rootDir, { recursive: true, force: true });
+    }
+  });
+
+  it("injects the admitted installed tenant into HTML only", async () => {
+    const rootDir = await staticFixture();
+    const server = createAeWebServer({
+      rootDir,
+      apiProxyTarget: "",
+      tenantId: "M1A7"
+    });
+    const port = await listen(server);
+    try {
+      const response = await fetch(`http://127.0.0.1:${port}/`);
+      const body = await response.text();
+      assert.match(body, /name="nex-ae-tenant-id" content="M1A7"/);
+      assert.doesNotMatch(body, /tenant-local/);
+      assert.throws(
+        () => injectTenantMeta(body, "bad tenant"),
+        /NEX_AE_WEB_TENANT_ID is invalid/
+      );
     } finally {
       await close(server);
       await rm(rootDir, { recursive: true, force: true });

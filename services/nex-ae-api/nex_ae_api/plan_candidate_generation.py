@@ -8,6 +8,10 @@ from dataclasses import dataclass, field
 from typing import Any
 from uuid import UUID
 
+from nex_runtime.business_context import (
+    BusinessContextValidationError,
+    validate_business_request_context,
+)
 from nex_runtime.prompts import PromptRegistryError, render_prompt_from_binding
 from nex_runtime.semantic_hashes import (
     canonical_json,
@@ -17,6 +21,7 @@ from nex_runtime.semantic_hashes import (
 )
 
 from nex_ae_api.agent_plans import AgentPlanError, validate_agent_plan_contract
+from nex_ae_api.business_request_context import BUSINESS_TRANSACTION_INTENT_LABEL
 from nex_ae_api.mo_generation_client import (
     AeMoGenerationClient,
     AeMoGenerationReadiness,
@@ -34,6 +39,7 @@ from nex_ae_api.semantic_candidates import (
     SemanticCalibrationPolicy,
     SemanticCalibrationRegistry,
     SemanticCandidateStageError,
+    semantic_candidate_diagnostic_code,
 )
 from nex_ae_api.voucher_attachment_manifest import work_intent_manifest_binding
 
@@ -187,6 +193,7 @@ class LivePlanCandidateService:
         default_factory=PlanCalibrationRegistry,
         repr=False,
     )
+    prompt_binding_key: str = AE_PLAN_BUILDER_BINDING
 
     def generate_and_bind(
         self,
@@ -199,6 +206,52 @@ class LivePlanCandidateService:
         planning_mode: str,
         agent_plan_id: str,
         agent_plan_version: int = 1,
+    ) -> PlanCandidateStageResult:
+        if agent_plan_id is None:
+            raise _request_error("agent_plan_id is invalid.")
+        return self._generate(
+            work_intent=work_intent,
+            agent_context=agent_context,
+            capability_snapshot=capability_snapshot,
+            request_id=request_id,
+            trace_id=trace_id,
+            planning_mode=planning_mode,
+            agent_plan_id=agent_plan_id,
+            agent_plan_version=agent_plan_version,
+        )
+
+    def generate_proposal(
+        self,
+        *,
+        work_intent: Mapping[str, Any],
+        agent_context: Mapping[str, Any],
+        capability_snapshot: Mapping[str, Any],
+        request_id: str,
+        trace_id: str,
+        planning_mode: str,
+    ) -> PlanCandidateStageResult:
+        return self._generate(
+            work_intent=work_intent,
+            agent_context=agent_context,
+            capability_snapshot=capability_snapshot,
+            request_id=request_id,
+            trace_id=trace_id,
+            planning_mode=planning_mode,
+            agent_plan_id=None,
+            agent_plan_version=1,
+        )
+
+    def _generate(
+        self,
+        *,
+        work_intent: Mapping[str, Any],
+        agent_context: Mapping[str, Any],
+        capability_snapshot: Mapping[str, Any],
+        request_id: str,
+        trace_id: str,
+        planning_mode: str,
+        agent_plan_id: str | None,
+        agent_plan_version: int,
     ) -> PlanCandidateStageResult:
         selected_mode = _planning_mode(planning_mode)
         selected_request_id = _bounded_text(request_id, "request_id", 200)
@@ -222,6 +275,7 @@ class LivePlanCandidateService:
         input_context_hash = semantic_sha256_hash_ref(generation_input)
         prompt_snapshot = _resolve_prompt_snapshot(
             self.prompt_store,
+            binding_key=self.prompt_binding_key,
             user_prompt=canonical_json(generation_input),
             request_id=selected_request_id,
             trace_id=selected_trace_id,
@@ -283,6 +337,19 @@ class LivePlanCandidateService:
         if selected_mode == "shadow":
             return _result(
                 directive="SHADOW_ONLY",
+                failure_code=None,
+                candidate=candidate,
+                candidate_hash=candidate_hash,
+                generation=generation,
+                input_context_hash=input_context_hash,
+                prompt_provenance=prompt_provenance,
+                model_provenance=model_provenance,
+                policy=policy,
+            )
+
+        if agent_plan_id is None:
+            return _result(
+                directive="CONTINUE",
                 failure_code=None,
                 candidate=candidate,
                 candidate_hash=candidate_hash,
@@ -681,7 +748,11 @@ def _bind_step(
         version = None
         aggregation = None
         report = None
-        delegation = metadata
+        delegation = _delegation_with_business_context(
+            metadata,
+            required_capability=required_capability,
+            work_intent=work_intent,
+        )
         output_contract_ref = metadata["result_contract_ref"]
     else:
         try:
@@ -742,6 +813,36 @@ def _bind_step(
     }
 
 
+def _delegation_with_business_context(
+    metadata: Mapping[str, Any],
+    *,
+    required_capability: str,
+    work_intent: Mapping[str, Any],
+) -> dict[str, Any]:
+    delegation = dict(metadata)
+    if required_capability != BUSINESS_TRANSACTION_INTENT_LABEL:
+        return delegation
+    if work_intent.get("schema_version") != "1.2":
+        raise _capability_error(
+            "M1 Project delegation requires an admitted WorkIntent v1.2 context."
+        )
+    try:
+        context = validate_business_request_context(
+            work_intent.get("business_request_context")
+        )
+    except BusinessContextValidationError as exc:
+        raise _capability_error(exc.detail) from exc
+    if work_intent.get("business_context_hash") != context["context_hash"]:
+        raise _capability_error("M1 WorkIntent business context hash is inconsistent.")
+    delegation.update(
+        {
+            "business_request_context": context,
+            "business_context_hash": context["context_hash"],
+        }
+    )
+    return delegation
+
+
 def _candidate_delegation(value: object) -> dict[str, Any]:
     if not isinstance(value, Mapping) or set(value) != _DELEGATION_KEYS:
         raise _schema_error("PLAN delegation metadata is invalid.")
@@ -770,20 +871,18 @@ def _candidate_delegation(value: object) -> dict[str, Any]:
 def _require_project_scope(
     agent_context: Mapping[str, Any], project_scope_ref: str
 ) -> None:
-    project = agent_context.get("project_ref")
-    if (
-        not isinstance(project, Mapping)
-        or project.get("resource_type") != "PROJECT"
-        or project.get("resource_id") != project_scope_ref
-    ):
+    if project_scope_ref not in _trusted_project_scope_refs(agent_context):
         raise _schema_error(
             "PLAN delegation project must match the trusted AgentContext project."
         )
 
 
 def _work_intent_projection(value: Mapping[str, Any]) -> dict[str, Any]:
-    if not isinstance(value, Mapping) or value.get("schema_version") != "1.1":
-        raise _request_error("work_intent must use schema version 1.1.")
+    if not isinstance(value, Mapping) or value.get("schema_version") not in {
+        "1.1",
+        "1.2",
+    }:
+        raise _request_error("work_intent must use schema version 1.1 or 1.2.")
     execution_id = _uuid_text(value.get("execution_id"), "work_intent.execution_id")
     _uuid_text(value.get("work_intent_id"), "work_intent.work_intent_id")
     revision = _bounded_int(value.get("intent_revision"), "intent_revision", 1, 99)
@@ -881,12 +980,10 @@ def _agent_context_projection(
             if isinstance(item, Mapping) and item.get("entity_type")
         }
     )
-    project = value.get("project_ref")
-    project_scope_ref = None
-    if isinstance(project, Mapping) and project.get("resource_type") == "PROJECT":
-        project_scope_ref = _bounded_text(
-            project.get("resource_id"), "project_scope_ref", 160
-        )
+    project_scopes = _trusted_project_scope_refs(value)
+    if len(project_scopes) > 1:
+        raise _request_error("AgentContext Project delegation scope is ambiguous.")
+    project_scope_ref = next(iter(project_scopes), None)
     return {
         "tenant_id": tenant_id,
         "context_hash": context_hash,
@@ -935,9 +1032,29 @@ def _capability_catalog(snapshot: Mapping[str, Any]) -> list[dict[str, Any]]:
     return [records[key] for key in sorted(records)]
 
 
+def _trusted_project_scope_refs(value: Mapping[str, Any]) -> set[str]:
+    refs: set[str] = set()
+    project = value.get("project_ref")
+    if isinstance(project, Mapping) and project.get("resource_type") == "PROJECT":
+        refs.add(_bounded_text(project.get("resource_id"), "project_scope_ref", 160))
+    entities = value.get("resolved_entities")
+    if isinstance(entities, list):
+        for item in entities:
+            resource = item.get("resource_ref") if isinstance(item, Mapping) else None
+            if (
+                isinstance(resource, Mapping)
+                and resource.get("resource_type") == "PROJECT"
+            ):
+                refs.add(
+                    _bounded_text(resource.get("resource_id"), "project_scope_ref", 160)
+                )
+    return refs
+
+
 def _resolve_prompt_snapshot(
     store: Any,
     *,
+    binding_key: str,
     user_prompt: str,
     request_id: str,
     trace_id: str,
@@ -945,7 +1062,7 @@ def _resolve_prompt_snapshot(
     try:
         rendered = render_prompt_from_binding(
             store,
-            binding_key=AE_PLAN_BUILDER_BINDING,
+            binding_key=binding_key,
             variables={},
             request_id=request_id,
             trace_id=trace_id,
@@ -966,7 +1083,7 @@ def _resolve_prompt_snapshot(
             "The captured PLAN prompt version is not active.",
         )
     if (
-        event.get("binding_key") != AE_PLAN_BUILDER_BINDING
+        event.get("binding_key") != binding_key
         or event.get("purpose") != "plan_builder"
         or version.get("purpose") != "plan_builder"
         or version.get("role") != "system"
@@ -988,7 +1105,7 @@ def _resolve_prompt_snapshot(
             "prompt_binding_id": _bounded_text(
                 event.get("prompt_binding_id"), "prompt_binding_id", 64
             ),
-            "prompt_binding_key": AE_PLAN_BUILDER_BINDING,
+            "prompt_binding_key": binding_key,
             "prompt_template_version_id": _bounded_text(
                 event.get("prompt_template_version_id"),
                 "prompt_template_version_id",
@@ -1230,7 +1347,15 @@ def _raise_json_constant(value: str) -> None:
 
 
 def _schema_error(detail: str) -> PlanCandidateStageError:
-    return PlanCandidateStageError(422, "CANDIDATE_SCHEMA_INVALID", detail)
+    return PlanCandidateStageError(
+        422,
+        "CANDIDATE_SCHEMA_INVALID",
+        detail,
+        diagnostic_code=semantic_candidate_diagnostic_code(
+            detail,
+            semantic_stage="PLAN",
+        ),
+    )
 
 
 def _capability_error(detail: str) -> PlanCandidateStageError:
@@ -1242,7 +1367,15 @@ def _dependency_error(detail: str) -> PlanCandidateStageError:
 
 
 def _bounds_error(detail: str) -> PlanCandidateStageError:
-    return PlanCandidateStageError(422, "CANDIDATE_BOUNDS_EXCEEDED", detail)
+    return PlanCandidateStageError(
+        422,
+        "CANDIDATE_BOUNDS_EXCEEDED",
+        detail,
+        diagnostic_code=semantic_candidate_diagnostic_code(
+            detail,
+            semantic_stage="PLAN",
+        ),
+    )
 
 
 def _request_error(detail: str) -> PlanCandidateStageError:

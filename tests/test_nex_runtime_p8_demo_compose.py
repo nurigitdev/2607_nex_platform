@@ -121,6 +121,14 @@ def _canonical_rendered() -> dict:
                 "image": reference,
                 "restart": "unless-stopped",
             },
+            "nex-wc-assignment-dispatch-worker": {
+                "image": _references()["nex-wc-runtime"],
+                "restart": "unless-stopped",
+                "depends_on": {
+                    service_id: {"condition": "service_healthy"}
+                    for service_id in ("openbao", "nex-wc", "nex-ae-api", "nex-oa")
+                },
+            },
         }
     )
     for service_id in (
@@ -133,6 +141,7 @@ def _canonical_rendered() -> dict:
         "nex-eos",
         "nex-wa",
         "nex-ae-agent-runtime-worker",
+        "nex-wc-assignment-dispatch-worker",
         "nex-wc-event-delivery-worker",
         "nex-eos-outbox-publisher",
         "nex-wa-evidence-consumer",
@@ -141,11 +150,28 @@ def _canonical_rendered() -> dict:
             "NEX_DEPLOYMENT_BOUNDARY": "CANONICAL_PLATFORM",
             "NEX_SERVICE_TOKEN_BOOTSTRAP_PROFILE": "STARTUP_24H",
         }
+    rendered["services"]["nex-wc-assignment-dispatch-worker"]["environment"][
+        "NEX_WC_CLAIM_LEASE_SECONDS"
+    ] = "600"
+    rendered["services"]["nex-ae-agent-runtime-worker"]["environment"][
+        "NEX_AE_AGENT_WORKER_LEASE_SECONDS"
+    ] = "600"
+    rendered["services"]["nex-wc-event-delivery-worker"]["environment"].update(
+        {
+            "NEX_WC_CLAIM_LEASE_SECONDS": "600",
+            "NEX_WC_AE_DELIVERY_TIMEOUT_SECONDS": "240",
+        }
+    )
     return rendered
 
 
 def test_demo_compose_sources_are_exact_and_secret_free() -> None:
     result = admit_demo_compose_sources(ROOT)
+    overlay = yaml.safe_load(
+        (ROOT / "deployment/compose/canonical-platform.override.yaml").read_text(
+            encoding="utf-8"
+        )
+    )
 
     assert result["status"] == "ADMITTED"
     assert result["added_service_count"] == len(DEMO_ADDED_SERVICE_IDS)
@@ -153,6 +179,42 @@ def test_demo_compose_sources_are_exact_and_secret_free() -> None:
     assert result["route_count"] == len(DEMO_ROUTE_IDS)
     assert result["wc_eos_tls_routes"] is True
     assert result["raw_secret_included"] is False
+    assert (
+        overlay["services"]["nex-wc-event-delivery-worker"]["environment"][
+            "NEX_WC_AE_DELIVERY_TIMEOUT_SECONDS"
+        ]
+        == "240"
+    )
+    assert (
+        overlay["services"]["nex-wc-event-delivery-worker"]["environment"][
+            "NEX_WC_AE_RESULT_TIMEOUT_SECONDS"
+        ]
+        == "15"
+    )
+    assert (
+        overlay["services"]["nex-wc-event-delivery-worker"]["environment"][
+            "NEX_WC_AE_APPROVAL_TIMEOUT_SECONDS"
+        ]
+        == "15"
+    )
+    assert (
+        overlay["services"]["nex-wc-event-delivery-worker"]["environment"][
+            "NEX_WC_CLAIM_LEASE_SECONDS"
+        ]
+        == "600"
+    )
+    assert (
+        overlay["services"]["nex-wc-assignment-dispatch-worker"]["environment"][
+            "NEX_WC_CLAIM_LEASE_SECONDS"
+        ]
+        == "600"
+    )
+    assert (
+        overlay["services"]["nex-ae-agent-runtime-worker"]["environment"][
+            "NEX_AE_AGENT_WORKER_LEASE_SECONDS"
+        ]
+        == "600"
+    )
 
 
 def test_rendered_compose_and_release_report_admission() -> None:
@@ -468,7 +530,7 @@ def test_protected_render_runner_with_fake_compose(
 
     assert source["status"] == "SOURCE_ADMITTED"
     assert result["status"] == "PASS"
-    assert result["render"]["service_count"] == 17
+    assert result["render"]["service_count"] == 18
     assert result["secret_included"] is False
 
 

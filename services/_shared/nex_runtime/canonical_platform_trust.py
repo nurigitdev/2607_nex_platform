@@ -149,7 +149,12 @@ CANONICAL_PLATFORM_TRUST_GRANTS = (
         "NEX_AE_TO_OA_SERVICE_TOKEN",
         "nex-ae-api",
         "nex-oa",
-        ("service:call", "authorization:read"),
+        (
+            "service:call",
+            "authorization:read",
+            "identity:bootstrap:write",
+            "identity:lifecycle:write",
+        ),
     ),
     CanonicalTrustGrant(
         "NEX_AE_TO_CX_SERVICE_TOKEN", "nex-ae-api", "nex-cx", ("service:call",)
@@ -167,7 +172,10 @@ CANONICAL_PLATFORM_TRUST_GRANTS = (
         "NEX_AE_TO_EOS_SERVICE_TOKEN", "nex-ae-api", "nex-eos", ("service:call",)
     ),
     CanonicalTrustGrant(
-        "NEX_AE_TO_WA_SERVICE_TOKEN", "nex-ae-api", "nex-wa", ("service:call",)
+        "NEX_AE_TO_WA_SERVICE_TOKEN",
+        "nex-ae-api",
+        "nex-wa",
+        ("service:call", "work:evidence:ingest"),
     ),
     CanonicalTrustGrant(
         "NEX_CX_TO_MO_SERVICE_TOKEN", "nex-cx", "nex-mo", ("service:call",)
@@ -203,22 +211,36 @@ CANONICAL_PLATFORM_TRUST_GRANTS = (
         "NEX_EOS_TO_OA_SERVICE_TOKEN",
         "nex-eos",
         "nex-oa",
-        ("service:call", "authorization:read", "identity:employee:resolve"),
+        (
+            "service:call",
+            "authorization:read",
+            "identity:employee:resolve",
+            "project-entitlement:write",
+        ),
     ),
     CanonicalTrustGrant(
-        "NEX_WA_TO_AE_SERVICE_TOKEN", "nex-wa", "nex-ae-api", ("service:call",)
+        "NEX_WA_TO_AE_SERVICE_TOKEN",
+        "nex-wa",
+        "nex-ae-api",
+        ("service:call", "work:source:read"),
     ),
     CanonicalTrustGrant(
-        "NEX_WA_TO_WC_SERVICE_TOKEN", "nex-wa", "nex-wc", ("service:call",)
+        "NEX_WA_TO_WC_SERVICE_TOKEN",
+        "nex-wa",
+        "nex-wc",
+        ("service:call", "work:source:read"),
     ),
     CanonicalTrustGrant(
         "NEX_WA_TO_OA_SERVICE_TOKEN",
         "nex-wa",
         "nex-oa",
-        ("service:call", "authorization:read"),
+        ("service:call", "authorization:read", "identity:subject:verify"),
     ),
     CanonicalTrustGrant(
-        "NEX_WA_TO_EOS_SERVICE_TOKEN", "nex-wa", "nex-eos", ("service:call",)
+        "NEX_WA_TO_EOS_SERVICE_TOKEN",
+        "nex-wa",
+        "nex-eos",
+        ("service:call", "project:verify"),
     ),
 )
 

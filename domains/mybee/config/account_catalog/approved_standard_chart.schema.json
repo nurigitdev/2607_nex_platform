@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/mybee/approved-standard-chart.v1.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "catalog_id",
+    "catalog_profile",
+    "catalog_version",
+    "status",
+    "source_approved_on",
+    "runtime_seed_allowed",
+    "automatic_publication_allowed",
+    "published",
+    "company_adoption_allowed",
+    "source_dataset",
+    "approved_proof_ref",
+    "approved_proof_hash",
+    "terminology_classification",
+    "next_gate"
+  ],
+  "properties": {
+    "schema_version": {"const": "nex.mybee.coa.approved-standard-chart.v1"},
+    "catalog_id": {"const": "mybee.finance.k-ifrs-adopted-chart"},
+    "catalog_profile": {"const": "MYBEE-KIFRS-NFI"},
+    "catalog_version": {"const": "MYBEE-KIFRS-NFI-v1.0"},
+    "status": {"const": "PRODUCT_ACCOUNTING_APPROVED_SOURCE_ADMITTED"},
+    "source_approved_on": {"type": "string", "format": "date"},
+    "runtime_seed_allowed": {"const": true},
+    "automatic_publication_allowed": {"const": false},
+    "published": {"const": false},
+    "company_adoption_allowed": {"const": false},
+    "source_dataset": {"$ref": "#/$defs/source_dataset"},
+    "approved_proof_ref": {"type": "string", "minLength": 1},
+    "approved_proof_hash": {"$ref": "#/$defs/hash_ref"},
+    "terminology_classification": {
+      "const": "INTERNAL_MYBEE_PRODUCT_CODE_NOT_OFFICIAL_KIFRS_OR_DART_ID"
+    },
+    "next_gate": {"const": "COA_02_PERSISTENCE_AND_COA_03_OA_AUTHORIZED_PUBLICATION"}
+  },
+  "$defs": {
+    "hash_ref": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "source_dataset": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "file_sha256",
+        "semantic_hash",
+        "identity_set_hash",
+        "node_contract_hash",
+        "total_nodes",
+        "leaf_accounts"
+      ],
+      "properties": {
+        "path": {"type": "string", "minLength": 1},
+        "file_sha256": {"$ref": "#/$defs/hash_ref"},
+        "semantic_hash": {"$ref": "#/$defs/hash_ref"},
+        "identity_set_hash": {"$ref": "#/$defs/hash_ref"},
+        "node_contract_hash": {"$ref": "#/$defs/hash_ref"},
+        "total_nodes": {"const": 166},
+        "leaf_accounts": {"const": 88}
+      }
+    }
+  }
+}

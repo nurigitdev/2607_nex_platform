@@ -85,33 +85,39 @@ class AccountInput:
     version: int = 1
 
 
+def build_account_record(value: AccountInput) -> dict[str, Any]:
+    """Build the canonical v1 Account row for governed atomic writers."""
+
+    effective_from = _date("effective_from", value.effective_from)
+    effective_until = _optional_date("effective_until", value.effective_until)
+    if effective_until is not None and effective_until <= effective_from:
+        raise _invalid("effective_until", "must follow effective_from")
+    version = _positive_int("version", value.version)
+    if version != 1:
+        raise _invalid("version", "must start at 1")
+    now = datetime.now(UTC)
+    return {
+        "tenant_id": _scoped_id("tenant_id", value.tenant_id),
+        "account_id": _uuid("account_id", value.account_id),
+        "account_code": _code(value.account_code),
+        "name": _text("name", value.name, 256),
+        "category": _choice("category", value.category, EOS_ACCOUNT_CATEGORIES),
+        "account_type": _account_type(value.account_type),
+        "status": _choice("status", value.status, EOS_ACCOUNT_STATUSES),
+        "effective_from": effective_from,
+        "effective_until": effective_until,
+        "version": version,
+        "created_at": now,
+        "updated_at": now,
+    }
+
+
 class SqlAlchemyEosAccountRepository:
     def __init__(self, session_factory: sessionmaker[Session]) -> None:
         self._session_factory = session_factory
 
     def create_account(self, value: AccountInput) -> dict[str, Any]:
-        effective_from = _date("effective_from", value.effective_from)
-        effective_until = _optional_date("effective_until", value.effective_until)
-        if effective_until is not None and effective_until <= effective_from:
-            raise _invalid("effective_until", "must follow effective_from")
-        version = _positive_int("version", value.version)
-        if version != 1:
-            raise _invalid("version", "must start at 1")
-        now = datetime.now(UTC)
-        record = {
-            "tenant_id": _scoped_id("tenant_id", value.tenant_id),
-            "account_id": _uuid("account_id", value.account_id),
-            "account_code": _code(value.account_code),
-            "name": _text("name", value.name, 256),
-            "category": _choice("category", value.category, EOS_ACCOUNT_CATEGORIES),
-            "account_type": _account_type(value.account_type),
-            "status": _choice("status", value.status, EOS_ACCOUNT_STATUSES),
-            "effective_from": effective_from,
-            "effective_until": effective_until,
-            "version": version,
-            "created_at": now,
-            "updated_at": now,
-        }
+        record = build_account_record(value)
         try:
             with build_unit_of_work(self._session_factory) as transaction:
                 transaction.db.execute(EOS_ACCOUNT_TABLE.insert().values(**record))
@@ -125,9 +131,7 @@ class SqlAlchemyEosAccountRepository:
             raise _persistence_error() from exc
         return dict(record)
 
-    def get_account(
-        self, *, tenant_id: str, account_id: str
-    ) -> dict[str, Any] | None:
+    def get_account(self, *, tenant_id: str, account_id: str) -> dict[str, Any] | None:
         statement = select(EOS_ACCOUNT_TABLE).where(
             EOS_ACCOUNT_TABLE.c.tenant_id == _scoped_id("tenant_id", tenant_id),
             EOS_ACCOUNT_TABLE.c.account_id == _uuid("account_id", account_id),

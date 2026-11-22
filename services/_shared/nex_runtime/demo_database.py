@@ -23,9 +23,18 @@ from .semantic_hashes import semantic_sha256_hash_ref, validate_hash_ref
 
 DEMO_DATABASE_ADMISSION_SCHEMA_VERSION = "p8_demo_database_admission.v1"
 DEMO_BACKUP_SET_SCHEMA_VERSION = "p8_demo_pre_migration_backup_set.v1"
+CURRENT_PLATFORM_DATABASE_ADMISSION_SCHEMA_VERSION = (
+    "current_platform_database_admission.v1"
+)
+CURRENT_PLATFORM_BACKUP_SET_SCHEMA_VERSION = (
+    "current_platform_pre_migration_backup_set.v1"
+)
 DEMO_TENANT_FIXTURE_PLAN_SCHEMA_VERSION = "p8_demo_tenant_fixture_plan.v1"
 DEMO_TENANT_ID = "VO00"
 DEMO_DATABASE_BACKUP_CONFIRMATION = "BACKUP_P8_DEMO_DEV_DATABASES"
+CURRENT_PLATFORM_DATABASE_BACKUP_CONFIRMATION = (
+    "BACKUP_CURRENT_PLATFORM_DEV_DATABASES"
+)
 DEMO_FIXTURE_CONFIRMATIONS = {
     "SEED": "SEED_P8_DEMO_VO00_TENANT",
     "RESET": "RESET_P8_DEMO_VO00_TENANT",
@@ -109,24 +118,61 @@ DEMO_DATABASE_TARGETS = (
     ),
 )
 
+CURRENT_PLATFORM_DEVELOPMENT_DATABASE_TARGETS = (
+    *DEMO_DATABASE_TARGETS,
+    DemoDatabaseTarget("nex-wa", "NEX_WA_DATABASE_URL", "nex_wa_dev", "nex_wa_user"),
+)
+
 
 def resolve_demo_database_targets(
     environ: Mapping[str, str],
     *,
     service_ids: Iterable[str] | None = None,
 ) -> tuple[ResolvedDemoDatabaseTarget, ...]:
+    return _resolve_database_targets(
+        environ,
+        targets=DEMO_DATABASE_TARGETS,
+        service_ids=service_ids,
+        selection_error_prefix="demo",
+    )
+
+
+def resolve_current_platform_database_targets(
+    environ: Mapping[str, str],
+    *,
+    service_ids: Iterable[str] | None = None,
+) -> tuple[ResolvedDemoDatabaseTarget, ...]:
+    return _resolve_database_targets(
+        environ,
+        targets=CURRENT_PLATFORM_DEVELOPMENT_DATABASE_TARGETS,
+        service_ids=service_ids,
+        selection_error_prefix="current_platform",
+    )
+
+
+def _resolve_database_targets(
+    environ: Mapping[str, str],
+    *,
+    targets: Sequence[DemoDatabaseTarget],
+    service_ids: Iterable[str] | None,
+    selection_error_prefix: str,
+) -> tuple[ResolvedDemoDatabaseTarget, ...]:
     selected = tuple(
-        (target.service_id for target in DEMO_DATABASE_TARGETS)
+        (target.service_id for target in targets)
         if service_ids is None
         else service_ids
     )
     if not selected:
-        raise DemoDatabaseGuardError("demo_service_selection_empty")
+        raise DemoDatabaseGuardError(
+            f"{selection_error_prefix}_service_selection_empty"
+        )
     if len(set(selected)) != len(selected):
-        raise DemoDatabaseGuardError("demo_service_selection_duplicate")
-    by_service = {target.service_id: target for target in DEMO_DATABASE_TARGETS}
+        raise DemoDatabaseGuardError(
+            f"{selection_error_prefix}_service_selection_duplicate"
+        )
+    by_service = {target.service_id: target for target in targets}
     if any(service_id not in by_service for service_id in selected):
-        raise DemoDatabaseGuardError("demo_service_unknown")
+        raise DemoDatabaseGuardError(f"{selection_error_prefix}_service_unknown")
 
     resolved = tuple(
         _resolve_target(by_service[service_id], environ) for service_id in selected
@@ -156,11 +202,31 @@ def inspect_demo_database_targets(
 def demo_database_admission_public_projection(
     inspections: Sequence[DemoDatabaseInspection],
 ) -> dict[str, Any]:
+    return _database_admission_public_projection(
+        inspections,
+        schema_version=DEMO_DATABASE_ADMISSION_SCHEMA_VERSION,
+    )
+
+
+def current_platform_database_admission_public_projection(
+    inspections: Sequence[DemoDatabaseInspection],
+) -> dict[str, Any]:
+    return _database_admission_public_projection(
+        inspections,
+        schema_version=CURRENT_PLATFORM_DATABASE_ADMISSION_SCHEMA_VERSION,
+    )
+
+
+def _database_admission_public_projection(
+    inspections: Sequence[DemoDatabaseInspection],
+    *,
+    schema_version: str,
+) -> dict[str, Any]:
     records = tuple(inspections)
     if not records:
         raise DemoDatabaseGuardError("demo_database_inspections_empty")
     return {
-        "schema_version": DEMO_DATABASE_ADMISSION_SCHEMA_VERSION,
+        "schema_version": schema_version,
         "profile": "dev",
         "state": "ADMITTED"
         if all(item.identity_state == "ADMITTED" for item in records)
@@ -199,20 +265,93 @@ def execute_demo_pre_migration_backup_set(
     runner: Callable[..., Any],
     parent_environ: Mapping[str, str] | None = None,
 ) -> DemoBackupSetResult:
-    _require_complete_admitted_set(targets, inspections)
-    if confirmation != DEMO_DATABASE_BACKUP_CONFIRMATION:
-        raise DemoDatabaseGuardError("demo_backup_confirmation_invalid")
-    if not SAFE_BACKUP_ID.fullmatch(backup_id):
-        raise DemoDatabaseGuardError("demo_backup_id_invalid")
-    if not backup_root.is_absolute() or backup_root.is_symlink():
-        raise DemoDatabaseGuardError("demo_backup_root_invalid")
+    return _execute_pre_migration_backup_set(
+        targets,
+        inspections,
+        backup_id=backup_id,
+        backup_root=backup_root,
+        pg_dump_bin=pg_dump_bin,
+        confirmation=confirmation,
+        expected_confirmation=DEMO_DATABASE_BACKUP_CONFIRMATION,
+        expected_targets=DEMO_DATABASE_TARGETS,
+        schema_version=DEMO_BACKUP_SET_SCHEMA_VERSION,
+        error_prefix="demo",
+        credential_prefix="p8-demo",
+        temporary_prefix="nex-p8-demo-pg-",
+        runner=runner,
+        parent_environ=parent_environ,
+    )
 
-    with TemporaryDirectory(prefix="nex-p8-demo-pg-") as temporary:
+
+def execute_current_platform_pre_migration_backup_set(
+    targets: Sequence[ResolvedDemoDatabaseTarget],
+    inspections: Sequence[DemoDatabaseInspection],
+    *,
+    backup_id: str,
+    backup_root: Path,
+    pg_dump_bin: Path,
+    confirmation: str,
+    runner: Callable[..., Any],
+    parent_environ: Mapping[str, str] | None = None,
+) -> DemoBackupSetResult:
+    return _execute_pre_migration_backup_set(
+        targets,
+        inspections,
+        backup_id=backup_id,
+        backup_root=backup_root,
+        pg_dump_bin=pg_dump_bin,
+        confirmation=confirmation,
+        expected_confirmation=CURRENT_PLATFORM_DATABASE_BACKUP_CONFIRMATION,
+        expected_targets=CURRENT_PLATFORM_DEVELOPMENT_DATABASE_TARGETS,
+        schema_version=CURRENT_PLATFORM_BACKUP_SET_SCHEMA_VERSION,
+        error_prefix="current_platform",
+        credential_prefix="current-platform",
+        temporary_prefix="nex-current-platform-pg-",
+        runner=runner,
+        parent_environ=parent_environ,
+    )
+
+
+def _execute_pre_migration_backup_set(
+    targets: Sequence[ResolvedDemoDatabaseTarget],
+    inspections: Sequence[DemoDatabaseInspection],
+    *,
+    backup_id: str,
+    backup_root: Path,
+    pg_dump_bin: Path,
+    confirmation: str,
+    expected_confirmation: str,
+    expected_targets: Sequence[DemoDatabaseTarget],
+    schema_version: str,
+    error_prefix: str,
+    credential_prefix: str,
+    temporary_prefix: str,
+    runner: Callable[..., Any],
+    parent_environ: Mapping[str, str] | None,
+) -> DemoBackupSetResult:
+    _require_complete_admitted_set(
+        targets,
+        inspections,
+        expected_targets=expected_targets,
+        error_prefix=error_prefix,
+    )
+    if confirmation != expected_confirmation:
+        raise DemoDatabaseGuardError(f"{error_prefix}_backup_confirmation_invalid")
+    if not SAFE_BACKUP_ID.fullmatch(backup_id):
+        raise DemoDatabaseGuardError(f"{error_prefix}_backup_id_invalid")
+    if not backup_root.is_absolute() or backup_root.is_symlink():
+        raise DemoDatabaseGuardError(f"{error_prefix}_backup_root_invalid")
+
+    with TemporaryDirectory(prefix=temporary_prefix) as temporary:
         credential_root = Path(temporary)
         service_file = credential_root / "pg_service.conf"
         passfile = credential_root / ".pgpass"
-        service_names = write_demo_backup_credentials(
-            targets, service_file=service_file, passfile=passfile
+        service_names = _write_backup_credentials(
+            targets,
+            service_file=service_file,
+            passfile=passfile,
+            service_name_prefix=credential_prefix,
+            error_prefix=error_prefix,
         )
         results = []
         for target in targets:
@@ -239,7 +378,7 @@ def execute_demo_pre_migration_backup_set(
     ]
     inspection_by_service = {item.service_id: item for item in inspections}
     manifest_without_hash = {
-        "schema_version": DEMO_BACKUP_SET_SCHEMA_VERSION,
+        "schema_version": schema_version,
         "backup_id": backup_id,
         "state": "CREATED",
         "service_count": len(results),
@@ -278,9 +417,9 @@ def execute_demo_pre_migration_backup_set(
     set_hash = semantic_sha256_hash_ref(manifest_without_hash)
     manifest = {**manifest_without_hash, "set_hash": set_hash}
     manifest_path = backup_root / f"{backup_id}.manifest.json"
-    _write_json_atomic(manifest_path, manifest)
+    _write_json_atomic(manifest_path, manifest, error_prefix=error_prefix)
     return DemoBackupSetResult(
-        schema_version=DEMO_BACKUP_SET_SCHEMA_VERSION,
+        schema_version=schema_version,
         backup_id=backup_id,
         state="CREATED",
         manifest_path=manifest_path,
@@ -301,22 +440,46 @@ def demo_backup_set_public_projection(result: DemoBackupSetResult) -> dict[str, 
     }
 
 
+current_platform_backup_set_public_projection = demo_backup_set_public_projection
+
+
 def write_demo_backup_credentials(
     targets: Sequence[ResolvedDemoDatabaseTarget],
     *,
     service_file: Path,
     passfile: Path,
 ) -> dict[str, str]:
+    return _write_backup_credentials(
+        targets,
+        service_file=service_file,
+        passfile=passfile,
+        service_name_prefix="p8-demo",
+        error_prefix="demo",
+    )
+
+
+def _write_backup_credentials(
+    targets: Sequence[ResolvedDemoDatabaseTarget],
+    *,
+    service_file: Path,
+    passfile: Path,
+    service_name_prefix: str,
+    error_prefix: str,
+) -> dict[str, str]:
     if not service_file.is_absolute() or not passfile.is_absolute():
-        raise DemoDatabaseGuardError("demo_backup_credential_path_invalid")
+        raise DemoDatabaseGuardError(
+            f"{error_prefix}_backup_credential_path_invalid"
+        )
     if service_file.exists() or passfile.exists():
-        raise DemoDatabaseGuardError("demo_backup_credential_file_exists")
+        raise DemoDatabaseGuardError(
+            f"{error_prefix}_backup_credential_file_exists"
+        )
     services: dict[str, str] = {}
     service_lines: list[str] = []
     pass_lines: list[str] = []
     for target in targets:
         parsed = make_url(target.database_url)
-        service_name = f"p8-demo-{target.target.service_id}"
+        service_name = f"{service_name_prefix}-{target.target.service_id}"
         services[target.target.service_id] = service_name
         service_lines.extend(
             (
@@ -436,48 +599,112 @@ def validate_demo_backup_set_manifest(
     *,
     expected_backup_id: str | None = None,
 ) -> dict[str, Any]:
+    return _validate_backup_set_manifest(
+        payload,
+        expected_backup_id=expected_backup_id,
+        schema_version=DEMO_BACKUP_SET_SCHEMA_VERSION,
+        expected_targets=DEMO_DATABASE_TARGETS,
+        error_prefix="demo",
+    )
+
+
+def validate_current_platform_backup_set_manifest(
+    payload: Mapping[str, Any],
+    *,
+    expected_backup_id: str | None = None,
+) -> dict[str, Any]:
+    return _validate_backup_set_manifest(
+        payload,
+        expected_backup_id=expected_backup_id,
+        schema_version=CURRENT_PLATFORM_BACKUP_SET_SCHEMA_VERSION,
+        expected_targets=CURRENT_PLATFORM_DEVELOPMENT_DATABASE_TARGETS,
+        error_prefix="current_platform",
+    )
+
+
+def _validate_backup_set_manifest(
+    payload: Mapping[str, Any],
+    *,
+    expected_backup_id: str | None,
+    schema_version: str,
+    expected_targets: Sequence[DemoDatabaseTarget],
+    error_prefix: str,
+) -> dict[str, Any]:
     if not isinstance(payload, Mapping):
-        raise DemoDatabaseGuardError("demo_backup_set_manifest_invalid")
+        raise DemoDatabaseGuardError(
+            f"{error_prefix}_backup_set_manifest_invalid"
+        )
     record = dict(payload)
     supplied_hash = record.pop("set_hash", None)
     try:
         validated_hash = validate_hash_ref(supplied_hash)
     except ValueError as exc:
-        raise DemoDatabaseGuardError("demo_backup_set_hash_invalid") from exc
+        raise DemoDatabaseGuardError(
+            f"{error_prefix}_backup_set_hash_invalid"
+        ) from exc
     if semantic_sha256_hash_ref(record) != validated_hash:
-        raise DemoDatabaseGuardError("demo_backup_set_hash_mismatch")
+        raise DemoDatabaseGuardError(f"{error_prefix}_backup_set_hash_mismatch")
     backup_id = record.get("backup_id")
     if (
-        record.get("schema_version") != DEMO_BACKUP_SET_SCHEMA_VERSION
+        record.get("schema_version") != schema_version
         or record.get("state") != "CREATED"
         or not isinstance(backup_id, str)
         or not SAFE_BACKUP_ID.fullmatch(backup_id)
     ):
-        raise DemoDatabaseGuardError("demo_backup_set_manifest_invalid")
+        raise DemoDatabaseGuardError(
+            f"{error_prefix}_backup_set_manifest_invalid"
+        )
     if expected_backup_id is not None and backup_id != expected_backup_id:
-        raise DemoDatabaseGuardError("demo_backup_set_id_mismatch")
+        raise DemoDatabaseGuardError(f"{error_prefix}_backup_set_id_mismatch")
     targets = record.get("targets")
     if not isinstance(targets, list):
-        raise DemoDatabaseGuardError("demo_backup_set_manifest_invalid")
+        raise DemoDatabaseGuardError(
+            f"{error_prefix}_backup_set_manifest_invalid"
+        )
     service_ids = tuple(
         item.get("service_id") if isinstance(item, Mapping) else None
         for item in targets
     )
-    expected_services = tuple(target.service_id for target in DEMO_DATABASE_TARGETS)
+    expected_services = tuple(target.service_id for target in expected_targets)
     if (
         record.get("service_count") != len(expected_services)
         or service_ids != expected_services
     ):
-        raise DemoDatabaseGuardError("demo_backup_set_services_incomplete")
+        raise DemoDatabaseGuardError(
+            f"{error_prefix}_backup_set_services_incomplete"
+        )
     return {**record, "set_hash": validated_hash}
 
 
 def load_demo_backup_set_manifest(path: Path) -> dict[str, Any]:
+    return _load_backup_set_manifest(
+        path,
+        validator=validate_demo_backup_set_manifest,
+        error_prefix="demo",
+    )
+
+
+def load_current_platform_backup_set_manifest(path: Path) -> dict[str, Any]:
+    return _load_backup_set_manifest(
+        path,
+        validator=validate_current_platform_backup_set_manifest,
+        error_prefix="current_platform",
+    )
+
+
+def _load_backup_set_manifest(
+    path: Path,
+    *,
+    validator: Callable[[Mapping[str, Any]], dict[str, Any]],
+    error_prefix: str,
+) -> dict[str, Any]:
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, UnicodeError, json.JSONDecodeError) as exc:
-        raise DemoDatabaseGuardError("demo_backup_set_manifest_unreadable") from exc
-    return validate_demo_backup_set_manifest(payload)
+        raise DemoDatabaseGuardError(
+            f"{error_prefix}_backup_set_manifest_unreadable"
+        ) from exc
+    return validator(payload)
 
 
 def _resolve_target(
@@ -585,14 +812,21 @@ def _source_migration_inventory(
 def _require_complete_admitted_set(
     targets: Sequence[ResolvedDemoDatabaseTarget],
     inspections: Sequence[DemoDatabaseInspection],
+    *,
+    expected_targets: Sequence[DemoDatabaseTarget] = DEMO_DATABASE_TARGETS,
+    error_prefix: str = "demo",
 ) -> None:
-    expected = tuple(target.service_id for target in DEMO_DATABASE_TARGETS)
+    expected = tuple(target.service_id for target in expected_targets)
     target_ids = tuple(item.target.service_id for item in targets)
     inspection_ids = tuple(item.service_id for item in inspections)
     if target_ids != expected or inspection_ids != expected:
-        raise DemoDatabaseGuardError("demo_backup_database_set_incomplete")
+        raise DemoDatabaseGuardError(
+            f"{error_prefix}_backup_database_set_incomplete"
+        )
     if any(item.identity_state != "ADMITTED" for item in inspections):
-        raise DemoDatabaseGuardError("demo_backup_identity_not_admitted")
+        raise DemoDatabaseGuardError(
+            f"{error_prefix}_backup_identity_not_admitted"
+        )
 
 
 def _backup_set_payload(
@@ -606,11 +840,18 @@ def _backup_set_payload(
         raise DemoDatabaseGuardError("demo_backup_set_manifest_unreadable") from exc
 
 
-def _write_json_atomic(path: Path, payload: Mapping[str, Any]) -> None:
+def _write_json_atomic(
+    path: Path,
+    payload: Mapping[str, Any],
+    *,
+    error_prefix: str = "demo",
+) -> None:
     path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     os.chmod(path.parent, 0o700)
     if path.exists() or path.is_symlink():
-        raise DemoDatabaseGuardError("demo_backup_set_manifest_exists")
+        raise DemoDatabaseGuardError(
+            f"{error_prefix}_backup_set_manifest_exists"
+        )
     partial = path.with_name(f".{path.name}.partial")
     try:
         with partial.open("x", encoding="utf-8") as output:

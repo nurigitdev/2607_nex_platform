@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_oa/project_authorization_decision_response.v1.schema.json",
+  "title": "NeX OA Project Authorization Decision Response",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["response_schema_version", "service_id", "decision", "request_id", "trace_id"],
+  "properties": {
+    "response_schema_version": {"const": "oa_project_decision_response.v1"},
+    "service_id": {"const": "nex-oa"},
+    "decision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "decision_schema_version", "decision_ref", "tenant_id", "subject_id",
+        "project_code", "action", "allowed", "reason_code", "project_role",
+        "project_status", "grant_status", "source_version", "minimum_source_version",
+        "projection_event_hash", "applicable_global_scopes",
+        "authorization_revision_hash", "correlation_id", "decided_at"
+      ],
+      "properties": {
+        "decision_schema_version": {"const": "oa_project_authorization_decision.v1"},
+        "decision_ref": {"$ref": "#/$defs/hash_ref"},
+        "tenant_id": {"$ref": "#/$defs/scoped_id"},
+        "subject_id": {"$ref": "#/$defs/scoped_id"},
+        "project_code": {"type": "string", "pattern": "^[A-Z0-9]{4}[DMSOIG][0-9]{6}$"},
+        "action": {"type": "string"},
+        "allowed": {"type": "boolean"},
+        "reason_code": {"type": "string", "minLength": 1, "maxLength": 64},
+        "project_role": {"type": ["string", "null"], "enum": ["OWNER", "MANAGER", "MEMBER", "VIEWER", null]},
+        "project_status": {"type": ["string", "null"], "enum": ["ACTIVE", "INACTIVE", "CLOSING", "CLOSED", null]},
+        "grant_status": {"type": ["string", "null"], "enum": ["ACTIVE", "REVOKED", null]},
+        "source_version": {"type": ["integer", "null"], "minimum": 1},
+        "minimum_source_version": {"type": "integer", "minimum": 1},
+        "projection_event_hash": {"anyOf": [{"$ref": "#/$defs/hash_ref"}, {"type": "null"}]},
+        "applicable_global_scopes": {
+          "type": "array", "maxItems": 1, "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1, "maxLength": 256}
+        },
+        "authorization_revision_hash": {
+          "type": "string", "pattern": "^(sha256:)?[0-9a-f]{64}$"
+        },
+        "correlation_id": {"$ref": "#/$defs/scoped_id"},
+        "decided_at": {"type": "string", "format": "date-time"}
+      }
+    },
+    "request_id": {"$ref": "#/$defs/scoped_id"},
+    "trace_id": {"$ref": "#/$defs/scoped_id"}
+  },
+  "$defs": {
+    "scoped_id": {
+      "type": "string", "minLength": 1, "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:@-]{0,127}$"
+    },
+    "hash_ref": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}
+  }
+}

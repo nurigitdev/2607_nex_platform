@@ -9,6 +9,14 @@ from typing import Any, Protocol
 
 from fastapi import FastAPI, Header, Request
 from fastapi.responses import JSONResponse
+from nex_runtime import (
+    DEFAULT_USER_SCOPE,
+    PERSISTENCE_MODE_POSTGRES,
+    ServicePersistenceRuntime,
+    problem_response,
+    request_id_from_headers,
+    trace_id_from_headers,
+)
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
@@ -18,27 +26,19 @@ from nex_oa.identity_access import (
     authorize_identity_request,
 )
 from nex_oa.subjects import (
-    InMemoryOaSubjectRegistry,
     OA_TENANT_REF_TYPE,
     OA_USER_REF_TYPE,
+    InMemoryOaSubjectRegistry,
     OaSubjectRegistry,
     SqlAlchemyOaSubjectRegistry,
     SubjectRegistryError,
     normalize_registry_id,
     payload_has_private_identity_data,
 )
-from nex_runtime import (
-    DEFAULT_USER_SCOPE,
-    PERSISTENCE_MODE_POSTGRES,
-    ServicePersistenceRuntime,
-    problem_response,
-    request_id_from_headers,
-    trace_id_from_headers,
-)
-
 
 OA_TENANT_MEMBERSHIP_SCHEMA_VERSION = "oa_tenant_membership.v1"
 OA_TENANT_MEMBERSHIP_SNAPSHOT_SCHEMA_VERSION = "oa_tenant_membership_snapshot.v1"
+OA_MEMBERSHIP_AUTHORITY_WRITE_SCOPE = "identity:lifecycle:write"
 OA_MEMBERSHIP_STATUSES = ("ACTIVE", "DISABLED")
 DEFAULT_MEMBERSHIP_ROLES = ("employee",)
 DEFAULT_MEMBERSHIP_SCOPES = (DEFAULT_USER_SCOPE,)
@@ -75,6 +75,15 @@ class OaTenantMembershipRegistry(Protocol):
         tenant_id: str,
         subject_id: str,
     ) -> dict[str, Any] | None:
+        ...
+
+    def replace_authority(
+        self,
+        *,
+        tenant_id: str,
+        subject_id: str,
+        payload: Mapping[str, Any],
+    ) -> dict[str, Any]:
         ...
 
 
@@ -117,6 +126,41 @@ class InMemoryOaTenantMembershipRegistry:
             self.subject_registry,
             tenant_id=normalized_tenant_id,
             subject_id=normalized_subject_id,
+        )
+        if subject_snapshot is None:
+            raise _membership_unavailable()
+        return build_membership_snapshot(
+            membership=record,
+            subject_snapshot=subject_snapshot,
+        )
+
+    def replace_authority(
+        self,
+        *,
+        tenant_id: str,
+        subject_id: str,
+        payload: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        tenant, subject, expected_revision, roles, scopes = (
+            _normalize_authority_replacement(
+                tenant_id=tenant_id,
+                subject_id=subject_id,
+                payload=payload,
+            )
+        )
+        record = self.memberships.get((tenant, subject))
+        if record is None:
+            raise _membership_not_found(tenant, subject)
+        _require_authority_revision(record, expected_revision=expected_revision)
+        if record["roles"] != roles or record["scopes"] != scopes:
+            record["roles"] = roles
+            record["scopes"] = scopes
+            record["revision"] = int(record["revision"]) + 1
+            record["updated_at"] = _utc_now()
+        subject_snapshot = _get_subject_snapshot(
+            self.subject_registry,
+            tenant_id=tenant,
+            subject_id=subject,
         )
         if subject_snapshot is None:
             raise _membership_unavailable()
@@ -194,6 +238,47 @@ class SqlAlchemyOaTenantMembershipRegistry:
             raise _membership_unavailable()
         return build_membership_snapshot(
             membership=record,
+            subject_snapshot=subject_snapshot,
+        )
+
+    def replace_authority(
+        self,
+        *,
+        tenant_id: str,
+        subject_id: str,
+        payload: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        tenant, subject, expected_revision, roles, scopes = (
+            _normalize_authority_replacement(
+                tenant_id=tenant_id,
+                subject_id=subject_id,
+                payload=payload,
+            )
+        )
+        try:
+            stored = self._run_in_transaction(
+                lambda session: self._replace_authority(
+                    session,
+                    tenant_id=tenant,
+                    subject_id=subject,
+                    expected_revision=expected_revision,
+                    roles=roles,
+                    scopes=scopes,
+                )
+            )
+        except OaMembershipError:
+            raise
+        except SQLAlchemyError as exc:
+            raise _membership_unavailable() from exc
+        subject_snapshot = _get_subject_snapshot(
+            self._subject_registry,
+            tenant_id=tenant,
+            subject_id=subject,
+        )
+        if subject_snapshot is None:
+            raise _membership_unavailable()
+        return build_membership_snapshot(
+            membership=stored,
             subject_snapshot=subject_snapshot,
         )
 
@@ -284,6 +369,73 @@ class SqlAlchemyOaTenantMembershipRegistry:
                 "updated_at": record["updated_at"],
             },
         )
+
+    def _replace_authority(
+        self,
+        session: Session,
+        *,
+        tenant_id: str,
+        subject_id: str,
+        expected_revision: int,
+        roles: list[str],
+        scopes: list[str],
+    ) -> dict[str, Any]:
+        existing = self._select_membership(
+            session,
+            tenant_id=tenant_id,
+            subject_id=subject_id,
+        )
+        if existing is None:
+            raise _membership_not_found(tenant_id, subject_id)
+        _require_authority_revision(existing, expected_revision=expected_revision)
+        if existing["roles"] == roles and existing["scopes"] == scopes:
+            return existing
+        roles_expression = _json_sql_expression(session, "roles")
+        scopes_expression = _json_sql_expression(session, "scopes")
+        result = session.execute(
+            text(
+                f"""
+                UPDATE oa_tenant_memberships
+                SET roles = {roles_expression},
+                    scopes = {scopes_expression},
+                    revision = revision + 1,
+                    updated_at = :updated_at
+                WHERE tenant_id = :tenant_id
+                  AND subject_id = :subject_id
+                  AND subject_ref_type = :subject_ref_type
+                  AND revision = :expected_revision
+                """
+            ),
+            {
+                "tenant_id": tenant_id,
+                "subject_id": subject_id,
+                "subject_ref_type": OA_USER_REF_TYPE,
+                "expected_revision": expected_revision,
+                "roles": _json_dumps(roles),
+                "scopes": _json_dumps(scopes),
+                "updated_at": _utc_now(),
+            },
+        )
+        if result.rowcount != 1:
+            current = self._select_membership(
+                session,
+                tenant_id=tenant_id,
+                subject_id=subject_id,
+            )
+            if current is None:
+                raise _membership_not_found(tenant_id, subject_id)
+            _require_authority_revision(
+                current,
+                expected_revision=expected_revision,
+            )
+            raise _membership_unavailable()
+        stored = self._select_membership(
+            session,
+            tenant_id=tenant_id,
+            subject_id=subject_id,
+        )
+        assert stored is not None
+        return stored
 
     def _select_membership(
         self,
@@ -402,6 +554,35 @@ def register_identity_membership_routes(
             )
         return _attach_request_context(snapshot, request)
 
+    @app.put(
+        "/internal/v1/identity/memberships/tenants/{tenant_id}/subjects/"
+        "{subject_id}/authority",
+        response_model=None,
+    )
+    def replace_identity_membership_authority(
+        tenant_id: str,
+        subject_id: str,
+        payload: dict[str, Any],
+        request: Request,
+        authorization: str | None = Header(default=None),
+    ) -> dict[str, Any] | JSONResponse:
+        auth_problem = _authorize_oa_membership_request(
+            request,
+            authorization,
+            required_scope=OA_MEMBERSHIP_AUTHORITY_WRITE_SCOPE,
+        )
+        if auth_problem is not None:
+            return auth_problem
+        try:
+            snapshot = membership_registry.replace_authority(
+                tenant_id=tenant_id,
+                subject_id=subject_id,
+                payload=payload,
+            )
+        except OaMembershipError as exc:
+            return _membership_problem_response(request, exc)
+        return _attach_request_context(snapshot, request)
+
 
 def build_membership_record(
     payload: Mapping[str, Any],
@@ -497,6 +678,78 @@ def normalize_membership_status(value: object) -> str:
             detail=f"membership_status must be one of: {allowed}.",
         )
     return status
+
+
+def _normalize_authority_replacement(
+    *,
+    tenant_id: object,
+    subject_id: object,
+    payload: Mapping[str, Any],
+) -> tuple[str, str, int, list[str], list[str]]:
+    allowed_fields = {"expected_revision", "roles", "scopes"}
+    unknown = sorted(set(payload) - allowed_fields)
+    if unknown:
+        raise OaMembershipError(
+            status_code=400,
+            error_code="oa.membership_authority_field_invalid",
+            detail=f"Unknown membership authority fields: {', '.join(unknown)}.",
+        )
+    missing = sorted(allowed_fields - set(payload))
+    if missing:
+        raise OaMembershipError(
+            status_code=400,
+            error_code="oa.membership_authority_field_missing",
+            detail=f"Missing membership authority fields: {', '.join(missing)}.",
+        )
+    expected_revision = payload.get("expected_revision")
+    if not isinstance(expected_revision, int) or isinstance(expected_revision, bool):
+        raise OaMembershipError(
+            status_code=400,
+            error_code="oa.membership_authority_revision_invalid",
+            detail="expected_revision must be a positive integer.",
+        )
+    if expected_revision < 1:
+        raise OaMembershipError(
+            status_code=400,
+            error_code="oa.membership_authority_revision_invalid",
+            detail="expected_revision must be a positive integer.",
+        )
+    roles = list(_string_list(payload.get("roles"), default=(), field_name="roles"))
+    scopes = list(
+        _string_list(payload.get("scopes"), default=(), field_name="scopes")
+    )
+    if len(set(roles)) != len(roles) or len(set(scopes)) != len(scopes):
+        raise OaMembershipError(
+            status_code=400,
+            error_code="oa.membership_authority_duplicate",
+            detail="roles and scopes must not contain duplicate values.",
+        )
+    return (
+        _normalize_ref_id(tenant_id, field_name="tenant_id"),
+        _normalize_ref_id(subject_id, field_name="subject_id"),
+        expected_revision,
+        roles,
+        scopes,
+    )
+
+
+def _require_authority_revision(
+    membership: Mapping[str, Any], *, expected_revision: int
+) -> None:
+    if int(membership.get("revision") or 0) != expected_revision:
+        raise OaMembershipError(
+            status_code=409,
+            error_code="oa.membership_authority_revision_conflict",
+            detail="expected_revision does not match the membership revision.",
+        )
+
+
+def _membership_not_found(tenant_id: str, subject_id: str) -> OaMembershipError:
+    return OaMembershipError(
+        status_code=404,
+        error_code="oa.membership_not_found",
+        detail=f"Membership was not found: {tenant_id}/{subject_id}",
+    )
 
 
 def _ensure_subject_snapshot(

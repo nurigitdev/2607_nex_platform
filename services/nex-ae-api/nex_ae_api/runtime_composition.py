@@ -22,11 +22,26 @@ from nex_ae_api.agent_runtime_worker import (
     run_bounded_agent_runtime_worker,
 )
 from nex_ae_api.multi_step_engine import SqlAlchemyMultiStepEngine
-from nex_ae_api.nsl_approval_resume import SqlAlchemyNslApprovalResumeSource
+from nex_ae_api.nsl_approval_resume import (
+    NSL_APPROVAL_RESUME_PAYLOAD_FIELDS,
+    SqlAlchemyNslApprovalResumeSource,
+)
+from nex_ae_api.product_planning_runtime import InstalledProductPlanningComposition
+from nex_ae_api.runtime_assignment_handlers import RuntimeAssignmentHandlerRegistry
+from nex_ae_api.runtime_continuation_sources import (
+    RuntimeContinuationSourceRegistry,
+)
 from nex_ae_api.runtime_jobs import SqlAlchemyRuntimeJobQueue
 from nex_ae_api.step_executors import (
     P5StepExecutionWorker,
     P5StepExecutorRegistry,
+)
+from nex_ae_api.work_result_publication import (
+    SqlAlchemyInstalledBackgroundResultCloser,
+)
+from nex_ae_api.work_result_resume import (
+    WORK_RESULT_RESUME_PAYLOAD_FIELDS,
+    SqlAlchemyWorkResultResumeSource,
 )
 from nex_ae_api.workspace_result_publication import (
     AgentResultCompletionNotifier,
@@ -44,6 +59,7 @@ class RuntimeExecutorProfile:
     registry: P5StepExecutorRegistry
     executor_backends: Mapping[str, str]
     package_readiness: Mapping[str, Any] | None = None
+    in_process_package_readiness: Mapping[str, Any] | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.registry, P5StepExecutorRegistry):
@@ -67,6 +83,10 @@ class RuntimeExecutorProfile:
             self.package_readiness, Mapping
         ):
             raise TypeError("package_readiness must be an object")
+        if self.in_process_package_readiness is not None and not isinstance(
+            self.in_process_package_readiness, Mapping
+        ):
+            raise TypeError("in_process_package_readiness must be an object")
         object.__setattr__(
             self, "executor_backends", MappingProxyType(dict(normalized))
         )
@@ -76,6 +96,12 @@ class RuntimeExecutorProfile:
                 "package_readiness",
                 MappingProxyType(dict(self.package_readiness)),
             )
+        if self.in_process_package_readiness is not None:
+            object.__setattr__(
+                self,
+                "in_process_package_readiness",
+                MappingProxyType(dict(self.in_process_package_readiness)),
+            )
 
     @property
     def executor_kinds(self) -> tuple[str, ...]:
@@ -84,6 +110,14 @@ class RuntimeExecutorProfile:
     @property
     def backend_profiles(self) -> tuple[str, ...]:
         return tuple(sorted(set(self.executor_backends.values())))
+
+    @property
+    def worker_package_readiness(self) -> Mapping[str, Any] | None:
+        return (
+            self.in_process_package_readiness
+            if self.in_process_package_readiness is not None
+            else self.package_readiness
+        )
 
 
 class InstalledStepAssignmentHandler:
@@ -132,7 +166,7 @@ class InstalledRuntimeComposition:
     runtime_jobs: SqlAlchemyRuntimeJobQueue
     engine: SqlAlchemyMultiStepEngine
     dispatcher: SqlAlchemyAgentRuntimeDispatcher
-    continuation_source: SqlAlchemyNslApprovalResumeSource
+    continuation_source: RuntimeContinuationSourceRegistry
     worker: P5StepExecutionWorker
     assignment_source: SqlAlchemyAgentRuntimeAssignmentSource
     handler: InstalledStepAssignmentHandler
@@ -141,6 +175,9 @@ class InstalledRuntimeComposition:
     executor_profile: RuntimeExecutorProfile
     result_publisher: SqlAlchemyWorkspaceResultPublisher
     result_closer: SqlAlchemyInstalledIaResultCloser
+    background_result_closer: SqlAlchemyInstalledBackgroundResultCloser | None = None
+    assignment_handlers: RuntimeAssignmentHandlerRegistry | None = None
+    product_planning: InstalledProductPlanningComposition | None = None
 
     def run_cycle(self, *, finalize_lifecycle: bool = True) -> dict[str, Any]:
         lifecycle = AgentRuntimeWorkerLifecycle(
@@ -151,19 +188,47 @@ class InstalledRuntimeComposition:
         result = run_bounded_agent_runtime_worker(
             config=self.worker_config,
             assignment_source=self.assignment_source,
-            handler=self.handler,
+            handler=self.assignment_handlers or self.handler,
             lifecycle=lifecycle,
             available_executor_kinds=self.executor_profile.executor_kinds,
             available_backend_profiles=self.executor_profile.backend_profiles,
-            in_process_package_readiness=self.executor_profile.package_readiness,
+            in_process_package_readiness=(
+                self.executor_profile.worker_package_readiness
+            ),
             max_cycles=1,
             stop_on_failure=False,
             finalize_lifecycle=finalize_lifecycle,
         )
         closure = self.result_closer.close_ready(limit=10)
+        background_closure = (
+            self.background_result_closer.close_ready(limit=10)
+            if self.background_result_closer is not None
+            else {
+                "candidate_count": 0,
+                "finalized_count": 0,
+                "published_count": 0,
+                "replayed_count": 0,
+                "failed_count": 0,
+                "failures": [],
+            }
+        )
         claimed_count = int(result["claimed_count"])
-        closure_work = int(closure["finalized_count"]) + int(closure["published_count"])
-        failed_count = int(result["failed_count"]) + int(closure["failed_count"])
+        closure_work = sum(
+            int(item["finalized_count"]) + int(item["published_count"])
+            for item in (closure, background_closure)
+        )
+        failed_count = (
+            int(result["failed_count"])
+            + int(closure["failed_count"])
+            + int(background_closure["failed_count"])
+        )
+        execution_failures = [
+            {
+                "error_code": str(item.get("error_code") or "unknown")[:128],
+            }
+            for item in result.get("executions", ())
+            if isinstance(item, Mapping) and item.get("status") == "FAILED"
+        ][:10]
         return {
             "status": "WORK" if claimed_count or closure_work else "IDLE",
             "domain_claiming_enabled": True,
@@ -172,7 +237,9 @@ class InstalledRuntimeComposition:
             "succeeded_count": result["succeeded_count"],
             "failed_count": failed_count,
             "stop_reason": result["stop_reason"],
+            "execution_failures": execution_failures,
             "result_closure": closure,
+            "background_result_closure": background_closure,
         }
 
 
@@ -184,6 +251,8 @@ def build_installed_runtime_composition(
     environ: Mapping[str, str],
     executor_profile: RuntimeExecutorProfile | None,
     completion_notifier: AgentResultCompletionNotifier | None = None,
+    background_result_closer: SqlAlchemyInstalledBackgroundResultCloser | None = None,
+    product_planning: InstalledProductPlanningComposition | None = None,
     declared_at: str | None = None,
 ) -> InstalledRuntimeComposition:
     if executor_profile is None:
@@ -191,18 +260,33 @@ def build_installed_runtime_composition(
     identity = _required_text(worker_id, "worker_id")
     runtime_jobs = SqlAlchemyRuntimeJobQueue(sessions)
     engine = SqlAlchemyMultiStepEngine(sessions, runtime_jobs)
-    continuation_source = SqlAlchemyNslApprovalResumeSource(sessions)
+    continuation_source = RuntimeContinuationSourceRegistry(
+        {
+            NSL_APPROVAL_RESUME_PAYLOAD_FIELDS: SqlAlchemyNslApprovalResumeSource(
+                sessions
+            ),
+            WORK_RESULT_RESUME_PAYLOAD_FIELDS: SqlAlchemyWorkResultResumeSource(
+                sessions
+            ),
+        }
+    )
     worker = P5StepExecutionWorker(
         engine=engine,
         jobs=runtime_jobs,
         executors=executor_profile.registry,
         continuation_source=continuation_source,
     )
+    step_handler = InstalledStepAssignmentHandler(worker, engine)
+    handlers = {"EXECUTABLE_STEP": step_handler}
+    if product_planning is not None and product_planning.assignment_handler is not None:
+        handlers["PRODUCT_COORDINATOR"] = product_planning.assignment_handler
+    assignment_handlers = RuntimeAssignmentHandlerRegistry(handlers)
     dispatcher = SqlAlchemyAgentRuntimeDispatcher(
         sessions,
         config=load_agent_runtime_dispatcher_config(environ),
         queue=runtime_jobs,
         executor_backends=executor_profile.executor_backends,
+        assignment_kinds=assignment_handlers.registered_kinds,
     )
     worker_config = load_agent_runtime_worker_config(
         _worker_environment(environ, worker_id=identity, profile=executor_profile),
@@ -219,7 +303,8 @@ def build_installed_runtime_composition(
         continuation_source=continuation_source,
         worker=worker,
         assignment_source=SqlAlchemyAgentRuntimeAssignmentSource(dispatcher),
-        handler=InstalledStepAssignmentHandler(worker, engine),
+        handler=step_handler,
+        assignment_handlers=assignment_handlers,
         worker_config=worker_config,
         heartbeat_emitter=heartbeat_emitter,
         executor_profile=executor_profile,
@@ -228,6 +313,8 @@ def build_installed_runtime_composition(
             sessions,
             publisher=publisher,
         ),
+        background_result_closer=background_result_closer,
+        product_planning=product_planning,
     )
 
 

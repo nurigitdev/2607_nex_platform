@@ -1,0 +1,76 @@
+language NSL "0.2";
+
+skill MYBEE.D04.JOURNAL_POSTING {
+    version "1.0.1";
+    risk WRITE;
+
+    requires {
+        tool FINANCE.VOUCHER.APPROVE_AND_POST version "1.0.0";
+    }
+
+    limits {
+        tool_calls 1;
+        loop_iterations 1;
+        emitted_rows 1;
+        collection_size 1;
+    }
+
+    input {
+        schema_version: String classification INTERNAL;
+        tenant_id: String classification INTERNAL;
+        company_id: String classification INTERNAL;
+        candidate_id: String classification INTERNAL;
+        expected_candidate_version: Int classification INTERNAL;
+        expected_candidate_revision: Int classification INTERNAL;
+        expected_candidate_hash: String classification INTERNAL;
+        accounting_approval_evidence_id: String classification CONFIDENTIAL;
+    }
+
+    output {
+        business_result_ref: String classification CONFIDENTIAL;
+        journal_id: String classification CONFIDENTIAL;
+        journal_no: String classification CONFIDENTIAL;
+    }
+
+    check COMMAND_SCHEMA_SUPPORTED {
+        assert schema_version == "eos.journal_posting_command.v1";
+        severity ERROR;
+        on_fail REPORT;
+        message "The Journal command schema must match the admitted version.";
+    }
+
+    check CANDIDATE_VERSION_VALID {
+        assert expected_candidate_version >= 1;
+        severity ERROR;
+        on_fail REPORT;
+        message "The VoucherCandidate version must be positive.";
+    }
+
+    check CANDIDATE_REVISION_VALID {
+        assert expected_candidate_revision >= 1;
+        severity ERROR;
+        on_fail REPORT;
+        message "The VoucherCandidate revision must be positive.";
+    }
+
+    approve POST_JOURNAL {
+        message "Post the approved VoucherCandidate to the immutable Journal?";
+    }
+
+    let journal = write FINANCE.VOUCHER.APPROVE_AND_POST(
+        schema_version = schema_version,
+        tenant_id = tenant_id,
+        company_id = company_id,
+        candidate_id = candidate_id,
+        expected_candidate_version = expected_candidate_version,
+        expected_candidate_revision = expected_candidate_revision,
+        expected_candidate_hash = expected_candidate_hash,
+        accounting_approval_evidence_id = accounting_approval_evidence_id
+    ) approved_by POST_JOURNAL;
+
+    emit {
+        business_result_ref: journal.business_result_ref;
+        journal_id: journal.journal_id;
+        journal_no: journal.journal_no;
+    }
+}

@@ -1,0 +1,15 @@
+{
+  "schema_version": "oa_project_entitlement_projection.v1",
+  "tenant_id": "VO00",
+  "project_code": "VO00D260001",
+  "found": true,
+  "source_project_id": "81111111-1111-4111-8111-111111111111",
+  "source_version": 4,
+  "project_status": "ACTIVE",
+  "members": [
+    {"subject_id": "owner-100", "project_role": "OWNER"},
+    {"subject_id": "manager-100", "project_role": "MANAGER"}
+  ],
+  "correlation_id": "w40-ca01-s06-reconcile-001",
+  "projection_hash": "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+}

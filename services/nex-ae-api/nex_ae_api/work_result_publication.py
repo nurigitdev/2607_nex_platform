@@ -13,6 +13,11 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
 
+from nex_ae_api.plan_finalization import (
+    P5PlanFinalizationError,
+    SqlAlchemyP5PlanFinalizationService,
+)
+
 
 @dataclass
 class WorkResultPublicationError(Exception):
@@ -267,6 +272,94 @@ class SqlAlchemyWcWorkResultPublisher:
                 pass
 
 
+class SqlAlchemyInstalledBackgroundResultCloser:
+    """Finalize PA/CA/EA executions and resume WC publication after restart."""
+
+    def __init__(
+        self,
+        session_factory: sessionmaker[Session],
+        *,
+        publisher: SqlAlchemyWcWorkResultPublisher,
+        finalizer: SqlAlchemyP5PlanFinalizationService | None = None,
+    ) -> None:
+        self._session_factory = session_factory
+        self._publisher = publisher
+        self._finalizer = finalizer or SqlAlchemyP5PlanFinalizationService(
+            session_factory
+        )
+
+    def close_ready(self, *, limit: int = 10, now: str | None = None) -> dict[str, Any]:
+        bounded_limit = max(1, min(int(limit), 100))
+        try:
+            with self._session_factory() as session:
+                rows = (
+                    session.execute(
+                        text(
+                            "SELECT tenant_id, agent_execution_id, phase "
+                            "FROM ae_agent_execution WHERE agent_type IN ('PA', 'CA', 'EA') "
+                            "AND source_type = 'CLAIMED_WORKITEM' AND state = 'RUNNING' "
+                            "AND phase IN ('RESULT_VERIFY', 'RESULT_PUBLISH') "
+                            "ORDER BY updated_at ASC, agent_execution_id ASC LIMIT :limit"
+                        ),
+                        {"limit": bounded_limit},
+                    )
+                    .mappings()
+                    .all()
+                )
+        except SQLAlchemyError as exc:
+            raise WorkResultPublicationError(
+                "ae.wc_work_result_candidate_query_unavailable",
+                "Background result finalization candidates are unavailable.",
+            ) from exc
+
+        finalized_count = 0
+        published_count = 0
+        replayed_count = 0
+        failures: list[dict[str, Any]] = []
+        for row in rows:
+            tenant_id = str(row["tenant_id"])
+            execution_id = str(row["agent_execution_id"])
+            try:
+                if row["phase"] == "RESULT_VERIFY":
+                    aggregate = self._finalizer.finalize(
+                        tenant_id=tenant_id,
+                        execution_id=execution_id,
+                        created_at=now,
+                    )
+                    finalized_count += 1
+                    delivery_id = str(aggregate.delivery["delivery_id"])
+                else:
+                    delivery_id = _delivery_for_execution(
+                        self._session_factory,
+                        tenant_id=tenant_id,
+                        execution_id=execution_id,
+                    )
+                publication = self._publisher.publish(
+                    tenant_id=tenant_id,
+                    delivery_id=delivery_id,
+                    now=now,
+                )
+                published_count += int(bool(publication["created"]))
+                replayed_count += int(not bool(publication["created"]))
+            except (P5PlanFinalizationError, WorkResultPublicationError) as exc:
+                failures.append(
+                    {
+                        "tenant_id": tenant_id,
+                        "agent_execution_id": execution_id,
+                        "error_code": exc.error_code,
+                        "retryable": bool(exc.retryable),
+                    }
+                )
+        return {
+            "candidate_count": len(rows),
+            "finalized_count": finalized_count,
+            "published_count": published_count,
+            "replayed_count": replayed_count,
+            "failed_count": len(failures),
+            "failures": failures,
+        }
+
+
 def build_wc_work_result(
     *,
     agent_result: Mapping[str, Any],
@@ -420,6 +513,34 @@ def _publication_result(
         "execution_state": "SUCCEEDED" if acknowledged else None,
         "created": False,
     }
+
+
+def _delivery_for_execution(
+    session_factory: sessionmaker[Session],
+    *,
+    tenant_id: str,
+    execution_id: str,
+) -> str:
+    try:
+        with session_factory() as session:
+            row = session.execute(
+                text(
+                    "SELECT delivery_id FROM ae_result_delivery "
+                    "WHERE tenant_id = :tenant_id "
+                    "AND agent_execution_id = :execution_id "
+                    "AND target_type = 'WC_WORK_RESULT'"
+                ),
+                {"tenant_id": tenant_id, "execution_id": execution_id},
+            ).mappings().first()
+    except SQLAlchemyError as exc:
+        raise _store_unavailable() from exc
+    if row is None:
+        raise WorkResultPublicationError(
+            "ae.wc_work_result_delivery_not_found",
+            "RESULT_PUBLISH execution is missing its WC delivery.",
+            False,
+        )
+    return str(row["delivery_id"])
 
 
 def _store_unavailable() -> WorkResultPublicationError:

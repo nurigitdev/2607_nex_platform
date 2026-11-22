@@ -7,17 +7,41 @@ from typing import Any
 from nex_runtime import build_service_token_admission_runtime
 from nex_runtime.service_token_admission import ServiceTokenAdmissionRuntime
 
+from .account_catalog import (
+    EosAccountCatalogService,
+    SqlAlchemyEosAccountCatalogRepository,
+)
+from .accounting_approval import (
+    EosAccountingApprovalService,
+    SqlAlchemyAccountingReviewContextRepository,
+)
+from .accounting_periods import (
+    EosAccountingPeriodService,
+    SqlAlchemyEosAccountingPeriodRepository,
+)
+from .accounting_posting_admission import EosAccountingPostingAdmissionService
 from .accounts import SqlAlchemyEosAccountRepository
+from .allocation_plans import (
+    EosAllocationPlanService,
+    SqlAlchemyEosAllocationPlanRepository,
+)
+from .allocation_reconciliation import EosAllocationReconciliationService
 from .approval_instances import SqlAlchemyEosApprovalInstanceRepository
 from .approval_policies import SqlAlchemyEosApprovalPolicyRepository
 from .approval_transitions import (
     EosBusinessApprovalTransitionService,
     SqlAlchemyEosApprovalTransitionRepository,
 )
+from .approved_document_consumption import EosApprovedDocumentConsumptionAdapter
+from .approved_documents import (
+    EosApprovedDocumentService,
+    SqlAlchemyEosApprovedDocumentRepository,
+)
 from .approver_resolution import EosApproverResolutionService
 from .attachment_resolution import HttpAeVoucherAttachmentResolver
 from .attachments import SqlAlchemyEosAttachmentRepository
 from .authorization import EosVoucherAuthorizationClient, HttpOaAuthorizationSource
+from .budgets import EosBudgetService, SqlAlchemyEosBudgetRepository
 from .business_formal_wc import (
     DEFAULT_WC_BASE_URL,
     EosBusinessFormalWcAdapter,
@@ -28,15 +52,113 @@ from .business_transactions import (
     EosBusinessTransactionCoordinator,
     SqlAlchemyEosBusinessTransactionCoordinator,
 )
+from .candidate_review import SqlAlchemyEosCandidateReviewRepository
+from .candidate_validation import EosCandidateValidationService
+from .coa_operations import (
+    EosCoaOperationsService,
+    PinnedCoaPublicationAdmission,
+    SqlAlchemyEosCoaOperationsRepository,
+)
+from .coa_release_admin import (
+    EosCoaReleaseAdminService,
+    SqlAlchemyEosCoaReleaseAdminRepository,
+)
 from .config import EosSettings
+from .cost_allocations import EosCostAllocationService
+from .cost_source_pools import (
+    EosCostSourcePoolService,
+    SqlAlchemyEosCostSourceFactsSource,
+    SqlAlchemyEosCostSourcePoolRepository,
+)
+from .document_signoff import (
+    EosDocumentSignoffService,
+    EosScopedApprovalDecisionRouter,
+    SqlAlchemyDocumentSignoffContextRepository,
+)
+from .fx_rates import EosFxRateService, SqlAlchemyEosFxRateRepository
 from .health import build_configuration_readiness_check
+from .journal_operations import EosJournalOperationService
+from .journal_posting import EosJournalPostingService
+from .journal_verification import EosJournalQueryService
+from .journals import SqlAlchemyEosJournalRepository
+from .legal_entities import (
+    EosLegalEntityService,
+    SqlAlchemyEosLegalEntityRepository,
+)
+from .material_commitments import (
+    EosMaterialCommitmentService,
+    SqlAlchemyEosMaterialCommitmentRepository,
+)
+from .material_consumptions import (
+    EosMaterialConsumptionService,
+    SqlAlchemyEosMaterialConsumptionRepository,
+)
 from .organization import SqlAlchemyEosOrganizationRepository
+from .payroll_labor_bridge import (
+    EosPayrollLaborBridgeService,
+    SqlAlchemyEosPayrollLaborBridgeRepository,
+)
+from .payroll_project_allocations import (
+    EosPayrollProjectAllocationService,
+    SqlAlchemyEosPayrollProjectAllocationRepository,
+)
 from .persistence import EosDatabaseRuntime, build_eos_database_runtime
+from .pnl_privacy import (
+    EosProjectPnlPrivacyGuard,
+    SqlAlchemyEosPnlPrivacyRepository,
+)
+from .project_application_approvals import EosProjectApplicationApprovalService
+from .project_applications import (
+    EosProjectApplicationService,
+    SqlAlchemyEosProjectApplicationRepository,
+)
+from .project_authorization import (
+    EosProjectAuthorizationGate,
+    HttpOaProjectAuthorizationDecisionSource,
+    SqlAlchemyEosProjectAuthorizationContextSource,
+)
+from .project_budget_bindings import (
+    EosProjectBudgetBindingService,
+    SqlAlchemyEosProjectBudgetBindingRepository,
+)
+from .project_entitlement_reconciliation import (
+    EosProjectEntitlementReconciliationService,
+    HttpOaProjectEntitlementProjectionSource,
+)
 from .project_memberships import SqlAlchemyEosProjectMembershipRepository
 from .project_operations import EosGovernedProjectService
+from .project_pnl import SqlAlchemyEosProjectPnlRepository
+from .project_pnl_projector import (
+    EosProjectPnlProjector,
+    build_eos_project_pnl_projector,
+)
+from .project_pnl_query import EosProjectPnlQueryService
+from .project_pnl_refresh import (
+    EosAllocationPnlRefreshSourceResolver,
+    EosProjectPnlRefreshService,
+)
+from .project_work_assignments import EosProjectWorkAssignmentService
+from .project_work_codes import EosProjectBusinessService
 from .projects import SqlAlchemyEosProjectRepository
-from .voucher_commands import EosCreateVoucherDraftService
+from .reporting_maps import (
+    EosReportingMapService,
+    SqlAlchemyEosReportingMapRepository,
+)
+from .scoped_approvals import (
+    EosScopedApprovalService,
+    SqlAlchemyEosScopedApprovalRepository,
+)
+from .transaction_preparation_authority import (
+    EosTransactionPreparationAuthorityService,
+)
 from .voucher_access import EosVoucherAccessService
+from .voucher_candidate_commands import EosCreateVoucherCandidateService
+from .voucher_candidate_revision_commands import EosReviseVoucherCandidateService
+from .voucher_candidates import (
+    EOS_VOUCHER_CANDIDATE_CREATE_SCOPE,
+    SqlAlchemyEosVoucherCandidateRepository,
+)
+from .voucher_commands import EosCreateVoucherDraftService
 from .voucher_verification import SqlAlchemyEosVoucherVerificationQuery
 from .vouchers import SqlAlchemyEosVoucherRepository
 
@@ -50,12 +172,54 @@ class EosDependencies:
     organization: SqlAlchemyEosOrganizationRepository | None
     approver_resolution_service: EosApproverResolutionService | None
     projects: SqlAlchemyEosProjectRepository | None
+    project_application_service: EosProjectApplicationService | None
+    project_application_approval_service: EosProjectApplicationApprovalService | None
     project_memberships: SqlAlchemyEosProjectMembershipRepository | None
     project_operations: EosGovernedProjectService | None
+    project_entitlement_reconciliation: (
+        EosProjectEntitlementReconciliationService | None
+    )
+    project_business_service: EosProjectBusinessService | None
+    project_work_assignment_service: EosProjectWorkAssignmentService | None
+    legal_entities: SqlAlchemyEosLegalEntityRepository | None
+    legal_entity_service: EosLegalEntityService | None
     accounts: SqlAlchemyEosAccountRepository | None
+    account_catalog: SqlAlchemyEosAccountCatalogRepository | None
+    account_catalog_service: EosAccountCatalogService | None
+    coa_operations_service: EosCoaOperationsService | None
+    reporting_map_service: EosReportingMapService | None
+    coa_release_admin_service: EosCoaReleaseAdminService | None
+    accounting_period_service: EosAccountingPeriodService | None
+    accounting_approval_service: EosAccountingApprovalService | None
+    accounting_posting_admission_service: EosAccountingPostingAdmissionService | None
+    journals: SqlAlchemyEosJournalRepository | None
+    journal_query_service: EosJournalQueryService | None
+    journal_posting_service: EosJournalPostingService | None
+    journal_operation_service: EosJournalOperationService | None
+    cost_source_pool_service: EosCostSourcePoolService | None
+    allocation_plan_service: EosAllocationPlanService | None
+    cost_allocation_service: EosCostAllocationService | None
+    allocation_reconciliation_service: EosAllocationReconciliationService | None
+    project_pnl_refresh_source_resolver: EosAllocationPnlRefreshSourceResolver | None
+    project_pnl_refresh_service: EosProjectPnlRefreshService | None
+    budget_service: EosBudgetService | None
+    project_budget_binding_service: EosProjectBudgetBindingService | None
+    project_pnl_repository: SqlAlchemyEosProjectPnlRepository | None
+    project_pnl_projector: EosProjectPnlProjector | None
+    pnl_privacy_repository: SqlAlchemyEosPnlPrivacyRepository | None
+    project_pnl_query_service: EosProjectPnlQueryService | None
+    payroll_labor_bridge_service: EosPayrollLaborBridgeService | None
+    payroll_project_allocation_service: EosPayrollProjectAllocationService | None
+    material_commitment_service: EosMaterialCommitmentService | None
+    material_consumption_service: EosMaterialConsumptionService | None
+    document_signoff_service: EosDocumentSignoffService | None
+    scoped_approval_decision_router: EosScopedApprovalDecisionRouter | None
+    fx_rate_service: EosFxRateService | None
     approval_policies: SqlAlchemyEosApprovalPolicyRepository | None
     approval_instances: SqlAlchemyEosApprovalInstanceRepository | None
     approval_transition_service: EosBusinessApprovalTransitionService | None
+    approved_document_service: EosApprovedDocumentService | None
+    scoped_approval_service: EosScopedApprovalService | None
     business_formal_wc_adapter: EosBusinessFormalWcAdapter | None
     vouchers: SqlAlchemyEosVoucherRepository | None
     attachments: SqlAlchemyEosAttachmentRepository | None
@@ -63,6 +227,14 @@ class EosDependencies:
     voucher_access_service: EosVoucherAccessService | None
     business_operation_query: SqlAlchemyEosBusinessOperationQuery | None
     voucher_verification_query: SqlAlchemyEosVoucherVerificationQuery | None
+    voucher_candidates: SqlAlchemyEosVoucherCandidateRepository | None
+    voucher_candidate_command_service: EosCreateVoucherCandidateService | None
+    voucher_candidate_revision_service: EosReviseVoucherCandidateService | None
+    candidate_validation_service: EosCandidateValidationService | None
+    candidate_review_repository: SqlAlchemyEosCandidateReviewRepository | None
+    transaction_preparation_authority_service: (
+        EosTransactionPreparationAuthorityService | None
+    )
 
 
 def build_eos_dependencies(
@@ -102,6 +274,42 @@ def build_eos_dependencies(
     )
     accounts = (
         SqlAlchemyEosAccountRepository(database_runtime.session_factory)
+        if database_runtime is not None
+        else None
+    )
+    account_catalog = (
+        SqlAlchemyEosAccountCatalogRepository(database_runtime.session_factory)
+        if database_runtime is not None
+        else None
+    )
+    legal_entities = (
+        SqlAlchemyEosLegalEntityRepository(database_runtime.session_factory)
+        if database_runtime is not None
+        else None
+    )
+    voucher_candidates = (
+        SqlAlchemyEosVoucherCandidateRepository(database_runtime.session_factory)
+        if database_runtime is not None
+        else None
+    )
+    candidate_validation_service = (
+        EosCandidateValidationService(
+            candidates=voucher_candidates,
+            legal_entities=legal_entities,
+            periods=SqlAlchemyEosAccountingPeriodRepository(
+                database_runtime.session_factory
+            ),
+            account_catalog=account_catalog,
+            fx_rates=SqlAlchemyEosFxRateRepository(database_runtime.session_factory),
+        )
+        if database_runtime is not None
+        and voucher_candidates is not None
+        and legal_entities is not None
+        and account_catalog is not None
+        else None
+    )
+    candidate_review_repository = (
+        SqlAlchemyEosCandidateReviewRepository(database_runtime.session_factory)
         if database_runtime is not None
         else None
     )
@@ -174,15 +382,460 @@ def build_eos_dependencies(
         if oa_token
         else None
     )
-    project_operations = (
-        EosGovernedProjectService(
+    project_authorizer = (
+        EosProjectAuthorizationGate(
+            context_source=SqlAlchemyEosProjectAuthorizationContextSource(
+                database_runtime.session_factory
+            ),
+            decision_source=HttpOaProjectAuthorizationDecisionSource(
+                base_url=environ.get("NEX_OA_BASE_URL", "http://127.0.0.1:8101"),
+                service_token=oa_token,
+                timeout_seconds=float(
+                    environ.get("NEX_EOS_OA_PROJECT_TIMEOUT_SECONDS", "10")
+                ),
+            ),
+        )
+        if database_runtime is not None and oa_token
+        else None
+    )
+    project_application_service = (
+        EosProjectApplicationService(
+            SqlAlchemyEosProjectApplicationRepository(database_runtime.session_factory),
+            authorization_source,
+            projects,
+        )
+        if database_runtime is not None
+        and authorization_source is not None
+        and projects is not None
+        else None
+    )
+    project_application_approval_service = (
+        EosProjectApplicationApprovalService(
             session_factory=database_runtime.session_factory,
+            authorization_source=authorization_source,
+            wc_client=HttpWcApprovalWorkItemClient(
+                base_url=environ.get("NEX_WC_BASE_URL", DEFAULT_WC_BASE_URL),
+                service_token=wc_token,
+            ),
+            project_agent_profile_policy_ref=environ[
+                "NEX_EOS_PROJECT_AGENT_PROFILE_POLICY_REF"
+            ],
+        )
+        if database_runtime is not None
+        and authorization_source is not None
+        and wc_token
+        and environ.get("NEX_EOS_PROJECT_AGENT_PROFILE_POLICY_REF", "").strip()
+        else None
+    )
+    approved_document_service = (
+        EosApprovedDocumentService(
+            SqlAlchemyEosApprovedDocumentRepository(database_runtime.session_factory),
+            authorization_source,
+        )
+        if database_runtime is not None and authorization_source is not None
+        else None
+    )
+    scoped_approval_service = (
+        EosScopedApprovalService(
+            repository=SqlAlchemyEosScopedApprovalRepository(
+                database_runtime.session_factory
+            ),
+            coordinator=business_transactions,
+            authorization_source=authorization_source,
+            project_authorizer=project_authorizer,
+            wc_client=HttpWcApprovalWorkItemClient(
+                base_url=environ.get("NEX_WC_BASE_URL", DEFAULT_WC_BASE_URL),
+                service_token=wc_token,
+            ),
+            accounting_review_repository=(
+                SqlAlchemyAccountingReviewContextRepository(
+                    database_runtime.session_factory
+                )
+            ),
+            candidate_review_repository=candidate_review_repository,
+            candidate_validation_service=candidate_validation_service,
+            document_signoff_repository=(
+                SqlAlchemyDocumentSignoffContextRepository(
+                    database_runtime.session_factory
+                )
+            ),
+        )
+        if database_runtime is not None
+        and business_transactions is not None
+        and authorization_source is not None
+        and wc_token
+        else None
+    )
+    accounting_approval_service = (
+        EosAccountingApprovalService(
+            session_factory=database_runtime.session_factory,
+            authorization_source=authorization_source,
+            wc_client=HttpWcApprovalWorkItemClient(
+                base_url=environ.get("NEX_WC_BASE_URL", DEFAULT_WC_BASE_URL),
+                service_token=wc_token,
+            ),
+            candidate_review_repository=candidate_review_repository,
+        )
+        if database_runtime is not None
+        and authorization_source is not None
+        and wc_token
+        else None
+    )
+    accounting_posting_admission_service = (
+        EosAccountingPostingAdmissionService(
+            session_factory=database_runtime.session_factory,
+            authorization_source=authorization_source,
+            project_authorizer=project_authorizer,
+            admission_ttl_seconds=int(
+                environ.get("NEX_EOS_ACCOUNTING_POSTING_ADMISSION_TTL_SECONDS", "30")
+            ),
+        )
+        if database_runtime is not None
+        and authorization_source is not None
+        and project_authorizer is not None
+        else None
+    )
+    journals = (
+        SqlAlchemyEosJournalRepository(database_runtime.session_factory)
+        if database_runtime is not None
+        else None
+    )
+    journal_query_service = (
+        EosJournalQueryService(
+            repository=journals,
+            authorization_source=authorization_source,
+            project_authorizer=project_authorizer,
+        )
+        if journals is not None
+        and authorization_source is not None
+        and project_authorizer is not None
+        else None
+    )
+    journal_posting_service = (
+        EosJournalPostingService(
+            session_factory=database_runtime.session_factory,
+            coordinator=business_transactions,
+            validation_service=candidate_validation_service,
+            admission_service=accounting_posting_admission_service,
+            journals=journals,
+            consumption=EosApprovedDocumentConsumptionAdapter(),
+        )
+        if database_runtime is not None
+        and business_transactions is not None
+        and candidate_validation_service is not None
+        and accounting_posting_admission_service is not None
+        and journals is not None
+        else None
+    )
+    journal_operation_service = (
+        EosJournalOperationService(database_runtime.session_factory)
+        if database_runtime is not None
+        else None
+    )
+    cost_source_pool_service = (
+        EosCostSourcePoolService(
+            source=SqlAlchemyEosCostSourceFactsSource(database_runtime.session_factory),
+            repository=SqlAlchemyEosCostSourcePoolRepository(
+                database_runtime.session_factory
+            ),
+        )
+        if database_runtime is not None
+        else None
+    )
+    allocation_plan_service = (
+        EosAllocationPlanService(
+            repository=SqlAlchemyEosAllocationPlanRepository(
+                database_runtime.session_factory
+            ),
+            authorization_source=authorization_source,
+        )
+        if database_runtime is not None and authorization_source is not None
+        else None
+    )
+    cost_allocation_service = (
+        EosCostAllocationService(
+            session_factory=database_runtime.session_factory,
+            coordinator=business_transactions,
+        )
+        if database_runtime is not None and business_transactions is not None
+        else None
+    )
+    allocation_reconciliation_service = (
+        EosAllocationReconciliationService(database_runtime.session_factory)
+        if database_runtime is not None
+        else None
+    )
+    project_pnl_refresh_source_resolver = (
+        EosAllocationPnlRefreshSourceResolver(
+            session_factory=database_runtime.session_factory,
+            reconciliation=allocation_reconciliation_service,
+        )
+        if database_runtime is not None
+        and allocation_reconciliation_service is not None
+        else None
+    )
+    budget_service = (
+        EosBudgetService(
+            repository=SqlAlchemyEosBudgetRepository(database_runtime.session_factory),
             coordinator=business_transactions,
             authorization_source=authorization_source,
         )
         if database_runtime is not None
         and business_transactions is not None
+        and authorization_source is not None
+        else None
+    )
+    project_budget_binding_service = (
+        EosProjectBudgetBindingService(
+            repository=SqlAlchemyEosProjectBudgetBindingRepository(
+                database_runtime.session_factory
+            ),
+            coordinator=business_transactions,
+            authorization_source=authorization_source,
+        )
+        if database_runtime is not None
+        and business_transactions is not None
+        and authorization_source is not None
+        else None
+    )
+    project_pnl_repository = (
+        SqlAlchemyEosProjectPnlRepository(database_runtime.session_factory)
+        if database_runtime is not None
+        else None
+    )
+    project_pnl_projector = (
+        build_eos_project_pnl_projector(
+            database_runtime.session_factory, project_pnl_repository
+        )
+        if database_runtime is not None and project_pnl_repository is not None
+        else None
+    )
+    project_pnl_refresh_service = (
+        EosProjectPnlRefreshService(
+            resolver=project_pnl_refresh_source_resolver,
+            projector=project_pnl_projector,
+            repository=project_pnl_repository,
+        )
+        if project_pnl_refresh_source_resolver is not None
+        and project_pnl_projector is not None
+        and project_pnl_repository is not None
+        else None
+    )
+    pnl_privacy_repository = (
+        SqlAlchemyEosPnlPrivacyRepository(database_runtime.session_factory)
+        if database_runtime is not None
+        else None
+    )
+    project_pnl_query_service = (
+        EosProjectPnlQueryService(
+            repository=project_pnl_repository,
+            project_authorizer=project_authorizer,
+            privacy_guard=EosProjectPnlPrivacyGuard(pnl_privacy_repository),
+        )
+        if project_pnl_repository is not None
+        and project_authorizer is not None
+        and pnl_privacy_repository is not None
+        else None
+    )
+    payroll_labor_bridge_service = (
+        EosPayrollLaborBridgeService(
+            SqlAlchemyEosPayrollLaborBridgeRepository(database_runtime.session_factory)
+        )
+        if database_runtime is not None
+        else None
+    )
+    payroll_project_allocation_service = (
+        EosPayrollProjectAllocationService(
+            repository=SqlAlchemyEosPayrollProjectAllocationRepository(
+                database_runtime.session_factory
+            ),
+            cost_allocation_service=cost_allocation_service,
+            coordinator=business_transactions,
+        )
+        if database_runtime is not None
+        and cost_allocation_service is not None
+        and business_transactions is not None
+        else None
+    )
+    material_commitment_service = (
+        EosMaterialCommitmentService(
+            SqlAlchemyEosMaterialCommitmentRepository(
+                database_runtime.session_factory
+            )
+        )
+        if database_runtime is not None
+        else None
+    )
+    material_consumption_service = (
+        EosMaterialConsumptionService(
+            SqlAlchemyEosMaterialConsumptionRepository(
+                database_runtime.session_factory
+            )
+        )
+        if database_runtime is not None
+        else None
+    )
+    document_signoff_service = (
+        EosDocumentSignoffService(
+            session_factory=database_runtime.session_factory,
+            authorization_source=authorization_source,
+            wc_client=HttpWcApprovalWorkItemClient(
+                base_url=environ.get("NEX_WC_BASE_URL", DEFAULT_WC_BASE_URL),
+                service_token=wc_token,
+            ),
+            document_repository=SqlAlchemyEosApprovedDocumentRepository(
+                database_runtime.session_factory
+            ),
+        )
+        if database_runtime is not None
+        and authorization_source is not None
+        and wc_token
+        else None
+    )
+    scoped_approval_decision_router = (
+        EosScopedApprovalDecisionRouter(
+            session_factory=database_runtime.session_factory,
+            accounting_service=accounting_approval_service,
+            document_signoff_service=document_signoff_service,
+        )
+        if database_runtime is not None
+        and accounting_approval_service is not None
+        and document_signoff_service is not None
+        else None
+    )
+    project_operations = (
+        EosGovernedProjectService(
+            session_factory=database_runtime.session_factory,
+            coordinator=business_transactions,
+            authorization_source=authorization_source,
+            project_authorizer=project_authorizer,
+            allow_legacy_project_create=(
+                environ.get("NEX_EOS_ALLOW_LEGACY_DIRECT_PROJECT_CREATE", "0") == "1"
+            ),
+            project_agent_profile_policy_ref=environ.get(
+                "NEX_EOS_PROJECT_AGENT_PROFILE_POLICY_REF"
+            ),
+        )
+        if database_runtime is not None
+        and business_transactions is not None
         and oa_token
+        else None
+    )
+    project_entitlement_reconciliation = (
+        EosProjectEntitlementReconciliationService(
+            session_factory=database_runtime.session_factory,
+            projection_source=HttpOaProjectEntitlementProjectionSource(
+                base_url=environ.get("NEX_OA_BASE_URL", "http://127.0.0.1:8101"),
+                service_token=oa_token,
+                timeout_seconds=float(
+                    environ.get("NEX_EOS_OA_PROJECT_TIMEOUT_SECONDS", "10")
+                ),
+            ),
+        )
+        if database_runtime is not None and oa_token
+        else None
+    )
+    project_business_service = (
+        EosProjectBusinessService(
+            session_factory=database_runtime.session_factory,
+            coordinator=business_transactions,
+            authorization_source=authorization_source,
+            project_authorizer=project_authorizer,
+        )
+        if database_runtime is not None
+        and business_transactions is not None
+        and authorization_source is not None
+        else None
+    )
+    project_work_assignment_service = (
+        EosProjectWorkAssignmentService(
+            session_factory=database_runtime.session_factory,
+            coordinator=business_transactions,
+            authorization_source=authorization_source,
+            project_authorizer=project_authorizer,
+        )
+        if database_runtime is not None
+        and business_transactions is not None
+        and authorization_source is not None
+        else None
+    )
+    legal_entity_service = (
+        EosLegalEntityService(legal_entities, authorization_source)
+        if legal_entities is not None and authorization_source is not None
+        else None
+    )
+    account_catalog_service = (
+        EosAccountCatalogService(account_catalog, authorization_source)
+        if account_catalog is not None and authorization_source is not None
+        else None
+    )
+    publication_admissions = environ.get("NEX_EOS_COA_PUBLICATION_ADMISSIONS_JSON", "")
+    coa_operations_service = (
+        EosCoaOperationsService(
+            repository=SqlAlchemyEosCoaOperationsRepository(
+                database_runtime.session_factory
+            ),
+            coordinator=business_transactions,
+            authorization_source=authorization_source,
+            publication_admission=PinnedCoaPublicationAdmission.from_json(
+                publication_admissions
+            ),
+        )
+        if business_transactions is not None
+        and authorization_source is not None
+        and publication_admissions
+        else None
+    )
+    reporting_map_service = (
+        EosReportingMapService(
+            SqlAlchemyEosReportingMapRepository(database_runtime.session_factory),
+            authorization_source,
+        )
+        if database_runtime is not None and authorization_source is not None
+        else None
+    )
+    coa_release_admin_service = (
+        EosCoaReleaseAdminService(
+            SqlAlchemyEosCoaReleaseAdminRepository(database_runtime.session_factory),
+            authorization_source,
+        )
+        if database_runtime is not None and authorization_source is not None
+        else None
+    )
+    accounting_period_service = (
+        EosAccountingPeriodService(
+            SqlAlchemyEosAccountingPeriodRepository(database_runtime.session_factory),
+            authorization_source,
+        )
+        if database_runtime is not None and authorization_source is not None
+        else None
+    )
+    transaction_preparation_authority_service = (
+        EosTransactionPreparationAuthorityService(
+            legal_entities=legal_entities,
+            projects=projects,
+            accounts=SqlAlchemyEosCoaOperationsRepository(
+                database_runtime.session_factory
+            ),
+            periods=SqlAlchemyEosAccountingPeriodRepository(
+                database_runtime.session_factory
+            ),
+            approval_policies=approval_policies,
+            project_authorizer=project_authorizer,
+        )
+        if database_runtime is not None
+        and legal_entities is not None
+        and projects is not None
+        and approval_policies is not None
+        and project_authorizer is not None
+        else None
+    )
+    fx_rate_service = (
+        EosFxRateService(
+            SqlAlchemyEosFxRateRepository(database_runtime.session_factory),
+            authorization_source,
+        )
+        if database_runtime is not None and authorization_source is not None
         else None
     )
     voucher_access_service = (
@@ -197,11 +850,46 @@ def build_eos_dependencies(
         EosCreateVoucherDraftService(
             coordinator=business_transactions,
             vouchers=vouchers,
-            authorizer=EosVoucherAuthorizationClient(authorization_source),
+            authorizer=EosVoucherAuthorizationClient(
+                authorization_source,
+                project_authorizer=project_authorizer,
+            ),
             project_access=voucher_access_service,
             attachments=attachments,
         )
         if business_transactions is not None and vouchers is not None and oa_token
+        else None
+    )
+    voucher_candidate_command_service = (
+        EosCreateVoucherCandidateService(
+            coordinator=business_transactions,
+            candidates=voucher_candidates,
+            authorizer=EosVoucherAuthorizationClient(
+                authorization_source,
+                required_scope=EOS_VOUCHER_CANDIDATE_CREATE_SCOPE,
+                project_authorizer=project_authorizer,
+            ),
+        )
+        if business_transactions is not None
+        and voucher_candidates is not None
+        and authorization_source is not None
+        else None
+    )
+    voucher_candidate_revision_service = (
+        EosReviseVoucherCandidateService(
+            coordinator=business_transactions,
+            candidates=voucher_candidates,
+            reviews=candidate_review_repository,
+            authorizer=EosVoucherAuthorizationClient(
+                authorization_source,
+                required_scope=EOS_VOUCHER_CANDIDATE_CREATE_SCOPE,
+                project_authorizer=project_authorizer,
+            ),
+        )
+        if business_transactions is not None
+        and voucher_candidates is not None
+        and candidate_review_repository is not None
+        and authorization_source is not None
         else None
     )
     business_operation_query = (
@@ -225,12 +913,52 @@ def build_eos_dependencies(
         organization=organization,
         approver_resolution_service=approver_resolution_service,
         projects=projects,
+        project_application_service=project_application_service,
+        project_application_approval_service=project_application_approval_service,
         project_memberships=project_memberships,
         project_operations=project_operations,
+        project_entitlement_reconciliation=project_entitlement_reconciliation,
+        project_business_service=project_business_service,
+        project_work_assignment_service=project_work_assignment_service,
+        legal_entities=legal_entities,
+        legal_entity_service=legal_entity_service,
         accounts=accounts,
+        account_catalog=account_catalog,
+        account_catalog_service=account_catalog_service,
+        coa_operations_service=coa_operations_service,
+        reporting_map_service=reporting_map_service,
+        coa_release_admin_service=coa_release_admin_service,
+        accounting_period_service=accounting_period_service,
+        accounting_approval_service=accounting_approval_service,
+        accounting_posting_admission_service=accounting_posting_admission_service,
+        journals=journals,
+        journal_query_service=journal_query_service,
+        journal_posting_service=journal_posting_service,
+        journal_operation_service=journal_operation_service,
+        cost_source_pool_service=cost_source_pool_service,
+        allocation_plan_service=allocation_plan_service,
+        cost_allocation_service=cost_allocation_service,
+        allocation_reconciliation_service=allocation_reconciliation_service,
+        project_pnl_refresh_source_resolver=project_pnl_refresh_source_resolver,
+        project_pnl_refresh_service=project_pnl_refresh_service,
+        budget_service=budget_service,
+        project_budget_binding_service=project_budget_binding_service,
+        project_pnl_repository=project_pnl_repository,
+        project_pnl_projector=project_pnl_projector,
+        pnl_privacy_repository=pnl_privacy_repository,
+        project_pnl_query_service=project_pnl_query_service,
+        payroll_labor_bridge_service=payroll_labor_bridge_service,
+        payroll_project_allocation_service=payroll_project_allocation_service,
+        material_commitment_service=material_commitment_service,
+        material_consumption_service=material_consumption_service,
+        document_signoff_service=document_signoff_service,
+        scoped_approval_decision_router=scoped_approval_decision_router,
+        fx_rate_service=fx_rate_service,
         approval_policies=approval_policies,
         approval_instances=approval_instances,
         approval_transition_service=approval_transition_service,
+        approved_document_service=approved_document_service,
+        scoped_approval_service=scoped_approval_service,
         business_formal_wc_adapter=business_formal_wc_adapter,
         vouchers=vouchers,
         attachments=attachments,
@@ -238,4 +966,12 @@ def build_eos_dependencies(
         voucher_access_service=voucher_access_service,
         business_operation_query=business_operation_query,
         voucher_verification_query=voucher_verification_query,
+        voucher_candidates=voucher_candidates,
+        voucher_candidate_command_service=voucher_candidate_command_service,
+        voucher_candidate_revision_service=voucher_candidate_revision_service,
+        candidate_validation_service=candidate_validation_service,
+        candidate_review_repository=candidate_review_repository,
+        transaction_preparation_authority_service=(
+            transaction_preparation_authority_service
+        ),
     )

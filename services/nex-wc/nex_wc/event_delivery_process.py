@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import signal
 import sys
 import time
@@ -18,7 +19,9 @@ from nex_runtime import (
     STARTING,
     STOPPED,
     STOPPING,
+    ServiceLogEmitter,
     SqlAlchemyJobQueue,
+    SqlAlchemyServiceLogStore,
     SqlAlchemyWorkerHeartbeatStore,
     WorkerHeartbeatEmitter,
     WorkerRunnerConfig,
@@ -64,6 +67,8 @@ PROCESS_SCHEMA_VERSION = "wc_event_delivery_process.v1"
 PROCESS_READINESS_SCHEMA_VERSION = "wc_event_delivery_readiness.v1"
 PROCESS_RUN_SCHEMA_VERSION = "wc_event_delivery_run.v1"
 DEFAULT_WORKER_ID = "wc-event-delivery-worker-1"
+MAX_AE_DELIVERY_TIMEOUT_SECONDS = 300.0
+DEFAULT_CLAIM_LEASE_SECONDS = 600
 SUPPORTED_PROFILES = ("local_mock", "test", "staging_live", "production")
 DATABASE_ENVIRONMENTS = {
     "test": "NEX_WC_TEST_DATABASE_URL",
@@ -74,6 +79,7 @@ REQUIRED_TABLES = frozenset(
     {
         "schema_migrations",
         "service_jobs",
+        "service_log_entries",
         "service_worker_heartbeats",
         "wc_approval_outbox",
         "wc_event_outbox",
@@ -118,6 +124,9 @@ class InstalledWcEventDeliveryProcess:
     approval_client: HttpAeApprovalEventClient
     worker_id: str
     poll_interval_seconds: float
+    service_log: ServiceLogEmitter | None = None
+    handoff_timeout_seconds: float = 15.0
+    claim_lease_seconds: int = DEFAULT_CLAIM_LEASE_SECONDS
 
     def readiness(self) -> dict[str, Any]:
         database = _database_readiness(self.sessions)
@@ -137,6 +146,10 @@ class InstalledWcEventDeliveryProcess:
                 )
             ),
             "heartbeat_available": self.heartbeat is not None,
+            "service_log_available": self.service_log is not None,
+            "claim_lease_covers_two_handoff_timeouts": (
+                self.claim_lease_seconds >= 2 * self.handoff_timeout_seconds
+            ),
         }
         ready = all(checks.values())
         return {
@@ -151,6 +164,8 @@ class InstalledWcEventDeliveryProcess:
             "database": database,
             "delivery_paths": ["CLAIM_HANDOFF", "WORK_RESULT", "APPROVAL_EVENT"],
             "work_capability": "event_delivering",
+            "handoff_timeout_seconds": self.handoff_timeout_seconds,
+            "claim_lease_seconds": self.claim_lease_seconds,
             "content_included": False,
             "secret_included": False,
         }
@@ -189,6 +204,7 @@ class InstalledWcEventDeliveryProcess:
             *enqueue_pending_handoffs(store=self.coordination, queue=self.queue),
             *enqueue_pending_result_events(store=self.work_results, queue=self.queue),
         ]
+        attempt_started = time.monotonic()
         execution = run_worker_once(
             config=WorkerRunnerConfig(
                 service_id=SERVICE_ID,
@@ -198,8 +214,30 @@ class InstalledWcEventDeliveryProcess:
             ),
             queue=self.queue,
             heartbeat_emitter=self.heartbeat,
+            service_log_emitter=self.service_log,
             handler=self._deliver_job,
         )
+        delivery_elapsed_ms = max(
+            0,
+            round((time.monotonic() - attempt_started) * 1000),
+        )
+        if execution.job is not None and self.service_log is not None:
+            self.service_log.safe_emit(
+                severity="ERROR" if execution.status == "FAILED" else "INFO",
+                message="WC event-delivery attempt completed.",
+                trace_id=str(execution.job.get("trace_id") or "") or None,
+                request_id=str(execution.job.get("request_id") or "") or None,
+                job_id=str(execution.job.get("job_id") or "") or None,
+                subject_ref=execution.job.get("subject_ref"),
+                attributes={
+                    "attempt_count": int(execution.job.get("attempt_count") or 0),
+                    "delivery_status": execution.status,
+                    "error_code": execution.error_code,
+                    "delivery_elapsed_ms": delivery_elapsed_ms,
+                    "handoff_timeout_seconds": self.handoff_timeout_seconds,
+                    "claim_lease_seconds": self.claim_lease_seconds,
+                },
+            )
         try:
             approval = deliver_pending_approval_events(
                 store=self.approval_store,
@@ -207,7 +245,8 @@ class InstalledWcEventDeliveryProcess:
             )
         except ApprovalEventDeliveryError as exc:
             raise WcEventDeliveryProcessError(
-                "WC approval event delivery failed"
+                "WC approval event delivery failed: "
+                f"{_approval_delivery_failure_code(exc)}"
             ) from exc
         claimed = int(execution.job is not None)
         failed = int(execution.status == "FAILED")
@@ -220,6 +259,7 @@ class InstalledWcEventDeliveryProcess:
             "failed_count": failed,
             "delivery_status": execution.status,
             "delivery_error_code": execution.error_code,
+            "delivery_elapsed_ms": delivery_elapsed_ms,
             "approval_delivered_count": approval["delivered_count"],
             "content_included": False,
             "secret_included": False,
@@ -265,10 +305,26 @@ def build_source_check() -> dict[str, Any]:
         "delivery_paths": ["CLAIM_HANDOFF", "WORK_RESULT", "APPROVAL_EVENT"],
         "queue_type": SqlAlchemyJobQueue.__name__,
         "work_capability": "event_delivering",
+        "default_claim_lease_seconds": DEFAULT_CLAIM_LEASE_SECONDS,
         "runtime_ready": False,
         "content_included": False,
         "secret_included": False,
     }
+
+
+def _approval_delivery_failure_code(exc: ApprovalEventDeliveryError) -> str:
+    detail = str(exc.detail)
+    codes = re.findall(
+        r"\b(?:(?:AE|EOS|WC)_[A-Z0-9_]{3,95}|"
+        r"(?:ae|eos|wc)\.[a-z0-9_.-]{3,95})\b",
+        detail,
+    )
+    if not codes:
+        return "wc.approval_delivery_failed"
+    return next(
+        (code for code in codes if code.startswith("EOS_")),
+        next((code for code in codes if code.startswith("eos.")), codes[0]),
+    )
 
 
 def build_installed_wc_event_delivery_process(
@@ -298,10 +354,29 @@ def build_installed_wc_event_delivery_process(
         env.get("NEX_WC_AE_DELIVERY_TIMEOUT_SECONDS", "15"),
         "NEX_WC_AE_DELIVERY_TIMEOUT_SECONDS",
         minimum=0.001,
+        maximum=MAX_AE_DELIVERY_TIMEOUT_SECONDS,
+    )
+    claim_lease_seconds = _bounded_int(
+        env.get(
+            "NEX_WC_CLAIM_LEASE_SECONDS",
+            str(DEFAULT_CLAIM_LEASE_SECONDS),
+        ),
+        "NEX_WC_CLAIM_LEASE_SECONDS",
+        minimum=30,
+        maximum=3600,
+    )
+    if claim_lease_seconds < 2 * timeout_seconds:
+        raise WcEventDeliveryProcessError(
+            "NEX_WC_CLAIM_LEASE_SECONDS must cover two AE handoff timeouts"
+        )
+    result_timeout_seconds = _bounded_float(
+        env.get("NEX_WC_AE_RESULT_TIMEOUT_SECONDS", "15"),
+        "NEX_WC_AE_RESULT_TIMEOUT_SECONDS",
+        minimum=0.001,
         maximum=120,
     )
     approval_timeout_seconds = _bounded_float(
-        env.get("NEX_WC_AE_APPROVAL_TIMEOUT_SECONDS", str(timeout_seconds)),
+        env.get("NEX_WC_AE_APPROVAL_TIMEOUT_SECONDS", "15"),
         "NEX_WC_AE_APPROVAL_TIMEOUT_SECONDS",
         minimum=0.001,
         maximum=120,
@@ -337,6 +412,12 @@ def build_installed_wc_event_delivery_process(
                 "evidence_classification": "PROTECTED_COMPONENT",
             },
         )
+        service_log = ServiceLogEmitter(
+            service_id=SERVICE_ID,
+            logger_name="nex_wc.event_delivery_process",
+            store=SqlAlchemyServiceLogStore(sessions),
+            default_attributes={"process_id": PROCESS_ID},
+        )
         return InstalledWcEventDeliveryProcess(
             profile=selected,
             database_environment=database_environment,
@@ -355,7 +436,7 @@ def build_installed_wc_event_delivery_process(
             result_client=HttpWorkResultEventClient(
                 base_url=base_url,
                 service_token=service_token,
-                timeout_seconds=timeout_seconds,
+                timeout_seconds=result_timeout_seconds,
             ),
             approval_client=HttpAeApprovalEventClient(
                 base_url=base_url,
@@ -364,6 +445,9 @@ def build_installed_wc_event_delivery_process(
             ),
             worker_id=worker_id,
             poll_interval_seconds=poll_interval_seconds,
+            service_log=service_log,
+            handoff_timeout_seconds=timeout_seconds,
+            claim_lease_seconds=claim_lease_seconds,
         )
     except Exception as exc:
         if engine is not None:
@@ -660,6 +744,24 @@ def _bounded_float(
 ) -> float:
     try:
         parsed = float(str(value))
+    except (TypeError, ValueError) as exc:
+        raise WcEventDeliveryProcessError(f"{name} is invalid") from exc
+    if not minimum <= parsed <= maximum:
+        raise WcEventDeliveryProcessError(f"{name} is invalid")
+    return parsed
+
+
+def _bounded_int(
+    value: object,
+    name: str,
+    *,
+    minimum: int,
+    maximum: int,
+) -> int:
+    try:
+        if isinstance(value, bool):
+            raise TypeError
+        parsed = int(str(value))
     except (TypeError, ValueError) as exc:
         raise WcEventDeliveryProcessError(f"{name} is invalid") from exc
     if not minimum <= parsed <= maximum:

@@ -156,19 +156,41 @@ class P6LocalSkillExecutor:
             binding = validate_local_skill_binding(context.step.get("skill_binding"))
         except CapabilitySnapshotError as exc:
             raise _invalid("LOCAL_SKILL compiled binding is invalid.") from exc
-        if binding["backend_profile"] not in self.backend_profiles:
+        except Exception as exc:
+            raise P5StepExecutorError(
+                "ae.local_skill_binding_validation_failed",
+                "LOCAL_SKILL compiled binding validation failed.",
+            ) from exc
+        try:
+            backend_profiles = self.backend_profiles
+        except P5StepExecutorError:
+            raise
+        except Exception as exc:
+            raise P5StepExecutorError(
+                "ae.local_skill_backend_resolution_failed",
+                "LOCAL_SKILL backend profile resolution failed.",
+            ) from exc
+        if binding["backend_profile"] not in backend_profiles:
             raise _local_skill_unavailable(
                 "LOCAL_SKILL compiled binding has no matching configured backend."
             )
-        outcome = (
-            self._handler(context, self._dependencies)
-            if continuation_result is None
-            else self._continuation_handler(
-                context,
-                self._dependencies,
-                continuation_result,
+        try:
+            outcome = (
+                self._handler(context, self._dependencies)
+                if continuation_result is None
+                else self._continuation_handler(
+                    context,
+                    self._dependencies,
+                    continuation_result,
+                )
             )
-        )
+        except P5StepExecutorError:
+            raise
+        except Exception as exc:
+            raise P5StepExecutorError(
+                "ae.local_skill_handler_failed",
+                "LOCAL_SKILL handler failed.",
+            ) from exc
         if not isinstance(outcome, P5ExecutorOutcome):
             raise _invalid("LOCAL_SKILL handler returned an invalid outcome.")
         return outcome
@@ -790,6 +812,11 @@ def default_p7_executor_registry(
     local_skill_handler: Callable[
         [StepExecutionContext, LocalSkillExecutorDependencies], P5ExecutorOutcome
     ],
+    local_skill_continuation_handler: Callable[
+        [StepExecutionContext, LocalSkillExecutorDependencies, Any],
+        P5ExecutorOutcome,
+    ]
+    | None = None,
     delegate_work_dependencies: DelegateWorkExecutorDependencies,
     clock: Callable[[], datetime] | None = None,
 ) -> P5StepExecutorRegistry:
@@ -802,6 +829,7 @@ def default_p7_executor_registry(
             LOCAL_SKILL_EXECUTOR_KIND: P6LocalSkillExecutor(
                 dependencies=local_skill_dependencies,
                 handler=local_skill_handler,
+                continuation_handler=local_skill_continuation_handler,
             ),
             WC_DELEGATE_WORK_EXECUTOR_KIND: P7DelegateWorkExecutor(
                 dependencies=delegate_work_dependencies,

@@ -1,0 +1,169 @@
+{
+  "schema_version": "nex.mybee.skill-pack-bindings.v1",
+  "pack_id": "MYBEE.D12.PROJECT",
+  "pack_version": "1.0.0",
+  "domain_code": "D12_PROJECT",
+  "bindings": [
+    {
+      "skill_id": "PROJECT.BUSINESS_READINESS.GET",
+      "skill_version": "1.0.0",
+      "canonical_operation_id": "PROJECT.BUSINESS_READINESS.GET",
+      "provider_operation_id": "PROJECT.BUSINESS_READINESS.GET",
+      "invocation_semantics": "READ",
+      "approval_requirement": "NONE",
+      "inventory_activation_state": "CANDIDATE",
+      "service_scope": "service:call",
+      "oa_action": "project:work-code:read",
+      "contract_admission_ref": "contracts/admissions/nex_eos/w70_tool_contract_admission.v1.json#/contracts/13",
+      "contract_typing_state": "FULLY_TYPED",
+      "input_contract_ref": "contracts/admissions/nex_eos/w70_tool_contract_admission.v1.json#/paths/~1internal~1v2~1projects~1{project_id}~1business-readiness/get#parameters",
+      "output_contract_refs": [
+        "contracts/openapi/nex-eos.openapi.yaml#/components/schemas/ProjectBusinessReadiness"
+      ],
+      "compile_state": "PENDING_S8_01E",
+      "runtime_selectable": false,
+      "execution_policy": {
+        "idempotency": "NOT_APPLICABLE",
+        "request_hash": "QUERY_HASH_REQUIRED",
+        "verification": "RESULT_HASH_REQUIRED",
+        "unknown_outcome": "NOT_APPLICABLE",
+        "timeout_profile": "PENDING_ACTIVATION_SLICE"
+      },
+      "activation_blockers": [
+        "NSL_SOURCE_AND_COMPILE_REQUIRED",
+        "SIGNED_BUNDLE_AND_TRUST_ADMISSION_REQUIRED",
+        "AE_CAPABILITY_REGISTRY_RELEASE_REQUIRED",
+        "PROTECTED_ACTIVATION_GATE_REQUIRED"
+      ]
+    },
+    {
+      "skill_id": "PROJECT.WORK_ASSIGNMENT.ASSIGN",
+      "skill_version": "1.0.0",
+      "canonical_operation_id": "PROJECT.WORK_ASSIGNMENT.ASSIGN",
+      "provider_operation_id": "PROJECT.WORK_ASSIGNMENT.ASSIGN",
+      "invocation_semantics": "GOVERNED_WRITE",
+      "approval_requirement": "BUSINESS_FORMAL",
+      "inventory_activation_state": "CANDIDATE",
+      "service_scope": "service:call",
+      "oa_action": "project:work-assignment:manage",
+      "contract_admission_ref": "contracts/admissions/nex_eos/w70_tool_contract_admission.v1.json#/contracts/14",
+      "contract_typing_state": "STATUS_ONLY",
+      "input_contract_ref": "contracts/openapi/nex-eos.openapi.yaml#/components/schemas/ProjectWorkAssignmentCommand",
+      "output_contract_refs": [],
+      "compile_state": "PENDING_S8_01E",
+      "runtime_selectable": false,
+      "execution_policy": {
+        "idempotency": "REQUIRED",
+        "request_hash": "PAYLOAD_HASH_REQUIRED",
+        "verification": "REQUIRED_BEFORE_ACTIVATION",
+        "unknown_outcome": "RECONCILE_BEFORE_RETRY",
+        "timeout_profile": "PENDING_ACTIVATION_SLICE"
+      },
+      "activation_blockers": [
+        "CANONICAL_SUCCESS_RESPONSE_SCHEMA_REQUIRED",
+        "NSL_SOURCE_AND_COMPILE_REQUIRED",
+        "SIGNED_BUNDLE_AND_TRUST_ADMISSION_REQUIRED",
+        "AE_CAPABILITY_REGISTRY_RELEASE_REQUIRED",
+        "PROTECTED_ACTIVATION_GATE_REQUIRED"
+      ]
+    },
+    {
+      "skill_id": "PROJECT.WORK_ASSIGNMENT.LIST",
+      "skill_version": "1.0.0",
+      "canonical_operation_id": "PROJECT.WORK_ASSIGNMENT.LIST",
+      "provider_operation_id": "PROJECT.WORK_ASSIGNMENT.LIST",
+      "invocation_semantics": "READ",
+      "approval_requirement": "NONE",
+      "inventory_activation_state": "CANDIDATE",
+      "service_scope": "service:call",
+      "oa_action": "project:work-assignment:read",
+      "contract_admission_ref": "contracts/admissions/nex_eos/w70_tool_contract_admission.v1.json#/contracts/15",
+      "contract_typing_state": "FULLY_TYPED",
+      "input_contract_ref": "contracts/admissions/nex_eos/w70_tool_contract_admission.v1.json#/paths/~1internal~1v2~1projects~1{project_id}~1work-assignments/get#parameters",
+      "output_contract_refs": [
+        "contracts/openapi/nex-eos.openapi.yaml#/components/schemas/ProjectWorkAssignmentCollection"
+      ],
+      "compile_state": "PENDING_S8_01E",
+      "runtime_selectable": false,
+      "execution_policy": {
+        "idempotency": "NOT_APPLICABLE",
+        "request_hash": "QUERY_HASH_REQUIRED",
+        "verification": "RESULT_HASH_REQUIRED",
+        "unknown_outcome": "NOT_APPLICABLE",
+        "timeout_profile": "PENDING_ACTIVATION_SLICE"
+      },
+      "activation_blockers": [
+        "NSL_SOURCE_AND_COMPILE_REQUIRED",
+        "SIGNED_BUNDLE_AND_TRUST_ADMISSION_REQUIRED",
+        "AE_CAPABILITY_REGISTRY_RELEASE_REQUIRED",
+        "PROTECTED_ACTIVATION_GATE_REQUIRED"
+      ]
+    },
+    {
+      "skill_id": "PROJECT.WORK_CODE_SET.APPROVE",
+      "skill_version": "1.0.0",
+      "canonical_operation_id": "PROJECT.WORK_CODE_SET.APPROVE",
+      "provider_operation_id": "PROJECT.WORK_CODE_SET.APPROVE",
+      "invocation_semantics": "GOVERNED_WRITE",
+      "approval_requirement": "BUSINESS_FORMAL",
+      "inventory_activation_state": "CANDIDATE",
+      "service_scope": "service:call",
+      "oa_action": "project:work-code:approve",
+      "contract_admission_ref": "contracts/admissions/nex_eos/w70_tool_contract_admission.v1.json#/contracts/16",
+      "contract_typing_state": "STATUS_ONLY",
+      "input_contract_ref": "contracts/openapi/nex-eos.openapi.yaml#/components/schemas/ProjectWorkCodeSetApprovalCommand",
+      "output_contract_refs": [],
+      "compile_state": "PENDING_S8_01E",
+      "runtime_selectable": false,
+      "execution_policy": {
+        "idempotency": "REQUIRED",
+        "request_hash": "PAYLOAD_HASH_REQUIRED",
+        "verification": "REQUIRED_BEFORE_ACTIVATION",
+        "unknown_outcome": "RECONCILE_BEFORE_RETRY",
+        "timeout_profile": "PENDING_ACTIVATION_SLICE"
+      },
+      "activation_blockers": [
+        "CANONICAL_SUCCESS_RESPONSE_SCHEMA_REQUIRED",
+        "NSL_SOURCE_AND_COMPILE_REQUIRED",
+        "SIGNED_BUNDLE_AND_TRUST_ADMISSION_REQUIRED",
+        "AE_CAPABILITY_REGISTRY_RELEASE_REQUIRED",
+        "PROTECTED_ACTIVATION_GATE_REQUIRED"
+      ]
+    },
+    {
+      "skill_id": "PROJECT.WORK_CODE_SET.GET",
+      "skill_version": "1.0.0",
+      "canonical_operation_id": "PROJECT.WORK_CODE_SET.GET",
+      "provider_operation_id": "PROJECT.WORK_CODE_SET.GET",
+      "invocation_semantics": "READ",
+      "approval_requirement": "NONE",
+      "inventory_activation_state": "CANDIDATE",
+      "service_scope": "service:call",
+      "oa_action": "project:work-code:read",
+      "contract_admission_ref": "contracts/admissions/nex_eos/w70_tool_contract_admission.v1.json#/contracts/17",
+      "contract_typing_state": "FULLY_TYPED",
+      "input_contract_ref": "contracts/admissions/nex_eos/w70_tool_contract_admission.v1.json#/paths/~1internal~1v2~1projects~1{project_id}~1work-code-set/get#parameters",
+      "output_contract_refs": [
+        "contracts/openapi/nex-eos.openapi.yaml#/components/schemas/ProjectWorkCodeSet"
+      ],
+      "compile_state": "PENDING_S8_01E",
+      "runtime_selectable": false,
+      "execution_policy": {
+        "idempotency": "NOT_APPLICABLE",
+        "request_hash": "QUERY_HASH_REQUIRED",
+        "verification": "RESULT_HASH_REQUIRED",
+        "unknown_outcome": "NOT_APPLICABLE",
+        "timeout_profile": "PENDING_ACTIVATION_SLICE"
+      },
+      "activation_blockers": [
+        "NSL_SOURCE_AND_COMPILE_REQUIRED",
+        "SIGNED_BUNDLE_AND_TRUST_ADMISSION_REQUIRED",
+        "AE_CAPABILITY_REGISTRY_RELEASE_REQUIRED",
+        "PROTECTED_ACTIVATION_GATE_REQUIRED"
+      ]
+    }
+  ],
+  "release_attestation": {
+    "content_digest": "sha256:0c4ac1a600b5ca4bd33dd9529e8a13a062721c441d70540f7167c8facc165fc4"
+  }
+}

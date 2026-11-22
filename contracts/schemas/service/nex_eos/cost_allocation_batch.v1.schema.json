@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_eos/cost_allocation_batch.v1.schema.json",
+  "title": "EOS Cost Allocation Batch v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "operation", "idempotency_disposition", "tenant_id",
+    "business_operation_id", "idempotency_key", "payload_hash", "commit_state",
+    "business_result_ref", "company_id", "batch_id", "plan_id", "plan_revision",
+    "period_id", "source_set_hash", "functional_currency", "allocated_total",
+    "unallocated_total", "reconciliation_hash", "line_count", "pool_count",
+    "committed_at", "outbox"
+  ],
+  "properties": {
+    "schema_version": {"const": "eos_cost_allocation_batch.v1"},
+    "operation": {"const": "FINANCE.COST_ALLOCATION.RUN"},
+    "idempotency_disposition": {"enum": ["CREATED", "EXACT_REPLAY"]},
+    "tenant_id": {"type": "string", "minLength": 1, "maxLength": 128},
+    "business_operation_id": {"type": "string", "format": "uuid"},
+    "idempotency_key": {"type": "string"},
+    "payload_hash": {"$ref": "#/$defs/hash_ref"},
+    "commit_state": {"const": "COMMITTED"},
+    "business_result_ref": {
+      "type": "string", "pattern": "^eos\\.cost-allocation-batch:[0-9a-f-]{36}$"
+    },
+    "company_id": {"type": "string", "format": "uuid"},
+    "batch_id": {"type": "string", "format": "uuid"},
+    "plan_id": {"type": "string", "format": "uuid"},
+    "plan_revision": {"type": "integer", "minimum": 1},
+    "period_id": {"type": "string", "format": "uuid"},
+    "source_set_hash": {"$ref": "#/$defs/hash_ref"},
+    "functional_currency": {"type": "string", "pattern": "^[A-Z]{3}$"},
+    "allocated_total": {"$ref": "#/$defs/amount"},
+    "unallocated_total": {"$ref": "#/$defs/amount"},
+    "reconciliation_hash": {"$ref": "#/$defs/hash_ref"},
+    "line_count": {"type": "integer", "minimum": 1},
+    "pool_count": {"type": "integer", "minimum": 1},
+    "committed_at": {"type": "string", "format": "date-time"},
+    "outbox": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "outbox_id", "event_id", "event_type", "event_payload_hash", "delivery_state"
+      ],
+      "properties": {
+        "outbox_id": {"type": "string", "format": "uuid"},
+        "event_id": {"type": "string", "format": "uuid"},
+        "event_type": {"const": "FINANCE.COST_ALLOCATION_COMMITTED.v1"},
+        "event_payload_hash": {"$ref": "#/$defs/hash_ref"},
+        "delivery_state": {"const": "PENDING"}
+      }
+    }
+  },
+  "$defs": {
+    "hash_ref": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "amount": {"type": "string", "pattern": "^-?[0-9]+\\.[0-9]{4}$"}
+  }
+}

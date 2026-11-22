@@ -32,16 +32,27 @@ from .topology_graph import build_runtime_startup_plan
 CURRENT_TOPOLOGY_CLOSURE_SCHEMA_VERSION = "gb2_current_topology_closure.v1"
 PROMOTED_PROCESS_CAPABILITIES = {
     "nex-ae-agent-runtime-worker": "job_claiming",
+    "nex-wc-assignment-dispatch-worker": "job_claiming",
     "nex-wc-event-delivery-worker": "event_delivering",
     "nex-eos-outbox-publisher": "outbox_publishing",
 }
 PROMOTED_PROCESS_MODULES = {
     "nex-ae-agent-runtime-worker": "nex_ae_api.agent_runtime_process",
+    "nex-wc-assignment-dispatch-worker": "nex_wc.assignment_dispatch_process",
     "nex-wc-event-delivery-worker": "nex_wc.event_delivery_process",
     "nex-eos-outbox-publisher": "nex_eos.outbox_publisher_process",
 }
 PROMOTED_REQUIRED_ENVIRONMENTS = {
     "nex-ae-agent-runtime-worker": frozenset({"NEX_AE_TEST_DATABASE_URL"}),
+    "nex-wc-assignment-dispatch-worker": frozenset(
+        {
+            "NEX_WC_TEST_DATABASE_URL",
+            "NEX_WC_AE_BASE_URL",
+            "NEX_WC_TO_AE_SERVICE_TOKEN",
+            "NEX_WC_OA_BASE_URL",
+            "NEX_WC_TO_OA_SERVICE_TOKEN",
+        }
+    ),
     "nex-wc-event-delivery-worker": frozenset(
         {
             "NEX_WC_TEST_DATABASE_URL",
@@ -114,11 +125,11 @@ def build_current_topology_closure(
     )
     checks = {
         "nine_artifacts_exact": len(catalog.artifacts) == 9,
-        "twenty_processes_exact": len(local_manifest.processes) == 20,
+        "twenty_one_processes_exact": len(local_manifest.processes) == 21,
         "nine_endpoints_exact": len(local_manifest.endpoints) == 9,
-        "artifact_binding_is_bijective": len(catalog.process_bindings) == 20
+        "artifact_binding_is_bijective": len(catalog.process_bindings) == 21
         and set(binding_by_id) == set(process_by_id),
-        "packaged_entrypoint_is_bijective": projection["entrypoint_count"] == 20
+        "packaged_entrypoint_is_bijective": projection["entrypoint_count"] == 21
         and set(entry_by_id) == set(process_by_id),
         "all_command_sources_exist": all(command_sources.values()),
         "all_commands_are_package_native": all(
@@ -132,16 +143,21 @@ def build_current_topology_closure(
         "promoted_environment_contracts_complete": all(
             promoted_environment_checks.values()
         ),
-        "current_profile_requires_wc_ae_endpoint": (
-            "NEX_WC_AE_BASE_URL" in required_protected_names
-        ),
+        "current_profile_requires_wc_assignment_endpoints": {
+            "NEX_WC_AE_BASE_URL",
+            "NEX_WC_OA_BASE_URL",
+        }.issubset(required_protected_names),
         "current_profile_requires_promoted_signed_trust": {
             "NEX_WC_TO_AE_SERVICE_TOKEN",
+            "NEX_WC_TO_OA_SERVICE_TOKEN",
             "NEX_EOS_TO_AE_SERVICE_TOKEN",
         }.issubset(required_protected_names),
-        "local_startup_graph_covers_twenty": len(local_plan.ordered_process_ids) == 20,
-        "protected_startup_graph_covers_twenty": len(test_plan.ordered_process_ids)
-        == 20,
+        "local_startup_graph_covers_twenty_one": len(local_plan.ordered_process_ids)
+        == 21,
+        "protected_startup_graph_covers_twenty_one": len(
+            test_plan.ordered_process_ids
+        )
+        == 21,
         "protected_dependencies_use_readiness": all(
             item.probe_mode == "readiness" for item in test_plan.dependency_probes
         ),
@@ -151,7 +167,7 @@ def build_current_topology_closure(
             for item in local_manifest.processes
             if item.kind in {"worker", "daemon"}
         },
-        "responsibility_inventory_complete": len(responsibilities) == 20
+        "responsibility_inventory_complete": len(responsibilities) == 21
         and all(item["artifact_id"] and item["owner"] for item in responsibilities),
         "eight_database_owners_exact": len(
             {

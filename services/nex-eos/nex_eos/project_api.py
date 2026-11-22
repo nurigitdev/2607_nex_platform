@@ -194,6 +194,27 @@ def register_project_routes(app: FastAPI) -> None:
             ),
         )
 
+    @app.post(
+        "/internal/v1/projects/{project_id}/memberships/{subject_id}:change-role",
+        response_model=None,
+        operation_id="PROJECT.MEMBERSHIP.CHANGE_ROLE",
+    )
+    def change_membership_role(
+        project_id: str,
+        subject_id: str,
+        payload: dict[str, Any],
+        request: Request,
+        authorization: str | None = Header(default=None),
+    ):
+        return _write(
+            request,
+            authorization,
+            lambda service, caller: service.change_membership_role(
+                {**payload, "project_id": project_id, "target_subject_id": subject_id},
+                caller=caller,
+            ),
+        )
+
     @app.get(
         "/internal/v1/projects/{project_id}",
         response_model=None,

@@ -1,0 +1,142 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/mybee/work-code-catalog.v1.json",
+  "title": "NeX MyBee immutable FL work-code catalog",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "catalog_id",
+    "catalog_version",
+    "revision",
+    "status",
+    "domain_group",
+    "owner",
+    "source_provenance",
+    "mandatory_code_ids",
+    "work_codes",
+    "release_attestation"
+  ],
+  "properties": {
+    "schema_version": {"const": "nex.mybee.work-code-catalog.v1"},
+    "catalog_id": {"const": "mybee.fl.d12.project-governance"},
+    "catalog_version": {"type": "string", "pattern": "^[1-9][0-9]*\\.[0-9]+\\.[0-9]+$"},
+    "revision": {"type": "integer", "minimum": 1},
+    "status": {"const": "SOURCE_ADMITTED_RUNTIME_INACTIVE"},
+    "domain_group": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "name_ko"],
+      "properties": {
+        "code": {"const": "D12_PROJECT"},
+        "name_ko": {"const": "프로젝트 관리"}
+      }
+    },
+    "owner": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["domain_policy", "business_state", "workflow"],
+      "properties": {
+        "domain_policy": {"const": "nex-mybee-ax"},
+        "business_state": {"const": "nex-eos"},
+        "workflow": {"const": "nex-wc"}
+      }
+    },
+    "source_provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["authority", "pdf_page_reconciliation", "evidence"],
+      "properties": {
+        "authority": {"const": "NEX_MYBEE_PHASE1_DESIGN_SET"},
+        "pdf_page_reconciliation": {"const": "OPEN_G_SRC_PDF"},
+        "evidence": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["path", "sha256"],
+            "properties": {
+              "path": {"type": "string", "minLength": 1},
+              "sha256": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}
+            }
+          }
+        }
+      }
+    },
+    "mandatory_code_ids": {
+      "const": ["FL0012004", "FL0012005", "FL0012006", "FL0012013", "FL0012026"]
+    },
+    "work_codes": {
+      "type": "array",
+      "minItems": 5,
+      "maxItems": 5,
+      "items": {"$ref": "#/$defs/work_code"}
+    },
+    "release_attestation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "profile",
+        "authority",
+        "evidence_ref",
+        "content_digest",
+        "runtime_signature_status"
+      ],
+      "properties": {
+        "profile": {"const": "SOURCE_AUTHORITY_CONTENT_DIGEST_V1"},
+        "authority": {"const": "NEX_MYBEE_PHASE1_DESIGN_CLOSURE"},
+        "evidence_ref": {"type": "string", "minLength": 1},
+        "content_digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+        "runtime_signature_status": {"const": "DEFERRED_TO_ADMITTED_SKILL_PACK"}
+      }
+    }
+  },
+  "$defs": {
+    "work_code": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "code_id",
+        "name_ko",
+        "purpose",
+        "domain_group",
+        "owner_service",
+        "lifecycle_stage",
+        "execution_phase",
+        "required_for_project_work_set",
+        "consumer_mapping"
+      ],
+      "properties": {
+        "code_id": {"type": "string", "pattern": "^FL[0-9]{7}$"},
+        "name_ko": {"type": "string", "minLength": 1},
+        "purpose": {"type": "string", "minLength": 1},
+        "domain_group": {"const": "D12_PROJECT"},
+        "owner_service": {"const": "nex-eos"},
+        "lifecycle_stage": {
+          "enum": [
+            "PROJECT_OPEN",
+            "WORK_SET_APPROVAL",
+            "PM_ASSIGNMENT",
+            "PROGRESS_AGGREGATION",
+            "PROJECT_CLOSE"
+          ]
+        },
+        "execution_phase": {
+          "enum": ["PROJECT_ACTIVATION", "CONFIGURATION", "OPERATIONS", "CLOSURE"]
+        },
+        "required_for_project_work_set": {"const": true},
+        "consumer_mapping": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status", "api_operation_id", "nsl_tool_id"],
+          "properties": {
+            "status": {"const": "DECLARED_NOT_BOUND"},
+            "api_operation_id": {"type": "null"},
+            "nsl_tool_id": {"type": "null"}
+          }
+        }
+      }
+    }
+  }
+}

@@ -40,6 +40,7 @@ DEMO_ROUTE_IDS = (
     "mo",
     "wc",
     "eos",
+    "wa",
     "ae-web",
     "embedding",
     "reranker",
@@ -58,6 +59,7 @@ _IMAGE_ENV_BY_ARTIFACT = {
     "nex-ae-web": "NEX_AE_WEB_IMAGE",
 }
 _IMMUTABLE_IMAGE = re.compile(r"^[^@\s]+@sha256:[0-9a-f]{64}$")
+_CANONICAL_AE_WORKER_LEASE_SECONDS = "600"
 _SHA256 = re.compile(r"^sha256:[0-9a-f]{64}$")
 _LOCAL_TAG = re.compile(r"^(?P<repository>[^@\s]+):(?P<tag>[A-Za-z0-9_.-]+)$")
 _AE_REQUIRED_PLANNING_ENVIRONMENT = {
@@ -69,6 +71,7 @@ _AE_INSTALLED_WORKER_EXECUTORS = (
     "DETERMINISTIC_REPORT",
     "LOCAL_SKILL",
     "P4_CHAT_RAG_COMPATIBILITY",
+    "WC_DELEGATE_WORK",
 )
 
 
@@ -151,6 +154,11 @@ def admit_demo_compose_sources(
     )
     if observed_executors != _AE_INSTALLED_WORKER_EXECUTORS:
         errors.append("Demo AE installed worker executor profile drift")
+    if (
+        str(ae_worker_environment.get("NEX_AE_AGENT_WORKER_LEASE_SECONDS") or "")
+        != _CANONICAL_AE_WORKER_LEASE_SECONDS
+    ):
+        errors.append("Demo AE installed worker lease policy drift")
     if "_TEST_DATABASE_URL" in overlay_text or "nuri1004" in overlay_text:
         errors.append("Demo Compose contains a test or raw database credential")
 
@@ -159,7 +167,7 @@ def admit_demo_compose_sources(
     route_services = _mapping(http.get("services"), "Demo Traefik services")
     if tuple(routers) != DEMO_ROUTE_IDS or tuple(route_services) != DEMO_ROUTE_IDS:
         errors.append("Demo Traefik route coverage or order drift")
-    for route_id, port in (("wc", 8106), ("eos", 8107)):
+    for route_id, port in (("wc", 8106), ("eos", 8107), ("wa", 8108)):
         router = _mapping(routers.get(route_id), f"router {route_id}")
         service = _mapping(route_services.get(route_id), f"route service {route_id}")
         if router.get("service") != route_id or router.get("tls") != {}:

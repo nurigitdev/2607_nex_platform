@@ -11,6 +11,7 @@ from .outbox_publication import (
     EosOutboxPublicationError,
     EosOutboxPublishReceipt,
 )
+from .project_lifecycle_events import PROJECT_LIFECYCLE_EVENT_TYPE
 
 
 class HttpAeEosOutboxTransport:
@@ -32,7 +33,9 @@ class HttpAeEosOutboxTransport:
             or not 0 < timeout_seconds <= 120
         ):
             raise _invalid("AE outbox timeout is invalid.", retryable=False)
-        self._url = f"{base_url.rstrip('/')}/internal/v1/eos-outbox-events"
+        base = base_url.rstrip("/")
+        self._metadata_url = f"{base}/internal/v1/eos-outbox-events"
+        self._project_lifecycle_url = f"{base}/internal/v1/project-lifecycle-events"
         self._service_token = service_token
         self._timeout_seconds = float(timeout_seconds)
         self._opener = opener
@@ -47,8 +50,12 @@ class HttpAeEosOutboxTransport:
             "event_type": event.event_type,
             "event_payload_hash": event.event_payload_hash,
         }
+        url = self._metadata_url
+        if event.event_type == PROJECT_LIFECYCLE_EVENT_TYPE:
+            body["event_payload"] = event.event_payload
+            url = self._project_lifecycle_url
         request = Request(
-            self._url,
+            url,
             method="POST",
             data=json.dumps(body, sort_keys=True).encode("utf-8"),
             headers={

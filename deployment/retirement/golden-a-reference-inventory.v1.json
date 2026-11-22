@@ -1,0 +1,1106 @@
+{
+  "schema_version": "mybee.w70.golden_a_reference_inventory.v1",
+  "inventory_id": "mybee-w70-golden-a-retirement",
+  "inventory_version": 1,
+  "frozen_at": "2026-11-15T00:00:00Z",
+  "scan_roots": [
+    "apps",
+    "contracts",
+    "deployment",
+    "docs/slices",
+    "domains",
+    "scripts",
+    "services",
+    "tests"
+  ],
+  "reference_patterns": [
+    "golden[ _-]?a",
+    "FINANCE\\.CREATE_VOUCHER_DRAFT",
+    "FINANCE\\.VOUCHER_DRAFT_CREATE"
+  ],
+  "allowed_classifications": [
+    "GENERALIZE",
+    "HISTORY",
+    "REMOVE_ACTIVE",
+    "REPLAY_ONLY"
+  ],
+  "classification_counts": {
+    "GENERALIZE": 23,
+    "HISTORY": 52,
+    "REMOVE_ACTIVE": 17,
+    "REPLAY_ONLY": 122
+  },
+  "entries": [
+    {
+      "path": "apps/nex-ae-web/scripts/runCanonicalPlatformGoldenJourney.mjs",
+      "classification": "REPLAY_ONLY",
+      "reason": "Artifact remains only for regression, audit, or historical replay."
+    },
+    {
+      "path": "contracts/examples/index.json",
+      "classification": "GENERALIZE",
+      "reason": "Reusable product contract or retirement control remains active."
+    },
+    {
+      "path": "contracts/examples/service/eos_cost_source_pool.v1.json",
+      "classification": "GENERALIZE",
+      "reason": "Reusable product contract or retirement control remains active."
+    },
+    {
+      "path": "contracts/examples/service/eos_create_voucher_draft_command.golden_a.json",
+      "classification": "REPLAY_ONLY",
+      "reason": "Artifact remains only for regression, audit, or historical replay."
+    },
+    {
+      "path": "contracts/examples/service/eos_create_voucher_draft_result.committed.json",
+      "classification": "GENERALIZE",
+      "reason": "Reusable product contract or retirement control remains active."
+    },
+    {
+      "path": "contracts/tests/negative/service/eos_create_voucher_draft_command.attachment_without_manifest.json",
+      "classification": "GENERALIZE",
+      "reason": "Reusable product contract or retirement control remains active."
+    },
+    {
+      "path": "contracts/tests/negative/service/eos_create_voucher_draft_command.float_amount.json",
+      "classification": "GENERALIZE",
+      "reason": "Reusable product contract or retirement control remains active."
+    },
+    {
+      "path": "contracts/tests/negative/service/eos_create_voucher_draft_command.missing_approval.json",
+      "classification": "GENERALIZE",
+      "reason": "Reusable product contract or retirement control remains active."
+    },
+    {
+      "path": "contracts/tests/negative/service/eos_create_voucher_draft_result.committed_without_voucher.json",
+      "classification": "GENERALIZE",
+      "reason": "Reusable product contract or retirement control remains active."
+    },
+    {
+      "path": "deployment/audits/mybee-w70-e2e-fx-01a1-baseline.v1.json",
+      "classification": "HISTORY",
+      "reason": "Frozen design or Slice evidence remains immutable history."
+    },
+    {
+      "path": "deployment/compose/canonical-platform.override.yaml",
+      "classification": "REMOVE_ACTIVE",
+      "reason": "Active Golden A binding is removed after the replacement Gate."
+    },
+    {
+      "path": "deployment/environments/ae-product-capability-registry.mybee-m1.v1.json",
+      "classification": "REMOVE_ACTIVE",
+      "reason": "Active Golden A binding is removed after the replacement Gate."
+    },
+    {
+      "path": "deployment/environments/ae-product-capability-registry.v1.json",
+      "classification": "REMOVE_ACTIVE",
+      "reason": "Active Golden A binding is removed after the replacement Gate."
+    },
+    {
+      "path": "deployment/environments/ae-product-capability-registry.v2.json",
+      "classification": "REMOVE_ACTIVE",
+      "reason": "Active Golden A binding is removed after the replacement Gate."
+    },
+    {
+      "path": "deployment/environments/finance-golden-a-vo00.v1.json",
+      "classification": "REMOVE_ACTIVE",
+      "reason": "Active Golden A binding is removed after the replacement Gate."
+    },
+    {
+      "path": "deployment/locks/ae-mybee-m1-runtime-activation.v1.json",
+      "classification": "REPLAY_ONLY",
+      "reason": "Artifact remains only for regression, audit, or historical replay."
+    },
+    {
+      "path": "deployment/locks/ae-product-nsl-runtime-bundle.v1.json",
+      "classification": "REPLAY_ONLY",
+      "reason": "Artifact remains only for regression, audit, or historical replay."
+    },
+    {
+      "path": "deployment/locks/p8-demo-nsl-runtime-bundle.v1.json",
+      "classification": "REPLAY_ONLY",
+      "reason": "Artifact remains only for regression, audit, or historical replay."
+    },
+    {
+      "path": "deployment/oci/canonical-platform-ae-runtime.Containerfile",
+      "classification": "REMOVE_ACTIVE",
+      "reason": "Active Golden A binding is removed after the replacement Gate."
+    },
+    {
+      "path": "deployment/releases/p8-demo-release-candidate.v1.json",
+      "classification": "REPLAY_ONLY",
+      "reason": "Artifact remains only for regression, audit, or historical replay."
+    },
+    {
+      "path": "deployment/retirement/golden-a-reference-inventory.v1.json",
+      "classification": "GENERALIZE",
+      "reason": "Reusable product contract or retirement control remains active."
+    },
+    {
+      "path": "deployment/retirement/golden-a-rollback-receipt.v1.json",
+      "classification": "GENERALIZE",
+      "reason": "Reusable product contract or retirement control remains active."
+    },
+    {
+      "path": "deployment/retirement/golden-a-selection-freeze.v1.json",
+      "classification": "GENERALIZE",
+      "reason": "Reusable product contract or retirement control remains active."
+    },
+    {
+      "path": "docs/slices/gb2_ca00_s03_generic_ae_installed_runtime_composition.md",
+      "classification": "HISTORY",
+      "reason": "Frozen design or Slice evidence remains immutable history."
+    },
+    {
+      "path": "docs/slices/gb2_ca00_s04_p8_demo_rebind_through_generic_ae_factory.md",
+      "classification": "HISTORY",
+      "reason": "Frozen design or Slice evidence remains immutable history."
+    },
+    {
+      "path": "docs/slices/gb2_ca00_s09_domain_intent_activator_registry.md",
+      "classification": "HISTORY",
+      "reason": "Frozen design or Slice evidence remains immutable history."
+    },
+    {
+      "path": "docs/slices/gb2_ca00_s10_productize_golden_a_finance_activator.md",
+      "classification": "HISTORY",
+      "reason": "Frozen design or Slice evidence remains immutable history."
+    },
+    {
+      "path": "docs/slices/gb2_ca00_s11_capability_skill_registration_demo_seed_boundary.md",
+      "classification": "HISTORY",
+      "reason": "Frozen design or Slice evidence remains immutable history."
+    },
+    {
+      "path": "docs/slices/gb2_ca00_s17_demo_to_product_dependency_closure.md",
+      "classification": "HISTORY",
+      "reason": "Frozen design or Slice evidence remains immutable history."
+    },
+    {
+      "path": "docs/slices/gb2_ca00_s17a_product_controlled_write_runtime_composition.md",
+      "classification": "HISTORY",
+      "reason": "Frozen design or Slice evidence remains immutable history."
+    },
+    {
+      "path": "docs/slices/gb2_ca00_s18_installed_current_platform_continuity_e2e.md",
+      "classification": "HISTORY",
+      "reason": "Frozen design or Slice evidence remains immutable history."
+    },
+    {
+      "path": "docs/slices/mybee_phase1_cp_m1_mb8_01_signed_skill_pa_orchestration.md",
+      "classification": "HISTORY",
+      "reason": "Frozen design or Slice evidence remains immutable history."
+    },
+    {
+      "path": "docs/slices/mybee_phase1_mb0_01_domain_bootstrap.md",
+      "classification": "HISTORY",
+      "reason": "Frozen design or Slice evidence remains immutable history."
+    },
+    {
+      "path": "docs/slices/mybee_phase1_mb0_02_compatibility_gate.md",
+      "classification": "HISTORY",
+      "reason": "Frozen design or Slice evidence remains immutable history."
+    },
+    {
+      "path": "docs/slices/mybee_phase1_s0_02_v1_regression_baseline.md",
+      "classification": "HISTORY",
+      "reason": "Frozen design or Slice evidence remains immutable history."
+    },
+    {
+      "path": "docs/slices/mybee_phase1_s2_01_approved_document_envelope.md",
+      "classification": "HISTORY",
+      "reason": "Frozen design or Slice evidence remains immutable history."
+    },
+    {
+      "path": "docs/slices/mybee_phase1_w40_ca02_s01_product_runtime_composition_ownership_audit.md",
+      "classification": "HISTORY",
+      "reason": "Frozen design or Slice evidence remains immutable history."
+    },
+    {
+      "path": "docs/slices/mybee_phase1_w40_ca02_s02_canonical_installed_configuration_trust_process_wiring.md",
+      "classification": "HISTORY",
+      "reason": "Frozen design or Slice evidence remains immutable history."
+    },
+    {
+      "path": "docs/slices/mybee_phase1_w40_ca02_s03_installed_entitlement_delivery_mybee_consumer_integration.md",
+      "classification": "HISTORY",
+      "reason": "Frozen design or Slice evidence remains immutable history."
+    },
+    {
+      "path": "docs/slices/mybee_phase1_w70_cp_m1_e2e_fx_01a1.md",
+      "classification": "HISTORY",
+      "reason": "Frozen design or Slice evidence remains immutable history."
+    },
+    {
+      "path": "docs/slices/mybee_phase1_w70_cp_m1_e2e_fx_01a2.md",
+      "classification": "HISTORY",
+      "reason": "Frozen design or Slice evidence remains immutable history."
+    },
+    {
+      "path": "docs/slices/mybee_phase1_w70_cp_m1_e2e_fx_01a4.md",
+      "classification": "HISTORY",
+      "reason": "Frozen design or Slice evidence remains immutable history."
+    },
+    {
+      "path": "docs/slices/mybee_phase1_w70_cp_m1_e2e_fx_01a5.md",
+      "classification": "HISTORY",
+      "reason": "Frozen design or Slice evidence remains immutable history."
+    },
+    {
+      "path": "docs/slices/mybee_phase1_w70_cp_m1_ga_ret_01.md",
+      "classification": "GENERALIZE",
+      "reason": "Reusable product contract or retirement control remains active."
+    },
+    {
+      "path": "docs/slices/mybee_phase1_w70_s8_01a_tool_inventory.md",
+      "classification": "HISTORY",
+      "reason": "Frozen design or Slice evidence remains immutable history."
+    },
+    {
+      "path": "docs/slices/mybee_phase1_w70_s8_01b_tool_contract_admission.md",
+      "classification": "HISTORY",
+      "reason": "Frozen design or Slice evidence remains immutable history."
+    },
+    {
+      "path": "docs/slices/mybee_phase1_w70_s8_01c_skill_pack_manifest.md",
+      "classification": "HISTORY",
+      "reason": "Frozen design or Slice evidence remains immutable history."
+    },
+    {
+      "path": "docs/slices/mybee_phase1_w70_s8_01d_product_capability_registry.md",
+      "classification": "HISTORY",
+      "reason": "Frozen design or Slice evidence remains immutable history."
+    },
+    {
+      "path": "docs/slices/mybee_phase1_w70_s8_01e_foundation_gate.md",
+      "classification": "HISTORY",
+      "reason": "Frozen design or Slice evidence remains immutable history."
+    },
+    {
+      "path": "docs/slices/p8_demo_s01_database_admission_backup_tenant_fixture_guardrails.md",
+      "classification": "HISTORY",
+      "reason": "Frozen design or Slice evidence remains immutable history."
+    },
+    {
+      "path": "docs/slices/p8_demo_s03_vo00_tenant_fixture_seed_reset_lifecycle.md",
+      "classification": "HISTORY",
+      "reason": "Frozen design or Slice evidence remains immutable history."
+    },
+    {
+      "path": "docs/slices/p8_demo_s10b_installed_p6_p8_runtime_composition_extraction.md",
+      "classification": "HISTORY",
+      "reason": "Frozen design or Slice evidence remains immutable history."
+    },
+    {
+      "path": "docs/slices/p8_demo_s11_protected_installed_chairman_golden_journey_acceptance.md",
+      "classification": "HISTORY",
+      "reason": "Frozen design or Slice evidence remains immutable history."
+    },
+    {
+      "path": "docs/slices/p8_demo_s11a_prompt_first_golden_a_browser_journey.md",
+      "classification": "HISTORY",
+      "reason": "Frozen design or Slice evidence remains immutable history."
+    },
+    {
+      "path": "docs/slices/p8_s111_ia_multi_member_orchestration_result_ux.md",
+      "classification": "HISTORY",
+      "reason": "Frozen design or Slice evidence remains immutable history."
+    },
+    {
+      "path": "docs/slices/p8_s14_account_minimum_model.md",
+      "classification": "HISTORY",
+      "reason": "Frozen design or Slice evidence remains immutable history."
+    },
+    {
+      "path": "docs/slices/p8_s18_voucher_draft_command_contract.md",
+      "classification": "HISTORY",
+      "reason": "Frozen design or Slice evidence remains immutable history."
+    },
+    {
+      "path": "docs/slices/p8_s19_eos_create_voucher_draft_service.md",
+      "classification": "HISTORY",
+      "reason": "Frozen design or Slice evidence remains immutable history."
+    },
+    {
+      "path": "docs/slices/p8_s22_eos_foundation_postgres_gate.md",
+      "classification": "HISTORY",
+      "reason": "Frozen design or Slice evidence remains immutable history."
+    },
+    {
+      "path": "docs/slices/p8_s57a_nsl_eos_canonical_payload_hash_alignment.md",
+      "classification": "HISTORY",
+      "reason": "Frozen design or Slice evidence remains immutable history."
+    },
+    {
+      "path": "docs/slices/p8_s63_golden_a_fixture_baseline.md",
+      "classification": "HISTORY",
+      "reason": "Frozen design or Slice evidence remains immutable history."
+    },
+    {
+      "path": "docs/slices/p8_s64_planning_capability_activation.md",
+      "classification": "HISTORY",
+      "reason": "Frozen design or Slice evidence remains immutable history."
+    },
+    {
+      "path": "docs/slices/p8_s65_golden_a_ia_nsl_approval_journey.md",
+      "classification": "HISTORY",
+      "reason": "Frozen design or Slice evidence remains immutable history."
+    },
+    {
+      "path": "docs/slices/p8_s65a_golden_a_canonical_write_payload_alignment.md",
+      "classification": "HISTORY",
+      "reason": "Frozen design or Slice evidence remains immutable history."
+    },
+    {
+      "path": "docs/slices/p8_s66_golden_a_eos_commit_journey.md",
+      "classification": "HISTORY",
+      "reason": "Frozen design or Slice evidence remains immutable history."
+    },
+    {
+      "path": "docs/slices/p8_s67_exactly_once_golden_a_retry_variants.md",
+      "classification": "HISTORY",
+      "reason": "Frozen design or Slice evidence remains immutable history."
+    },
+    {
+      "path": "docs/slices/p8_s68_golden_a_evidence_package.md",
+      "classification": "HISTORY",
+      "reason": "Frozen design or Slice evidence remains immutable history."
+    },
+    {
+      "path": "docs/slices/p8_s76_unknown_commit_state_fault_injection.md",
+      "classification": "HISTORY",
+      "reason": "Frozen design or Slice evidence remains immutable history."
+    },
+    {
+      "path": "docs/slices/p8_s78_committed_verification_failed.md",
+      "classification": "HISTORY",
+      "reason": "Frozen design or Slice evidence remains immutable history."
+    },
+    {
+      "path": "docs/slices/p8_s79_committed_verification_unknown.md",
+      "classification": "HISTORY",
+      "reason": "Frozen design or Slice evidence remains immutable history."
+    },
+    {
+      "path": "docs/slices/p8_s90_actual_db_full_gate.md",
+      "classification": "HISTORY",
+      "reason": "Frozen design or Slice evidence remains immutable history."
+    },
+    {
+      "path": "docs/slices/p8_s91_ia_playwright_full_gate.md",
+      "classification": "HISTORY",
+      "reason": "Frozen design or Slice evidence remains immutable history."
+    },
+    {
+      "path": "docs/slices/p8_s92_golden_a_fault_final_rerun.md",
+      "classification": "HISTORY",
+      "reason": "Frozen design or Slice evidence remains immutable history."
+    },
+    {
+      "path": "docs/slices/p8_s93_final_as_built_baseline_p9_handoff.md",
+      "classification": "HISTORY",
+      "reason": "Frozen design or Slice evidence remains immutable history."
+    },
+    {
+      "path": "docs/slices/p8_s97_canonical_operation_alias_registry.md",
+      "classification": "HISTORY",
+      "reason": "Frozen design or Slice evidence remains immutable history."
+    },
+    {
+      "path": "domains/mybee/README.md",
+      "classification": "GENERALIZE",
+      "reason": "Reusable product contract or retirement control remains active."
+    },
+    {
+      "path": "domains/mybee/mybee_ax/integrations/nex_skill_foundation_gate.py",
+      "classification": "GENERALIZE",
+      "reason": "Reusable product contract or retirement control remains active."
+    },
+    {
+      "path": "domains/mybee/skills/README.md",
+      "classification": "GENERALIZE",
+      "reason": "Reusable product contract or retirement control remains active."
+    },
+    {
+      "path": "domains/mybee/skills/tool_inventory.v1.json",
+      "classification": "GENERALIZE",
+      "reason": "Reusable product contract or retirement control remains active."
+    },
+    {
+      "path": "scripts/deployment/build_canonical_platform_ae_runtime_image.py",
+      "classification": "REMOVE_ACTIVE",
+      "reason": "Active Golden A binding is removed after the replacement Gate."
+    },
+    {
+      "path": "scripts/deployment/data/p8_demo_vo00_fixture.v1.json",
+      "classification": "REPLAY_ONLY",
+      "reason": "Artifact remains only for regression, audit, or historical replay."
+    },
+    {
+      "path": "scripts/deployment/run_canonical_platform_golden_journey.py",
+      "classification": "REMOVE_ACTIVE",
+      "reason": "Active Golden A binding is removed after the replacement Gate."
+    },
+    {
+      "path": "scripts/deployment/run_p8_demo_s12_release_operations_closure.py",
+      "classification": "REPLAY_ONLY",
+      "reason": "Artifact remains only for regression, audit, or historical replay."
+    },
+    {
+      "path": "scripts/deployment/run_p8_demo_tenant_fixture.py",
+      "classification": "REPLAY_ONLY",
+      "reason": "Artifact remains only for regression, audit, or historical replay."
+    },
+    {
+      "path": "scripts/quality/build_mybee_w70_golden_a_retirement.py",
+      "classification": "GENERALIZE",
+      "reason": "Reusable product contract or retirement control remains active."
+    },
+    {
+      "path": "scripts/quality/capture_mybee_w70_installed_runtime_baseline.py",
+      "classification": "REPLAY_ONLY",
+      "reason": "Artifact remains only for regression, audit, or historical replay."
+    },
+    {
+      "path": "scripts/quality/golden_journey_runners.v1.json",
+      "classification": "REPLAY_ONLY",
+      "reason": "Artifact remains only for regression, audit, or historical replay."
+    },
+    {
+      "path": "scripts/quality/run_demo_product_dependency_audit.py",
+      "classification": "REPLAY_ONLY",
+      "reason": "Artifact remains only for regression, audit, or historical replay."
+    },
+    {
+      "path": "scripts/quality/run_mybee_w40_ca02_runtime_ownership_audit.py",
+      "classification": "REPLAY_ONLY",
+      "reason": "Artifact remains only for regression, audit, or historical replay."
+    },
+    {
+      "path": "scripts/quality/run_mybee_w70_golden_a_retirement_gate.py",
+      "classification": "GENERALIZE",
+      "reason": "Reusable product contract or retirement control remains active."
+    },
+    {
+      "path": "scripts/quality/run_product_runtime_deployment_audit.py",
+      "classification": "REPLAY_ONLY",
+      "reason": "Artifact remains only for regression, audit, or historical replay."
+    },
+    {
+      "path": "scripts/quality/run_quality_gate.sh",
+      "classification": "REPLAY_ONLY",
+      "reason": "Artifact remains only for regression, audit, or historical replay."
+    },
+    {
+      "path": "scripts/smoke/data/p8_golden_a_fixture.v1.json",
+      "classification": "REPLAY_ONLY",
+      "reason": "Artifact remains only for regression, audit, or historical replay."
+    },
+    {
+      "path": "scripts/smoke/p8_golden_a_fixture.py",
+      "classification": "REPLAY_ONLY",
+      "reason": "Artifact remains only for regression, audit, or historical replay."
+    },
+    {
+      "path": "scripts/smoke/p8_s66_eos_commit_worker.py",
+      "classification": "REPLAY_ONLY",
+      "reason": "Artifact remains only for regression, audit, or historical replay."
+    },
+    {
+      "path": "scripts/smoke/p8_s77_reconciliation_worker.py",
+      "classification": "REPLAY_ONLY",
+      "reason": "Artifact remains only for regression, audit, or historical replay."
+    },
+    {
+      "path": "scripts/smoke/p8_s78_verification_failed_worker.py",
+      "classification": "REPLAY_ONLY",
+      "reason": "Artifact remains only for regression, audit, or historical replay."
+    },
+    {
+      "path": "scripts/smoke/p8_s83_write_requested_worker.py",
+      "classification": "REPLAY_ONLY",
+      "reason": "Artifact remains only for regression, audit, or historical replay."
+    },
+    {
+      "path": "scripts/smoke/p8_s86_full_reliability_worker.py",
+      "classification": "REPLAY_ONLY",
+      "reason": "Artifact remains only for regression, audit, or historical replay."
+    },
+    {
+      "path": "scripts/smoke/run_mybee_w70_golden_a_retirement_postgres.py",
+      "classification": "GENERALIZE",
+      "reason": "Reusable product contract or retirement control remains active."
+    },
+    {
+      "path": "scripts/smoke/run_p7_s9_postgres_live_golden_b.py",
+      "classification": "REPLAY_ONLY",
+      "reason": "Artifact remains only for regression, audit, or historical replay."
+    },
+    {
+      "path": "scripts/smoke/run_p8_demo_s10b_installed_runtime.py",
+      "classification": "REPLAY_ONLY",
+      "reason": "Artifact remains only for regression, audit, or historical replay."
+    },
+    {
+      "path": "scripts/smoke/run_p8_s06_nsl_compatibility.py",
+      "classification": "REPLAY_ONLY",
+      "reason": "Artifact remains only for regression, audit, or historical replay."
+    },
+    {
+      "path": "scripts/smoke/run_p8_s102_demo_acceptance.py",
+      "classification": "REPLAY_ONLY",
+      "reason": "Artifact remains only for regression, audit, or historical replay."
+    },
+    {
+      "path": "scripts/smoke/run_p8_s65_golden_a_approval_journey.py",
+      "classification": "REPLAY_ONLY",
+      "reason": "Artifact remains only for regression, audit, or historical replay."
+    },
+    {
+      "path": "scripts/smoke/run_p8_s66_golden_a_eos_commit_journey.py",
+      "classification": "REPLAY_ONLY",
+      "reason": "Artifact remains only for regression, audit, or historical replay."
+    },
+    {
+      "path": "scripts/smoke/run_p8_s67_golden_a_exactly_once.py",
+      "classification": "REPLAY_ONLY",
+      "reason": "Artifact remains only for regression, audit, or historical replay."
+    },
+    {
+      "path": "scripts/smoke/run_p8_s68_golden_a_evidence_package.py",
+      "classification": "REPLAY_ONLY",
+      "reason": "Artifact remains only for regression, audit, or historical replay."
+    },
+    {
+      "path": "services/_shared/nex_runtime/current_platform_installation.py",
+      "classification": "GENERALIZE",
+      "reason": "Reusable product contract or retirement control remains active."
+    },
+    {
+      "path": "services/_shared/nex_runtime/demo_nsl_runtime_adapter.py",
+      "classification": "REPLAY_ONLY",
+      "reason": "Artifact remains only for regression, audit, or historical replay."
+    },
+    {
+      "path": "services/_shared/nex_runtime/golden_a_evidence.py",
+      "classification": "REPLAY_ONLY",
+      "reason": "Artifact remains only for regression, audit, or historical replay."
+    },
+    {
+      "path": "services/_shared/nex_runtime/operation_names.py",
+      "classification": "GENERALIZE",
+      "reason": "Reusable product contract or retirement control remains active."
+    },
+    {
+      "path": "services/nex-ae-api/nex_ae_api/domain_intent_products.py",
+      "classification": "REMOVE_ACTIVE",
+      "reason": "Active Golden A binding is removed after the replacement Gate."
+    },
+    {
+      "path": "services/nex-ae-api/nex_ae_api/finance_golden_a_activation.py",
+      "classification": "REMOVE_ACTIVE",
+      "reason": "Active Golden A binding is removed after the replacement Gate."
+    },
+    {
+      "path": "services/nex-ae-api/nex_ae_api/golden_a_approval_journey.py",
+      "classification": "REMOVE_ACTIVE",
+      "reason": "Active Golden A binding is removed after the replacement Gate."
+    },
+    {
+      "path": "services/nex-ae-api/nex_ae_api/golden_a_planning.py",
+      "classification": "REMOVE_ACTIVE",
+      "reason": "Active Golden A binding is removed after the replacement Gate."
+    },
+    {
+      "path": "services/nex-ae-api/nex_ae_api/mybee_product_consumer.py",
+      "classification": "REMOVE_ACTIVE",
+      "reason": "Active Golden A binding is removed after the replacement Gate."
+    },
+    {
+      "path": "services/nex-ae-api/nex_ae_api/nsl_eos_write_execution.py",
+      "classification": "REMOVE_ACTIVE",
+      "reason": "Active Golden A binding is removed after the replacement Gate."
+    },
+    {
+      "path": "services/nex-ae-api/nex_ae_api/p8_demo_controlled_skill.py",
+      "classification": "REPLAY_ONLY",
+      "reason": "Artifact remains only for regression, audit, or historical replay."
+    },
+    {
+      "path": "services/nex-ae-api/nex_ae_api/p8_demo_runtime_composition.py",
+      "classification": "REPLAY_ONLY",
+      "reason": "Artifact remains only for regression, audit, or historical replay."
+    },
+    {
+      "path": "services/nex-ae-api/nex_ae_api/p8_demo_semantic_activation.py",
+      "classification": "REPLAY_ONLY",
+      "reason": "Artifact remains only for regression, audit, or historical replay."
+    },
+    {
+      "path": "services/nex-ae-api/nex_ae_api/product_capability_retirements.py",
+      "classification": "GENERALIZE",
+      "reason": "Reusable product contract or retirement control remains active."
+    },
+    {
+      "path": "services/nex-ae-api/nex_ae_api/product_controlled_skill.py",
+      "classification": "REMOVE_ACTIVE",
+      "reason": "Active Golden A binding is removed after the replacement Gate."
+    },
+    {
+      "path": "services/nex-ae-api/nex_ae_api/product_runtime_profile.py",
+      "classification": "REMOVE_ACTIVE",
+      "reason": "Active Golden A binding is removed after the replacement Gate."
+    },
+    {
+      "path": "services/nex-ae-api/nex_ae_api/prompts.py",
+      "classification": "REMOVE_ACTIVE",
+      "reason": "Active Golden A binding is removed after the replacement Gate."
+    },
+    {
+      "path": "services/nex-eos/nex_eos/voucher_commands.py",
+      "classification": "GENERALIZE",
+      "reason": "Reusable product contract or retirement control remains active."
+    },
+    {
+      "path": "tests/mybee_phase1/test_mybee_skill_admission.py",
+      "classification": "REPLAY_ONLY",
+      "reason": "Artifact remains only for regression, audit, or historical replay."
+    },
+    {
+      "path": "tests/mybee_phase1/test_w40_ca02_installed_configuration_wiring.py",
+      "classification": "REPLAY_ONLY",
+      "reason": "Artifact remains only for regression, audit, or historical replay."
+    },
+    {
+      "path": "tests/mybee_phase1/test_w40_ca02_installed_product_integration.py",
+      "classification": "REPLAY_ONLY",
+      "reason": "Artifact remains only for regression, audit, or historical replay."
+    },
+    {
+      "path": "tests/mybee_phase1/test_w40_ca02_runtime_ownership_audit.py",
+      "classification": "REPLAY_ONLY",
+      "reason": "Artifact remains only for regression, audit, or historical replay."
+    },
+    {
+      "path": "tests/mybee_phase1/test_w70_cp_m1_ga_ret_01.py",
+      "classification": "GENERALIZE",
+      "reason": "Reusable product contract or retirement control remains active."
+    },
+    {
+      "path": "tests/mybee_phase1/test_w70_s8_01a_tool_inventory.py",
+      "classification": "REPLAY_ONLY",
+      "reason": "Artifact remains only for regression, audit, or historical replay."
+    },
+    {
+      "path": "tests/mybee_phase1/test_w70_s8_01c_skill_pack_manifest.py",
+      "classification": "REPLAY_ONLY",
+      "reason": "Artifact remains only for regression, audit, or historical replay."
+    },
+    {
+      "path": "tests/mybee_phase1/test_w70_s8_01d_registry_bundle_locks.py",
+      "classification": "REPLAY_ONLY",
+      "reason": "Artifact remains only for regression, audit, or historical replay."
+    },
+    {
+      "path": "tests/mybee_phase1/test_w70_s8_01e_foundation_gate.py",
+      "classification": "REPLAY_ONLY",
+      "reason": "Artifact remains only for regression, audit, or historical replay."
+    },
+    {
+      "path": "tests/test_ae_gb2_ca00_s10_finance_golden_a_activator.py",
+      "classification": "REPLAY_ONLY",
+      "reason": "Artifact remains only for regression, audit, or historical replay."
+    },
+    {
+      "path": "tests/test_ae_gb2_ca00_s11_capability_skill_registration.py",
+      "classification": "REPLAY_ONLY",
+      "reason": "Artifact remains only for regression, audit, or historical replay."
+    },
+    {
+      "path": "tests/test_ae_mybee_w70_cp_m1_e2e_fx_01a5_installed_runtime.py",
+      "classification": "REPLAY_ONLY",
+      "reason": "Artifact remains only for regression, audit, or historical replay."
+    },
+    {
+      "path": "tests/test_ae_p65_s2_intent_candidate_generation.py",
+      "classification": "REPLAY_ONLY",
+      "reason": "Artifact remains only for regression, audit, or historical replay."
+    },
+    {
+      "path": "tests/test_ae_p8_demo_semantic_activation.py",
+      "classification": "REPLAY_ONLY",
+      "reason": "Artifact remains only for regression, audit, or historical replay."
+    },
+    {
+      "path": "tests/test_ae_p8_s06_nsl_compatibility_smoke.py",
+      "classification": "REPLAY_ONLY",
+      "reason": "Artifact remains only for regression, audit, or historical replay."
+    },
+    {
+      "path": "tests/test_ae_p8_s64_planning_capability_activation.py",
+      "classification": "REPLAY_ONLY",
+      "reason": "Artifact remains only for regression, audit, or historical replay."
+    },
+    {
+      "path": "tests/test_ae_p8_s64_planning_capability_postgres.py",
+      "classification": "REPLAY_ONLY",
+      "reason": "Artifact remains only for regression, audit, or historical replay."
+    },
+    {
+      "path": "tests/test_ae_p8_s65_golden_a_approval_journey.py",
+      "classification": "REPLAY_ONLY",
+      "reason": "Artifact remains only for regression, audit, or historical replay."
+    },
+    {
+      "path": "tests/test_ae_wc_oa_p7_s9_postgres_live_golden_b.py",
+      "classification": "REPLAY_ONLY",
+      "reason": "Artifact remains only for regression, audit, or historical replay."
+    },
+    {
+      "path": "tests/test_gb2_ca00_s20_canonical_orchestration.py",
+      "classification": "REPLAY_ONLY",
+      "reason": "Artifact remains only for regression, audit, or historical replay."
+    },
+    {
+      "path": "tests/test_nex_ae_eos_p8_s66_golden_a_commit_journey.py",
+      "classification": "REPLAY_ONLY",
+      "reason": "Artifact remains only for regression, audit, or historical replay."
+    },
+    {
+      "path": "tests/test_nex_ae_eos_p8_s67_golden_a_exactly_once.py",
+      "classification": "REPLAY_ONLY",
+      "reason": "Artifact remains only for regression, audit, or historical replay."
+    },
+    {
+      "path": "tests/test_nex_ae_eos_p8_s68_golden_a_evidence_package.py",
+      "classification": "REPLAY_ONLY",
+      "reason": "Artifact remains only for regression, audit, or historical replay."
+    },
+    {
+      "path": "tests/test_nex_ae_gb2_ca00_s17a_product_runtime.py",
+      "classification": "REPLAY_ONLY",
+      "reason": "Artifact remains only for regression, audit, or historical replay."
+    },
+    {
+      "path": "tests/test_nex_ae_p8_demo_installed_runtime_composition.py",
+      "classification": "REPLAY_ONLY",
+      "reason": "Artifact remains only for regression, audit, or historical replay."
+    },
+    {
+      "path": "tests/test_nex_ae_p8_s44a_approval_request_postgres_store.py",
+      "classification": "REPLAY_ONLY",
+      "reason": "Artifact remains only for regression, audit, or historical replay."
+    },
+    {
+      "path": "tests/test_nex_ae_p8_s44a_postgres.py",
+      "classification": "REPLAY_ONLY",
+      "reason": "Artifact remains only for regression, audit, or historical replay."
+    },
+    {
+      "path": "tests/test_nex_ae_p8_s47_nsl_approval_publication.py",
+      "classification": "REPLAY_ONLY",
+      "reason": "Artifact remains only for regression, audit, or historical replay."
+    },
+    {
+      "path": "tests/test_nex_ae_p8_s48_platform_approval_evidence.py",
+      "classification": "REPLAY_ONLY",
+      "reason": "Artifact remains only for regression, audit, or historical replay."
+    },
+    {
+      "path": "tests/test_nex_ae_p8_s49_nsl_approval_evidence.py",
+      "classification": "REPLAY_ONLY",
+      "reason": "Artifact remains only for regression, audit, or historical replay."
+    },
+    {
+      "path": "tests/test_nex_ae_p8_s52_nsl_approval_resume_integration.py",
+      "classification": "REPLAY_ONLY",
+      "reason": "Artifact remains only for regression, audit, or historical replay."
+    },
+    {
+      "path": "tests/test_nex_ae_p8_s54_nsl_runtime_policy.py",
+      "classification": "REPLAY_ONLY",
+      "reason": "Artifact remains only for regression, audit, or historical replay."
+    },
+    {
+      "path": "tests/test_nex_ae_p8_s55_nsl_idempotency.py",
+      "classification": "REPLAY_ONLY",
+      "reason": "Artifact remains only for regression, audit, or historical replay."
+    },
+    {
+      "path": "tests/test_nex_ae_p8_s55_postgres.py",
+      "classification": "REPLAY_ONLY",
+      "reason": "Artifact remains only for regression, audit, or historical replay."
+    },
+    {
+      "path": "tests/test_nex_ae_p8_s56_actual_wheel_postgres.py",
+      "classification": "REPLAY_ONLY",
+      "reason": "Artifact remains only for regression, audit, or historical replay."
+    },
+    {
+      "path": "tests/test_nex_ae_p8_s56_nsl_write_evidence.py",
+      "classification": "REPLAY_ONLY",
+      "reason": "Artifact remains only for regression, audit, or historical replay."
+    },
+    {
+      "path": "tests/test_nex_ae_p8_s56_postgres.py",
+      "classification": "REPLAY_ONLY",
+      "reason": "Artifact remains only for regression, audit, or historical replay."
+    },
+    {
+      "path": "tests/test_nex_ae_p8_s57_actual_wheel_adapter.py",
+      "classification": "REPLAY_ONLY",
+      "reason": "Artifact remains only for regression, audit, or historical replay."
+    },
+    {
+      "path": "tests/test_nex_ae_p8_s57_eos_write_execution.py",
+      "classification": "REPLAY_ONLY",
+      "reason": "Artifact remains only for regression, audit, or historical replay."
+    },
+    {
+      "path": "tests/test_nex_ae_p8_s57_postgres_http.py",
+      "classification": "REPLAY_ONLY",
+      "reason": "Artifact remains only for regression, audit, or historical replay."
+    },
+    {
+      "path": "tests/test_nex_ae_p8_s59_actual_wheel_outcome.py",
+      "classification": "REPLAY_ONLY",
+      "reason": "Artifact remains only for regression, audit, or historical replay."
+    },
+    {
+      "path": "tests/test_nex_ae_p8_s60_actual_wheel_postgres.py",
+      "classification": "REPLAY_ONLY",
+      "reason": "Artifact remains only for regression, audit, or historical replay."
+    },
+    {
+      "path": "tests/test_nex_ae_p8_s60_eos_reconciliation.py",
+      "classification": "REPLAY_ONLY",
+      "reason": "Artifact remains only for regression, audit, or historical replay."
+    },
+    {
+      "path": "tests/test_nex_ae_p8_s61_actual_wheel_postgres.py",
+      "classification": "REPLAY_ONLY",
+      "reason": "Artifact remains only for regression, audit, or historical replay."
+    },
+    {
+      "path": "tests/test_nex_ae_p8_s61_eos_post_write_verification.py",
+      "classification": "REPLAY_ONLY",
+      "reason": "Artifact remains only for regression, audit, or historical replay."
+    },
+    {
+      "path": "tests/test_nex_ae_p8_s62_actual_wheel_postgres.py",
+      "classification": "REPLAY_ONLY",
+      "reason": "Artifact remains only for regression, audit, or historical replay."
+    },
+    {
+      "path": "tests/test_nex_ae_p8_s82_worker_crash_after_checkpoint.py",
+      "classification": "REPLAY_ONLY",
+      "reason": "Artifact remains only for regression, audit, or historical replay."
+    },
+    {
+      "path": "tests/test_nex_ae_p8_s83_worker_crash_after_write_requested.py",
+      "classification": "REPLAY_ONLY",
+      "reason": "Artifact remains only for regression, audit, or historical replay."
+    },
+    {
+      "path": "tests/test_nex_ae_prompt_persistence.py",
+      "classification": "REPLAY_ONLY",
+      "reason": "Artifact remains only for regression, audit, or historical replay."
+    },
+    {
+      "path": "tests/test_nex_ae_wc_oa_p8_s65_golden_a_approval_journey.py",
+      "classification": "REPLAY_ONLY",
+      "reason": "Artifact remains only for regression, audit, or historical replay."
+    },
+    {
+      "path": "tests/test_nex_ae_wc_p8_s47_postgres.py",
+      "classification": "REPLAY_ONLY",
+      "reason": "Artifact remains only for regression, audit, or historical replay."
+    },
+    {
+      "path": "tests/test_nex_ae_wc_p8_s48_postgres.py",
+      "classification": "REPLAY_ONLY",
+      "reason": "Artifact remains only for regression, audit, or historical replay."
+    },
+    {
+      "path": "tests/test_nex_eos_mybee_cost_pool.py",
+      "classification": "REPLAY_ONLY",
+      "reason": "Artifact remains only for regression, audit, or historical replay."
+    },
+    {
+      "path": "tests/test_nex_eos_p8_s09_postgres.py",
+      "classification": "REPLAY_ONLY",
+      "reason": "Artifact remains only for regression, audit, or historical replay."
+    },
+    {
+      "path": "tests/test_nex_eos_p8_s101_voucher_access.py",
+      "classification": "REPLAY_ONLY",
+      "reason": "Artifact remains only for regression, audit, or historical replay."
+    },
+    {
+      "path": "tests/test_nex_eos_p8_s11_nvt_project.py",
+      "classification": "REPLAY_ONLY",
+      "reason": "Artifact remains only for regression, audit, or historical replay."
+    },
+    {
+      "path": "tests/test_nex_eos_p8_s11_postgres.py",
+      "classification": "REPLAY_ONLY",
+      "reason": "Artifact remains only for regression, audit, or historical replay."
+    },
+    {
+      "path": "tests/test_nex_eos_p8_s18_contracts.py",
+      "classification": "REPLAY_ONLY",
+      "reason": "Artifact remains only for regression, audit, or historical replay."
+    },
+    {
+      "path": "tests/test_nex_eos_p8_s19_voucher_command.py",
+      "classification": "REPLAY_ONLY",
+      "reason": "Artifact remains only for regression, audit, or historical replay."
+    },
+    {
+      "path": "tests/test_nex_eos_p8_s20_business_query.py",
+      "classification": "REPLAY_ONLY",
+      "reason": "Artifact remains only for regression, audit, or historical replay."
+    },
+    {
+      "path": "tests/test_nex_eos_p8_s21_voucher_verification.py",
+      "classification": "REPLAY_ONLY",
+      "reason": "Artifact remains only for regression, audit, or historical replay."
+    },
+    {
+      "path": "tests/test_nex_eos_p8_s22_postgres.py",
+      "classification": "REPLAY_ONLY",
+      "reason": "Artifact remains only for regression, audit, or historical replay."
+    },
+    {
+      "path": "tests/test_nex_eos_p8_s57a_actual_wheel_hash_alignment.py",
+      "classification": "REPLAY_ONLY",
+      "reason": "Artifact remains only for regression, audit, or historical replay."
+    },
+    {
+      "path": "tests/test_nex_eos_p8_s58_fresh_authorization.py",
+      "classification": "REPLAY_ONLY",
+      "reason": "Artifact remains only for regression, audit, or historical replay."
+    },
+    {
+      "path": "tests/test_nex_eos_p8_s63_golden_a_fixture.py",
+      "classification": "REPLAY_ONLY",
+      "reason": "Artifact remains only for regression, audit, or historical replay."
+    },
+    {
+      "path": "tests/test_nex_eos_p8_s63_golden_a_fixture_postgres.py",
+      "classification": "REPLAY_ONLY",
+      "reason": "Artifact remains only for regression, audit, or historical replay."
+    },
+    {
+      "path": "tests/test_nex_eos_p8_s69_approval_policy.py",
+      "classification": "REPLAY_ONLY",
+      "reason": "Artifact remains only for regression, audit, or historical replay."
+    },
+    {
+      "path": "tests/test_nex_eos_p8_s69_postgres.py",
+      "classification": "REPLAY_ONLY",
+      "reason": "Artifact remains only for regression, audit, or historical replay."
+    },
+    {
+      "path": "tests/test_nex_eos_p8_s75f_postgres_rustfs.py",
+      "classification": "REPLAY_ONLY",
+      "reason": "Artifact remains only for regression, audit, or historical replay."
+    },
+    {
+      "path": "tests/test_nex_platform_gb2_ca00_s18_installed_continuity.py",
+      "classification": "REPLAY_ONLY",
+      "reason": "Artifact remains only for regression, audit, or historical replay."
+    },
+    {
+      "path": "tests/test_nex_platform_p8_demo_ae_runtime_image.py",
+      "classification": "REPLAY_ONLY",
+      "reason": "Artifact remains only for regression, audit, or historical replay."
+    },
+    {
+      "path": "tests/test_nex_platform_p8_demo_s11_chairman_golden_journey.py",
+      "classification": "REPLAY_ONLY",
+      "reason": "Artifact remains only for regression, audit, or historical replay."
+    },
+    {
+      "path": "tests/test_nex_platform_p8_demo_s12_release_operations_closure.py",
+      "classification": "REPLAY_ONLY",
+      "reason": "Artifact remains only for regression, audit, or historical replay."
+    },
+    {
+      "path": "tests/test_nex_platform_p8_s102_demo_acceptance.py",
+      "classification": "REPLAY_ONLY",
+      "reason": "Artifact remains only for regression, audit, or historical replay."
+    },
+    {
+      "path": "tests/test_nex_platform_p8_s75h_protected_attachment_journey.py",
+      "classification": "REPLAY_ONLY",
+      "reason": "Artifact remains only for regression, audit, or historical replay."
+    },
+    {
+      "path": "tests/test_nex_platform_p8_s76_unknown_commit_postgres_rustfs.py",
+      "classification": "REPLAY_ONLY",
+      "reason": "Artifact remains only for regression, audit, or historical replay."
+    },
+    {
+      "path": "tests/test_nex_platform_p8_s77_reconciliation_postgres_rustfs.py",
+      "classification": "REPLAY_ONLY",
+      "reason": "Artifact remains only for regression, audit, or historical replay."
+    },
+    {
+      "path": "tests/test_nex_platform_p8_s78_committed_verification_failed_postgres_rustfs.py",
+      "classification": "REPLAY_ONLY",
+      "reason": "Artifact remains only for regression, audit, or historical replay."
+    },
+    {
+      "path": "tests/test_nex_platform_p8_s79_committed_verification_unknown_postgres_rustfs.py",
+      "classification": "REPLAY_ONLY",
+      "reason": "Artifact remains only for regression, audit, or historical replay."
+    },
+    {
+      "path": "tests/test_nex_platform_p8_s80_outbox_ack_loss_postgres_rustfs.py",
+      "classification": "REPLAY_ONLY",
+      "reason": "Artifact remains only for regression, audit, or historical replay."
+    },
+    {
+      "path": "tests/test_nex_platform_p8_s83_worker_crash_after_write_requested_postgres_rustfs.py",
+      "classification": "REPLAY_ONLY",
+      "reason": "Artifact remains only for regression, audit, or historical replay."
+    },
+    {
+      "path": "tests/test_nex_platform_p8_s84_trust_authorization_revocation_postgres_rustfs.py",
+      "classification": "REPLAY_ONLY",
+      "reason": "Artifact remains only for regression, audit, or historical replay."
+    },
+    {
+      "path": "tests/test_nex_platform_p8_s85_tamper_cross_tenant_matrix_postgres_rustfs.py",
+      "classification": "REPLAY_ONLY",
+      "reason": "Artifact remains only for regression, audit, or historical replay."
+    },
+    {
+      "path": "tests/test_nex_platform_p8_s86_full_reliability_protected_gate.py",
+      "classification": "REPLAY_ONLY",
+      "reason": "Artifact remains only for regression, audit, or historical replay."
+    },
+    {
+      "path": "tests/test_nex_runtime_p8_demo_nsl_bundle.py",
+      "classification": "REPLAY_ONLY",
+      "reason": "Artifact remains only for regression, audit, or historical replay."
+    },
+    {
+      "path": "tests/test_nex_runtime_p8_s68_golden_a_evidence.py",
+      "classification": "REPLAY_ONLY",
+      "reason": "Artifact remains only for regression, audit, or historical replay."
+    },
+    {
+      "path": "tests/test_nex_runtime_p8_s97_operation_names.py",
+      "classification": "REPLAY_ONLY",
+      "reason": "Artifact remains only for regression, audit, or historical replay."
+    },
+    {
+      "path": "tests/test_platform_p8_s75_dual_approval_separation.py",
+      "classification": "REPLAY_ONLY",
+      "reason": "Artifact remains only for regression, audit, or historical replay."
+    }
+  ],
+  "inventory_hash": "sha256:3d5649bb81a690de5670961144f0f1c95e791b004a5abef5f7f2802c06b014b4"
+}

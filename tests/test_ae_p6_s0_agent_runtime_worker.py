@@ -28,6 +28,10 @@ from nex_ae_api.agent_runtime_worker import (
     validate_agent_runtime_worker_startup,
 )
 from nex_ae_api.nsl_backend_profiles import NSL_V01_IN_PROCESS_BACKEND
+from nex_ae_api.runtime_assignment_handlers import (
+    RuntimeAssignmentHandlerError,
+    RuntimeAssignmentHandlerRegistry,
+)
 from nex_ae_api.runtime_jobs import RuntimeJobClaim
 from nex_runtime import (
     BUSY,
@@ -201,6 +205,7 @@ def test_startup_fails_closed_for_missing_executor_or_backend() -> None:
 
     ready = validate_agent_runtime_worker_startup(config, **_available())
     assert ready["startup_ready"] is True
+    assert ready["lease_seconds"] == 60
 
     disabled = validate_agent_runtime_worker_startup(
         _config(mode="disabled"),
@@ -234,6 +239,17 @@ def test_config_environment_defaults_and_validation() -> None:
     assert configured.profile.max_concurrent_claims == 2
     assert configured.lease_seconds == 90
     assert configured.poll_interval_seconds == 0.5
+    assert validate_agent_runtime_worker_startup(
+        configured,
+        available_executor_kinds=(LOCAL_SKILL_EXECUTOR,),
+        available_backend_profiles=(NSL_V01_IN_PROCESS_BACKEND,),
+        in_process_package_readiness={
+            "schema_version": "nsl_installed_package_readiness.v1",
+            "status": "PASS",
+            "distribution": "nex-skill-language",
+            "in_process_profile_admissible": True,
+        },
+    )["lease_seconds"] == 90
 
     for env in (
         {"NEX_AE_AGENT_WORKER_MODE": "invalid"},
@@ -266,6 +282,71 @@ def test_assignment_validation_is_capability_and_tenant_safe() -> None:
     for assignment in failures:
         with pytest.raises(AgentRuntimeWorkerError):
             validate_agent_runtime_assignment(assignment, profile)
+
+
+def test_product_assignment_validation_and_generic_handler_routing() -> None:
+    product = _assignment(
+        executor_kind=None,
+        backend_profile=None,
+        assignment_kind="PRODUCT_COORDINATOR",
+        claim=_claim(
+            job_type="RESUME_EXECUTION",
+            executable_step_id=None,
+            wait_id="wait-product-1",
+        ),
+    )
+    seen: list[str] = []
+    registry = RuntimeAssignmentHandlerRegistry(
+        {
+            "PRODUCT_COORDINATOR": lambda assignment: {
+                "runtime_job_id": assignment.runtime_job_id,
+                "seen": seen.append(assignment.assignment_kind),
+            }
+        }
+    )
+
+    assert validate_agent_runtime_assignment(product, _profile()) is product
+    assert registry.registered_kinds == ("PRODUCT_COORDINATOR",)
+    assert registry.handles("product_coordinator") is True
+    assert registry(product)["runtime_job_id"] == JOB_ID
+    assert seen == ["PRODUCT_COORDINATOR"]
+
+    step_only = RuntimeAssignmentHandlerRegistry(
+        {"EXECUTABLE_STEP": lambda _assignment: {"status": "PASS"}}
+    )
+    with pytest.raises(RuntimeAssignmentHandlerError) as unavailable:
+        step_only(product)
+    assert unavailable.value.error_code == "ae.runtime_assignment_handler_unavailable"
+    assert unavailable.value.retryable is True
+
+
+@pytest.mark.parametrize(
+    "assignment",
+    (
+        _assignment(assignment_kind="UNKNOWN"),
+        _assignment(
+            assignment_kind="PRODUCT_COORDINATOR",
+            claim=_claim(job_type="RESUME_EXECUTION", wait_id="wait-1"),
+        ),
+        _assignment(
+            executor_kind=None,
+            backend_profile=None,
+            assignment_kind="PRODUCT_COORDINATOR",
+            claim=_claim(job_type="START_EXECUTION", wait_id="wait-1"),
+        ),
+        _assignment(
+            executor_kind=None,
+            backend_profile=None,
+            assignment_kind="PRODUCT_COORDINATOR",
+            claim=_claim(job_type="RESUME_EXECUTION", wait_id=None),
+        ),
+    ),
+)
+def test_product_assignment_validation_rejects_mixed_or_malformed_shapes(
+    assignment: AgentRuntimeAssignment,
+) -> None:
+    with pytest.raises(AgentRuntimeWorkerError):
+        validate_agent_runtime_assignment(assignment, _profile())
 
 
 def test_lifecycle_tracks_readiness_capacity_drain_and_lease_safe_stop() -> None:

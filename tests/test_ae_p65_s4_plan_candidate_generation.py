@@ -44,7 +44,6 @@ from nex_runtime.semantic_hashes import (
     sha256_text,
 )
 
-
 TRACE_ID = "4bf92f3577b34da6a3ce929d0e0e4736"
 REQUEST_ID = "p65-s4-request"
 TENANT_ID = "tenant-p65"
@@ -427,6 +426,15 @@ def test_candidate_top_level_fail_closed_matrix(output: str, error_code: str) ->
     assert raised.value.error_code == error_code
 
 
+def test_candidate_schema_error_exposes_only_bounded_structural_diagnostic() -> None:
+    with pytest.raises(PlanCandidateStageError) as raised:
+        parse_plan_candidate(
+            canonical_json(_candidate(suggested_plan_kind="CERTIFIED"))
+        )
+
+    assert raised.value.diagnostic_code == "PLAN_CANDIDATE_PLAN_KIND_IS_INVALID"
+
+
 @pytest.mark.parametrize(
     ("logical_steps", "error_code"),
     [
@@ -762,6 +770,22 @@ def test_invalid_prompt_snapshot_and_request_inputs_fail_closed() -> None:
 
     with pytest.raises(PlanCandidateStageError):
         _run(_service(), agent_plan_id=None)
+
+
+def test_plan_proposal_generation_does_not_bind_an_agent_plan() -> None:
+    work_intent = _work_intent()
+    result = _service().generate_proposal(
+        work_intent=work_intent,
+        agent_context=_agent_context(work_intent),
+        capability_snapshot=_snapshot(),
+        request_id=REQUEST_ID,
+        trace_id=TRACE_ID,
+        planning_mode="required",
+    )
+
+    assert result.directive == "CONTINUE"
+    assert result.agent_plan is None
+    assert result.prompt_provenance["prompt_binding_key"] == AE_PLAN_BUILDER_BINDING
 
 
 def test_inactive_prompt_and_invalid_provenance_fail_closed(monkeypatch) -> None:

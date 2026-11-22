@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import shutil
 import subprocess
@@ -25,13 +26,9 @@ from nex_runtime.deployment_oci import (
     materialize_oci_build_context,
     oci_build_context_digest,
 )
-from nex_runtime.nsl_runtime_bundle import (
-    load_nsl_runtime_bundle,
-    verify_nsl_runtime_bundle,
-)
 from nex_runtime.semantic_hashes import semantic_sha256_hash_ref
 
-DEFAULT_MANIFEST = ROOT / "deployment/locks/ae-product-nsl-runtime-bundle.v1.json"
+DEFAULT_MANIFEST = ROOT / "deployment/locks/nsl-v0.2.1-wheel.json"
 DEFAULT_WHEEL = (
     ROOT
     / "reports/deployment/p8-nsl-v0.2.1-wheel"
@@ -39,6 +36,8 @@ DEFAULT_WHEEL = (
 )
 DEFAULT_NSL_SOURCE = Path("/home/tprover/2608_nsl")
 DEFAULT_REPORT = ROOT / "reports/deployment/canonical-platform-ae-runtime-image.json"
+M1_ADMISSION_LOCK = ROOT / "deployment/locks/ae-mybee-m1-runtime-admission.v4.json"
+M1_ACTIVATION_LOCK = ROOT / "deployment/locks/ae-mybee-m1-runtime-activation.v4.json"
 
 
 class CanonicalPlatformAeImageBuildError(RuntimeError):
@@ -56,13 +55,8 @@ def build_canonical_platform_ae_runtime_image(
     build_current_base: bool = False,
     execute: bool,
 ) -> dict[str, Any]:
-    bundle = load_nsl_runtime_bundle(manifest_path)
-    skill_root = nsl_source / bundle.skill_source_directory
-    readiness = verify_nsl_runtime_bundle(
-        bundle,
-        wheel_path=wheel_path,
-        skill_root=skill_root,
-    )
+    del nsl_source
+    readiness = _wheel_readiness(wheel_path, manifest_path)
     if not execute:
         return _record(
             status="READY",
@@ -86,10 +80,8 @@ def build_canonical_platform_ae_runtime_image(
         context.mkdir()
         _stage_context(
             context,
-            bundle=bundle,
             wheel_path=wheel_path,
-            skill_root=skill_root,
-            manifest_path=manifest_path,
+            wheel_filename=str(readiness["wheel_filename"]),
         )
         subprocess.run(
             [
@@ -194,44 +186,76 @@ def _build_current_ae_base(
 def _stage_context(
     context: Path,
     *,
-    bundle: Any,
     wheel_path: Path,
-    skill_root: Path,
-    manifest_path: Path,
+    wheel_filename: str,
 ) -> None:
-    (context / "wheel").mkdir()
-    (context / "skill").mkdir()
     (context / "config").mkdir()
-    (context / "locks").mkdir()
+    (context / "wheel").mkdir()
+    (context / "repository").mkdir()
     shutil.copy2(
         ROOT / "deployment/oci/canonical-platform-ae-runtime.Containerfile",
         context / "Containerfile",
     )
-    shutil.copy2(wheel_path, context / "wheel" / bundle.wheel_filename)
-    for relative in bundle.skill_files:
-        source = skill_root / relative
-        target = context / "skill" / relative
+    shutil.copy2(
+        ROOT / "deployment/product/config/project-agent-profile-policy.v1.json",
+        context / "config/project-agent-profile-policy.v1.json",
+    )
+    shutil.copy2(wheel_path, context / "wheel" / wheel_filename)
+    for relative in (
+        "deployment/locks/ae-mybee-m1-runtime-admission.v4.json",
+        "deployment/locks/ae-mybee-m1-runtime-admission.v3.json",
+        "deployment/locks/ae-mybee-m1-runtime-admission.v2.json",
+        "deployment/locks/ae-mybee-m1-runtime-activation.v4.json",
+        "deployment/locks/ae-mybee-m1-runtime-activation.v3.json",
+        "deployment/locks/ae-mybee-m1-runtime-activation.v2.json",
+        "deployment/locks/ae-mybee-m1-generalized-rollback.v3.json",
+        "deployment/locks/ae-mybee-m1-generalized-rollback.v2.json",
+        "deployment/locks/ae-mybee-m1-generalized-rollback.v1.json",
+        "deployment/locks/ae-mybee-m1-product-coordinator-activation.v3.json",
+        "deployment/locks/ae-mybee-m1-product-coordinator-activation.v2.json",
+        "deployment/locks/ae-mybee-m1-product-coordinator-activation.v1.json",
+        "deployment/locks/ae-mybee-m1-product-coordinator-rollback.v3.json",
+        "deployment/locks/ae-mybee-m1-product-coordinator-rollback.v2.json",
+        "deployment/locks/ae-mybee-m1-product-coordinator-rollback.v1.json",
+        "deployment/locks/ae-mybee-m1-signed-skill-checkpoint.v3.json",
+        "deployment/locks/ae-mybee-m1-signed-skill-checkpoint.v2.json",
+        "deployment/locks/ae-mybee-m1-signed-skill-checkpoint.v1.json",
+        "deployment/locks/nsl-v0.2.1-wheel.json",
+        "deployment/locks/python-production.lock",
+        "deployment/environments/ae-product-capability-registry.mybee-m1.v4.json",
+        "deployment/environments/ae-product-capability-registry.mybee-m1.v1.json",
+        "deployment/environments/ae-product-capability-registry.mybee-m1.v2.json",
+        "deployment/environments/ae-product-capability-registry.mybee-m1.v3.json",
+        "domains/mybee/config/m1_transaction_preparation_registry.v1.json",
+        "domains/mybee/skills/m1_checkpoint/context.json",
+        "domains/mybee/skills/m1_checkpoint/mybee-m1-d04-d12.v3.nsp",
+        "domains/mybee/skills/m1_checkpoint/mybee-m1-d04-d12.v2.nsp",
+        "domains/mybee/skills/m1_checkpoint/mybee-m1-d04-d12.v1.nsp",
+        "domains/mybee/skills/m1_checkpoint/mybee-m1-release-public-key.v3.json",
+        "domains/mybee/skills/m1_checkpoint/mybee-m1-release-public-key.v2.json",
+        "domains/mybee/skills/m1_checkpoint/mybee-m1-release-public-key.v1.json",
+        "domains/mybee/skills/m1_checkpoint/tool_catalog.v1.json",
+        "domains/mybee/skills/d04_accounting/journal_posting.v1_0_2.ns",
+        "domains/mybee/skills/d04_accounting/journal_posting.v1_0_1.ns",
+        "domains/mybee/skills/d04_accounting/journal_posting.v1.ns",
+        "domains/mybee/skills/d04_accounting/manifest.v1.json",
+        "domains/mybee/skills/d04_accounting/tool_bindings.v1.json",
+        "domains/mybee/skills/d12_project/work_code_context.v1.ns",
+        "domains/mybee/skills/d12_project/manifest.v1.json",
+        "domains/mybee/skills/d12_project/tool_bindings.v1.json",
+        "domains/mybee/skills/tool_inventory.v1.json",
+        "contracts/admissions/nex_eos/w70_tool_contract_admission.v1.json",
+        "contracts/openapi/nex-eos.openapi.yaml",
+        "domains/mybee/catalog/work_codes/catalog.v1.json",
+        "domains/mybee/catalog/work_codes/schema.json",
+    ):
+        source = ROOT / relative
+        target = context / "repository" / relative
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(source, target)
-    shutil.copy2(
-        ROOT / "deployment/environments/finance-golden-a-vo00.v1.json",
-        context / "config/finance-golden-a-vo00.v1.json",
-    )
-    shutil.copy2(
-        ROOT / "deployment/environments/ae-product-capability-registry.v1.json",
-        context / "config/ae-product-capability-registry.v1.json",
-    )
-    shutil.copy2(
-        ROOT / bundle.admission_lock,
-        context / "locks/nsl-v0.2.1-wheel.json",
-    )
-    shutil.copy2(
-        ROOT / "deployment/locks/python-production.lock",
-        context / "locks/python-production.lock",
-    )
-    shutil.copy2(
-        manifest_path,
-        context / "locks/ae-product-nsl-runtime-bundle.v1.json",
+    shutil.copytree(
+        ROOT / "contracts/schemas/service/nex_eos",
+        context / "repository/contracts/schemas/service/nex_eos",
     )
 
 
@@ -244,6 +268,8 @@ def _record(
     image: Mapping[str, Any] | None,
     source_base: Mapping[str, Any] | None,
 ) -> dict[str, Any]:
+    admission = json.loads(M1_ADMISSION_LOCK.read_text(encoding="utf-8"))
+    activation = json.loads(M1_ACTIVATION_LOCK.read_text(encoding="utf-8"))
     payload = {
         "schema_version": "canonical_platform_ae_runtime_image.v1",
         "slice": "GB2-CA00-S18A",
@@ -251,6 +277,21 @@ def _record(
         "base_image": base_image,
         "output_image": output_image,
         "bundle": dict(readiness),
+        "bundle_role": "GENERALIZED_M1_RELEASE",
+        "active_runtime_profile": activation["runtime_profile"],
+        "verified_product_release": {
+            "activation_state": activation["activation_state"],
+            "activation_hash": activation["content_hash"],
+            "admission_hash": admission["content_hash"],
+            "release_id": admission["release_id"],
+            "release_hash": admission["release_hash"],
+            "package_hash": admission["package_hash"],
+            "skill_catalog_hash": admission["skill_catalog_hash"],
+            "runtime_selectable_capabilities": admission[
+                "runtime_selectable_capabilities"
+            ],
+            "rollback_target": activation["rollback_target"],
+        },
         "source_base": None if source_base is None else dict(source_base),
         "image": None if image is None else dict(image),
         "registry_push_performed": False,
@@ -258,6 +299,29 @@ def _record(
         "recorded_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
     }
     return {**payload, "evidence_hash": semantic_sha256_hash_ref(payload)}
+
+
+def _wheel_readiness(wheel_path: Path, lock_path: Path) -> dict[str, Any]:
+    lock = json.loads(lock_path.read_text(encoding="utf-8"))
+    if not isinstance(lock, Mapping) or lock.get("schema_version") != "nsl_wheel_lock.v2":
+        raise CanonicalPlatformAeImageBuildError("NSL wheel lock is invalid.")
+    expected_name = str(lock.get("wheel_filename") or "")
+    expected_hash = str(lock.get("wheel_sha256") or "")
+    if wheel_path.name != expected_name:
+        raise CanonicalPlatformAeImageBuildError("NSL wheel filename has drifted.")
+    observed_hash = "sha256:" + hashlib.sha256(wheel_path.read_bytes()).hexdigest()
+    if observed_hash != expected_hash or wheel_path.stat().st_size != lock.get(
+        "wheel_size"
+    ):
+        raise CanonicalPlatformAeImageBuildError("NSL wheel admission has drifted.")
+    return {
+        "status": "PASS",
+        "wheel_filename": expected_name,
+        "wheel_sha256": observed_hash,
+        "package_version": lock.get("package_version"),
+        "source_revision": lock.get("source_revision"),
+        "historical_scenario_dependency": False,
+    }
 
 
 def _json_command(command: Sequence[str]) -> Any:

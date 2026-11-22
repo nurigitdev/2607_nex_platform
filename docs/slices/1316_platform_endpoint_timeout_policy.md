@@ -7,7 +7,7 @@
 - Replaced CX-to-MO five-second defaults with capability budgets that cover MO
   upstream timeout, maximum attempts, Retry-After delay, and a safety margin.
 - Set default embedding/reranking/generation client budgets to `60`, `60`, and
-  `130` seconds and fail closed when an override is shorter than its computed
+  `260` seconds and fail closed when an override is shorter than its computed
   minimum.
 - Added capability-neutral `embedding-default` and `reranker-default` aliases
   while preserving the existing mock-named routes for compatibility.
@@ -26,7 +26,7 @@
   `98.89%`, branch `97.21%`.
 - Contract validation: `156` schemas, `214` examples, `184` negative
   examples, and `7` OpenAPI documents.
-- Smoke summary: five endpoints, safe `60/60/130` second capability budgets,
+- Smoke summary: five endpoints, safe `60/60/260` second capability budgets,
   two canonical compatibility aliases, and `next=1317`.
 
 The skipped checkpoint tests are protected PostgreSQL/live-provider evidence

@@ -20,6 +20,8 @@ RUNTIME_ATTEMPT_OUTCOMES = frozenset(
     {"RUNNING", "DONE", "FAILED", "LEASE_EXPIRED", "CANCELLED"}
 )
 RUNTIME_ADMISSION_POLICIES = frozenset({"REJECT", "DELAY"})
+RESUME_TARGET_KINDS = frozenset({"EXECUTABLE_STEP", "PRODUCT_COORDINATOR"})
+RUNTIME_ASSIGNMENT_KINDS = frozenset({"EXECUTABLE_STEP", "PRODUCT_COORDINATOR"})
 _PRIVATE_PAYLOAD_KEYS = frozenset(
     {"content", "message_text", "prompt", "raw_content", "response"}
 )
@@ -42,6 +44,7 @@ class RuntimeJobClaim:
     attempt: dict[str, Any]
     executor_kind: str | None = None
     backend_profile: str | None = None
+    assignment_kind: str = "EXECUTABLE_STEP"
 
 
 class SqlAlchemyRuntimeJobQueue:
@@ -79,6 +82,7 @@ class SqlAlchemyRuntimeJobQueue:
         wait_id: str | None = None,
         payload: Mapping[str, Any] | None = None,
         causation_id: str | None = None,
+        resume_target_kind: str = "EXECUTABLE_STEP",
     ) -> dict[str, Any]:
         if job_type not in RUNTIME_JOB_TYPES:
             raise _invalid(
@@ -86,13 +90,15 @@ class SqlAlchemyRuntimeJobQueue:
                 "or RESUME_EXECUTION."
             )
         normalized_wait_id = _optional("wait_id", wait_id)
+        normalized_resume_target = _resume_target_kind(resume_target_kind)
         if job_type == "RESUME_EXECUTION":
-            if executable_step_id is None or normalized_wait_id is None:
-                raise _invalid(
-                    "RESUME_EXECUTION requires executable_step_id and wait_id."
-                )
+            if normalized_wait_id is None:
+                raise _invalid("RESUME_EXECUTION requires wait_id.")
+            _validate_resume_target_shape(normalized_resume_target, executable_step_id)
         elif normalized_wait_id is not None:
             raise _invalid("Only RESUME_EXECUTION may reference wait_id.")
+        elif normalized_resume_target != "EXECUTABLE_STEP":
+            raise _invalid("Only RESUME_EXECUTION may use a Product resume target.")
         normalized_payload = _payload(payload)
         params = {
             "tenant_id": _required("tenant_id", tenant_id),
@@ -129,7 +135,7 @@ class SqlAlchemyRuntimeJobQueue:
         tenant_id: str,
         runtime_job_id: str,
         execution_id: str,
-        executable_step_id: str,
+        executable_step_id: str | None,
         wait_id: str,
         dedup_key: str,
         run_after: str,
@@ -137,14 +143,17 @@ class SqlAlchemyRuntimeJobQueue:
         now: str,
         payload: Mapping[str, Any],
         causation_id: str,
+        resume_target_kind: str = "EXECUTABLE_STEP",
     ) -> dict[str, Any]:
         normalized_payload = _payload(payload)
+        normalized_resume_target = _resume_target_kind(resume_target_kind)
+        _validate_resume_target_shape(normalized_resume_target, executable_step_id)
         params = {
             "tenant_id": _required("tenant_id", tenant_id),
             "runtime_job_id": _required("runtime_job_id", runtime_job_id),
             "job_type": "RESUME_EXECUTION",
             "execution_id": _required("execution_id", execution_id),
-            "executable_step_id": _required("executable_step_id", executable_step_id),
+            "executable_step_id": _optional("executable_step_id", executable_step_id),
             "wait_id": _required("wait_id", wait_id),
             "dedup_key": _required("dedup_key", dedup_key),
             "run_after": _timestamp("run_after", run_after),
@@ -209,6 +218,15 @@ class SqlAlchemyRuntimeJobQueue:
             raise
         except SQLAlchemyError as exc:
             raise _unavailable() from exc
+
+    def get_in_session(
+        self, session: Session, *, tenant_id: str, runtime_job_id: str
+    ) -> dict[str, Any] | None:
+        return _load_job(
+            session,
+            _required("tenant_id", tenant_id),
+            _required("runtime_job_id", runtime_job_id),
+        )
 
     def claim(
         self,
@@ -279,6 +297,7 @@ class SqlAlchemyRuntimeJobQueue:
         worker_id: str,
         supported_executor_kinds: Sequence[str],
         supported_backend_profiles: Sequence[str] | None = None,
+        supported_assignment_kinds: Sequence[str] = ("EXECUTABLE_STEP",),
         lease_seconds: int,
         now: str,
         queue_name: str | None = None,
@@ -288,6 +307,7 @@ class SqlAlchemyRuntimeJobQueue:
         tenant = _required("tenant_id", tenant_id)
         worker = _required("worker_id", worker_id)
         executor_kinds = _executor_kinds(supported_executor_kinds)
+        assignment_kinds = _assignment_kinds(supported_assignment_kinds)
         backend_profiles = (
             None
             if supported_backend_profiles is None
@@ -315,6 +335,7 @@ class SqlAlchemyRuntimeJobQueue:
                     tenant_id=tenant,
                     executor_kinds=executor_kinds,
                     backend_profiles=backend_profiles,
+                    assignment_kinds=assignment_kinds,
                     now=observed_at,
                     leadership=leadership,
                 )
@@ -337,12 +358,16 @@ class SqlAlchemyRuntimeJobQueue:
                     "attempt_id": attempt_id,
                     "now": observed_at,
                     "executor_kinds": list(executor_kinds),
+                    "assignment_kinds": list(assignment_kinds),
                     **leadership,
                 }
                 statement = text(
                     _CAPABILITY_CLAIM_SQL
                     + (_LEADERSHIP_CLAIM_PREDICATE if leadership else "")
-                ).bindparams(bindparam("executor_kinds", expanding=True))
+                ).bindparams(
+                    bindparam("executor_kinds", expanding=True),
+                    bindparam("assignment_kinds", expanding=True),
+                )
                 updated = session.execute(statement, params)
                 if int(updated.rowcount or 0) == 0:
                     session.rollback()
@@ -360,7 +385,12 @@ class SqlAlchemyRuntimeJobQueue:
                 return RuntimeJobClaim(
                     job=job,
                     attempt=attempt,
-                    executor_kind=str(candidate["executor_kind"]),
+                    executor_kind=(
+                        None
+                        if candidate["executor_kind"] is None
+                        else str(candidate["executor_kind"])
+                    ),
+                    assignment_kind=str(candidate["assignment_kind"]),
                     backend_profile=(
                         None
                         if candidate["backend_profile"] is None
@@ -627,12 +657,34 @@ _CAPABILITY_CLAIM_SQL = """
            (lease_token IS NULL AND :expected_lease_token IS NULL))
       AND ((state = 'QUEUED' AND run_after <= :now)
            OR (state = 'RUNNING' AND lease_until <= :now))
-      AND EXISTS (
-          SELECT 1
-          FROM ae_executable_step AS step
-          WHERE step.tenant_id = ae_runtime_job.tenant_id
-            AND step.executable_step_id = ae_runtime_job.executable_step_id
-            AND step.executor_kind IN :executor_kinds
+      AND (
+          (
+              'EXECUTABLE_STEP' IN :assignment_kinds
+              AND EXISTS (
+                  SELECT 1
+                  FROM ae_executable_step AS step
+                  WHERE step.tenant_id = ae_runtime_job.tenant_id
+                    AND step.executable_step_id = ae_runtime_job.executable_step_id
+                    AND step.executor_kind IN :executor_kinds
+              )
+          )
+          OR (
+              'PRODUCT_COORDINATOR' IN :assignment_kinds
+              AND ae_runtime_job.job_type = 'RESUME_EXECUTION'
+              AND ae_runtime_job.executable_step_id IS NULL
+              AND EXISTS (
+                  SELECT 1
+                  FROM ae_wait_registration AS wait
+                  WHERE wait.tenant_id = ae_runtime_job.tenant_id
+                    AND CAST(wait.wait_id AS TEXT) = ae_runtime_job.wait_id
+                    AND wait.wait_type = 'PRODUCT_PREPARATION'
+                    AND wait.resume_target_kind = 'PRODUCT_COORDINATOR'
+                    AND wait.executable_step_id IS NULL
+                    AND CAST(wait.agent_execution_id AS TEXT) = ae_runtime_job.execution_id
+                    AND wait.state = 'RESUME_QUEUED'
+                    AND CAST(wait.resume_runtime_job_id AS TEXT) = CAST(ae_runtime_job.runtime_job_id AS TEXT)
+              )
+          )
       )
 """
 
@@ -803,6 +855,7 @@ def _select_capability_runnable(
     tenant_id: str,
     executor_kinds: tuple[str, ...],
     backend_profiles: tuple[str, ...] | None,
+    assignment_kinds: tuple[str, ...],
     now: str,
     leadership: Mapping[str, Any],
 ) -> Mapping[str, Any] | None:
@@ -820,9 +873,7 @@ def _select_capability_runnable(
             " AND leadership.released_at IS NULL"
             " AND leadership.lease_until > :now"
         )
-    lock_suffix = (
-        " FOR UPDATE OF job, step SKIP LOCKED" if dialect == "postgresql" else ""
-    )
+    lock_suffix = " FOR UPDATE OF job SKIP LOCKED" if dialect == "postgresql" else ""
     backend_expression = (
         "step.skill_binding_json ->> 'backend_profile'"
         if dialect == "postgresql"
@@ -848,22 +899,56 @@ def _select_capability_runnable(
                job.attempt_no, job.run_after, job.lease_owner,
                job.lease_token, job.lease_until, job.payload_json,
                job.correlation_id, job.causation_id, job.created_at,
-               job.updated_at, step.executor_kind
+               job.updated_at,
+               CASE
+                 WHEN job.job_type = 'RESUME_EXECUTION'
+                  AND job.executable_step_id IS NULL
+                  AND wait.wait_type = 'PRODUCT_PREPARATION'
+                  AND wait.resume_target_kind = 'PRODUCT_COORDINATOR'
+                  AND wait.executable_step_id IS NULL
+                  AND CAST(wait.agent_execution_id AS TEXT) = job.execution_id
+                  AND wait.state = 'RESUME_QUEUED'
+                  AND CAST(wait.resume_runtime_job_id AS TEXT) = CAST(job.runtime_job_id AS TEXT)
+                   THEN 'PRODUCT_COORDINATOR'
+                 WHEN step.executable_step_id IS NOT NULL
+                   THEN 'EXECUTABLE_STEP'
+                 ELSE NULL
+               END AS assignment_kind,
+               step.executor_kind
         """
         + backend_selection
         + """
         FROM ae_runtime_job AS job
-        JOIN ae_executable_step AS step
+        LEFT JOIN ae_executable_step AS step
           ON step.tenant_id = job.tenant_id
          AND step.executable_step_id = job.executable_step_id
+        LEFT JOIN ae_wait_registration AS wait
+          ON wait.tenant_id = job.tenant_id
+         AND CAST(wait.wait_id AS TEXT) = job.wait_id
         """
         + leadership_join
         + """
         WHERE job.tenant_id = :tenant_id
-          AND step.executor_kind IN :executor_kinds
+          AND (
+            (
+              'EXECUTABLE_STEP' IN :assignment_kinds
+              AND step.executor_kind IN :executor_kinds
         """
         + backend_predicate
         + """
+            )
+            OR (
+              'PRODUCT_COORDINATOR' IN :assignment_kinds
+              AND job.job_type = 'RESUME_EXECUTION'
+              AND job.executable_step_id IS NULL
+              AND wait.wait_type = 'PRODUCT_PREPARATION'
+              AND wait.resume_target_kind = 'PRODUCT_COORDINATOR'
+              AND wait.executable_step_id IS NULL
+              AND CAST(wait.agent_execution_id AS TEXT) = job.execution_id
+              AND wait.state = 'RESUME_QUEUED'
+              AND CAST(wait.resume_runtime_job_id AS TEXT) = CAST(job.runtime_job_id AS TEXT)
+            )
+          )
           AND ((job.state = 'QUEUED' AND job.run_after <= :now)
                OR (job.state = 'RUNNING' AND job.lease_until <= :now))
         """
@@ -874,7 +959,10 @@ def _select_capability_runnable(
         LIMIT 1
         """
         + lock_suffix
-    ).bindparams(bindparam("executor_kinds", expanding=True))
+    ).bindparams(
+        bindparam("executor_kinds", expanding=True),
+        bindparam("assignment_kinds", expanding=True),
+    )
     if backend_profiles is not None:
         statement = statement.bindparams(bindparam("backend_profiles", expanding=True))
     return (
@@ -883,6 +971,7 @@ def _select_capability_runnable(
             {
                 "tenant_id": tenant_id,
                 "executor_kinds": list(executor_kinds),
+                "assignment_kinds": list(assignment_kinds),
                 **(
                     {"backend_profiles": list(backend_profiles)}
                     if backend_profiles is not None
@@ -1004,8 +1093,7 @@ def _require_same_job(
     )
     if (
         any(_comparable(existing[key]) != _comparable(params[key]) for key in keys)
-        or _comparable(existing.get("wait_id"))
-        != _comparable(params.get("wait_id"))
+        or _comparable(existing.get("wait_id")) != _comparable(params.get("wait_id"))
         or _parse_timestamp("run_after", existing["run_after"])
         != _parse_timestamp("run_after", params["run_after"])
         or existing["payload"] != payload
@@ -1089,6 +1177,29 @@ def _optional(field: str, value: object) -> str | None:
     return None if value is None else _required(field, value)
 
 
+def _resume_target_kind(value: object) -> str:
+    normalized = _required("resume_target_kind", value).upper()
+    if normalized not in RESUME_TARGET_KINDS:
+        raise _invalid(
+            "resume_target_kind must be EXECUTABLE_STEP or PRODUCT_COORDINATOR."
+        )
+    return normalized
+
+
+def _validate_resume_target_shape(
+    resume_target_kind: str, executable_step_id: object
+) -> None:
+    if resume_target_kind == "EXECUTABLE_STEP":
+        if executable_step_id is None:
+            raise _invalid("EXECUTABLE_STEP resume jobs require executable_step_id.")
+        _required("executable_step_id", executable_step_id)
+        return
+    if executable_step_id is not None:
+        raise _invalid(
+            "PRODUCT_COORDINATOR resume jobs cannot reference executable_step_id."
+        )
+
+
 def _datetime_value(value: Any) -> str:
     return (
         value.isoformat().replace("+00:00", "Z")
@@ -1158,6 +1269,22 @@ def _executor_kinds(values: Sequence[str]) -> tuple[str, ...]:
     normalized = tuple(sorted({_required("executor_kind", value) for value in values}))
     if not normalized:
         raise _invalid("supported_executor_kinds must not be empty.")
+    return normalized
+
+
+def _assignment_kinds(values: Sequence[str]) -> tuple[str, ...]:
+    if isinstance(values, (str, bytes)) or not isinstance(values, Sequence):
+        raise _invalid("supported_assignment_kinds must be an array of strings.")
+    normalized = tuple(
+        sorted({_required("assignment_kind", value).upper() for value in values})
+    )
+    if not normalized:
+        raise _invalid("supported_assignment_kinds must not be empty.")
+    unknown = set(normalized) - RUNTIME_ASSIGNMENT_KINDS
+    if unknown:
+        raise _invalid(
+            "supported_assignment_kinds contains an unknown assignment kind."
+        )
     return normalized
 
 

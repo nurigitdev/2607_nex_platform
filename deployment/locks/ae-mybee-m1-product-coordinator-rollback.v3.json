@@ -1,0 +1,15 @@
+{
+  "schema_version": "ae.product_coordinator_rollback_receipt.v1",
+  "receipt_id": "mybee-m1-product-coordinator-contract-only",
+  "receipt_version": 3,
+  "rollback_state": "CONTRACT_ONLY",
+  "coordinator_registry_hash": "sha256:562e47093c1cd1a52d37e5d77c4ab337176e57cbb0b765fd9cef33a288b1dec3",
+  "coordinator_registration_hash": "sha256:8454cc28dc16d03d6783f0ef7ecbf23e2161b456a13a2236a109c7c0919dbbe1",
+  "product_capability_registry_hash": "sha256:756fc04ab2d33302c4e533c27ef4de171c3551323e91441e06a0cd50ddcb0f69",
+  "checkpoint_schema_version": "ae.product_preparation_checkpoint.v1",
+  "migration_inventory_hash": "sha256:ccbbeecf4a3657139f65c61a12bdadd78d006842093465fbb83c02a8c65fe010",
+  "history_preservation": "PRESERVE_CHECKPOINT_WAIT_EVENT_JOB_PLAN",
+  "content_included": false,
+  "secret_included": false,
+  "content_hash": "sha256:c8f92ddc9f9e6e3a99cdc595b13f5ddcadd98277ac1aed8a53c9ed9e26f3659c"
+}

@@ -49,7 +49,7 @@ def run_platform_endpoint_timeout_policy() -> dict[str, Any]:
         ),
         "embedding_budget_is_60_seconds": budgets[0].client_timeout_seconds == 60,
         "reranking_budget_is_60_seconds": budgets[1].client_timeout_seconds == 60,
-        "generation_budget_is_130_seconds": budgets[2].client_timeout_seconds == 130,
+        "generation_budget_is_260_seconds": budgets[2].client_timeout_seconds == 260,
         "canonical_aliases_preserve_compatibility": canonical_aliases
         == {
             "embedding": "mock-embedding-default",

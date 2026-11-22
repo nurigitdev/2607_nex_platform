@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import os
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
@@ -7,6 +8,7 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import NAMESPACE_URL, uuid5
 
+from nex_runtime import ServiceLogEmitter
 from nex_runtime.semantic_hashes import semantic_sha256_hash_ref, validate_hash_ref
 
 from nex_ae_api.agent_context import (
@@ -25,9 +27,6 @@ from nex_ae_api.context_candidate_generation import (
     context_candidate_hints,
 )
 from nex_ae_api.domain_intent_activators import DomainIntentActivatorRegistry
-from nex_ae_api.domain_intent_products import (
-    build_domain_intent_activator_registry,
-)
 from nex_ae_api.executable_plans import (
     SqlAlchemyExecutablePlanRepository,
     compile_executable_plan,
@@ -42,6 +41,10 @@ from nex_ae_api.plan_candidate_generation import (
     LivePlanCandidateService,
     bind_plan_candidate,
 )
+from nex_ae_api.plan_candidate_profiles import (
+    ProfileAwarePlanCandidateService,
+    build_m1_plan_candidate_profile_registry,
+)
 from nex_ae_api.plan_validation import (
     SqlAlchemyPlanValidationRepository,
     validate_agent_plan,
@@ -55,6 +58,18 @@ from nex_ae_api.product_capabilities import (
     ProductCapabilityRegistry,
     load_product_capability_registry,
 )
+from nex_ae_api.product_capability_retirements import (
+    ProductCapabilityRetirementProjection,
+    load_product_capability_retirement_projection,
+)
+from nex_ae_api.product_domain_intent_activators import (
+    build_active_product_domain_intent_activator_registry,
+)
+from nex_ae_api.product_planning_proposals import (
+    ProductPlanningProposalError,
+    build_product_planning_proposal,
+)
+from nex_ae_api.product_planning_runtime import ProductPlanningRuntimeError
 from nex_ae_api.semantic_candidate_evidence import (
     InMemorySemanticCandidateStorage,
     SemanticCandidateStorage,
@@ -67,12 +82,27 @@ from nex_ae_api.semantic_candidate_evidence import (
 from nex_ae_api.semantic_candidate_failures import (
     project_semantic_candidate_failure,
 )
-from nex_ae_api.semantic_candidates import SemanticCalibrationRegistry
+from nex_ae_api.semantic_candidates import (
+    SemanticCalibrationRegistry,
+    SemanticCandidateStageError,
+)
 from nex_ae_api.work_intent import (
     SqlAlchemyWorkIntentRepository,
+    WorkIntentError,
     build_work_intent_from_claimed_work,
     build_work_intent_from_decision,
     planning_mode,
+)
+
+LOGGER = logging.getLogger(__name__)
+
+_OPTIONAL_PRODUCT_FALLBACK_ERRORS = frozenset(
+    {
+        "PROVIDER_NOT_READY",
+        "PROVIDER_TIMEOUT",
+        "PROVIDER_RATE_LIMIT",
+        "PROVIDER_SERVER_ERROR",
+    }
 )
 
 
@@ -157,6 +187,7 @@ class SemanticCandidateAdmissionResult:
     validation_status: str | None = None
     executable_plan_id: str | None = None
     executable_plan_hash: str | None = None
+    product_planning_admission: Mapping[str, Any] | None = None
     stages: tuple[SemanticStageProjection, ...] = ()
     shadow_error_code: str | None = None
 
@@ -174,6 +205,11 @@ class SemanticCandidateAdmissionResult:
             "validation_status": self.validation_status,
             "executable_plan_id": self.executable_plan_id,
             "executable_plan_hash": self.executable_plan_hash,
+            "product_planning_admission": (
+                None
+                if self.product_planning_admission is None
+                else dict(self.product_planning_admission)
+            ),
             "stages": [stage.to_wire() for stage in self.stages],
             "shadow_error_code": self.shadow_error_code,
             "raw_prompt_included": False,
@@ -323,6 +359,10 @@ class DeterministicCandidateAdmissionService:
     product_capability_registry: ProductCapabilityRegistry = field(
         default_factory=ProductCapabilityRegistry, repr=False
     )
+    product_capability_retirements: ProductCapabilityRetirementProjection = field(
+        default_factory=ProductCapabilityRetirementProjection, repr=False
+    )
+    product_planning_router: Any | None = field(default=None, repr=False)
     clock: Callable[[], datetime] = field(default=lambda: datetime.now(UTC), repr=False)
 
     def __post_init__(self) -> None:
@@ -407,6 +447,9 @@ class DeterministicCandidateAdmissionService:
                 ),
                 trusted_execution_mode=request.trusted_execution_mode,
                 work_intent_id=ids.work_intent,
+                materialize_work_intent=(
+                    request.planning_source_type != "CLAIMED_WORKITEM"
+                ),
             ),
             now=now,
         )
@@ -417,41 +460,54 @@ class DeterministicCandidateAdmissionService:
             tenant_id=request.tenant_id, work_intent_id=ids.work_intent
         )
         persisted_work_intent = work_intent is not None
-        if not persisted_work_intent:
-            if request.planning_source_type == "CLAIMED_WORKITEM":
-                intent_decision = resolve_intent_candidate(
-                    intent_candidate,
-                    trusted_execution_mode=request.trusted_execution_mode,
-                    retrieval_enabled=request.retrieval_enabled,
-                )
-                work_intent = build_work_intent_from_claimed_work(
-                    execution_id=execution_id,
-                    actor_ref=f"OA:SUBJECT:{request.owner_subject_id}",
-                    received_at=str(execution["received_at"]),
-                    planning_source=request.planning_source or {},
-                    intent_decision=intent_decision,
-                    input_context_hash=intent_evidence["input_context_hash"],
-                    work_intent_id=ids.work_intent,
-                    prompt_provenance=_work_intent_provenance(intent_evidence),
-                )
-            elif intent_result is not None and intent_result.work_intent is not None:
-                work_intent = dict(intent_result.work_intent)
-            else:
-                intent_decision = resolve_intent_candidate(
-                    intent_candidate,
-                    trusted_execution_mode=request.trusted_execution_mode,
-                    retrieval_enabled=request.retrieval_enabled,
-                )
-                work_intent = build_work_intent_from_decision(
-                    execution_id=execution_id,
-                    source_ref=source_ref,
-                    actor_ref=f"OA:SUBJECT:{request.owner_subject_id}",
-                    received_at=str(execution["received_at"]),
-                    intent_decision=intent_decision,
-                    input_context_hash=intent_evidence["input_context_hash"],
-                    work_intent_id=ids.work_intent,
-                    prompt_provenance=_work_intent_provenance(intent_evidence),
-                )
+        try:
+            if not persisted_work_intent:
+                if request.planning_source_type == "CLAIMED_WORKITEM":
+                    intent_decision = resolve_intent_candidate(
+                        intent_candidate,
+                        trusted_execution_mode=request.trusted_execution_mode,
+                        retrieval_enabled=request.retrieval_enabled,
+                    )
+                    work_intent = build_work_intent_from_claimed_work(
+                        execution_id=execution_id,
+                        actor_ref=f"OA:SUBJECT:{request.owner_subject_id}",
+                        received_at=str(execution["received_at"]),
+                        planning_source=request.planning_source or {},
+                        intent_decision=intent_decision,
+                        input_context_hash=intent_evidence["input_context_hash"],
+                        work_intent_id=ids.work_intent,
+                        prompt_provenance=_work_intent_provenance(intent_evidence),
+                    )
+                elif (
+                    intent_result is not None and intent_result.work_intent is not None
+                ):
+                    work_intent = dict(intent_result.work_intent)
+                else:
+                    intent_decision = resolve_intent_candidate(
+                        intent_candidate,
+                        trusted_execution_mode=request.trusted_execution_mode,
+                        retrieval_enabled=request.retrieval_enabled,
+                    )
+                    work_intent = build_work_intent_from_decision(
+                        execution_id=execution_id,
+                        source_ref=source_ref,
+                        actor_ref=f"OA:SUBJECT:{request.owner_subject_id}",
+                        received_at=str(execution["received_at"]),
+                        intent_decision=intent_decision,
+                        input_context_hash=intent_evidence["input_context_hash"],
+                        work_intent_id=ids.work_intent,
+                        prompt_provenance=_work_intent_provenance(intent_evidence),
+                        intent_candidate=intent_candidate,
+                        intent_candidate_hash=str(intent_evidence["candidate_hash"]),
+                    )
+        except WorkIntentError as exc:
+            raise SemanticCandidateAdmissionError(
+                status_code=503 if exc.retryable else 422,
+                error_code=exc.error_code,
+                detail=exc.detail,
+                retryable=exc.retryable,
+                semantic_stage="INTENT",
+            ) from exc
         assert work_intent is not None
         context_resolver = request.context_resolver
         registration = self.domain_intent_activator_registry.resolve(
@@ -556,6 +612,139 @@ class DeterministicCandidateAdmissionService:
             )
 
         capability_snapshot = self.capabilities.save(request.capability_snapshot)
+        if (
+            request.planning_source_type == "CLAIMED_WORKITEM"
+            and self.product_planning_router is not None
+        ):
+            try:
+                product_registration = (
+                    self.product_planning_router.resolve_registration(
+                        work_intent=work_intent,
+                        capability_snapshot=capability_snapshot,
+                    )
+                )
+                execution_projection = {
+                    **execution,
+                    "execution_id": execution_id,
+                }
+                product_replay = (
+                    self.product_planning_router.replay_if_registered(
+                        work_intent=work_intent,
+                        agent_context=agent_context,
+                        capability_snapshot=capability_snapshot,
+                        execution=execution_projection,
+                    )
+                    if product_registration is not None
+                    else None
+                )
+                if product_replay is not None:
+                    return SemanticCandidateAdmissionResult(
+                        mode=self.mode,
+                        status="PRODUCT_COORDINATION_STARTED",
+                        directive="WAIT_FOR_PRODUCT_COORDINATION",
+                        agent_execution_id=execution_id,
+                        work_intent_id=ids.work_intent,
+                        agent_context_id=ids.context,
+                        product_planning_admission=product_replay,
+                        stages=tuple(stages),
+                    )
+                planning_proposal = None
+                planning_fallback_ref = None
+                if (
+                    product_registration is not None
+                    and product_registration.planning_policy.mode
+                    != "DETERMINISTIC_ONLY"
+                ):
+                    try:
+                        (
+                            plan_evidence,
+                            plan_candidate,
+                            _plan_result,
+                            resumed,
+                        ) = self._stage(
+                            request=request,
+                            execution_id=execution_id,
+                            semantic_stage="PLAN",
+                            candidate_id=ids.candidate("PLAN"),
+                            invoke=lambda: self.plan_stage.generate_proposal(
+                                work_intent=work_intent,
+                                agent_context=agent_context,
+                                capability_snapshot=capability_snapshot,
+                                request_id=request.request_id,
+                                trace_id=request.trace_id,
+                                planning_mode=self.mode,
+                            ),
+                            now=now,
+                        )
+                    except SemanticCandidateAdmissionError as exc:
+                        if not _is_optional_product_fallback(
+                            exc,
+                            mode=product_registration.planning_policy.mode,
+                        ):
+                            raise
+                        planning_fallback_ref = (
+                            product_registration.planning_policy.deterministic_fallback_ref
+                        )
+                    else:
+                        stages.append(_stage_projection(plan_evidence, resumed=resumed))
+                        if plan_evidence["directive"] == "CONTINUE":
+                            planning_proposal = build_product_planning_proposal(
+                                evidence=plan_evidence,
+                                candidate=plan_candidate,
+                                work_intent=work_intent,
+                                agent_context=agent_context,
+                                registration=product_registration,
+                                admitted_capability_ids=tuple(
+                                    binding.capability_id
+                                    for binding in (
+                                        product_registration.required_capabilities
+                                    )
+                                ),
+                            )
+                        else:
+                            return _stopped(
+                                self.mode,
+                                execution_id,
+                                stages,
+                                work_intent_id=ids.work_intent,
+                                agent_context_id=ids.context,
+                            )
+                product_admission = self.product_planning_router.begin_if_registered(
+                    work_intent=work_intent,
+                    agent_context=agent_context,
+                    capability_snapshot=capability_snapshot,
+                    execution=execution_projection,
+                    planning_proposal=planning_proposal,
+                    planning_fallback_ref=planning_fallback_ref,
+                )
+            except ProductPlanningProposalError as exc:
+                raise SemanticCandidateAdmissionError(
+                    409,
+                    exc.error_code,
+                    exc.detail,
+                    False,
+                    semantic_stage="PLAN",
+                ) from exc
+            except ProductPlanningRuntimeError as exc:
+                status_code = 503 if exc.retryable else 409
+                raise SemanticCandidateAdmissionError(
+                    status_code,
+                    exc.error_code,
+                    exc.detail,
+                    exc.retryable,
+                    semantic_stage="PLAN",
+                ) from exc
+            if product_admission is not None:
+                return SemanticCandidateAdmissionResult(
+                    mode=self.mode,
+                    status="PRODUCT_COORDINATION_STARTED",
+                    directive="WAIT_FOR_PRODUCT_COORDINATION",
+                    agent_execution_id=execution_id,
+                    work_intent_id=ids.work_intent,
+                    agent_context_id=ids.context,
+                    product_planning_admission=product_admission,
+                    stages=tuple(stages),
+                )
         plan_evidence, plan_candidate, plan_result, resumed = self._stage(
             request=request,
             execution_id=execution_id,
@@ -709,6 +898,16 @@ class DeterministicCandidateAdmissionService:
 
         try:
             result = invoke()
+            if semantic_stage == "INTENT":
+                intent_label = result.candidate.get("intent_label")
+                if self.product_capability_retirements.is_new_selection_denied(
+                    intent_label
+                ):
+                    raise SemanticCandidateStageError(
+                        422,
+                        "CANDIDATE_CAPABILITY_RETIRED",
+                        "The requested product capability is retired from new selection.",
+                    )
             if result.admission_policy_ref is None:
                 raise _error(
                     503,
@@ -761,6 +960,16 @@ class DeterministicCandidateAdmissionService:
             )
             if failure is None:
                 raise
+            diagnostic_code = getattr(exc, "diagnostic_code", None)
+            if isinstance(diagnostic_code, str):
+                LOGGER.warning(
+                    "Semantic candidate stage rejected; exception_type=%s "
+                    "error_code=%s diagnostic_code=%s semantic_stage=%s",
+                    type(exc).__name__,
+                    failure.error_code,
+                    diagnostic_code,
+                    semantic_stage,
+                )
             raise SemanticCandidateAdmissionError(
                 status_code=failure.status_code,
                 error_code=failure.error_code,
@@ -1015,13 +1224,47 @@ def attach_semantic_candidate_admission(
         )
     client = build_default_ae_mo_generation_client(environ)
     calibrations = SemanticCalibrationRegistry.from_environment(environ)
-    product_capabilities = load_product_capability_registry(resolved_environ)
+    registered_product_capabilities = load_product_capability_registry(resolved_environ)
+    product_capability_retirements = load_product_capability_retirement_projection(
+        resolved_environ,
+        required=False,
+    )
+    product_capabilities = product_capability_retirements.selectable_registry(
+        registered_product_capabilities
+    )
+    domain_intent_activators = build_active_product_domain_intent_activator_registry(
+        resolved_environ,
+        product_capability_registry=product_capabilities,
+        retirement_projection=product_capability_retirements,
+        session_factory=session_factory,
+    )
+    service_log_store = getattr(persistence, "service_log_store", None)
+    context_repair_log_emitter = (
+        ServiceLogEmitter(
+            service_id="nex-ae-api",
+            logger_name="nex_ae_api.semantic_candidate.context_repair",
+            store=service_log_store,
+            default_attributes={
+                "boundary": "semantic_candidate_context_repair",
+            },
+        )
+        if service_log_store is not None
+        else None
+    )
     service = DeterministicCandidateAdmissionService(
         mode=mode,
         admission=admission,
         intent_stage=LiveIntentCandidateService(client, prompt_store, calibrations),
-        context_stage=LiveContextCandidateService(client, prompt_store, calibrations),
-        plan_stage=LivePlanCandidateService(client, prompt_store, calibrations),
+        context_stage=LiveContextCandidateService(
+            client,
+            prompt_store,
+            calibrations,
+            context_repair_log_emitter,
+        ),
+        plan_stage=ProfileAwarePlanCandidateService(
+            LivePlanCandidateService(client, prompt_store, calibrations),
+            build_m1_plan_candidate_profile_registry(product_capabilities),
+        ),
         evidence=SqlAlchemySemanticCandidateEvidenceRepository(session_factory),
         candidate_storage=candidate_storage,
         work_intents=SqlAlchemyWorkIntentRepository(session_factory),
@@ -1031,11 +1274,9 @@ def attach_semantic_candidate_admission(
         validations=SqlAlchemyPlanValidationRepository(session_factory),
         executable_plans=SqlAlchemyExecutablePlanRepository(session_factory),
         executions=SqlAlchemyAgentExecutionRepository(session_factory),
-        domain_intent_activator_registry=build_domain_intent_activator_registry(
-            resolved_environ,
-            product_capability_registry=product_capabilities,
-        ),
+        domain_intent_activator_registry=domain_intent_activators,
         product_capability_registry=product_capabilities,
+        product_capability_retirements=product_capability_retirements,
     )
     runtime = SemanticCandidateAdmissionRuntime(
         mode=mode,
@@ -1134,9 +1375,11 @@ def _package_hash(value: Mapping[str, Any]) -> str:
         {
             "retrieval_package_id": value.get("retrieval_package_id"),
             "status": value.get("status"),
-            "evidence_count": len(value.get("evidence_items", []))
-            if isinstance(value.get("evidence_items"), list)
-            else 0,
+            "evidence_count": (
+                len(value.get("evidence_items", []))
+                if isinstance(value.get("evidence_items"), list)
+                else 0
+            ),
         }
     )
 
@@ -1193,3 +1436,15 @@ def _error(
     retryable: bool = False,
 ) -> SemanticCandidateAdmissionError:
     return SemanticCandidateAdmissionError(status_code, error_code, detail, retryable)
+
+
+def _is_optional_product_fallback(
+    error: SemanticCandidateAdmissionError,
+    *,
+    mode: str,
+) -> bool:
+    return (
+        mode == "PROVIDER_ASSISTED_OPTIONAL"
+        and error.retryable
+        and error.error_code in _OPTIONAL_PRODUCT_FALLBACK_ERRORS
+    )

@@ -24,6 +24,17 @@ SERVICE_MODULES = {
     "nex-eos": "nex_eos.main:app",
     "nex-wa": "nex_wa.main:app",
 }
+SERVICE_EXTRA_PYTHONPATHS = {
+    "nex-ae-api": (ROOT / "domains" / "mybee",),
+}
+
+
+def service_python_paths(service_id: str) -> tuple[Path, ...]:
+    return (
+        ROOT / "services" / service_id,
+        SHARED_PATH,
+        *SERVICE_EXTRA_PYTHONPATHS.get(service_id, ()),
+    )
 
 
 def main() -> int:
@@ -36,9 +47,11 @@ def main() -> int:
 
     load_env_file(ROOT / ".env.local")
     spec = SERVICE_SPECS[args.service_id]
-    service_path = ROOT / "services" / args.service_id
-    os.environ["PYTHONPATH"] = merge_pythonpath(service_path, SHARED_PATH)
-    sys.path.insert(0, str(service_path))
+    python_paths = service_python_paths(args.service_id)
+    service_path = python_paths[0]
+    os.environ["PYTHONPATH"] = merge_pythonpath(*python_paths)
+    for path in reversed(python_paths):
+        sys.path.insert(0, str(path))
 
     import uvicorn
 

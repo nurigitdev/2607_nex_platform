@@ -9,6 +9,10 @@ from threading import RLock
 from typing import Any, Protocol
 from uuid import UUID, uuid4
 
+from nex_runtime.business_context import (
+    BusinessContextValidationError,
+    validate_business_request_context,
+)
 from nex_runtime.semantic_hashes import semantic_sha256_hash_ref
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
@@ -81,7 +85,12 @@ NESTED_DELEGATION_FIELDS = frozenset(
         "delegating_agent_ref",
     }
 )
-DELEGATION_FIELDS = BASE_DELEGATION_FIELDS | NESTED_DELEGATION_FIELDS
+BUSINESS_DELEGATION_FIELDS = frozenset(
+    {"business_request_context", "business_context_hash"}
+)
+DELEGATION_FIELDS = (
+    BASE_DELEGATION_FIELDS | NESTED_DELEGATION_FIELDS | BUSINESS_DELEGATION_FIELDS
+)
 REQUIRED_DELEGATION_FIELDS = BASE_DELEGATION_FIELDS - {"causation_id"}
 
 
@@ -500,7 +509,7 @@ class WorkItemService:
                     requester=requester,
                     created_at=now,
                 )
-                if spec["schema_version"] == "1.1"
+                if NESTED_DELEGATION_FIELDS.issubset(spec)
                 else _first_level_lineage(
                     record=record,
                     requester=requester,
@@ -553,16 +562,26 @@ def validate_delegation_spec(value: object) -> dict[str, Any]:
     schema_version = spec["schema_version"]
     nested_fields = NESTED_DELEGATION_FIELDS & set(spec)
     if schema_version == "1.0":
-        if nested_fields:
-            raise _invalid("DelegationSpec 1.0 cannot contain nested lineage fields")
+        if nested_fields or BUSINESS_DELEGATION_FIELDS & set(spec):
+            raise _invalid("DelegationSpec 1.0 contains unsupported lineage fields")
     elif schema_version == "1.1":
+        if BUSINESS_DELEGATION_FIELDS & set(spec):
+            raise _invalid("DelegationSpec 1.1 cannot contain business context")
         missing_nested = NESTED_DELEGATION_FIELDS - set(spec)
         if missing_nested:
             raise _invalid(
                 f"missing nested DelegationSpec field: {min(missing_nested)}"
             )
+    elif schema_version == "1.2":
+        missing_business = BUSINESS_DELEGATION_FIELDS - set(spec)
+        if missing_business:
+            raise _invalid(
+                f"missing business DelegationSpec field: {min(missing_business)}"
+            )
+        if nested_fields and nested_fields != NESTED_DELEGATION_FIELDS:
+            raise _invalid("DelegationSpec nested lineage fields must be complete")
     else:
-        raise _invalid("DelegationSpec schema_version must be 1.0 or 1.1")
+        raise _invalid("DelegationSpec schema_version must be 1.0, 1.1, or 1.2")
     for name, maximum in (
         ("delegation_id", 128),
         ("tenant_id", 128),
@@ -596,7 +615,24 @@ def validate_delegation_spec(value: object) -> dict[str, Any]:
     causation_id = spec.get("causation_id")
     if causation_id is not None:
         _required_text("causation_id", causation_id, 128)
-    if schema_version == "1.1":
+    if schema_version == "1.2":
+        if (
+            spec["work_class"] != "BUSINESS_TRANSACTION"
+            or spec["required_agent_type"] != "PA"
+            or spec["required_capability"]
+            != "FINANCE.VOUCHER.APPROVE_AND_POST"
+        ):
+            raise _invalid("DelegationSpec 1.2 business profile is invalid")
+        try:
+            context = validate_business_request_context(
+                spec["business_request_context"]
+            )
+        except BusinessContextValidationError as exc:
+            raise _invalid(exc.detail) from exc
+        if spec["business_context_hash"] != context["context_hash"]:
+            raise _invalid("DelegationSpec business context hash is invalid")
+        spec["business_request_context"] = context
+    if schema_version == "1.1" or nested_fields:
         spec["parent_work_item_id"] = _uuid(
             "parent_work_item_id", spec["parent_work_item_id"]
         )

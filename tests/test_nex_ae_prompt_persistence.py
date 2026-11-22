@@ -11,6 +11,7 @@ from nex_ae_api.prompt_persistence import (
 )
 from nex_ae_api.prompts import (
     AE_CONTEXT_CANDIDATE_BINDING,
+    AE_CONTEXT_CANDIDATE_REPAIR_BINDING,
     AE_DOCUMENT_GENERATION_BINDING,
     AE_DOCUMENT_SUMMARY_BINDING,
     AE_GENERAL_ANSWER_BINDING,
@@ -18,6 +19,7 @@ from nex_ae_api.prompts import (
     AE_HISTORICAL_PROMPT_SEEDS,
     AE_INTENT_RESOLUTION_BINDING,
     AE_PLAN_BUILDER_BINDING,
+    AE_PROJECT_DELEGATION_PLAN_BUILDER_BINDING,
     AE_PROMPT_SEEDS,
     seed_ae_prompt_registry,
 )
@@ -44,7 +46,8 @@ def session_factory(*, with_schema: bool = True):
 
 
 def _create_schema(connection) -> None:
-    connection.execute(text("""
+    connection.execute(
+        text("""
         CREATE TABLE ae_prompt_templates (
             prompt_template_id TEXT PRIMARY KEY,
             service_id TEXT NOT NULL,
@@ -56,8 +59,10 @@ def _create_schema(connection) -> None:
             updated_at TEXT NOT NULL,
             UNIQUE (service_id, purpose, name)
         )
-    """))
-    connection.execute(text("""
+    """)
+    )
+    connection.execute(
+        text("""
         CREATE TABLE ae_prompt_template_versions (
             prompt_template_version_id TEXT PRIMARY KEY,
             prompt_template_id TEXT NOT NULL,
@@ -72,8 +77,10 @@ def _create_schema(connection) -> None:
             created_at TEXT NOT NULL,
             UNIQUE (prompt_template_id, version, role, segment_order)
         )
-    """))
-    connection.execute(text("""
+    """)
+    )
+    connection.execute(
+        text("""
         CREATE TABLE ae_prompt_bindings (
             prompt_binding_id TEXT PRIMARY KEY,
             binding_key TEXT NOT NULL UNIQUE,
@@ -83,8 +90,10 @@ def _create_schema(connection) -> None:
             status TEXT NOT NULL,
             bound_at TEXT NOT NULL
         )
-    """))
-    connection.execute(text("""
+    """)
+    )
+    connection.execute(
+        text("""
         CREATE TABLE ae_prompt_render_events (
             prompt_render_event_id TEXT PRIMARY KEY,
             prompt_binding_id TEXT,
@@ -98,8 +107,10 @@ def _create_schema(connection) -> None:
             metadata TEXT NOT NULL,
             created_at TEXT NOT NULL
         )
-    """))
-    connection.execute(text("""
+    """)
+    )
+    connection.execute(
+        text("""
         CREATE TABLE ae_prompt_binding_history (
             binding_change_id TEXT PRIMARY KEY,
             binding_key TEXT NOT NULL,
@@ -111,7 +122,8 @@ def _create_schema(connection) -> None:
             changed_at TEXT NOT NULL,
             UNIQUE (binding_key, correlation_id)
         )
-    """))
+    """)
+    )
 
 
 def test_registry_seeds_configured_bindings_idempotently_and_survives_restart() -> None:
@@ -130,7 +142,9 @@ def test_registry_seeds_configured_bindings_idempotently_and_survives_restart() 
             AE_DOCUMENT_GENERATION_BINDING,
             AE_INTENT_RESOLUTION_BINDING,
             AE_CONTEXT_CANDIDATE_BINDING,
+            AE_CONTEXT_CANDIDATE_REPAIR_BINDING,
             AE_PLAN_BUILDER_BINDING,
+            AE_PROJECT_DELEGATION_PLAN_BUILDER_BINDING,
         ]
     )
     assert [item["prompt_binding_id"] for item in repeated] == [
@@ -146,9 +160,27 @@ def test_registry_seeds_configured_bindings_idempotently_and_survives_restart() 
     context_version = restarted.get_template_version(
         context_binding["prompt_template_version_id"]
     )
-    assert context_version["version"] == "v2"
+    assert context_version["version"] == "v3"
     assert context_version["metadata"]["hardening"] == (
-        "parameter_candidate_exact_shape"
+        "resource_selector_enum_and_empty_default"
+    )
+    repair_binding = restarted.get_binding(AE_CONTEXT_CANDIDATE_REPAIR_BINDING)
+    repair_version = restarted.get_template_version(
+        repair_binding["prompt_template_version_id"]
+    )
+    assert repair_version["version"] == "v1"
+    assert repair_version["metadata"]["repair_mode"] == (
+        "bounded_single_attempt_without_rejected_output"
+    )
+    delegation_binding = restarted.get_binding(
+        AE_PROJECT_DELEGATION_PLAN_BUILDER_BINDING
+    )
+    delegation_version = restarted.get_template_version(
+        delegation_binding["prompt_template_version_id"]
+    )
+    assert delegation_version["version"] == "v3"
+    assert delegation_version["metadata"]["hardening"] == (
+        "exact_delegation_step_shape"
     )
     assert restarted.get_binding("missing") is None
     assert restarted.get_template_version("missing") is None
@@ -170,7 +202,7 @@ def test_startup_upgrades_existing_context_v1_binding_with_history() -> None:
     after = store.get_binding(AE_CONTEXT_CANDIDATE_BINDING)
     assert (
         store.get_template_version(after["prompt_template_version_id"])["version"]
-        == "v2"
+        == "v3"
     )
     with factory() as session:
         history = (
@@ -179,7 +211,7 @@ def test_startup_upgrades_existing_context_v1_binding_with_history() -> None:
                     "SELECT old_prompt_template_version_id, "
                     "new_prompt_template_version_id, correlation_id "
                     "FROM ae_prompt_binding_history "
-                    "WHERE correlation_id = 'p65-s7-context-prompt-v2'"
+                    "WHERE correlation_id = 'cp-m1-context-prompt-v3'"
                 )
             )
             .mappings()
@@ -192,15 +224,20 @@ def test_startup_upgrades_existing_context_v1_binding_with_history() -> None:
     assert (
         history["new_prompt_template_version_id"] == after["prompt_template_version_id"]
     )
-    assert history["correlation_id"] == "p65-s7-context-prompt-v2"
+    assert history["correlation_id"] == "cp-m1-context-prompt-v3"
 
 
-def test_startup_upgrades_existing_intent_v1_binding_with_history() -> None:
+def test_startup_upgrades_project_delegation_v1_binding_with_history() -> None:
     factory = session_factory()
     store = SqlAlchemyAePromptRegistryStore(factory)
-    seed_prompt_registry(store, AE_HISTORICAL_PROMPT_SEEDS)
+    historical = [
+        seed
+        for seed in AE_HISTORICAL_PROMPT_SEEDS
+        if seed.binding_key == AE_PROJECT_DELEGATION_PLAN_BUILDER_BINDING
+    ]
+    seed_prompt_registry(store, historical)
 
-    before = store.get_binding(AE_INTENT_RESOLUTION_BINDING)
+    before = store.get_binding(AE_PROJECT_DELEGATION_PLAN_BUILDER_BINDING)
     assert (
         store.get_template_version(before["prompt_template_version_id"])["version"]
         == "v1"
@@ -208,16 +245,11 @@ def test_startup_upgrades_existing_intent_v1_binding_with_history() -> None:
 
     seed_ae_prompt_registry(store)
 
-    after = store.get_binding(AE_INTENT_RESOLUTION_BINDING)
-    version = store.get_template_version(after["prompt_template_version_id"])
-    assert version["version"] == "v7"
-    assert version["metadata"]["golden_a"] == "voucher_draft"
-    assert version["metadata"]["nvt_project_operations"] == (
-        "create_get_list_update"
+    after = store.get_binding(AE_PROJECT_DELEGATION_PLAN_BUILDER_BINDING)
+    assert (
+        store.get_template_version(after["prompt_template_version_id"])["version"]
+        == "v3"
     )
-    assert version["metadata"]["employee_authority"] == "oa_only"
-    assert version["metadata"]["nvt_fallback_rule"] == "non_nvt_only"
-    assert version["metadata"]["golden_a_parameter_mapping"] == "exact"
     with factory() as session:
         history = (
             session.execute(
@@ -225,7 +257,54 @@ def test_startup_upgrades_existing_intent_v1_binding_with_history() -> None:
                     "SELECT old_prompt_template_version_id, "
                     "new_prompt_template_version_id, correlation_id "
                     "FROM ae_prompt_binding_history "
-                    "WHERE correlation_id = 'p8-demo-s11-intent-prompt-v7'"
+                    "WHERE correlation_id = "
+                    "'cp-m1-project-delegation-prompt-v3'"
+                )
+            )
+            .mappings()
+            .one()
+        )
+    assert (
+        history["old_prompt_template_version_id"]
+        == before["prompt_template_version_id"]
+    )
+    assert (
+        history["new_prompt_template_version_id"] == after["prompt_template_version_id"]
+    )
+
+
+def test_startup_upgrades_existing_intent_v9_binding_with_history() -> None:
+    factory = session_factory()
+    store = SqlAlchemyAePromptRegistryStore(factory)
+    seed_prompt_registry(store, AE_HISTORICAL_PROMPT_SEEDS)
+
+    before = store.get_binding(AE_INTENT_RESOLUTION_BINDING)
+    assert (
+        store.get_template_version(before["prompt_template_version_id"])["version"]
+        == "v9"
+    )
+
+    seed_ae_prompt_registry(store)
+
+    after = store.get_binding(AE_INTENT_RESOLUTION_BINDING)
+    version = store.get_template_version(after["prompt_template_version_id"])
+    assert version["version"] == "v12"
+    assert version["metadata"]["historical_scenario_dependency"] is False
+    assert version["metadata"]["nvt_project_operations"] == ("create_get_list_update")
+    assert version["metadata"]["employee_authority"] == "oa_only"
+    assert version["metadata"]["nvt_fallback_rule"] == "non_nvt_only"
+    assert version["metadata"]["business_request_context"] == (
+        "ae.business_request_context.v1"
+    )
+    with factory() as session:
+        history = (
+            session.execute(
+                text(
+                    "SELECT old_prompt_template_version_id, "
+                    "new_prompt_template_version_id, correlation_id "
+                    "FROM ae_prompt_binding_history "
+                    "WHERE correlation_id = "
+                    "'w70-cp-m1-e2e-fx-01b7i-intent-prompt-v12'"
                 )
             )
             .mappings()
@@ -440,11 +519,13 @@ def test_binding_activation_rolls_back_history_and_pointer_on_fault(
     )
     trigger_operation = "INSERT" if failure_target == "history" else "UPDATE"
     with factory() as session:
-        session.execute(text(f"""
+        session.execute(
+            text(f"""
             CREATE TRIGGER fail_{failure_target}
             BEFORE {trigger_operation} ON {trigger_target}
             BEGIN SELECT RAISE(ABORT, 'injected failure'); END
-        """))
+        """)
+        )
         session.commit()
 
     with pytest.raises(PromptRepositoryError) as raised:

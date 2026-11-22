@@ -6,17 +6,22 @@ from pathlib import Path
 from typing import Any
 
 from .demo_database import (
+    CURRENT_PLATFORM_DEVELOPMENT_DATABASE_TARGETS,
     DEMO_DATABASE_TARGETS,
     DemoDatabaseGuardError,
     DemoDatabaseInspection,
+    DemoDatabaseTarget,
     ResolvedDemoDatabaseTarget,
     inspect_demo_database_targets,
+    validate_current_platform_backup_set_manifest,
     validate_demo_backup_set_manifest,
 )
 from .semantic_hashes import semantic_sha256_hash_ref
 
 DEMO_MIGRATION_SCHEMA_VERSION = "p8_demo_migration_execution.v1"
 DEMO_MIGRATION_CONFIRMATION = "MIGRATE_P8_DEMO_DEV_DATABASES"
+CURRENT_PLATFORM_MIGRATION_SCHEMA_VERSION = "current_platform_migration_execution.v1"
+CURRENT_PLATFORM_MIGRATION_CONFIRMATION = "MIGRATE_CURRENT_PLATFORM_DEV_DATABASES"
 
 
 @dataclass(frozen=True)
@@ -40,11 +45,78 @@ def execute_demo_migration_closure(
         inspect_demo_database_targets
     ),
 ) -> dict[str, Any]:
+    return _execute_migration_closure(
+        targets,
+        inspections,
+        backup_manifest,
+        confirmation=confirmation,
+        expected_confirmation=DEMO_MIGRATION_CONFIRMATION,
+        expected_targets=DEMO_DATABASE_TARGETS,
+        schema_version=DEMO_MIGRATION_SCHEMA_VERSION,
+        manifest_validator=validate_demo_backup_set_manifest,
+        error_prefix="demo",
+        database_root=database_root,
+        migration_runner=migration_runner,
+        connect=connect,
+        inspector=inspector,
+    )
+
+
+def execute_current_platform_migration_closure(
+    targets: Sequence[ResolvedDemoDatabaseTarget],
+    inspections: Sequence[DemoDatabaseInspection],
+    backup_manifest: Mapping[str, Any],
+    *,
+    confirmation: str,
+    database_root: Path,
+    migration_runner: Callable[..., Any],
+    connect: Callable[..., Any],
+    inspector: Callable[..., Sequence[DemoDatabaseInspection]] = (
+        inspect_demo_database_targets
+    ),
+) -> dict[str, Any]:
+    return _execute_migration_closure(
+        targets,
+        inspections,
+        backup_manifest,
+        confirmation=confirmation,
+        expected_confirmation=CURRENT_PLATFORM_MIGRATION_CONFIRMATION,
+        expected_targets=CURRENT_PLATFORM_DEVELOPMENT_DATABASE_TARGETS,
+        schema_version=CURRENT_PLATFORM_MIGRATION_SCHEMA_VERSION,
+        manifest_validator=validate_current_platform_backup_set_manifest,
+        error_prefix="current_platform",
+        database_root=database_root,
+        migration_runner=migration_runner,
+        connect=connect,
+        inspector=inspector,
+    )
+
+
+def _execute_migration_closure(
+    targets: Sequence[ResolvedDemoDatabaseTarget],
+    inspections: Sequence[DemoDatabaseInspection],
+    backup_manifest: Mapping[str, Any],
+    *,
+    confirmation: str,
+    expected_confirmation: str,
+    expected_targets: Sequence[DemoDatabaseTarget],
+    schema_version: str,
+    manifest_validator: Callable[[Mapping[str, Any]], dict[str, Any]],
+    error_prefix: str,
+    database_root: Path,
+    migration_runner: Callable[..., Any],
+    connect: Callable[..., Any],
+    inspector: Callable[..., Sequence[DemoDatabaseInspection]],
+) -> dict[str, Any]:
     records = _admit_migration_execution(
         targets,
         inspections,
         backup_manifest,
         confirmation=confirmation,
+        expected_confirmation=expected_confirmation,
+        expected_targets=expected_targets,
+        manifest_validator=manifest_validator,
+        error_prefix=error_prefix,
     )
     results: list[DemoServiceMigrationResult] = []
     for target in targets:
@@ -55,7 +127,9 @@ def execute_demo_migration_closure(
             profile="dev",
         )
         if bool(getattr(result, "dry_run", False)):
-            raise DemoDatabaseGuardError("demo_migration_dry_run_not_admitted")
+            raise DemoDatabaseGuardError(
+                f"{error_prefix}_migration_dry_run_not_admitted"
+            )
         results.append(
             DemoServiceMigrationResult(
                 service_id=target.target.service_id,
@@ -71,10 +145,12 @@ def execute_demo_migration_closure(
         connect=connect,
     ))
     if any(item.migration_state != "CURRENT" for item in post_inspections):
-        raise DemoDatabaseGuardError("demo_migration_post_state_not_current")
+        raise DemoDatabaseGuardError(
+            f"{error_prefix}_migration_post_state_not_current"
+        )
 
     report_without_hash = {
-        "schema_version": DEMO_MIGRATION_SCHEMA_VERSION,
+        "schema_version": schema_version,
         "status": "PASS",
         "profile": "dev",
         "actual_postgres": True,
@@ -114,20 +190,36 @@ def _admit_migration_execution(
     backup_manifest: Mapping[str, Any],
     *,
     confirmation: str,
+    expected_confirmation: str = DEMO_MIGRATION_CONFIRMATION,
+    expected_targets: Sequence[DemoDatabaseTarget] = DEMO_DATABASE_TARGETS,
+    manifest_validator: Callable[[Mapping[str, Any]], dict[str, Any]] = (
+        validate_demo_backup_set_manifest
+    ),
+    error_prefix: str = "demo",
 ) -> dict[str, Any]:
-    if confirmation != DEMO_MIGRATION_CONFIRMATION:
-        raise DemoDatabaseGuardError("demo_migration_confirmation_invalid")
-    expected = tuple(target.service_id for target in DEMO_DATABASE_TARGETS)
+    if confirmation != expected_confirmation:
+        raise DemoDatabaseGuardError(
+            f"{error_prefix}_migration_confirmation_invalid"
+        )
+    expected = tuple(target.service_id for target in expected_targets)
     if tuple(item.target.service_id for item in targets) != expected:
-        raise DemoDatabaseGuardError("demo_migration_database_set_incomplete")
+        raise DemoDatabaseGuardError(
+            f"{error_prefix}_migration_database_set_incomplete"
+        )
     if tuple(item.service_id for item in inspections) != expected:
-        raise DemoDatabaseGuardError("demo_migration_inspection_set_incomplete")
+        raise DemoDatabaseGuardError(
+            f"{error_prefix}_migration_inspection_set_incomplete"
+        )
     if any(item.identity_state != "ADMITTED" for item in inspections):
-        raise DemoDatabaseGuardError("demo_migration_identity_not_admitted")
+        raise DemoDatabaseGuardError(
+            f"{error_prefix}_migration_identity_not_admitted"
+        )
     if any(item.extra_migrations for item in inspections):
-        raise DemoDatabaseGuardError("demo_migration_drift_not_admitted")
+        raise DemoDatabaseGuardError(
+            f"{error_prefix}_migration_drift_not_admitted"
+        )
 
-    manifest = validate_demo_backup_set_manifest(backup_manifest)
+    manifest = manifest_validator(backup_manifest)
     manifest_targets = {item["service_id"]: item for item in manifest["targets"]}
     for inspection in inspections:
         backed_up = manifest_targets[inspection.service_id]
@@ -135,10 +227,16 @@ def _admit_migration_execution(
             backed_up.get("database_name") != inspection.database_name
             or backed_up.get("role_name") != inspection.role_name
         ):
-            raise DemoDatabaseGuardError("demo_migration_backup_identity_mismatch")
+            raise DemoDatabaseGuardError(
+                f"{error_prefix}_migration_backup_identity_mismatch"
+            )
         if backed_up.get("source_inventory_hash") != inspection.source_inventory_hash:
-            raise DemoDatabaseGuardError("demo_migration_source_inventory_changed")
+            raise DemoDatabaseGuardError(
+                f"{error_prefix}_migration_source_inventory_changed"
+            )
         backed_up_applied = tuple(backed_up.get("applied_migrations", ()))
         if inspection.applied_migrations[: len(backed_up_applied)] != backed_up_applied:
-            raise DemoDatabaseGuardError("demo_migration_database_changed_after_backup")
+            raise DemoDatabaseGuardError(
+                f"{error_prefix}_migration_database_changed_after_backup"
+            )
     return manifest

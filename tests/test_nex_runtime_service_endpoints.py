@@ -53,7 +53,7 @@ def test_unknown_service_endpoint_is_rejected() -> None:
     [
         ("embedding", 60.0, 60.0),
         ("reranking", 60.0, 60.0),
-        ("generation", 130.0, 130.0),
+        ("generation", 260.0, 260.0),
     ],
 )
 def test_default_timeout_budgets_cover_upstream_retries(capability, minimum, client) -> None:
@@ -73,8 +73,8 @@ def test_timeout_budget_accepts_larger_explicit_client_value() -> None:
 
 
 def test_timeout_budget_uses_process_environment(monkeypatch) -> None:
-    monkeypatch.setenv("NEX_CX_MO_GENERATION_TIMEOUT_SECONDS", "140")
-    assert resolve_cx_mo_timeout_budget("generation").client_timeout_seconds == 140
+    monkeypatch.setenv("NEX_CX_MO_GENERATION_TIMEOUT_SECONDS", "270")
+    assert resolve_cx_mo_timeout_budget("generation").client_timeout_seconds == 270
 
 
 def test_timeout_budget_rejects_unsafe_client_timeout() -> None:

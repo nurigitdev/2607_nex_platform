@@ -1,0 +1,25 @@
+{
+  "schema_version": "nex.mybee.coa.approved-standard-chart.v1",
+  "catalog_id": "mybee.finance.k-ifrs-adopted-chart",
+  "catalog_profile": "MYBEE-KIFRS-NFI",
+  "catalog_version": "MYBEE-KIFRS-NFI-v1.0",
+  "status": "PRODUCT_ACCOUNTING_APPROVED_SOURCE_ADMITTED",
+  "source_approved_on": "2026-11-10",
+  "runtime_seed_allowed": true,
+  "automatic_publication_allowed": false,
+  "published": false,
+  "company_adoption_allowed": false,
+  "source_dataset": {
+    "path": "docs/transition/MyBee_Phase1/NeX_MyBee_COA_Codebook_Candidate_v0.1.json",
+    "file_sha256": "sha256:904a122075109a1bb9021207075b1b3229f59d977cb0aee84c237de15ceaac04",
+    "semantic_hash": "sha256:804cbc36814397ba9a74522dc7de7ffa444e001cde8ff6cbf8b8959129893fc0",
+    "identity_set_hash": "sha256:412dee6066d65620e0b817bc652ab319b2ce33eccfccdce1b6e2cd77a0c4a673",
+    "node_contract_hash": "sha256:e988aaf0f5eccb9578591d8e4f678cb8d751019583389346178a427771be7c13",
+    "total_nodes": 166,
+    "leaf_accounts": 88
+  },
+  "approved_proof_ref": "domains/mybee/config/account_catalog/product_accounting_approval.v1.json",
+  "approved_proof_hash": "sha256:f16c845b752b8c6a810bc1c75f069c211030e3530996e87bb11f08fb99541d6e",
+  "terminology_classification": "INTERNAL_MYBEE_PRODUCT_CODE_NOT_OFFICIAL_KIFRS_OR_DART_ID",
+  "next_gate": "COA_02_PERSISTENCE_AND_COA_03_OA_AUTHORIZED_PUBLICATION"
+}

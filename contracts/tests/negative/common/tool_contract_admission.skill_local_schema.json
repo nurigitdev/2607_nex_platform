@@ -1,0 +1,43 @@
+{
+  "schema_version": "nex.mybee.tool-contract-admission.v1",
+  "admission_id": "mybee.phase1.w70.eos-tool-contracts",
+  "admission_version": "1.0.0",
+  "revision": 1,
+  "status": "SOURCE_ADMITTED_RUNTIME_UNCHANGED",
+  "inventory": {
+    "path": "domains/mybee/skills/tool_inventory.v1.json",
+    "sha256": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  },
+  "openapi": {
+    "path": "contracts/openapi/nex-eos.openapi.yaml",
+    "sha256": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+  },
+  "contracts": [
+    {
+      "canonical_operation_id": "FINANCE.VOUCHER_CANDIDATE.CREATE_V2",
+      "provider_operation_id": "FINANCE.VOUCHER_CANDIDATE.CREATE_V2",
+      "method": "POST",
+      "path": "/internal/v2/finance/voucher-candidates",
+      "openapi_operation_ref": "#/paths/~1internal~1v2~1finance~1voucher-candidates/post",
+      "required_parameters": [],
+      "optional_parameters": [],
+      "request_body": {
+        "required": true,
+        "component_ref": "#/components/schemas/CreateVoucherCandidateCommand",
+        "canonical_schema_ref": "domains/mybee/skills/voucher_candidate.schema.json",
+        "typing_state": "CANONICAL_JSON_SCHEMA"
+      },
+      "success_responses": [
+        {
+          "status": "201",
+          "component_ref": "#/components/schemas/CreateVoucherCandidateResult",
+          "canonical_schema_ref": "contracts/schemas/service/nex_eos/voucher_candidate_create_result.v2.schema.json",
+          "typing_state": "CANONICAL_JSON_SCHEMA"
+        }
+      ]
+    }
+  ],
+  "release_attestation": {
+    "content_digest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+  }
+}

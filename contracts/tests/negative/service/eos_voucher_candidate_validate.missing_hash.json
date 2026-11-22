@@ -1,0 +1,6 @@
+{
+  "schema_version": "eos_voucher_candidate_validate.v1",
+  "tenant_id": "VO00",
+  "expected_revision_no": 1,
+  "as_of": "2026-11-12T00:00:00Z"
+}

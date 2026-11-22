@@ -1,9 +1,44 @@
 {
   "examples": [
     {
+      "name": "ae_business_request_context_finance_voucher",
+      "path": "examples/service/ae_business_request_context.finance_voucher.json",
+      "schema": "schemas/service/nex_ae_api/business_request_context.v1.schema.json"
+    },
+    {
+      "name": "ae_work_intent_business_transaction_v1_2",
+      "path": "examples/service/ae_work_intent.business_transaction.v1_2.json",
+      "schema": "schemas/service/nex_ae_api/work_intent.v1_2.schema.json"
+    },
+    {
+      "name": "wc_delegation_spec_business_context_v1_2",
+      "path": "examples/service/wc_delegation_spec.business_context.v1_2.json",
+      "schema": "schemas/service/nex_wc/delegation_spec.v1_2.schema.json"
+    },
+    {
+      "name": "wc_claimed_work_planning_source_business_context_v2",
+      "path": "examples/service/wc_claimed_work_planning_source.business_context.v2.json",
+      "schema": "schemas/service/nex_wc/claimed_work_planning_source.v2.schema.json"
+    },
+    {
       "name": "platform_dependency_readiness_ready",
       "path": "examples/common/platform_dependency_readiness.ready.json",
       "schema": "schemas/common/platform_dependency_readiness.v1.schema.json"
+    },
+    {
+      "name": "eos_cost_source_pool",
+      "path": "examples/service/eos_cost_source_pool.v1.json",
+      "schema": "schemas/service/nex_eos/cost_source_pool.v1.schema.json"
+    },
+    {
+      "name": "eos_cost_source_pool_admit",
+      "path": "examples/service/eos_cost_source_pool_admit.v1.json",
+      "schema": "schemas/service/nex_eos/cost_source_pool_admit.v1.schema.json"
+    },
+    {
+      "name": "eos_project_pnl_refresh_from_allocation_created",
+      "path": "examples/service/eos_project_pnl_refresh_from_allocation.created.json",
+      "schema": "schemas/service/nex_eos/project_pnl_refresh_from_allocation.v1.schema.json"
     },
     {
       "name": "eos_project_verification_request_valid",
@@ -1459,6 +1494,111 @@
       "name": "ae_business_result_summary_voucher_committed",
       "path": "examples/service/ae_business_result_summary.voucher_committed.json",
       "schema": "schemas/service/nex_ae_api/business_result_summary.v1.schema.json"
+    },
+    {
+      "name": "eos_voucher_candidate_create_v2",
+      "path": "examples/service/eos_voucher_candidate_create.v2.json",
+      "schema": "schemas/service/nex_eos/voucher_candidate_create.v2.schema.json"
+    },
+    {
+      "name": "eos_voucher_candidate_revise_v1",
+      "path": "examples/service/eos_voucher_candidate_revise.v1.json",
+      "schema": "schemas/service/nex_eos/voucher_candidate_revise.v1.schema.json"
+    },
+    {
+      "name": "eos_voucher_candidate_validate_v1",
+      "path": "examples/service/eos_voucher_candidate_validate.v1.json",
+      "schema": "schemas/service/nex_eos/voucher_candidate_validate.v1.schema.json"
+    },
+    {
+      "name": "eos_voucher_candidate_validation_pass",
+      "path": "examples/service/eos_voucher_candidate_validation.pass.json",
+      "schema": "schemas/service/nex_eos/voucher_candidate_validation.v1.schema.json"
+    },
+    {
+      "name": "eos_voucher_candidate_review_ready",
+      "path": "examples/service/eos_voucher_candidate_review.ready.json",
+      "schema": "schemas/service/nex_eos/voucher_candidate_review.v1.schema.json"
+    },
+    {
+      "name": "eos_voucher_candidate_review_invalidate_v1",
+      "path": "examples/service/eos_voucher_candidate_review_invalidate.v1.json",
+      "schema": "schemas/service/nex_eos/voucher_candidate_review_invalidate.v1.schema.json"
+    },
+    {
+      "name": "oa_project_authorization_decision_request_allow",
+      "path": "examples/auth/oa_project_authorization_decision_request.allow.json",
+      "schema": "schemas/service/nex_oa/project_authorization_decision_request.v1.schema.json"
+    },
+    {
+      "name": "oa_project_authorization_decision_allow",
+      "path": "examples/auth/oa_project_authorization_decision.allow.json",
+      "schema": "schemas/service/nex_oa/project_authorization_decision_response.v1.schema.json"
+    },
+    {
+      "name": "oa_project_entitlement_event_valid",
+      "path": "examples/auth/oa_project_entitlement_event.valid.json",
+      "schema": "schemas/service/nex_oa/project_entitlement_event.v1.schema.json"
+    },
+    {
+      "name": "oa_project_entitlement_receipt_applied",
+      "path": "examples/auth/oa_project_entitlement_receipt.applied.json",
+      "schema": "schemas/service/nex_oa/project_entitlement_receipt.v1.schema.json"
+    },
+    {
+      "name": "oa_project_entitlement_projection_request_valid",
+      "path": "examples/service/oa_project_entitlement_projection_request.valid.json",
+      "schema": "schemas/service/nex_oa/project_entitlement_projection_request.v1.schema.json"
+    },
+    {
+      "name": "oa_project_entitlement_projection_valid",
+      "path": "examples/service/oa_project_entitlement_projection.valid.json",
+      "schema": "schemas/service/nex_oa/project_entitlement_projection.v1.schema.json"
+    },
+    {
+      "name": "eos_accounting_posting_admission_request_v1",
+      "path": "examples/service/eos_accounting_posting_admission_request.v1.json",
+      "schema": "schemas/service/nex_eos/accounting_posting_admission_request.v1.schema.json"
+    },
+    {
+      "name": "eos_accounting_posting_admission_v1",
+      "path": "examples/service/eos_accounting_posting_admission.v1.json",
+      "schema": "schemas/service/nex_eos/accounting_posting_admission.v1.schema.json"
+    },
+    {
+      "name": "eos_journal_post_command_v1",
+      "path": "examples/service/eos_journal_post_command.v1.json",
+      "schema": "schemas/service/nex_eos/journal_post_command.v1.schema.json"
+    },
+    {
+      "name": "eos_journal_post_result_committed",
+      "path": "examples/service/eos_journal_post_result.committed.json",
+      "schema": "schemas/service/nex_eos/journal_post_result.v1.schema.json"
+    },
+    {
+      "name": "eos_posted_journal_v1",
+      "path": "examples/service/eos_posted_journal.v1.json",
+      "schema": "schemas/service/nex_eos/posted_journal.v1.schema.json"
+    },
+    {
+      "name": "eos_journal_verification_verified",
+      "path": "examples/service/eos_journal_verification.verified.json",
+      "schema": "schemas/service/nex_eos/journal_verification.v1.schema.json"
+    },
+    {
+      "name": "eos_journal_posted_event_v1",
+      "path": "examples/service/eos_journal_posted_event.v1.json",
+      "schema": "schemas/service/nex_eos/journal_posted_event.v1.schema.json"
+    },
+    {
+      "name": "eos_journal_reconciliation_committed",
+      "path": "examples/service/eos_journal_reconciliation.committed.json",
+      "schema": "schemas/service/nex_eos/journal_reconciliation.v1.schema.json"
+    },
+    {
+      "name": "eos_journal_reconciliation_unknown",
+      "path": "examples/service/eos_journal_reconciliation.unknown.json",
+      "schema": "schemas/service/nex_eos/journal_reconciliation.v1.schema.json"
     }
   ]
 }

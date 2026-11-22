@@ -51,6 +51,16 @@ def semantic_sha256_hash_ref(value: Any) -> str:
     return hash_ref_from_sha256(sha256_text(canonical_json(value)))
 
 
+def eos_fx_policy_hash_ref(policy_semantics: Mapping[str, Any]) -> str:
+    """Hash the public EOS FX policy contract with its frozen domain tag."""
+
+    if not isinstance(policy_semantics, Mapping):
+        raise TypeError("policy_semantics must be a mapping")
+    return semantic_sha256_hash_ref(
+        {"domain": "EOS-FX-POLICY-V1", **dict(policy_semantics)}
+    )
+
+
 def nsl_write_payload_hash_ref(canonical_arguments: Mapping[str, Any]) -> str:
     """Hash canonical WRITE values with the frozen NSL v0.2 domain."""
 

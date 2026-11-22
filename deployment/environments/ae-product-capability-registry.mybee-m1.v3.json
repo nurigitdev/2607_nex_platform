@@ -1,0 +1,74 @@
+{
+  "schema_version": "ae.product_capability_registry.v1",
+  "registry_id": "ae-product-capabilities-mybee-m1",
+  "registry_version": 5,
+  "registrations": [
+    {
+      "capability": {
+        "capability_id": "FINANCE.VOUCHER.APPROVE_AND_POST",
+        "capability_version": "1.0.1",
+        "status": "ACTIVE",
+        "allowed_logical_step_types": [
+          "LOCAL_CAPABILITY"
+        ],
+        "executable_step_type": "LOCAL_SKILL",
+        "executor_kind": "LOCAL_SKILL",
+        "input_contract_ref": "contracts/schemas/service/nex_eos/journal_post_command.v1.schema.json",
+        "output_contract_ref": "contracts/schemas/service/nex_eos/journal_post_result.v1.schema.json",
+        "operation_semantics": "WRITE",
+        "local_skill_binding": {
+          "skill_id": "MYBEE.D04.JOURNAL_POSTING",
+          "exact_skill_version": "1.0.1",
+          "skill_semantic_hash": "sha256:25fc90a2a81499d646ab6df5bb9b2c9727343a577a1341ecf97563ac5c6519c9",
+          "runtime_contract_ref": "contract://nex/nsl/write-runtime/v0.2",
+          "trust_policy_id": "policy://nex/ae/mybee/d04-accounting/m1/v1",
+          "backend_profile": "NSL_V02_IN_PROCESS",
+          "package_requirement": "SIGNED_TRUSTED_ACTIVE",
+          "capability_id": "FINANCE.VOUCHER.APPROVE_AND_POST"
+        }
+      },
+      "skill_artifact": {
+        "bundle_manifest_ref": "deployment-lock://ae-mybee-m1-signed-skill-checkpoint.v2",
+        "bundle_id": "nex-mybee-m1-d04-d12-checkpoint-v2",
+        "skill_id": "MYBEE.D04.JOURNAL_POSTING",
+        "exact_skill_version": "1.0.1",
+        "skill_semantic_hash": "sha256:25fc90a2a81499d646ab6df5bb9b2c9727343a577a1341ecf97563ac5c6519c9"
+      },
+      "registration_hash": "sha256:d6b80da3a842a419402543ed3ed5c83ce11617599ef9f9acf9d444d627b005f5"
+    },
+    {
+      "capability": {
+        "capability_id": "PROJECT.WORK_CODE_SET.GET",
+        "capability_version": "1.0.0",
+        "status": "ACTIVE",
+        "allowed_logical_step_types": [
+          "LOCAL_CAPABILITY"
+        ],
+        "executable_step_type": "LOCAL_SKILL",
+        "executor_kind": "LOCAL_SKILL",
+        "input_contract_ref": "contract://nex/eos/project-work-code-set-get/request/v1",
+        "output_contract_ref": "contract://nex/eos/project-work-code-set-get/result/v1",
+        "operation_semantics": "READ",
+        "local_skill_binding": {
+          "skill_id": "MYBEE.D12.PROJECT_WORK_CODE_CONTEXT",
+          "exact_skill_version": "1.0.0",
+          "skill_semantic_hash": "sha256:a3f4e3d97e646f5e7c8f7957cb1981fbabdc019b379c565c9d7759bfcd8fd13e",
+          "runtime_contract_ref": "contract://nex/nsl/read-runtime/v0.2",
+          "trust_policy_id": "policy://nex/ae/mybee/d12-project/m1/v1",
+          "backend_profile": "NSL_V02_IN_PROCESS",
+          "package_requirement": "SIGNED_TRUSTED_ACTIVE",
+          "capability_id": "PROJECT.WORK_CODE_SET.GET"
+        }
+      },
+      "skill_artifact": {
+        "bundle_manifest_ref": "deployment-lock://ae-mybee-m1-signed-skill-checkpoint.v2",
+        "bundle_id": "nex-mybee-m1-d04-d12-checkpoint-v2",
+        "skill_id": "MYBEE.D12.PROJECT_WORK_CODE_CONTEXT",
+        "exact_skill_version": "1.0.0",
+        "skill_semantic_hash": "sha256:a3f4e3d97e646f5e7c8f7957cb1981fbabdc019b379c565c9d7759bfcd8fd13e"
+      },
+      "registration_hash": "sha256:83a0d5b4e3b0792c5cd8b5557d95b6588528307b3572104666008811479f9362"
+    }
+  ],
+  "registry_hash": "sha256:2229424abee892547255eca4592b32376c81a46bf387b0ab1eed2a7849661384"
+}

@@ -65,6 +65,56 @@ def _candidate(**overrides):
     return value
 
 
+def _m1_business_candidate() -> dict[str, object]:
+    return {
+        "schema_version": "p65.intent_candidate.v1",
+        "intent_label": "FINANCE.VOUCHER.APPROVE_AND_POST",
+        "suggested_execution_mode": "GENERAL_ANSWER",
+        "entity_selectors": [
+            {
+                "selector_id": "E1",
+                "selector_type": "QUERY_TERM",
+                "value": "VO00D260101",
+                "confidence": 0.98,
+            }
+        ],
+        "parameter_candidates": [
+            {"name": "company_selector", "value": "NURIVOICE", "confidence": 0.99},
+            {
+                "name": "primary_project_code",
+                "value": "VO00D260101",
+                "confidence": 0.99,
+            },
+            {"name": "document_subject", "value": "Workshop", "confidence": 0.98},
+            {
+                "name": "counterparty_selector",
+                "value": "Vendor",
+                "confidence": 0.97,
+            },
+            {"name": "amount", "value": "10000.00", "confidence": 0.99},
+            {"name": "currency", "value": "USD", "confidence": 0.99},
+            {
+                "name": "recognition_date",
+                "value": "2026-11-16",
+                "confidence": 0.99,
+            },
+            {
+                "name": "description",
+                "value": "Approved workshop expense",
+                "confidence": 0.97,
+            },
+            {
+                "name": "allocation_project_code_1",
+                "value": "VO00D260101",
+                "confidence": 0.99,
+            },
+            {"name": "allocation_ratio_1", "value": "1.000000", "confidence": 0.99},
+        ],
+        "clarification": {"required": False, "reasons": [], "questions": []},
+        "confidence": 0.97,
+    }
+
+
 def _policy(**overrides) -> SemanticCalibrationPolicy:
     values = {
         "semantic_stage": "INTENT",
@@ -166,12 +216,13 @@ def _service(
     client: FakeClient | None = None,
     *,
     store=None,
-    policies=(_policy(),),
+    policies=None,
 ) -> LiveIntentCandidateService:
+    selected_policies = (_policy(),) if policies is None else policies
     return LiveIntentCandidateService(
         client=client or FakeClient(),
         prompt_store=store or _store(),
-        calibration_registry=SemanticCalibrationRegistry(tuple(policies)),
+        calibration_registry=SemanticCalibrationRegistry(tuple(selected_policies)),
     )
 
 
@@ -196,31 +247,51 @@ def _run(service: LiveIntentCandidateService, **overrides):
     return service.generate_and_resolve(**values)
 
 
-def test_prompt_registry_seeds_exact_intent_binding_v7_and_keeps_history() -> None:
+def test_prompt_registry_seeds_primary_project_v12_and_keeps_history() -> None:
     store = _store()
     binding = store.get_binding(AE_INTENT_RESOLUTION_BINDING)
     version = store.get_template_version(binding["prompt_template_version_id"])
 
     assert binding["purpose"] == "intent_resolution"
-    assert version["version"] == "v7"
+    assert version["version"] == "v12"
     assert version["role"] == "system"
     assert version["metadata"] == {
-        "phase": "P8",
-        "slice": "P8-S112",
+        "phase": "MyBee-W70",
+        "slice": "CP-M1-E2E-FX-01B.7I",
         "candidate_schema": "p65.intent_candidate.v1",
         "authority": "untrusted_candidate_only",
-        "golden_a": "voucher_draft",
         "project_membership_batch": "indexed_scalar_candidates",
         "nvt_project_operations": "create_get_list_update",
         "employee_authority": "oa_only",
         "nvt_fallback_rule": "non_nvt_only",
-        "golden_a_parameter_mapping": "exact",
+        "mybee_m1_project_delegation": "FINANCE.VOUCHER.APPROVE_AND_POST",
+        "primary_project_identity": "typed_cross_validated",
+        "historical_scenario_dependency": False,
+        "business_request_context": "ae.business_request_context.v1",
+        "allocation_contract": "contiguous_indexed_scalar_pairs",
     }
     assert "tenant" in version["content"]
     assert "hidden reasoning" in version["content"]
-    assert "voucher_type=GENERAL" in version["content"]
-    assert "economic_category=TRAVEL" in version["content"]
-    assert "settlement_method=CASH" in version["content"]
+    assert "FINANCE.CREATE_VOUCHER_DRAFT" not in version["content"]
+    assert "FINANCE.VOUCHER.APPROVE_AND_POST" in version["content"]
+    assert "only as an allocation_project_code_N parameter" in version["content"]
+    assert "allocation_project_code_1" in version["content"]
+    assert "primary_project_code" in version["content"]
+    assert any(
+        item["version"] == "v11"
+        for item in store.template_versions.values()
+        if item["purpose"] == "intent_resolution"
+    )
+    assert any(
+        item["version"] == "v9"
+        for item in store.template_versions.values()
+        if item["purpose"] == "intent_resolution"
+    )
+    assert any(
+        item["version"] == "v8"
+        for item in store.template_versions.values()
+        if item["purpose"] == "intent_resolution"
+    )
     assert any(
         item["version"] == "v1"
         for item in store.template_versions.values()
@@ -269,7 +340,7 @@ def test_required_mode_generates_candidate_then_deterministic_work_intent() -> N
     assert result.prompt_provenance["prompt_binding_key"] == (
         AE_INTENT_RESOLUTION_BINDING
     )
-    assert result.prompt_provenance["prompt_template_version"] == "v7"
+    assert result.prompt_provenance["prompt_template_version"] == "v12"
     assert result.model_provenance["mo_generation_id"] == ("mo-generation-p65-s2")
 
     call = client.generation_calls[0]
@@ -292,6 +363,52 @@ def test_required_mode_generates_candidate_then_deterministic_work_intent() -> N
         result.prompt_provenance,
         ["user_prompt", "raw_prompt", "provider_url", "api_key"],
     )
+
+
+def test_claimed_source_defers_work_intent_to_source_aware_admission() -> None:
+    client = FakeClient(candidate=_m1_business_candidate())
+
+    result = _run(
+        _service(client),
+        user_prompt="Execute the admitted delegated business request.",
+        materialize_work_intent=False,
+    )
+
+    assert result.directive == "CONTINUE"
+    assert result.intent_decision["intent_label"] == (
+        "FINANCE.VOUCHER.APPROVE_AND_POST"
+    )
+    assert result.work_intent is None
+    assert client.generation_calls[0]["semantic_stage"] == "INTENT"
+
+
+def test_intent_materialization_control_must_be_boolean() -> None:
+    with pytest.raises(IntentCandidateStageError) as raised:
+        _run(_service(), materialize_work_intent="false")
+
+    assert raised.value.error_code == "INTENT_STAGE_REQUEST_INVALID"
+
+
+def test_mock_provider_m1_candidate_builds_durable_work_intent_v1_2() -> None:
+    client = FakeClient(_m1_business_candidate())
+
+    result = _run(
+        _service(client),
+        source_ref="AE:INTERACTION:p65-s2-m1",
+        retrieval_enabled=False,
+        authorized_resource_context_available=False,
+    )
+
+    assert result.directive == "CONTINUE"
+    assert result.work_intent["schema_version"] == "1.2"
+    assert result.work_intent["business_request_context"]["transaction"] == {
+        "counterparty_selector": "Vendor",
+        "amount": "10000.00",
+        "currency": "USD",
+        "recognition_date": "2026-11-16",
+        "description": "Approved workshop expense",
+    }
+    assert result.work_intent["business_context_hash"].startswith("sha256:")
 
 
 def test_shadow_mode_observes_without_creating_work_intent() -> None:
@@ -409,6 +526,17 @@ def test_candidate_top_level_fail_closed_matrix(output: str, error_code: str) ->
     with pytest.raises(IntentCandidateStageError) as raised:
         parse_intent_candidate(output)
     assert raised.value.error_code == error_code
+
+
+def test_candidate_schema_error_exposes_only_bounded_structural_diagnostic() -> None:
+    with pytest.raises(IntentCandidateStageError) as raised:
+        parse_intent_candidate(
+            canonical_json(_candidate(suggested_execution_mode="WRITE"))
+        )
+
+    assert raised.value.diagnostic_code == (
+        "INTENT_CANDIDATE_EXECUTION_MODE_IS_UNSUPPORTED"
+    )
 
 
 @pytest.mark.parametrize(
@@ -696,7 +824,7 @@ def test_invalid_prompt_provenance_digest_fails_closed() -> None:
     assert raised.value.error_code == "CANDIDATE_SCHEMA_INVALID"
 
 
-def test_in_flight_binding_switch_keeps_captured_v6_snapshot() -> None:
+def test_in_flight_binding_switch_keeps_captured_v10_snapshot() -> None:
     base = _store()
     seed = next(
         item
@@ -731,7 +859,7 @@ def test_in_flight_binding_switch_keeps_captured_v6_snapshot() -> None:
     result = _run(_service(store=switching))
 
     assert switching.switched is True
-    assert result.prompt_provenance["prompt_template_version"] == "v7"
+    assert result.prompt_provenance["prompt_template_version"] == "v12"
     assert (
         base.get_binding(AE_INTENT_RESOLUTION_BINDING)["prompt_template_version_id"]
         == version["prompt_template_version_id"]

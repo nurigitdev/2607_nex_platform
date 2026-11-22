@@ -80,6 +80,13 @@ class _LoopProcess:
 def _installed(*, sessions=None, publisher=None):
     engine = create_engine("sqlite+pysqlite:///:memory:")
     factory = sessions or sessionmaker(bind=engine, expire_on_commit=False)
+    transport = process.RoutingEosOutboxTransport(
+        ae_transport=object(),
+        oa_transport=process.HttpOaProjectEntitlementTransport(
+            base_url="http://oa.local",
+            service_token="signed-oa-token",
+        ),
+    )
     return process.InstalledEosOutboxPublisherProcess(
         profile="test",
         database_environment="NEX_EOS_TEST_DATABASE_URL",
@@ -87,7 +94,7 @@ def _installed(*, sessions=None, publisher=None):
         sessions=factory,
         heartbeat=_Heartbeat(),
         publisher=publisher or _Publisher(),
-        transport=object(),
+        transport=transport,
         worker_id="worker-1",
         poll_interval_seconds=1.0,
     )
@@ -184,6 +191,8 @@ def test_builder_assembles_existing_components_and_disposes_on_check_failure() -
         "NEX_EOS_TEST_DATABASE_URL": "sqlite+pysqlite:///:memory:",
         "NEX_AE_API_BASE_URL": "http://ae.local",
         "NEX_EOS_TO_AE_SERVICE_TOKEN": "signed-token",
+        "NEX_OA_BASE_URL": "http://oa.local",
+        "NEX_EOS_TO_OA_SERVICE_TOKEN": "signed-oa-token",
         "NEX_EOS_OUTBOX_PUBLISHER_WORKER_ID": "worker-s07",
         "NEX_EOS_OUTBOX_PUBLISH_POLL_SECONDS": "0.5",
     }
@@ -196,7 +205,7 @@ def test_builder_assembles_existing_components_and_disposes_on_check_failure() -
     assert installed.worker_id == "worker-s07"
     assert installed.poll_interval_seconds == 0.5
     assert installed.publisher.__class__.__name__ == "SqlAlchemyEosOutboxPublisher"
-    assert installed.transport.__class__.__name__ == "HttpAeEosOutboxTransport"
+    assert installed.transport.__class__.__name__ == "RoutingEosOutboxTransport"
     installed.close()
 
     rejected = _Engine()
@@ -217,6 +226,8 @@ def test_builder_wraps_component_failure_and_rejects_blank_worker() -> None:
         "NEX_EOS_TEST_DATABASE_URL": "sqlite+pysqlite:///:memory:",
         "NEX_AE_API_BASE_URL": "http://ae.local",
         "NEX_EOS_TO_AE_SERVICE_TOKEN": "signed-token",
+        "NEX_OA_BASE_URL": "http://oa.local",
+        "NEX_EOS_TO_OA_SERVICE_TOKEN": "signed-oa-token",
     }
     with pytest.raises(process.EosOutboxPublisherProcessError, match="unavailable"):
         process.build_installed_eos_outbox_publisher_process(
@@ -247,6 +258,10 @@ def test_readiness_reports_exact_component_state(monkeypatch) -> None:
     report = installed.readiness()
     assert report["readiness_status"] == "READY"
     assert all(report["checks"].values())
+    assert report["routing"]["routes"]["PROJECT_ENTITLEMENT_SNAPSHOT"] == {
+        "destination_service_id": "nex-oa",
+        "transport_type": "HttpOaProjectEntitlementTransport",
+    }
     assert report["secret_included"] is False
     installed.publisher = None
     assert installed.readiness()["readiness_status"] == "NOT_READY"

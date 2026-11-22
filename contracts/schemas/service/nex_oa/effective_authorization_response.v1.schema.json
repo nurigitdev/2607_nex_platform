@@ -11,7 +11,7 @@
     "authorization": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["authorization_schema_version", "tenant_id", "subject_id", "roles", "scopes", "group_ids", "unresolved_direct_roles", "revision_hash", "source_counts"],
+      "required": ["authorization_schema_version", "tenant_id", "subject_id", "roles", "scopes", "group_ids", "project_scope_refs", "unresolved_direct_roles", "revision_hash", "source_counts"],
       "properties": {
         "authorization_schema_version": {"const": "oa_effective_authorization.v1"},
         "tenant_id": {"$ref": "#/$defs/identifier"},
@@ -19,17 +19,19 @@
         "roles": {"$ref": "#/$defs/string_set"},
         "scopes": {"$ref": "#/$defs/string_set"},
         "group_ids": {"$ref": "#/$defs/string_set"},
+        "project_scope_refs": {"$ref": "#/$defs/string_set"},
         "unresolved_direct_roles": {"$ref": "#/$defs/string_set"},
         "revision_hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
         "source_counts": {
           "type": "object", "additionalProperties": false,
-          "required": ["direct_role_count", "direct_scope_count", "group_count", "group_role_count", "effective_scope_count"],
+          "required": ["direct_role_count", "direct_scope_count", "group_count", "group_role_count", "effective_scope_count", "project_scope_count"],
           "properties": {
             "direct_role_count": {"type": "integer", "minimum": 0},
             "direct_scope_count": {"type": "integer", "minimum": 0},
             "group_count": {"type": "integer", "minimum": 0},
             "group_role_count": {"type": "integer", "minimum": 0},
-            "effective_scope_count": {"type": "integer", "minimum": 0}
+            "effective_scope_count": {"type": "integer", "minimum": 0},
+            "project_scope_count": {"type": "integer", "minimum": 0}
           }
         }
       }

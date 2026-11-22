@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: NeX Enterprise Operations System API
-  version: 2.1.0-p8-s105
+  version: 2.1.0-p8-s105-mybee-w60-s7-03
   description: >-
     NeX-EOS service shell and canonical Voucher Draft command contract. The
     P8-S18 path is contract-first and becomes executable in P8-S19.
@@ -227,6 +227,2043 @@ paths:
           description: Patch, payload hash, or domain invariant is invalid.
         "503":
           description: OA authorization or EOS persistence is unavailable.
+  /internal/v2/project-applications:
+    post:
+      operationId: PROJECT.APPLICATION.CREATE
+      tags: [Project]
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes: [service:call]
+      x-nex-business-scope: project:application:create
+      x-nex-route-class: WRITE
+      parameters:
+        - $ref: "#/components/parameters/TenantCodeHeader"
+        - $ref: "#/components/parameters/SubjectHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProjectApplicationDraftCommand"
+      responses:
+        "201":
+          description: DRAFT application and immutable request code were created atomically.
+        "401": {description: Service claim is missing or invalid.}
+        "403": {description: Fresh OA application authority is denied.}
+        "404": {description: Hierarchy target is absent from tenant scope.}
+        "409": {description: Application identity or annual code allocation conflicts.}
+        "422": {description: Draft or Project hierarchy input is invalid.}
+        "503": {description: OA authorization or EOS persistence is unavailable.}
+  /internal/v2/project-applications/{project_request_code}:
+    get:
+      operationId: PROJECT.APPLICATION.GET
+      tags: [Project]
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes: [service:call]
+      x-nex-business-scope: project:application:read
+      x-nex-side-effect-free: true
+      parameters:
+        - $ref: "#/components/parameters/ProjectRequestCodePath"
+        - $ref: "#/components/parameters/TenantCodeHeader"
+        - $ref: "#/components/parameters/SubjectHeader"
+      responses:
+        "200": {description: Owner-scoped current application revision.}
+        "401": {description: Service claim is missing or invalid.}
+        "403": {description: Fresh OA read authority or owner scope is denied.}
+        "404": {description: Request code is absent from tenant scope.}
+        "422": {description: Tenant or request code syntax is invalid.}
+        "503": {description: OA authorization or EOS persistence is unavailable.}
+    patch:
+      operationId: PROJECT.APPLICATION.REVISE
+      tags: [Project]
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes: [service:call]
+      x-nex-business-scope: project:application:create
+      x-nex-route-class: WRITE
+      parameters:
+        - $ref: "#/components/parameters/ProjectRequestCodePath"
+        - $ref: "#/components/parameters/TenantCodeHeader"
+        - $ref: "#/components/parameters/SubjectHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProjectApplicationRevisionCommand"
+      responses:
+        "200": {description: DRAFT revision was appended or exactly replayed.}
+        "401": {description: Service claim is missing or invalid.}
+        "403": {description: Fresh OA authority or owner scope is denied.}
+        "404": {description: Request code or hierarchy target is absent.}
+        "409": {description: Application is not DRAFT or version changed.}
+        "422": {description: Revision input is invalid.}
+        "503": {description: OA authorization or EOS persistence is unavailable.}
+  /internal/v2/project-applications/{project_request_code}:submit:
+    post:
+      operationId: PROJECT.APPLICATION.SUBMIT
+      tags: [Project]
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes: [service:call]
+      x-nex-business-scope: project:application:submit
+      x-nex-route-class: WRITE
+      parameters:
+        - $ref: "#/components/parameters/ProjectRequestCodePath"
+        - $ref: "#/components/parameters/TenantCodeHeader"
+        - $ref: "#/components/parameters/SubjectHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ExpectedVersionCommand"
+      responses:
+        "200": {description: Application became SUBMITTED or replayed exactly.}
+        "401": {description: Service claim is missing or invalid.}
+        "403": {description: Fresh OA submit authority or owner scope is denied.}
+        "404": {description: Request code is absent from tenant scope.}
+        "409": {description: Application state or expected version conflicts.}
+        "422": {description: Request code or expected version is invalid.}
+        "503": {description: OA authorization or EOS persistence is unavailable.}
+  /internal/v2/project-applications/{project_request_code}:request-approval:
+    post:
+      operationId: PROJECT.APPLICATION.REQUEST_APPROVAL
+      tags: [Project]
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes: [service:call]
+      x-nex-business-scope: project:application:request-approval
+      x-nex-route-class: WRITE
+      parameters:
+        - $ref: "#/components/parameters/ProjectRequestCodePath"
+        - $ref: "#/components/parameters/TenantCodeHeader"
+        - $ref: "#/components/parameters/SubjectHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProjectApplicationApprovalCommand"
+      responses:
+        "200": {description: BUSINESS_FORMAL committee approval was requested or exactly replayed.}
+        "401": {description: Service claim is missing or invalid.}
+        "403": {description: Fresh OA authority or applicant ownership is denied.}
+        "404": {description: Application or approval policy is absent from tenant scope.}
+        "409": {description: "Application, policy, version, or replay semantics conflict."}
+        "422": {description: "Request code, policy identity, or expected version is invalid."}
+        "503": {description: "OA, WC, or EOS persistence is unavailable."}
+  /internal/v2/projects:resolve:
+    get:
+      operationId: PROJECT.PROJECT.RESOLVE
+      tags: [Project]
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes: [service:call]
+      x-nex-business-scope: project:project:read
+      x-nex-side-effect-free: true
+      parameters:
+        - $ref: "#/components/parameters/TenantCodeHeader"
+        - $ref: "#/components/parameters/SubjectHeader"
+        - name: project_code
+          in: query
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 64}
+        - name: active_only
+          in: query
+          required: false
+          schema: {type: boolean, default: false}
+      responses:
+        "200": {description: Exact tenant-scoped Project business-code projection without internal UUIDs.}
+        "401": {description: Service claim is missing or invalid.}
+        "403": {description: Fresh OA Project read authority is denied.}
+        "404": {description: Project code is absent from tenant scope.}
+        "422": {description: "Tenant, subject, or Project code is invalid."}
+        "503": {description: OA authorization or EOS persistence is unavailable.}
+  /internal/v2/finance/legal-entities/{company_id}:
+    get:
+      operationId: FINANCE.LEGAL_ENTITY.GET
+      tags: [Finance]
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes: [service:call]
+      x-nex-business-scope: finance:company:read
+      x-nex-side-effect-free: true
+      parameters:
+        - name: company_id
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+        - name: X-NeX-Tenant-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+        - name: X-NeX-Subject-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+        - name: effective_on
+          in: query
+          required: false
+          schema: {type: string, format: date}
+      responses:
+        "200":
+          description: Active tenant-scoped LegalEntity projection.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LegalEntity"
+        "401":
+          description: Service claim is missing or invalid.
+        "403":
+          description: Fresh OA company-read authority is denied.
+        "404":
+          description: LegalEntity is absent from the admitted effective scope.
+        "422":
+          description: Tenant, subject, company, or effective date is invalid.
+        "503":
+          description: OA authorization or EOS persistence is unavailable.
+  /internal/v2/projects/{project_id}/company-bindings:
+    post:
+      operationId: PROJECT.COMPANY_BINDING.CREATE
+      tags: [Project]
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes: [service:call]
+      x-nex-business-scope: project:company-binding:manage
+      x-nex-route-class: WRITE
+      parameters:
+        - name: project_id
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+        - name: X-NeX-Tenant-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+        - name: X-NeX-Subject-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProjectCompanyBindingCommand"
+      responses:
+        "201":
+          description: Approved ProjectCompanyBinding committed or replayed exactly.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectCompanyBinding"
+        "401":
+          description: Service claim is missing or invalid.
+        "403":
+          description: Service trust or fresh OA binding authority is denied.
+        "404":
+          description: A real tenant-scoped Project or LegalEntity is absent.
+        "409":
+          description: Identity semantics conflict or effective periods overlap.
+        "422":
+          description: Binding command or effective period is invalid.
+        "503":
+          description: OA authorization or EOS persistence is unavailable.
+  /internal/v2/projects/{project_id}/company-binding:
+    get:
+      operationId: PROJECT.COMPANY_BINDING.GET
+      tags: [Project]
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes: [service:call]
+      x-nex-business-scope: project:company-binding:read
+      x-nex-side-effect-free: true
+      parameters:
+        - name: project_id
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+        - name: X-NeX-Tenant-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+        - name: X-NeX-Subject-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+        - name: effective_on
+          in: query
+          required: true
+          schema: {type: string, format: date}
+      responses:
+        "200":
+          description: Unique effective accounting-company binding for the Project.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectCompanyBinding"
+        "401":
+          description: Service claim is missing or invalid.
+        "403":
+          description: Fresh OA binding-read authority is denied.
+        "404":
+          description: No binding is effective on the requested date.
+        "409":
+          description: Persisted data contains multiple effective bindings.
+        "422":
+          description: Tenant, subject, Project, or effective date is invalid.
+        "503":
+          description: OA authorization or EOS persistence is unavailable.
+  /internal/v2/projects/{project_id}/work-code-sets:approve:
+    post:
+      operationId: PROJECT.WORK_CODE_SET.APPROVE
+      tags: [Project]
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes: [service:call]
+      x-nex-business-scope: project:work-code:approve
+      x-nex-route-class: WRITE
+      parameters:
+        - name: project_id
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProjectWorkCodeSetApprovalCommand"
+      responses:
+        "200": {description: Exact BusinessOperation replay returned the approved immutable revision.}
+        "201": {description: A new immutable Project WorkCodeSet revision was approved.}
+        "401": {description: Service claim is missing or invalid.}
+        "403": {description: Fresh OA authority or Project owner/manager membership is denied.}
+        "404": {description: Project is absent from the admitted tenant scope.}
+        "409": {description: "Catalog, mandatory-code, identity, or revision semantics conflict."}
+        "422": {description: Command shape or canonical payload hash is invalid.}
+        "503": {description: OA authorization or EOS persistence is unavailable.}
+  /internal/v2/projects/{project_id}/work-code-set:
+    get:
+      operationId: PROJECT.WORK_CODE_SET.GET
+      tags: [Project]
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes: [service:call]
+      x-nex-business-scope: project:work-code:read
+      x-nex-side-effect-free: true
+      parameters:
+        - name: project_id
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+        - name: X-NeX-Tenant-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+        - name: X-NeX-Subject-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+        - name: effective_on
+          in: query
+          required: false
+          schema: {type: string, format: date}
+      responses:
+        "200":
+          description: Latest effective immutable Project WorkCodeSet revision.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ProjectWorkCodeSet"}
+        "401": {description: Service claim is missing or invalid.}
+        "403": {description: Fresh OA authority or active Project membership is denied.}
+        "404": {description: No approved WorkCodeSet is effective.}
+        "422": {description: "Tenant, subject, Project, or date is invalid."}
+        "503": {description: OA authorization or EOS persistence is unavailable.}
+  /internal/v2/projects/{project_id}/business-readiness:
+    get:
+      operationId: PROJECT.BUSINESS_READINESS.GET
+      tags: [Project]
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes: [service:call]
+      x-nex-business-scope: project:work-code:read
+      x-nex-side-effect-free: true
+      parameters:
+        - name: project_id
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+        - name: X-NeX-Tenant-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+        - name: X-NeX-Subject-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+        - name: effective_on
+          in: query
+          required: false
+          schema: {type: string, format: date}
+      responses:
+        "200":
+          description: BusinessReady projection independent of technical Project ACTIVE status.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ProjectBusinessReadiness"}
+        "401": {description: Service claim is missing or invalid.}
+        "403": {description: Fresh OA authority or active Project membership is denied.}
+        "404": {description: Project is absent from the admitted tenant scope.}
+        "422": {description: "Tenant, subject, Project, or date is invalid."}
+        "503": {description: OA authorization or EOS persistence is unavailable.}
+  /internal/v2/projects/{project_id}/work-assignments:assign:
+    post:
+      operationId: PROJECT.WORK_ASSIGNMENT.ASSIGN
+      tags: [Project]
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes: [service:call]
+      x-nex-business-scope: project:work-assignment:manage
+      x-nex-route-class: WRITE
+      parameters:
+        - name: project_id
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/ProjectWorkAssignmentCommand"}
+      responses:
+        "200": {description: Exact BusinessOperation replay returned the immutable assignment.}
+        "201": {description: A new immutable Project WorkAssignment was admitted.}
+        "401": {description: Service claim is missing or invalid.}
+        "403": {description: "Fresh OA scope, Project role, or performer authority is denied."}
+        "404": {description: Project is absent from the tenant scope.}
+        "409": {description: "Work-set, identity, or assignment period semantics conflict."}
+        "422": {description: "Command, payload hash, grade/Man-Day, or privacy contract is invalid."}
+        "503": {description: OA authorization or EOS persistence is unavailable.}
+  /internal/v2/projects/{project_id}/work-assignments:
+    get:
+      operationId: PROJECT.WORK_ASSIGNMENT.LIST
+      tags: [Project]
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes: [service:call]
+      x-nex-business-scope: project:work-assignment:read
+      x-nex-side-effect-free: true
+      parameters:
+        - name: project_id
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+        - name: X-NeX-Tenant-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+        - name: X-NeX-Subject-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+        - name: effective_on
+          in: query
+          required: false
+          schema: {type: string, format: date}
+        - name: work_code_id
+          in: query
+          required: false
+          schema: {type: string, pattern: "^FL[0-9]{7}$"}
+      responses:
+        "200":
+          description: Grade-based planning assignments with private payroll excluded.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ProjectWorkAssignmentCollection"}
+        "401": {description: Service claim is missing or invalid.}
+        "403": {description: Fresh OA read authority or active Project membership is denied.}
+        "422": {description: "Tenant, Project, subject, date, or work code is invalid."}
+        "503": {description: OA authorization or EOS persistence is unavailable.}
+  /internal/v2/finance/account-catalog:
+    get:
+      operationId: FINANCE.ACCOUNT.CATALOG_GET
+      tags: [Finance]
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes: [service:call]
+      x-nex-business-scope: finance:account:read
+      x-nex-side-effect-free: true
+      parameters:
+        - name: company_id
+          in: query
+          required: true
+          schema: {type: string, format: uuid}
+        - name: effective_on
+          in: query
+          required: true
+          schema: {type: string, format: date}
+        - name: X-NeX-Tenant-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+        - name: X-NeX-Subject-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+      responses:
+        "200":
+          description: Effective approved account catalog and PostingRule projection.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccountCatalogProjection"
+        "401":
+          description: Service claim is missing or invalid.
+        "403":
+          description: Fresh OA account-read authority is denied.
+        "404":
+          description: No approved catalog is effective for the company.
+        "409":
+          description: Effective release or PostingRule state is ambiguous or incomplete.
+        "422":
+          description: Tenant, subject, company, or date is invalid.
+        "503":
+          description: OA authorization or EOS persistence is unavailable.
+  /internal/v2/finance/accounts/approved:
+    post:
+      operationId: FINANCE.ACCOUNT.CREATE_APPROVED
+      tags: [Finance]
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes: [service:call]
+      x-nex-business-scope: finance:account:manage
+      x-nex-work-code: FL0004011
+      x-nex-route-class: WRITE
+      parameters:
+        - name: X-NeX-Tenant-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+        - name: X-NeX-Subject-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ApprovedAccountCreateCommand"
+      responses:
+        "201":
+          description: Approved Account and company policy committed or replayed exactly.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApprovedAccountCreateResult"
+        "401":
+          description: Service claim is missing or invalid.
+        "403":
+          description: Service trust or fresh OA account-manage authority is denied.
+        "404":
+          description: LegalEntity, catalog release, or PostingRule is absent.
+        "409":
+          description: Identity, policy period, parent, or release semantics conflict.
+        "422":
+          description: Account, policy, proof, currency, or effective date is invalid.
+        "503":
+          description: OA authorization or EOS persistence is unavailable.
+  /internal/v2/finance/fx-rate-policies/approved:
+    post:
+      operationId: FINANCE.FX_POLICY.CREATE_APPROVED
+      tags: [Finance]
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes: [service:call]
+      x-nex-business-scope: finance:fx:publish
+      x-nex-route-class: WRITE
+      parameters:
+        - name: X-NeX-Tenant-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+        - name: X-NeX-Subject-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FxRatePolicyApprovedCommand"
+      responses:
+        "201": {description: Approved FX policy committed.}
+        "401": {description: Service claim is missing or invalid.}
+        "403": {description: Fresh FX publication authority is denied.}
+        "404": {description: Tenant LegalEntity is absent.}
+        "409": {description: "Policy identity or effective period conflicts."}
+        "422": {description: "Policy semantics, proof, or policy hash is invalid."}
+        "503": {description: OA authorization or EOS persistence is unavailable.}
+  /internal/v2/finance/approved-documents/{envelope_id}:
+    get:
+      operationId: BUSINESS.DOCUMENT_APPROVED.GET
+      tags: [Finance]
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes: [service:call]
+      x-nex-business-scope: finance:document:read
+      x-nex-side-effect-free: true
+      parameters:
+        - name: envelope_id
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+        - name: X-NeX-Tenant-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+        - name: X-NeX-Subject-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+      responses:
+        "200":
+          description: Immutable approved document revision and exact final proof binding.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ApprovedDocumentEnvelope"}
+        "401": {description: Service claim is missing or invalid.}
+        "403": {description: Fresh OA finance document read authority is denied.}
+        "404": {description: Envelope is absent from the admitted tenant scope.}
+        "422": {description: "Tenant, subject, or envelope identity is invalid."}
+        "503": {description: OA authorization or EOS persistence is unavailable.}
+  /internal/v2/finance/accounting-approval-cases:
+    post:
+      operationId: FINANCE.ACCOUNTING_APPROVAL.REQUEST
+      description: >-
+        Creates only a company, Project, or Project-set scoped Human approval
+        request. DOCUMENT_SIGNOFF persists its immutable materialization context
+        before publication; ACCOUNTING_POSTING persists its accounting review.
+        The subsequent WC decision remains a separate operation.
+      tags: [Finance]
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes: [service:call]
+      x-nex-business-scope: finance:journal:request-approval
+      x-nex-route-class: WRITE
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ScopedApprovalRequestCommand"
+      responses:
+        "201":
+          description: Scoped approval case committed and WC work item published.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScopedApprovalRequestReceipt"
+        "200":
+          description: Exact idempotent replay returned the existing case and work item.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScopedApprovalRequestReceipt"
+        "401": {description: Service claim is missing or invalid.}
+        "403": {description: Service trust or fresh OA request authority is denied.}
+        "404": {description: Company or approval policy is absent.}
+        "409": {description: "Company, Project set, policy, or replay semantics conflict."}
+        "422": {description: "Request shape, scope, or canonical hash is invalid."}
+        "503": {description: "OA, WC, or EOS persistence is unavailable."}
+  /internal/v2/finance/fx-rate-batches:
+    post:
+      operationId: FINANCE.FX_RATE.IMPORT
+      description: >-
+        Admits one tenant-neutral market observation per provider source identity,
+        then records an immutable tenant/company/policy adoption. Exact source
+        observations are shared across tenants while accounting authority and
+        resolution remain tenant scoped.
+      tags: [Finance]
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes: [service:call]
+      x-nex-business-scope: finance:fx:publish
+      x-nex-route-class: WRITE
+      parameters:
+        - name: X-NeX-Tenant-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+        - name: X-NeX-Subject-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FxRateBatchImportCommand"
+      responses:
+        "201": {description: Global market observations admitted and tenant snapshots adopted.}
+        "401": {description: Service claim is missing or invalid.}
+        "403": {description: Fresh FX publication authority is denied.}
+        "404": {description: Approved FX policy is absent.}
+        "409": {description: "Source lineage, policy, or publication semantics conflict."}
+        "422": {description: "Snapshot provenance or rate semantics is invalid."}
+        "503": {description: OA authorization or EOS persistence is unavailable.}
+  /internal/v2/finance/fx-rates:resolve:
+    get:
+      operationId: FINANCE.FX_RATE.RESOLVE
+      tags: [Finance]
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes: [service:call]
+      x-nex-business-scope: finance:fx:read
+      x-nex-side-effect-free: true
+      parameters:
+        - name: company_id
+          in: query
+          required: true
+          schema: {type: string, format: uuid}
+        - name: purpose
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [TRANSACTION_SPOT, MONETARY_CLOSE, SETTLEMENT_REFERENCE, TAX_VALUATION]
+        - name: base_currency
+          in: query
+          required: true
+          schema: {type: string, pattern: "^[A-Z]{3}$"}
+        - name: quote_currency
+          in: query
+          required: true
+          schema: {type: string, pattern: "^[A-Z]{3}$"}
+        - name: desired_rate_date
+          in: query
+          required: true
+          schema: {type: string, format: date}
+        - name: as_of
+          in: query
+          required: false
+          schema: {type: string, format: date-time}
+        - name: X-NeX-Tenant-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+        - name: X-NeX-Subject-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+      responses:
+        "200": {description: Deterministic approved FX RateSnapshot resolution.}
+        "401": {description: Service claim is missing or invalid.}
+        "403": {description: Fresh FX read authority is denied.}
+        "404": {description: No eligible approved rate is available.}
+        "409": {description: More than one policy is effective.}
+        "422": {description: "Currency, purpose, date, or as-of value is invalid."}
+        "503": {description: OA authorization or EOS persistence is unavailable.}
+  /internal/v2/finance/fx-rate-snapshots:
+    get:
+      operationId: FINANCE.FX_RATE.HISTORY
+      tags: [Finance]
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes: [service:call]
+      x-nex-business-scope: finance:fx:read
+      x-nex-side-effect-free: true
+      parameters:
+        - name: company_id
+          in: query
+          required: true
+          schema: {type: string, format: uuid}
+        - name: purpose
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [TRANSACTION_SPOT, MONETARY_CLOSE, SETTLEMENT_REFERENCE, TAX_VALUATION]
+        - name: base_currency
+          in: query
+          required: true
+          schema: {type: string, pattern: "^[A-Z]{3}$"}
+        - name: quote_currency
+          in: query
+          required: true
+          schema: {type: string, pattern: "^[A-Z]{3}$"}
+        - name: date_from
+          in: query
+          required: true
+          schema: {type: string, format: date}
+        - name: date_to
+          in: query
+          required: true
+          schema: {type: string, format: date}
+        - name: limit
+          in: query
+          required: false
+          schema: {type: integer, minimum: 1, maximum: 500, default: 200}
+        - name: X-NeX-Tenant-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+        - name: X-NeX-Subject-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+      responses:
+        "200": {description: Ordered immutable FX RateSnapshot history.}
+        "401": {description: Service claim is missing or invalid.}
+        "403": {description: Fresh FX read authority is denied.}
+        "422": {description: "Currency, purpose, date range, or limit is invalid."}
+        "503": {description: OA authorization or EOS persistence is unavailable.}
+  /internal/v2/finance/coa/releases/{definition_release_id}/publish:
+    post:
+      operationId: FINANCE.COA.PUBLISH_APPROVED
+      tags: [Finance]
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes: [service:call]
+      x-nex-business-scope: finance:catalog:publish
+      x-nex-route-class: WRITE
+      parameters:
+        - name: definition_release_id
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+        - name: X-NeX-Tenant-Id
+          in: header
+          required: true
+          description: Real OA tenant of the Product publisher; never a COA owner.
+          schema: {type: string, minLength: 1, maxLength: 128}
+        - name: X-NeX-Subject-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CoaPublishApprovedCommand"
+      responses:
+        "200": {description: Exact idempotent publication replay.}
+        "201": {description: Approved GLOBAL release published atomically.}
+        "401": {description: Service claim is missing or invalid.}
+        "403": {description: Fresh Product publication authority is denied.}
+        "404": {description: COA definition release is absent.}
+        "409": {description: "Approval, hash, identity, or release state conflicts."}
+        "422": {description: Publication command is invalid.}
+        "503": {description: "OA, source admission, or EOS persistence is unavailable."}
+  /internal/v2/finance/coa/adoptions:
+    post:
+      operationId: FINANCE.COA.ADOPT_APPROVED
+      tags: [Finance]
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes: [service:call]
+      x-nex-business-scope: finance:account:manage
+      x-nex-route-class: WRITE
+      parameters:
+        - name: X-NeX-Tenant-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+        - name: X-NeX-Subject-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CoaAdoptApprovedCommand"
+      responses:
+        "200": {description: Exact idempotent company-adoption replay.}
+        "201": {description: Company adoption and Account bindings committed atomically.}
+        "401": {description: Service claim is missing or invalid.}
+        "403": {description: Fresh tenant account-management authority is denied.}
+        "404": {description: "Company, release, Account, or entry is absent."}
+        "409": {description: "Release, policy, PostingRule, period, or binding conflicts."}
+        "422": {description: Adoption command or approval proof is invalid.}
+        "503": {description: OA authorization or EOS persistence is unavailable.}
+  /internal/v2/finance/coa/extensions/{definition_release_id}/publish:
+    post:
+      operationId: FINANCE.COA.EXTENSION_PUBLISH_APPROVED
+      tags: [Finance]
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes: [service:call]
+      x-nex-business-scope: finance:account:manage
+      x-nex-work-code: FL0004011
+      x-nex-route-class: WRITE
+      parameters:
+        - name: definition_release_id
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+        - name: X-NeX-Tenant-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+        - name: X-NeX-Subject-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CoaPublishApprovedCommand"
+      responses:
+        "200": {description: Exact idempotent tenant extension replay.}
+        "201": {description: Approved tenant extension published atomically.}
+        "401": {description: Service claim is missing or invalid.}
+        "403": {description: Tenant authority or ownership is denied.}
+        "404": {description: Extension or GLOBAL base release is absent.}
+        "409": {description: "Parent, namespace, legacy code, or release conflicts."}
+        "422": {description: Extension publication command is invalid.}
+        "503": {description: OA authorization or EOS persistence is unavailable.}
+  /internal/v2/finance/accounts/resolve-semantic:
+    get:
+      operationId: FINANCE.COA.RESOLVE_SEMANTIC
+      tags: [Finance]
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes: [service:call]
+      x-nex-business-scope: finance:account:read
+      parameters:
+        - name: company_id
+          in: query
+          required: true
+          schema: {type: string, format: uuid}
+        - name: semantic_key
+          in: query
+          required: true
+          schema: {type: string, pattern: "^MB-COA-[A-Z0-9]+(-[A-Z0-9]+)*$"}
+        - name: effective_on
+          in: query
+          required: true
+          schema: {type: string, format: date}
+        - name: currency
+          in: query
+          required: true
+          schema: {type: string, pattern: "^[A-Z]{3}$"}
+        - name: X-NeX-Tenant-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+        - name: X-NeX-Subject-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+      responses:
+        "200": {description: Deterministic company-effective Account resolution.}
+        "401": {description: Service claim is missing or invalid.}
+        "403": {description: Fresh account-read authority is denied.}
+        "404": {description: No eligible Account matches the semantic key.}
+        "409": {description: More than one effective Account is eligible.}
+        "422": {description: "Semantic key, company, date, or currency is invalid."}
+        "503": {description: OA authorization or EOS persistence is unavailable.}
+  /internal/v2/finance/coa/releases/diff:
+    get:
+      operationId: FINANCE.COA.RELEASE_DIFF_PREVIEW
+      tags: [Finance]
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes: [service:call]
+      x-nex-business-scope: finance:catalog:publish
+      x-nex-side-effect-free: true
+      parameters:
+        - name: base_release_id
+          in: query
+          required: true
+          schema: {type: string, format: uuid}
+        - name: target_release_id
+          in: query
+          required: true
+          schema: {type: string, format: uuid}
+        - name: X-NeX-Tenant-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+        - name: X-NeX-Subject-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+      responses:
+        "200": {description: Deterministic source-backed release diff preview.}
+        "401": {description: Service claim is missing or invalid.}
+        "403": {description: Fresh catalog-publication authority is denied.}
+        "404": {description: Base or target release was not found.}
+        "409": {description: "Release scope, profile, or effective order conflicts."}
+        "422": {description: Release identity is invalid.}
+        "503": {description: "OA authorization or EOS persistence is unavailable."}
+  /internal/v2/finance/periods/{period_id}:
+    get:
+      operationId: FINANCE.PERIOD.GET
+      tags: [Finance]
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes: [service:call]
+      x-nex-business-scope: finance:period:read
+      x-nex-side-effect-free: true
+      parameters:
+        - name: period_id
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+        - name: company_id
+          in: query
+          required: true
+          schema: {type: string, format: uuid}
+        - name: X-NeX-Tenant-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+        - name: X-NeX-Subject-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+      responses:
+        "200": {description: Tenant/company-scoped AccountingPeriod state and version.}
+        "401": {description: Service claim is missing or invalid.}
+        "403": {description: Fresh period-read authority is denied.}
+        "404": {description: AccountingPeriod was not found.}
+        "422": {description: "Period, company, or caller identity is invalid."}
+        "503": {description: OA authorization or EOS persistence is unavailable.}
+  /internal/v2/finance/periods/{period_id}:close:
+    post:
+      operationId: FINANCE.PERIOD.CLOSE
+      tags: [Finance]
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes: [service:call]
+      x-nex-business-scope: finance:period:close
+      x-nex-route-class: WRITE
+      parameters:
+        - name: period_id
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+        - name: X-NeX-Tenant-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+        - name: X-NeX-Subject-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [company_id, expected_version]
+              properties:
+                company_id: {type: string, format: uuid}
+                expected_version: {type: integer, minimum: 1}
+                close_proof_ref:
+                  {type: string, pattern: "^sha256:[0-9a-f]{64}$"}
+                ledger_cutoff_watermark:
+                  {type: string, minLength: 1, maxLength: 128}
+              additionalProperties: false
+      responses:
+        "200": {description: AccountingPeriod advanced or replayed at CLOSING/CLOSED.}
+        "401": {description: Service claim is missing or invalid.}
+        "403": {description: Fresh period-close authority is denied.}
+        "404": {description: AccountingPeriod was not found.}
+        "409": {description: Version or OPEN/CLOSING/CLOSED transition conflicts.}
+        "422": {description: Close evidence or identity is invalid.}
+        "503": {description: OA authorization or EOS persistence is unavailable.}
+  /internal/v2/finance/coa/operations:
+    get:
+      operationId: FINANCE.COA.OPERATIONS_SNAPSHOT
+      tags: [Finance]
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes: [service:call]
+      x-nex-business-scope: finance:catalog:publish
+      x-nex-side-effect-free: true
+      parameters:
+        - name: X-NeX-Tenant-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+        - name: X-NeX-Subject-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+      responses:
+        "200": {description: Metadata-only COA release and adoption snapshot.}
+        "401": {description: Service claim is missing or invalid.}
+        "403": {description: Fresh catalog-publication authority is denied.}
+        "422": {description: Administrative identity is invalid.}
+        "503": {description: OA authorization or EOS persistence is unavailable.}
+  /internal/v2/finance/reporting-map:
+    get:
+      operationId: FINANCE.COA.REPORTING_MAP_GET
+      tags: [Finance]
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes: [service:call]
+      x-nex-business-scope: finance:report:read
+      parameters:
+        - name: mapping_release_id
+          in: query
+          required: true
+          schema: {type: string, format: uuid}
+        - name: entry_id
+          in: query
+          required: true
+          schema: {type: string, format: uuid}
+        - name: effective_on
+          in: query
+          required: true
+          schema: {type: string, format: date}
+        - name: regulated_export
+          in: query
+          required: false
+          schema: {type: boolean, default: false}
+        - name: X-NeX-Tenant-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+        - name: X-NeX-Subject-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+      responses:
+        "200": {description: Version-pinned reporting map and export eligibility.}
+        "401": {description: Service claim is missing or invalid.}
+        "403": {description: Fresh reporting-read authority is denied.}
+        "404": {description: Effective release or mapped entry was not found.}
+        "409": {description: Required regulated reporting mapping is pending.}
+        "422": {description: Reporting map query is invalid.}
+        "503": {description: OA authorization or persistence is unavailable.}
+  /internal/v2/finance/voucher-candidates:
+    post:
+      operationId: FINANCE.VOUCHER_CANDIDATE.CREATE_V2
+      tags: [Finance]
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes: [service:call]
+      x-nex-business-scope: finance:voucher-candidate:create
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateVoucherCandidateCommand"
+      responses:
+        "200":
+          description: Idempotent replay of an existing VoucherCandidate revision.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateVoucherCandidateResult"
+        "201":
+          description: Proof-bound immutable VoucherCandidate revision committed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateVoucherCandidateResult"
+        "401": {description: Service claim is missing or invalid.}
+        "403": {description: Fresh OA candidate-create authority is denied.}
+        "409": {description: Idempotency identity conflicts with prior semantics.}
+        "422": {description: "Proof, Project, hash, or Candidate semantics are invalid."}
+        "503": {description: OA authorization or EOS persistence is unavailable.}
+  /internal/v2/finance/voucher-candidates/{candidate_id}:
+    get:
+      operationId: FINANCE.VOUCHER_CANDIDATE.GET_V2
+      tags: [Finance]
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes: [service:call]
+      x-nex-side-effect-free: true
+      parameters:
+        - name: candidate_id
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+        - name: X-NeX-Tenant-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+      responses:
+        "200": {description: Current immutable VoucherCandidate revision and lines.}
+        "401": {description: Service claim is missing or invalid.}
+        "404": {description: Candidate was not found in tenant scope.}
+        "422": {description: Candidate or tenant identity is invalid.}
+        "503": {description: EOS query persistence is unavailable.}
+  /internal/v2/finance/voucher-candidates/{candidate_id}/revisions:
+    post:
+      operationId: FINANCE.VOUCHER_CANDIDATE.REVISE
+      tags: [Finance]
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes: [service:call]
+      x-nex-business-scope: finance:voucher-candidate:create
+      parameters:
+        - name: candidate_id
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReviseVoucherCandidateCommand"
+      responses:
+        "200":
+          description: Idempotent replay of an existing corrected revision.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReviseVoucherCandidateResult"
+        "201":
+          description: Corrected immutable revision appended and Candidate returned to DRAFT.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReviseVoucherCandidateResult"
+        "401": {description: Service claim is missing or invalid.}
+        "403": {description: Fresh OA Project and candidate-create authority is denied.}
+        "404": {description: Candidate was not found in tenant scope.}
+        "409": {description: "Candidate state, revision, return event, or idempotency semantics conflict."}
+        "422": {description: "Revision command, payload hash, or replacement lines are invalid."}
+        "503": {description: OA authorization or EOS persistence is unavailable.}
+  /internal/v2/finance/voucher-candidates/{candidate_id}/validation:
+    post:
+      operationId: FINANCE.VOUCHER_CANDIDATE.VALIDATE
+      tags: [Finance]
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes: [service:call]
+      x-nex-side-effect-free: true
+      parameters:
+        - name: candidate_id
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ValidateVoucherCandidateRequest"
+      responses:
+        "200":
+          description: Hash-bound accounting, FX, period, and balance validation receipt.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VoucherCandidateValidation"
+        "401": {description: Service claim is missing or invalid.}
+        "404": {description: Candidate was not found in tenant scope.}
+        "409": {description: Candidate revision or authoritative accounting input rejected validation.}
+        "422": {description: Validation request is malformed.}
+        "503": {description: Authoritative validation dependency is unavailable.}
+  /internal/v2/finance/voucher-candidates/{candidate_id}/posting-admission:
+    post:
+      operationId: FINANCE.VOUCHER.APPROVE_AND_POST.ADMISSION
+      tags: [Finance]
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes: [service:call]
+      x-nex-business-scope: finance:journal:approve
+      x-nex-side-effect-free: true
+      parameters:
+        - name: candidate_id
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AccountingPostingAdmissionRequest"
+      responses:
+        "200":
+          description: Short-lived exact-proof and fresh-OA Posting admission receipt.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccountingPostingAdmission"
+        "401": {description: Service claim is missing or invalid.}
+        "403": {description: Human SoD or current OA/Project authority is denied.}
+        "409": {description: "Candidate, validation, proof, or OA freshness is stale."}
+        "422": {description: Exact ACCOUNTING_POSTING proof is missing or malformed.}
+        "503": {description: "OA, Project authorization, or EOS persistence is unavailable."}
+  /internal/v2/finance/voucher-candidates/{candidate_id}/posting:
+    post:
+      operationId: FINANCE.VOUCHER.APPROVE_AND_POST
+      tags: [Finance]
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes: [service:call]
+      x-nex-business-scope: finance:journal:approve
+      x-nex-side-effect-free: false
+      parameters:
+        - name: candidate_id
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/JournalPostCommand"
+      responses:
+        "201":
+          description: Candidate and all Posting records committed atomically.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JournalPostResult"
+        "200":
+          description: Exact idempotent replay of the committed Posting.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JournalPostResult"
+        "401": {description: Service claim is missing or invalid.}
+        "403": {description: Fresh OA or Project accounting authority is denied.}
+        "409": {description: "Candidate, proof, period, policy, FX, or idempotency state is stale."}
+        "422": {description: Posting command or payload hash is invalid.}
+        "503": {description: Authoritative dependency or atomic persistence is unavailable.}
+  /internal/v2/finance/voucher-candidates/{candidate_id}/review:
+    get:
+      operationId: FINANCE.VOUCHER_CANDIDATE.REVIEW_GET
+      tags: [Finance]
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes: [service:call]
+      x-nex-side-effect-free: true
+      parameters:
+        - name: candidate_id
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+        - name: X-NeX-Tenant-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+      responses:
+        "200":
+          description: Current Candidate review state and immutable transition timeline.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VoucherCandidateReview"
+        "401": {description: Service claim is missing or invalid.}
+        "404": {description: Candidate was not found in tenant scope.}
+        "422": {description: Candidate or tenant identity is invalid.}
+        "503": {description: Candidate review persistence is unavailable.}
+  /internal/v2/finance/voucher-candidates/{candidate_id}/review-invalidation:
+    post:
+      operationId: FINANCE.VOUCHER_CANDIDATE.INVALIDATE_REVIEW
+      tags: [Finance]
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes: [service:call]
+      parameters:
+        - name: candidate_id
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InvalidateVoucherCandidateReview"
+      responses:
+        "200":
+          description: Idempotent Candidate review invalidation transition.
+          content:
+            application/json:
+              schema: {type: object}
+        "401": {description: Service claim is missing or invalid.}
+        "409": {description: Candidate review CAS or immutable replay semantics conflict.}
+        "422": {description: Invalidation request is malformed.}
+        "503": {description: Candidate review persistence is unavailable.}
+  /internal/v2/finance/journals/{journal_id}:
+    get:
+      operationId: FINANCE.JOURNAL.GET
+      tags: [Finance]
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes: [service:call]
+      x-nex-business-scope: finance:report:read
+      x-nex-side-effect-free: true
+      parameters:
+        - name: journal_id
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+        - name: X-NeX-Tenant-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+        - name: X-NeX-Company-Id
+          in: header
+          required: true
+          schema: {type: string, format: uuid}
+        - name: X-NeX-Subject-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+        - name: X-Correlation-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 256}
+      responses:
+        "200":
+          description: Immutable PostedJournal, lines, and accounting acceptance.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PostedJournal"
+        "401": {description: Service claim is missing or invalid.}
+        "403": {description: Current OA or Project read authority is denied.}
+        "404": {description: PostedJournal was not found in tenant and company scope.}
+        "422": {description: Journal query identity is malformed.}
+        "503": {description: Authorization or Journal persistence is unavailable.}
+  /internal/v2/finance/journals/{journal_id}/lines/{journal_line_no}/cost-source-pool:
+    post:
+      operationId: FINANCE.COST_SOURCE_POOL.ADMIT
+      tags: [Finance]
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes: [service:call]
+      x-nex-business-scope: finance:cost-allocation:write
+      x-nex-side-effect-free: false
+      parameters:
+        - name: journal_id
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+        - name: journal_line_no
+          in: path
+          required: true
+          schema: {type: integer, minimum: 1}
+        - name: X-NeX-Tenant-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+        - name: X-NeX-Company-Id
+          in: header
+          required: true
+          schema: {type: string, format: uuid}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CostSourcePoolAdmission"
+      responses:
+        "201":
+          description: Eligible POSTED Journal component admitted once.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CostSourcePool"
+        "200":
+          description: Exact replay of an existing SourcePool admission.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CostSourcePool"
+        "401": {description: Service claim is missing or invalid.}
+        "404": {description: Journal line or effective binding was not found.}
+        "409": {description: "Source is ineligible, unverified, or conflicts with an existing pool."}
+        "422": {description: Admission identity or classification is malformed.}
+        "503": {description: Journal reconciliation or SourcePool persistence is unavailable.}
+  /internal/v2/finance/cost-source-pools/{pool_id}:
+    get:
+      operationId: FINANCE.COST_SOURCE_POOL.GET
+      tags: [Finance]
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes: [service:call]
+      x-nex-business-scope: finance:cost-allocation:read
+      x-nex-side-effect-free: true
+      parameters:
+        - name: pool_id
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+        - name: X-NeX-Tenant-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+        - name: X-NeX-Company-Id
+          in: header
+          required: true
+          schema: {type: string, format: uuid}
+      responses:
+        "200":
+          description: Exact immutable SourcePool projection.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CostSourcePool"
+        "401": {description: Service claim is missing or invalid.}
+        "404": {description: SourcePool was not found in tenant and company scope.}
+        "422": {description: Query identity is malformed.}
+        "503": {description: SourcePool persistence is unavailable.}
+  /internal/v2/finance/transaction-preparation-authority:resolve:
+    post:
+      operationId: FINANCE.TRANSACTION_PREPARATION_AUTHORITY.RESOLVE
+      tags: [Finance]
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes: [service:call]
+      x-nex-business-scope: finance:voucher-candidate:create
+      x-nex-side-effect-free: true
+      parameters:
+        - name: X-NeX-Tenant-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+        - name: X-NeX-Subject-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 256}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TransactionPreparationAuthorityResolve"
+      responses:
+        "200":
+          description: Exact EOS/OA authority projection for one admitted transaction context.
+          headers:
+            Cache-Control:
+              schema: {type: string, example: "no-store, max-age=0"}
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TransactionPreparationAuthorityResolution"
+        "401": {description: "Service claim is missing or invalid."}
+        "403": {description: "Fresh Project authority was denied."}
+        "404": {description: "Required company, Project, period, account, or policy authority was not found."}
+        "409": {description: "Authority is ambiguous, stale, inactive, cross-scope, or inconsistent."}
+        "422": {description: "Request schema, identity, or hash is malformed."}
+        "503": {description: "EOS persistence or fresh OA authority is unavailable."}
+  /internal/v2/finance/cost-allocation-plans:resolve:
+    post:
+      operationId: FINANCE.COST_ALLOCATION_PLAN.RESOLVE
+      tags: [Finance]
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes: [service:call]
+      x-nex-business-scope: finance:cost-allocation:read
+      x-nex-side-effect-free: true
+      parameters:
+        - name: X-NeX-Tenant-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+        - name: X-NeX-Company-Id
+          in: header
+          required: true
+          schema: {type: string, format: uuid}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CostAllocationPlanResolve"
+      responses:
+        "200":
+          description: The one approved allocation plan matching the exact semantic selector.
+          headers:
+            Cache-Control:
+              schema: {type: string, example: "no-store, max-age=0"}
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CostAllocationPlanResolution"
+        "400": {description: "Selector schema, identity, ratio, or effective date is malformed."}
+        "401": {description: Service claim is missing or invalid.}
+        "404": {description: No approved allocation plan matches the exact selector.}
+        "409": {description: More than one approved allocation plan matches the exact selector.}
+        "503": {description: Allocation plan persistence is unavailable or the bounded candidate set is exceeded.}
+  /internal/v2/finance/cost-allocation-plans/releases:
+    post:
+      operationId: FINANCE.COST_ALLOCATION_PLAN.RELEASE
+      tags: [Finance]
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes: [service:call]
+      x-nex-business-scope: finance:cost-allocation-plan:approve
+      x-nex-side-effect-free: false
+      parameters:
+        - name: X-NeX-Tenant-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+        - name: X-NeX-Company-Id
+          in: header
+          required: true
+          schema: {type: string, format: uuid}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CostAllocationPlanRelease"
+      responses:
+        "201":
+          description: Immutable allocation plan revision released after exact approval and fresh OA admission.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CostAllocationPlan"
+        "200": {description: Exact replay of an existing immutable plan revision.}
+        "401": {description: Service claim is missing or invalid.}
+        "403": {description: Current human plan authority is denied.}
+        "404": {description: "Approval, company, Project, or basis authority was not found."}
+        "409": {description: "Approval binding, revision, scope, or evidence conflicts."}
+        "422": {description: Release payload is malformed.}
+        "503": {description: OA authorization or allocation plan persistence is unavailable.}
+  /internal/v2/finance/cost-allocation-plans/{plan_id}/revisions/{plan_revision}:
+    get:
+      operationId: FINANCE.COST_ALLOCATION_PLAN.GET
+      tags: [Finance]
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes: [service:call]
+      x-nex-business-scope: finance:cost-allocation:read
+      x-nex-side-effect-free: true
+      parameters:
+        - name: plan_id
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+        - name: plan_revision
+          in: path
+          required: true
+          schema: {type: integer, minimum: 1}
+        - name: X-NeX-Tenant-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+        - name: X-NeX-Company-Id
+          in: header
+          required: true
+          schema: {type: string, format: uuid}
+      responses:
+        "200":
+          description: Exact immutable allocation plan revision.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CostAllocationPlan"
+        "401": {description: Service claim is missing or invalid.}
+        "404": {description: Allocation plan revision was not found.}
+        "422": {description: Query identity is malformed.}
+        "503": {description: Allocation plan persistence is unavailable.}
+  /internal/v2/finance/budgets:
+    post:
+      operationId: FINANCE.BUDGET.COMMIT
+      tags: [Finance]
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes: [service:call]
+      x-nex-business-scope: finance:budget:approve
+      x-nex-side-effect-free: false
+      parameters:
+        - name: X-NeX-Tenant-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+        - name: X-NeX-Company-Id
+          in: header
+          required: true
+          schema: {type: string, format: uuid}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {type: object, additionalProperties: true}
+      responses:
+        "201": {description: Approved immutable Budget revision committed.}
+        "200": {description: Exact idempotent replay of a Budget commit.}
+        "401": {description: Service claim is missing or invalid.}
+        "403": {description: Fresh Budget approval authority is denied.}
+        "404": {description: "Approval, LegalEntity, or Account was not found."}
+        "409": {description: "Approval binding, revision, currency, or immutable semantics conflict."}
+        "422": {description: Canonical Budget command is malformed.}
+        "503": {description: OA authorization or EOS persistence is unavailable.}
+  /internal/v2/finance/budgets/{budget_id}/versions/{budget_version}:
+    get:
+      operationId: FINANCE.BUDGET.GET
+      tags: [Finance]
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes: [service:call]
+      x-nex-business-scope: finance:budget:read
+      x-nex-side-effect-free: true
+      parameters:
+        - name: budget_id
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+        - name: budget_version
+          in: path
+          required: true
+          schema: {type: integer, minimum: 1}
+        - name: X-NeX-Tenant-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+        - name: X-NeX-Company-Id
+          in: header
+          required: true
+          schema: {type: string, format: uuid}
+      responses:
+        "200": {description: Exact immutable Budget revision.}
+        "401": {description: Service claim is missing or invalid.}
+        "404": {description: Budget revision was not found.}
+        "422": {description: Budget query identity is malformed.}
+        "503": {description: Budget persistence is unavailable.}
+  /internal/v2/finance/projects/{project_id}/pnl/{period_id}:
+    get:
+      operationId: FINANCE.PROJECT_PNL.GET
+      tags: [Finance, Project]
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes: [service:call]
+      x-nex-business-scope: project:pnl:read
+      x-nex-side-effect-free: true
+      x-nex-query-shape: PROJECT_PERIOD_LATEST_NO_FILTERS
+      x-nex-payroll-privacy-policy: project-pnl-privacy.v1
+      parameters:
+        - name: project_id
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+        - name: period_id
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+        - name: projection_version
+          in: query
+          required: false
+          description: >-
+            Immutable version selector. Payroll-sensitive projections deny this
+            selector to prevent historical subtraction attacks.
+          schema: {type: integer, minimum: 1}
+        - name: X-NeX-Tenant-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+        - name: X-NeX-Company-Id
+          in: header
+          required: true
+          schema: {type: string, format: uuid}
+        - name: X-NeX-Subject-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+        - name: X-NeX-Correlation-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+      responses:
+        "200":
+          description: Latest or version-specific immutable Project P&L projection.
+          headers:
+            Cache-Control:
+              schema: {type: string, const: "no-store, max-age=0"}
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectPnlProjection"
+        "401": {description: Service claim is missing or invalid.}
+        "403":
+          description: >-
+            Fresh OA Project P&L authority is denied, the payroll cell is below
+            its admitted population floor, or the difference-attack guard blocks
+            a changed payroll fingerprint.
+        "404": {description: Projection is absent from the authorized scope.}
+        "422": {description: Query identity or projection version is malformed.}
+        "503": {description: OA Project decision or EOS persistence is unavailable.}
+  /internal/v2/finance/project-budget-bindings:
+    post:
+      operationId: PROJECT.BUDGET_BINDING.COMMIT
+      tags: [Finance, Project]
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes: [service:call]
+      x-nex-business-scope: finance:budget:bind
+      x-nex-side-effect-free: false
+      parameters:
+        - name: X-NeX-Tenant-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+        - name: X-NeX-Company-Id
+          in: header
+          required: true
+          schema: {type: string, format: uuid}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {type: object, additionalProperties: true}
+      responses:
+        "201": {description: Approved Project-to-Budget binding committed without changing Budget authority.}
+        "200": {description: Exact idempotent replay of the binding commit.}
+        "401": {description: Service claim is missing or invalid.}
+        "403": {description: Fresh Project Budget binding authority is denied.}
+        "404": {description: "Approval, Project, Budget, or WorkCodeSet was not found."}
+        "409": {description: "Binding revision, Project scope, or allocation capacity conflicts."}
+        "422": {description: Canonical Project Budget binding command is malformed.}
+        "503": {description: OA authorization or EOS persistence is unavailable.}
+  /internal/v2/projects/{project_id}/budget-bindings:
+    get:
+      operationId: PROJECT.BUDGET_BINDING.LIST
+      tags: [Project, Finance]
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes: [service:call]
+      x-nex-business-scope: project:budget:read
+      x-nex-side-effect-free: true
+      parameters:
+        - name: project_id
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+        - name: X-NeX-Tenant-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+        - name: X-NeX-Company-Id
+          in: header
+          required: true
+          schema: {type: string, format: uuid}
+      responses:
+        "200": {description: Read-only D12 Project Budget binding revisions.}
+        "401": {description: Service claim is missing or invalid.}
+        "422": {description: Project binding query identity is malformed.}
+        "503": {description: Project Budget binding persistence is unavailable.}
+  /internal/v2/finance/cost-allocation-batches:
+    post:
+      operationId: FINANCE.COST_ALLOCATION.RUN
+      tags: [Finance]
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes: [service:call]
+      x-nex-business-scope: finance:allocation:execute
+      x-nex-side-effect-free: false
+      parameters:
+        - name: X-NeX-Tenant-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+        - name: X-NeX-Company-Id
+          in: header
+          required: true
+          schema: {type: string, format: uuid}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CostAllocationRun"
+      responses:
+        "201":
+          description: Deterministic allocation batch committed atomically.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CostAllocationBatch"
+        "200":
+          description: Exact replay of the committed allocation batch.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CostAllocationBatch"
+        "401": {description: Service claim is missing or invalid.}
+        "404": {description: "Period, approved plan, or SourcePool was not found."}
+        "409": {description: "Allocation identity, state, or source semantics conflict."}
+        "422": {description: Command or E=D+A+U conservation is invalid.}
+        "503": {description: Allocation transaction persistence is unavailable.}
+  /internal/v2/finance/cost-allocation-batches/{batch_id}/verification:
+    get:
+      operationId: FINANCE.COST_ALLOCATION.VERIFY
+      tags: [Finance]
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes: [service:call]
+      x-nex-business-scope: finance:allocation:verify
+      x-nex-side-effect-free: true
+      parameters:
+        - name: batch_id
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+        - name: X-NeX-Tenant-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+        - name: X-NeX-Company-Id
+          in: header
+          required: true
+          schema: {type: string, format: uuid}
+      responses:
+        "200":
+          description: Persisted allocation lineage and conservation verification.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CostAllocationReconciliation"
+        "401": {description: Service claim is missing or invalid.}
+        "404": {description: Cost Allocation batch or BusinessOperation was not found.}
+        "409": {description: BusinessOperation is not a Cost Allocation RUN.}
+        "422": {description: Verification identity is malformed.}
+        "503": {description: Allocation reconciliation persistence is unavailable.}
+  /internal/v2/finance/cost-allocation-batches/{batch_id}:refresh-project-pnl:
+    post:
+      operationId: FINANCE.PROJECT_PNL.REFRESH_FROM_ALLOCATION
+      tags: [Finance, Project]
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes: [service:call]
+      x-nex-business-scope: finance:project-pnl:refresh
+      x-nex-side-effect-free: false
+      x-nex-request-selector: BATCH_ID_ONLY
+      parameters:
+        - name: batch_id
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+        - name: X-NeX-Tenant-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+        - name: X-NeX-Company-Id
+          in: header
+          required: true
+          schema: {type: string, format: uuid}
+        - name: X-NeX-Correlation-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+      responses:
+        "201":
+          description: Immutable Project P&L projections created for the verified AllocationBatch.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectPnlRefreshFromAllocation"
+        "200":
+          description: Exact replay of the AllocationBatch-bound Project P&L refresh.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectPnlRefreshFromAllocation"
+        "400": {description: Request body or query parameters are not admitted.}
+        "401": {description: Service claim is missing or invalid.}
+        "404": {description: AllocationBatch is absent from tenant and company scope.}
+        "409": {description: "AllocationBatch is unverified, reversed, or has lineage drift."}
+        "422": {description: Refresh identity is malformed.}
+        "503": {description: Allocation verification or Project P&L persistence is unavailable.}
+  /internal/v2/finance/business-operations/{business_operation_id}/journal-status:
+    get:
+      operationId: FINANCE.JOURNAL.RECONCILE
+      tags: [Finance]
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes: [service:call]
+      x-nex-business-scope: finance:journal:reconcile
+      x-nex-side-effect-free: true
+      parameters:
+        - name: business_operation_id
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+        - name: X-NeX-Tenant-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+      responses:
+        "200":
+          description: Authoritative committed or not-committed Journal Posting state.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JournalReconciliation"
+        "202":
+          description: Commit state remains unknown and same-identity reconciliation is required.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JournalReconciliation"
+        "401": {description: Service claim is missing or invalid.}
+        "404": {description: BusinessOperation was not found in tenant scope.}
+        "409": {description: BusinessOperation is not a Journal Posting operation.}
+        "422": {description: Tenant or BusinessOperation identity is invalid.}
+        "503": {description: Persistence or committed Journal verification is unavailable.}
+  /internal/v2/finance/journals/{journal_id}/verification:
+    get:
+      operationId: FINANCE.JOURNAL.VERIFY
+      tags: [Finance]
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes: [service:call]
+      x-nex-business-scope: finance:report:read
+      x-nex-side-effect-free: true
+      parameters:
+        - name: journal_id
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+        - name: X-NeX-Tenant-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+        - name: X-NeX-Company-Id
+          in: header
+          required: true
+          schema: {type: string, format: uuid}
+        - name: X-NeX-Subject-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+        - name: X-Correlation-Id
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 256}
+      responses:
+        "200":
+          description: Recomputed immutable Journal verification receipt.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JournalVerification"
+        "401": {description: Service claim is missing or invalid.}
+        "403": {description: Current OA or Project read authority is denied.}
+        "404": {description: PostedJournal was not found in tenant and company scope.}
+        "422": {description: Journal verification identity is malformed.}
+        "503": {description: "Authorization, persistence, or immutable verification failed."}
   /internal/v1/finance/voucher-drafts:
     get:
       operationId: FINANCE.VOUCHER_DRAFT.LIST
@@ -495,7 +2532,174 @@ components:
     serviceBearer:
       type: http
       scheme: bearer
+  parameters:
+    TenantCodeHeader:
+      name: X-NeX-Tenant-Id
+      in: header
+      required: true
+      schema: {type: string, pattern: "^[A-Z0-9]{4}$"}
+    SubjectHeader:
+      name: X-NeX-Subject-Id
+      in: header
+      required: true
+      schema: {type: string, minLength: 1, maxLength: 128}
+    ProjectRequestCodePath:
+      name: project_request_code
+      in: path
+      required: true
+      schema: {type: string, pattern: "^[A-Z0-9]{4}R[0-9]{6}$"}
   schemas:
+    ProjectApplicationDraftCommand:
+      type: object
+      additionalProperties: false
+      required: [application_id, purpose_type, name, currency]
+      properties:
+        application_id: {type: string, format: uuid}
+        purpose_type: {type: string, enum: [D, M, S, O, I, G]}
+        name: {type: string, minLength: 1, maxLength: 256}
+        parent_project_id: {type: [string, "null"], format: uuid}
+        nvt_project_id: {type: [string, "null"], format: uuid}
+        company_id: {type: [string, "null"], format: uuid}
+        start_date: {type: [string, "null"], format: date}
+        end_date: {type: [string, "null"], format: date}
+        currency: {type: string, pattern: "^[A-Z]{3}$"}
+      oneOf:
+        - required: [parent_project_id]
+          properties:
+            nvt_project_id: {type: "null"}
+        - required: [nvt_project_id]
+          properties:
+            parent_project_id: {type: "null"}
+    ProjectApplicationRevisionCommand:
+      type: object
+      additionalProperties: false
+      required: [expected_version, purpose_type, name, currency]
+      properties:
+        expected_version: {type: integer, minimum: 1}
+        purpose_type: {type: string, enum: [D, M, S, O, I, G]}
+        name: {type: string, minLength: 1, maxLength: 256}
+        parent_project_id: {type: [string, "null"], format: uuid}
+        nvt_project_id: {type: [string, "null"], format: uuid}
+        company_id: {type: [string, "null"], format: uuid}
+        start_date: {type: [string, "null"], format: date}
+        end_date: {type: [string, "null"], format: date}
+        currency: {type: string, pattern: "^[A-Z]{3}$"}
+      oneOf:
+        - required: [parent_project_id]
+          properties:
+            nvt_project_id: {type: "null"}
+        - required: [nvt_project_id]
+          properties:
+            parent_project_id: {type: "null"}
+    ExpectedVersionCommand:
+      type: object
+      additionalProperties: false
+      required: [expected_version]
+      properties:
+        expected_version: {type: integer, minimum: 1}
+    ProjectApplicationApprovalCommand:
+      type: object
+      additionalProperties: false
+      required: [approval_policy_id, expected_version]
+      properties:
+        approval_policy_id: {type: string, format: uuid}
+        expected_version: {type: integer, minimum: 1}
+    ApprovedDocumentEnvelope:
+      type: object
+      additionalProperties: false
+      required:
+        - schema_version
+        - tenant_id
+        - envelope_id
+        - company_id
+        - approved_document_id
+        - document_revision
+        - document_type
+        - work_code
+        - document_content_hash
+        - attachment_manifest_hash
+        - business_approval_proof_id
+        - business_proof_hash
+        - approval_policy_id
+        - approval_policy_version
+        - approval_policy_hash
+        - scope_type
+        - project_set_hash
+        - allowed_project_ids
+        - approved_amount
+        - approved_currency
+        - remaining_amount
+        - tolerance_policy_hash
+        - valid_from
+        - valid_until
+        - state
+        - usable
+        - approved_at
+        - approved_by_principal_ref
+        - source_work_item_ref
+        - payload_hash
+        - created_business_operation_id
+        - created_at
+      properties:
+        schema_version:
+          type: string
+          enum: [eos_approved_document_envelope.v1, eos_approved_document_envelope.v2]
+        tenant_id: {type: string, minLength: 1, maxLength: 128}
+        envelope_id: {type: string, format: uuid}
+        company_id: {type: string, format: uuid}
+        approved_document_id: {type: string, minLength: 1, maxLength: 128}
+        document_revision: {type: integer, minimum: 1}
+        document_type: {type: string, minLength: 1, maxLength: 64}
+        work_code: {type: string, pattern: "^FL[0-9]{7}$"}
+        document_content_hash: {type: string, pattern: "^sha256:[0-9a-f]{64}$"}
+        attachment_manifest_hash: {type: string, pattern: "^sha256:[0-9a-f]{64}$"}
+        business_approval_proof_id: {type: string, format: uuid}
+        business_proof_hash: {type: string, pattern: "^sha256:[0-9a-f]{64}$"}
+        approval_policy_id: {type: string, format: uuid}
+        approval_policy_version: {type: integer, minimum: 1}
+        approval_policy_hash: {type: string, pattern: "^sha256:[0-9a-f]{64}$"}
+        scope_type: {type: string, enum: [COMPANY, PROJECT, PROJECT_SET]}
+        project_set_hash: {type: string, pattern: "^sha256:[0-9a-f]{64}$"}
+        allowed_project_ids:
+          type: array
+          uniqueItems: true
+          items: {type: string, format: uuid}
+        allowed_project_codes:
+          type: array
+          uniqueItems: true
+          items:
+            type: string
+            pattern: "^[A-Z0-9]{4}[DMSOIG][0-9]{6}$"
+        approved_amount: {type: string, pattern: "^[0-9]+(\\.[0-9]{1,4})?$"}
+        approved_currency: {type: string, pattern: "^[A-Z]{3}$"}
+        remaining_amount: {type: string, pattern: "^[0-9]+(\\.[0-9]{1,4})?$"}
+        tolerance_policy_hash:
+          type: [string, "null"]
+          pattern: "^sha256:[0-9a-f]{64}$"
+        valid_from: {type: string, format: date-time}
+        valid_until:
+          type: [string, "null"]
+          format: date-time
+        state: {type: string, enum: [ACTIVE, REVOKED, EXPIRED, SUPERSEDED]}
+        usable: {type: boolean}
+        approved_at: {type: string, format: date-time}
+        approved_by_principal_ref:
+          type: object
+          additionalProperties: false
+          required: [type, id]
+          properties:
+            type: {type: string, minLength: 1, maxLength: 32}
+            id: {type: string, minLength: 1, maxLength: 128}
+        source_work_item_ref: {type: string, minLength: 1, maxLength: 256}
+        payload_hash: {type: string, pattern: "^sha256:[0-9a-f]{64}$"}
+        created_business_operation_id: {type: string, format: uuid}
+        created_at: {type: string, format: date-time}
+      allOf:
+        - if:
+            properties:
+              schema_version: {const: eos_approved_document_envelope.v2}
+          then:
+            required: [allowed_project_codes]
     ApproverResolutionRequest:
       type: object
       x-nex-canonical-json-schema: schemas/service/nex_eos/approver_resolution_request.v1.schema.json
@@ -508,6 +2712,787 @@ components:
     CreateVoucherDraftResult:
       type: object
       x-nex-canonical-json-schema: schemas/service/nex_eos/create_voucher_draft_result.v1.schema.json
+    CreateVoucherCandidateCommand:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_eos/voucher_candidate_create.v2.schema.json
+    CreateVoucherCandidateResult:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_eos/voucher_candidate_create_result.v2.schema.json
+    ReviseVoucherCandidateCommand:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_eos/voucher_candidate_revise.v1.schema.json
+    ReviseVoucherCandidateResult:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_eos/voucher_candidate_revise_result.v1.schema.json
+    ValidateVoucherCandidateRequest:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_eos/voucher_candidate_validate.v1.schema.json
+    VoucherCandidateValidation:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_eos/voucher_candidate_validation.v1.schema.json
+    AccountingPostingAdmissionRequest:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_eos/accounting_posting_admission_request.v1.schema.json
+    AccountingPostingAdmission:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_eos/accounting_posting_admission.v1.schema.json
+    JournalPostCommand:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_eos/journal_post_command.v1.schema.json
+    JournalPostResult:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_eos/journal_post_result.v1.schema.json
+    JournalReconciliation:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_eos/journal_reconciliation.v1.schema.json
+    CostSourcePoolAdmission:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_eos/cost_source_pool_admit.v1.schema.json
+    CostSourcePool:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_eos/cost_source_pool.v1.schema.json
+    CostAllocationPlanRelease:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_eos/cost_allocation_plan_release.v1.schema.json
+    CostAllocationPlan:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_eos/cost_allocation_plan.v1.schema.json
+    CostAllocationPlanResolve:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_eos/cost_allocation_plan_resolve.v1.schema.json
+    CostAllocationPlanResolution:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_eos/cost_allocation_plan_resolution.v1.schema.json
+    TransactionPreparationAuthorityResolve:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_eos/transaction_preparation_authority_resolve.v1.schema.json
+    TransactionPreparationAuthorityResolution:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_eos/transaction_preparation_authority_resolution.v1.schema.json
+    CostAllocationRun:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_eos/cost_allocation_run.v1.schema.json
+    CostAllocationBatch:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_eos/cost_allocation_batch.v1.schema.json
+    CostAllocationReconciliation:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_eos/cost_allocation_reconciliation.v1.schema.json
+    ProjectPnlRefreshFromAllocation:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_eos/project_pnl_refresh_from_allocation.v1.schema.json
+    CostAllocationCommittedEvent:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_eos/cost_allocation_committed_event.v1.schema.json
+    JournalPostedEvent:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_eos/journal_posted_event.v1.schema.json
+    PostedJournal:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_eos/posted_journal.v1.schema.json
+    JournalVerification:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_eos/journal_verification.v1.schema.json
+    ProjectPnlProjection:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_eos/project_pnl_projection.v1.schema.json
+    VoucherCandidateReview:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_eos/voucher_candidate_review.v1.schema.json
+    InvalidateVoucherCandidateReview:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_eos/voucher_candidate_review_invalidate.v1.schema.json
+    LegalEntity:
+      type: object
+      additionalProperties: false
+      required:
+        - tenant_id
+        - company_id
+        - company_code
+        - name
+        - functional_currency
+        - presentation_currency
+        - business_timezone
+        - status
+        - effective_from
+        - version
+        - created_at
+        - updated_at
+      properties:
+        tenant_id: {type: string, minLength: 1, maxLength: 128}
+        company_id: {type: string, format: uuid}
+        company_code: {type: string, minLength: 1, maxLength: 64}
+        name: {type: string, minLength: 1, maxLength: 256}
+        functional_currency: {type: string, pattern: "^[A-Z]{3}$"}
+        presentation_currency: {type: string, pattern: "^[A-Z]{3}$"}
+        business_timezone: {type: string, minLength: 1, maxLength: 64}
+        status: {type: string, enum: [ACTIVE, INACTIVE]}
+        effective_from: {type: string, format: date}
+        version: {type: integer, minimum: 1}
+        created_at: {type: string, format: date-time}
+        updated_at: {type: string, format: date-time}
+    ProjectCompanyBindingCommand:
+      type: object
+      additionalProperties: false
+      required: [binding_id, company_id, valid_from, approved_proof_hash]
+      properties:
+        binding_id: {type: string, format: uuid}
+        company_id: {type: string, format: uuid}
+        valid_from: {type: string, format: date}
+        valid_until:
+          type: [string, "null"]
+          format: date
+        approved_proof_hash:
+          type: string
+          pattern: "^sha256:[0-9a-f]{64}$"
+    ProjectCompanyBinding:
+      type: object
+      additionalProperties: false
+      required:
+        - tenant_id
+        - binding_id
+        - project_id
+        - company_id
+        - valid_from
+        - approved_proof_hash
+        - state
+        - version
+        - created_at
+        - updated_at
+      properties:
+        tenant_id: {type: string, minLength: 1, maxLength: 128}
+        binding_id: {type: string, format: uuid}
+        project_id: {type: string, format: uuid}
+        company_id: {type: string, format: uuid}
+        valid_from: {type: string, format: date}
+        valid_until:
+          type: [string, "null"]
+          format: date
+        approved_proof_hash:
+          type: string
+          pattern: "^sha256:[0-9a-f]{64}$"
+        state: {type: string, enum: [APPROVED, REVOKED]}
+        version: {type: integer, minimum: 1}
+        created_at: {type: string, format: date-time}
+        updated_at: {type: string, format: date-time}
+    ProjectWorkCodeSetApprovalCommand:
+      type: object
+      additionalProperties: false
+      required:
+        - tenant_id
+        - business_operation_id
+        - idempotency_key
+        - payload_hash
+        - requester_subject_id
+        - work_set
+      properties:
+        tenant_id: {type: string, minLength: 1, maxLength: 128}
+        business_operation_id: {type: string, format: uuid}
+        idempotency_key: {type: string, minLength: 1, maxLength: 256}
+        payload_hash: {type: string, pattern: "^sha256:[0-9a-f]{64}$"}
+        requested_operation:
+          type: string
+          const: PROJECT.WORK_CODE_SET.APPROVE
+        requester_subject_id: {type: string, minLength: 1, maxLength: 128}
+        work_set:
+          $ref: "#/components/schemas/ProjectWorkCodeSetApproval"
+    ProjectWorkAssignmentCommand:
+      type: object
+      additionalProperties: false
+      required:
+        - tenant_id
+        - business_operation_id
+        - idempotency_key
+        - payload_hash
+        - requester_subject_id
+        - assignment
+      properties:
+        tenant_id: {type: string, minLength: 1, maxLength: 128}
+        business_operation_id: {type: string, format: uuid}
+        idempotency_key: {type: string, minLength: 1, maxLength: 256}
+        payload_hash: {type: string, pattern: "^sha256:[0-9a-f]{64}$"}
+        requested_operation:
+          type: string
+          const: PROJECT.WORK_ASSIGNMENT.ASSIGN
+        requester_subject_id: {type: string, minLength: 1, maxLength: 128}
+        assignment: {$ref: "#/components/schemas/ProjectWorkAssignmentInput"}
+    ProjectWorkAssignmentInput:
+      type: object
+      additionalProperties: false
+      required:
+        - assignment_id
+        - work_set_id
+        - work_set_revision
+        - work_code_id
+        - performer_kind
+        - subject_ref
+        - assignment_scope
+        - planned_man_days
+        - planned_grade_id
+        - grade_policy_ref
+        - grade_policy_hash
+        - valid_from
+        - valid_until
+        - approved_proof_hash
+      properties:
+        assignment_id: {type: string, format: uuid}
+        work_set_id: {type: string, format: uuid}
+        work_set_revision: {type: integer, minimum: 1}
+        work_code_id: {type: string, pattern: "^FL[0-9]{7}$"}
+        performer_kind: {type: string, enum: [HUMAN, AGENT]}
+        subject_ref: {type: string, minLength: 1, maxLength: 128}
+        assignment_scope: {type: string, enum: [EXECUTE, REVIEW, REPORT]}
+        planned_man_days:
+          type: string
+          pattern: "^[0-9]+(\\.[0-9]{1,4})?$"
+        planned_grade_id: {type: string, minLength: 1, maxLength: 64}
+        grade_policy_ref: {type: string, minLength: 1, maxLength: 256}
+        grade_policy_hash: {type: string, pattern: "^sha256:[0-9a-f]{64}$"}
+        valid_from: {type: string, format: date}
+        valid_until:
+          type: [string, "null"]
+          format: date
+        approved_proof_hash: {type: string, pattern: "^sha256:[0-9a-f]{64}$"}
+    ProjectWorkAssignment:
+      type: object
+      additionalProperties: false
+      required:
+        - tenant_id
+        - assignment_id
+        - project_id
+        - work_set_id
+        - work_set_revision
+        - work_code_id
+        - performer_kind
+        - subject_ref
+        - performer_authority_hash
+        - assignment_scope
+        - planned_man_days
+        - planned_grade_id
+        - grade_policy_ref
+        - grade_policy_hash
+        - valid_from
+        - valid_until
+        - approved_proof_hash
+        - approved_by_subject_id
+        - assignment_hash
+        - created_at
+      properties:
+        tenant_id: {type: string, minLength: 1, maxLength: 128}
+        assignment_id: {type: string, format: uuid}
+        project_id: {type: string, format: uuid}
+        work_set_id: {type: string, format: uuid}
+        work_set_revision: {type: integer, minimum: 1}
+        work_code_id: {type: string, pattern: "^FL[0-9]{7}$"}
+        performer_kind: {type: string, enum: [HUMAN, AGENT]}
+        subject_ref: {type: string, minLength: 1, maxLength: 128}
+        performer_authority_hash: {type: string, pattern: "^sha256:[0-9a-f]{64}$"}
+        assignment_scope: {type: string, enum: [EXECUTE, REVIEW, REPORT]}
+        planned_man_days:
+          type: string
+          pattern: "^[0-9]+(\\.[0-9]{1,4})?$"
+        planned_grade_id: {type: string, minLength: 1, maxLength: 64}
+        grade_policy_ref: {type: string, minLength: 1, maxLength: 256}
+        grade_policy_hash: {type: string, pattern: "^sha256:[0-9a-f]{64}$"}
+        valid_from: {type: string, format: date}
+        valid_until:
+          type: [string, "null"]
+          format: date
+        approved_proof_hash: {type: string, pattern: "^sha256:[0-9a-f]{64}$"}
+        approved_by_subject_id: {type: string, minLength: 1, maxLength: 128}
+        assignment_hash: {type: string, pattern: "^sha256:[0-9a-f]{64}$"}
+        created_at: {type: string, format: date-time}
+    ProjectWorkAssignmentCollection:
+      type: object
+      additionalProperties: false
+      required:
+        - tenant_id
+        - project_id
+        - effective_on
+        - work_code_id
+        - items
+        - count
+        - data_classification
+        - private_payroll_excluded
+      properties:
+        tenant_id: {type: string, minLength: 1, maxLength: 128}
+        project_id: {type: string, format: uuid}
+        effective_on:
+          type: [string, "null"]
+          format: date
+        work_code_id:
+          type: [string, "null"]
+          pattern: "^FL[0-9]{7}$"
+        items:
+          type: array
+          items: {$ref: "#/components/schemas/ProjectWorkAssignment"}
+        count: {type: integer, minimum: 0}
+        data_classification: {type: string, const: INTERNAL_PLANNING}
+        private_payroll_excluded: {type: boolean, const: true}
+    ProjectWorkCodeSetApproval:
+      type: object
+      additionalProperties: false
+      required:
+        - work_set_id
+        - revision
+        - catalog_id
+        - catalog_version
+        - catalog_digest
+        - template_ref
+        - template_version
+        - code_ids
+        - approved_proof_hash
+        - pm_subject_id
+        - pa_agent_id
+        - pa_identity_evidence_hash
+        - effective_from
+      properties:
+        work_set_id: {type: string, format: uuid}
+        revision: {type: integer, minimum: 1}
+        catalog_id: {type: string, const: mybee.fl.d12.project-governance}
+        catalog_version: {type: string, const: 1.0.0}
+        catalog_digest: {type: string, pattern: "^sha256:[0-9a-f]{64}$"}
+        template_ref: {type: string, minLength: 1, maxLength: 256}
+        template_version: {type: string, pattern: "^[1-9][0-9]*\\.[0-9]+\\.[0-9]+$"}
+        code_ids:
+          type: array
+          minItems: 5
+          maxItems: 100
+          uniqueItems: true
+          items: {type: string, pattern: "^FL[0-9]{7}$"}
+        approved_proof_hash: {type: string, pattern: "^sha256:[0-9a-f]{64}$"}
+        pm_subject_id: {type: string, minLength: 1, maxLength: 128}
+        pa_agent_id: {type: string, minLength: 1, maxLength: 128}
+        pa_identity_evidence_hash: {type: string, pattern: "^sha256:[0-9a-f]{64}$"}
+        effective_from: {type: string, format: date}
+    ProjectWorkCodeSet:
+      type: object
+      additionalProperties: false
+      required:
+        - tenant_id
+        - project_id
+        - work_set_id
+        - revision
+        - catalog_id
+        - catalog_version
+        - catalog_digest
+        - template_ref
+        - template_version
+        - mandatory_codes_hash
+        - approved_proof_hash
+        - approved_by_subject_id
+        - pm_subject_id
+        - pa_agent_id
+        - pa_identity_evidence_hash
+        - state
+        - effective_from
+        - work_set_hash
+        - created_at
+        - code_ids
+      properties:
+        tenant_id: {type: string}
+        project_id: {type: string, format: uuid}
+        work_set_id: {type: string, format: uuid}
+        revision: {type: integer, minimum: 1}
+        catalog_id: {type: string}
+        catalog_version: {type: string}
+        catalog_digest: {type: string}
+        template_ref: {type: string}
+        template_version: {type: string}
+        mandatory_codes_hash: {type: string}
+        approved_proof_hash: {type: string}
+        approved_by_subject_id: {type: string}
+        pm_subject_id: {type: string}
+        pa_agent_id: {type: string}
+        pa_identity_evidence_hash: {type: string}
+        state: {type: string, const: APPROVED}
+        effective_from: {type: string, format: date}
+        work_set_hash: {type: string}
+        created_at: {type: string, format: date-time}
+        code_ids:
+          type: array
+          minItems: 5
+          uniqueItems: true
+          items: {type: string, pattern: "^FL[0-9]{7}$"}
+    ProjectBusinessReadiness:
+      type: object
+      additionalProperties: false
+      required:
+        - tenant_id
+        - project_id
+        - technical_status
+        - work_set_hash
+        - company_binding_ids
+        - required_codes_ok
+        - project_company_bound
+        - pm_assigned
+        - members_eligible
+        - pa_identity_bound
+        - effective_on
+        - state
+        - business_ready
+        - budget_bound_if_required
+        - reason_codes
+        - source_hash
+        - work_set
+      properties:
+        tenant_id: {type: string}
+        project_id: {type: string, format: uuid}
+        technical_status: {type: string, enum: [ACTIVE, INACTIVE]}
+        work_set_hash: {type: [string, "null"]}
+        company_binding_ids:
+          type: array
+          items: {type: string, format: uuid}
+        required_codes_ok: {type: boolean}
+        project_company_bound: {type: boolean}
+        pm_assigned: {type: boolean}
+        members_eligible: {type: boolean}
+        pa_identity_bound: {type: boolean}
+        effective_on: {type: string, format: date}
+        state:
+          type: string
+          enum: [DRAFT_CONFIGURATION, WORK_SET_APPROVED, MEMBER_READY, BUSINESS_READY, BLOCKED]
+        business_ready: {type: boolean}
+        budget_bound_if_required: {type: boolean}
+        reason_codes:
+          type: array
+          items: {type: string}
+        source_hash: {type: string, pattern: "^sha256:[0-9a-f]{64}$"}
+        work_set:
+          oneOf:
+            - {$ref: "#/components/schemas/ProjectWorkCodeSet"}
+            - {type: "null"}
+    AccountCatalogProjection:
+      type: object
+      additionalProperties: false
+      required:
+        - tenant_id
+        - company_id
+        - effective_on
+        - catalog_release
+        - posting_rule
+        - accounts
+      properties:
+        tenant_id: {type: string, minLength: 1, maxLength: 128}
+        company_id: {type: string, format: uuid}
+        effective_on: {type: string, format: date}
+        catalog_release: {$ref: "#/components/schemas/AccountCatalogRelease"}
+        posting_rule: {$ref: "#/components/schemas/PostingRuleRelease"}
+        accounts:
+          type: array
+          minItems: 1
+          items: {$ref: "#/components/schemas/CompanyAccountProjection"}
+    AccountCatalogRelease:
+      type: object
+      additionalProperties: false
+      required:
+        - tenant_id
+        - release_id
+        - source_reference
+        - source_version
+        - source_hash
+        - effective_from
+        - published_by
+        - approved_proof_ref
+        - status
+        - created_at
+      properties:
+        tenant_id: {type: string}
+        release_id: {type: string, format: uuid}
+        source_reference: {type: string, minLength: 1, maxLength: 512}
+        source_version: {type: string, minLength: 1, maxLength: 128}
+        source_hash: {type: string, pattern: "^sha256:[0-9a-f]{64}$"}
+        effective_from: {type: string, format: date}
+        published_by: {type: string, minLength: 1, maxLength: 128}
+        approved_proof_ref: {type: string, pattern: "^sha256:[0-9a-f]{64}$"}
+        status: {type: string, enum: [DRAFT, PUBLISHED, SUPERSEDED]}
+        created_at: {type: string, format: date-time}
+    PostingRuleRelease:
+      type: object
+      additionalProperties: false
+      required:
+        - tenant_id
+        - posting_rule_id
+        - company_id
+        - catalog_release_id
+        - rule_code
+        - rule_version
+        - rule_hash
+        - effective_date
+        - account_mapping_hash
+        - approved_proof_ref
+        - status
+        - created_at
+      properties:
+        tenant_id: {type: string}
+        posting_rule_id: {type: string, format: uuid}
+        company_id: {type: string, format: uuid}
+        catalog_release_id: {type: string, format: uuid}
+        rule_code: {type: string, minLength: 1, maxLength: 128}
+        rule_version: {type: integer, minimum: 1}
+        rule_hash: {type: string, pattern: "^sha256:[0-9a-f]{64}$"}
+        effective_date: {type: string, format: date}
+        account_mapping_hash: {type: string, pattern: "^sha256:[0-9a-f]{64}$"}
+        approved_proof_ref: {type: string, pattern: "^sha256:[0-9a-f]{64}$"}
+        status: {type: string, enum: [DRAFT, PUBLISHED, SUPERSEDED]}
+        created_at: {type: string, format: date-time}
+    CompanyAccountProjection:
+      type: object
+      required:
+        - policy_id
+        - account_id
+        - account_code
+        - name
+        - category
+        - account_type
+        - is_postable_leaf
+        - is_monetary
+        - statement_line_ref
+        - allowed_currencies
+        - valid_from
+        - rule_revision
+        - approved_proof_ref
+      properties:
+        policy_id: {type: string, format: uuid}
+        account_id: {type: string, format: uuid}
+        account_code: {type: string, minLength: 1, maxLength: 64}
+        name: {type: string, minLength: 1, maxLength: 256}
+        category: {type: string, enum: [ASSET, LIABILITY, EQUITY, REVENUE, EXPENSE]}
+        account_type: {type: string, minLength: 1, maxLength: 32}
+        parent_account_id: {type: [string, "null"], format: uuid}
+        is_postable_leaf: {type: boolean}
+        is_monetary: {type: boolean}
+        statement_line_ref: {type: string, minLength: 1, maxLength: 128}
+        allowed_currencies:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items: {type: string, pattern: "^[A-Z]{3}$"}
+        valid_from: {type: string, format: date}
+        valid_until: {type: [string, "null"], format: date}
+        rule_revision: {type: integer, minimum: 1}
+        approved_proof_ref: {type: string, pattern: "^sha256:[0-9a-f]{64}$"}
+    ApprovedAccountCreateCommand:
+      type: object
+      additionalProperties: false
+      required: [account, policy]
+      properties:
+        account:
+          type: object
+          additionalProperties: false
+          required:
+            - account_id
+            - account_code
+            - name
+            - category
+            - account_type
+            - effective_from
+          properties:
+            account_id: {type: string, format: uuid}
+            account_code: {type: string, minLength: 1, maxLength: 64}
+            name: {type: string, minLength: 1, maxLength: 256}
+            category: {type: string, enum: [ASSET, LIABILITY, EQUITY, REVENUE, EXPENSE]}
+            account_type: {type: string, minLength: 1, maxLength: 32}
+            effective_from: {type: string, format: date}
+            effective_until: {type: [string, "null"], format: date}
+        policy:
+          type: object
+          additionalProperties: false
+          required:
+            - policy_id
+            - company_id
+            - catalog_release_id
+            - posting_rule_id
+            - is_postable_leaf
+            - is_monetary
+            - statement_line_ref
+            - allowed_currencies
+            - valid_from
+            - approved_proof_ref
+          properties:
+            policy_id: {type: string, format: uuid}
+            company_id: {type: string, format: uuid}
+            catalog_release_id: {type: string, format: uuid}
+            posting_rule_id: {type: string, format: uuid}
+            parent_account_id: {type: [string, "null"], format: uuid}
+            is_postable_leaf: {type: boolean}
+            is_monetary: {type: boolean}
+            statement_line_ref: {type: string, minLength: 1, maxLength: 128}
+            allowed_currencies:
+              type: array
+              minItems: 1
+              uniqueItems: true
+              items: {type: string, pattern: "^[A-Z]{3}$"}
+            valid_from: {type: string, format: date}
+            valid_until: {type: [string, "null"], format: date}
+            rule_revision: {type: integer, minimum: 1, default: 1}
+            approved_proof_ref: {type: string, pattern: "^sha256:[0-9a-f]{64}$"}
+    ApprovedAccountCreateResult:
+      type: object
+      additionalProperties: false
+      required: [account, policy]
+      properties:
+        account:
+          type: object
+        policy:
+          type: object
+    FxRatePolicyApprovedCommand:
+      type: object
+      additionalProperties: false
+      required:
+        - company_id
+        - policy_id
+        - version
+        - purpose
+        - base_currency
+        - quote_currency
+        - rate_kind
+        - source_provider_id
+        - publication_selector
+        - effective_from
+        - allow_previous_business_day
+        - max_staleness_business_days
+        - rounding_mode
+        - rate_decimal_scale
+        - approved_by
+        - approval_proof_hash
+        - policy_hash
+      properties:
+        company_id: {type: string, format: uuid}
+        policy_id: {type: string, format: uuid}
+        version: {type: integer, minimum: 1}
+        purpose:
+          type: string
+          enum: [TRANSACTION_SPOT, MONETARY_CLOSE, SETTLEMENT_REFERENCE, TAX_VALUATION]
+        base_currency: {type: string, pattern: "^[A-Z]{3}$"}
+        quote_currency: {type: string, pattern: "^[A-Z]{3}$"}
+        rate_kind:
+          type: string
+          enum: [MARKET_BASE, DERIVED_CROSS, APPROVED_EXCEPTION]
+        source_provider_id: {type: string, minLength: 1, maxLength: 128}
+        publication_selector:
+          type: string
+          enum: [FIRST, FINAL, AS_OF_TIMESTAMP]
+        effective_from: {type: string, format: date}
+        effective_to: {type: [string, "null"], format: date}
+        allow_previous_business_day: {type: boolean}
+        max_staleness_business_days: {type: integer, minimum: 0, maximum: 366}
+        rounding_mode: {type: string, enum: [HALF_EVEN]}
+        rate_decimal_scale: {type: integer, minimum: 0, maximum: 12}
+        approved_by: {type: string, minLength: 1, maxLength: 128}
+        approval_proof_hash: {type: string, pattern: "^sha256:[0-9a-f]{64}$"}
+        policy_hash: {type: string, pattern: "^sha256:[0-9a-f]{64}$"}
+    FxRateBatchImportCommand:
+      type: object
+      additionalProperties: false
+      required: [snapshots]
+      properties:
+        snapshots:
+          type: array
+          minItems: 1
+          maxItems: 500
+          items:
+            $ref: "#/components/schemas/FxRateSnapshotImport"
+    FxRateSnapshotImport:
+      type: object
+      additionalProperties: false
+      required:
+        - company_id
+        - rate_snapshot_id
+        - rate_policy_id
+        - rate_policy_version
+        - source_provider_id
+        - base_currency
+        - quote_currency
+        - quote_unit
+        - published_rate
+        - desired_rate_date
+        - rate_date
+        - rate_as_of
+        - published_at
+        - publication_issue
+        - is_final
+        - source_record_id
+        - source_uri
+        - source_sha256
+        - calendar_ref
+        - source_timezone
+        - provenance
+      properties:
+        company_id: {type: string, format: uuid}
+        rate_snapshot_id: {type: string, format: uuid}
+        rate_policy_id: {type: string, format: uuid}
+        rate_policy_version: {type: integer, minimum: 1}
+        source_provider_id: {type: string, minLength: 1, maxLength: 128}
+        base_currency: {type: string, pattern: "^[A-Z]{3}$"}
+        quote_currency: {type: string, pattern: "^[A-Z]{3}$"}
+        quote_unit: {type: [number, string]}
+        published_rate: {type: [number, string]}
+        desired_rate_date: {type: string, format: date}
+        rate_date: {type: string, format: date}
+        rate_as_of: {type: string, format: date-time}
+        published_at: {type: string, format: date-time}
+        publication_issue: {type: string, minLength: 1, maxLength: 64}
+        is_final: {type: boolean}
+        source_record_id: {type: string, minLength: 1, maxLength: 256}
+        source_uri: {type: string, format: uri, maxLength: 2048}
+        source_sha256: {type: string, pattern: "^sha256:[0-9a-f]{64}$"}
+        calendar_ref: {type: string, minLength: 1, maxLength: 128}
+        source_timezone: {type: string, minLength: 1, maxLength: 64}
+        provenance: {type: object}
+    CoaPublishApprovedCommand:
+      type: object
+      additionalProperties: false
+      required:
+        - business_operation_id
+        - idempotency_key
+        - source_reference
+        - source_hash
+        - approved_proof_ref
+        - content_hash
+      properties:
+        business_operation_id: {type: string, format: uuid}
+        idempotency_key: {type: string, minLength: 1, maxLength: 256}
+        source_reference: {type: string, minLength: 1, maxLength: 512}
+        source_hash: {type: string, pattern: "^sha256:[0-9a-f]{64}$"}
+        approved_proof_ref: {type: string, pattern: "^sha256:[0-9a-f]{64}$"}
+        content_hash: {type: string, pattern: "^sha256:[0-9a-f]{64}$"}
+    CoaAdoptApprovedCommand:
+      type: object
+      additionalProperties: false
+      required:
+        - business_operation_id
+        - idempotency_key
+        - adoption_id
+        - company_id
+        - global_release_id
+        - effective_from
+        - approved_proof_ref
+        - bindings
+      properties:
+        business_operation_id: {type: string, format: uuid}
+        idempotency_key: {type: string, minLength: 1, maxLength: 256}
+        adoption_id: {type: string, format: uuid}
+        company_id: {type: string, format: uuid}
+        global_release_id: {type: string, format: uuid}
+        extension_release_id: {type: [string, "null"], format: uuid}
+        effective_from: {type: string, format: date}
+        effective_until: {type: [string, "null"], format: date}
+        approved_proof_ref: {type: string, pattern: "^sha256:[0-9a-f]{64}$"}
+        bindings:
+          type: array
+          minItems: 1
+          items:
+            $ref: "#/components/schemas/CoaAccountBindingCommand"
+    CoaAccountBindingCommand:
+      type: object
+      additionalProperties: false
+      required: [binding_id, entry_id, account_id, approved_proof_ref]
+      properties:
+        binding_id: {type: string, format: uuid}
+        entry_id: {type: string, format: uuid}
+        account_id: {type: string, format: uuid}
+        approved_proof_ref: {type: string, pattern: "^sha256:[0-9a-f]{64}$"}
     NvtProjectCreateCommand:
       type: object
       x-nex-canonical-json-schema: schemas/service/nex_eos/nvt_project_create_command.v1.schema.json
@@ -526,3 +3511,294 @@ components:
     ProjectMembershipVerification:
       type: object
       x-nex-canonical-json-schema: schemas/service/nex_eos/project_membership_verification.v1.schema.json
+    ScopedApprovalRequestCommand:
+      type: object
+      additionalProperties: false
+      required:
+        - tenant_id
+        - business_operation_id
+        - idempotency_key
+        - requested_operation
+        - payload_hash
+        - case
+      properties:
+        tenant_id: {type: string, minLength: 1, maxLength: 128}
+        business_operation_id: {type: string, format: uuid}
+        idempotency_key: {type: string, minLength: 1, maxLength: 256}
+        requested_operation:
+          type: string
+          const: FINANCE.ACCOUNTING_APPROVAL.REQUEST
+        payload_hash: {type: string, pattern: "^sha256:[0-9a-f]{64}$"}
+        case:
+          $ref: "#/components/schemas/ScopedApprovalCaseRequest"
+    ScopedApprovalCaseRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - tenant_id
+        - case_id
+        - company_id
+        - purpose
+        - scope_type
+        - project_ids
+        - subject_ref
+        - subject_revision
+        - subject_hash
+        - requester_subject_id
+        - approval_policy_id
+        - correlation_id
+        - causation_id
+        - expires_at
+      properties:
+        tenant_id: {type: string, minLength: 1, maxLength: 128}
+        case_id: {type: string, format: uuid}
+        company_id: {type: string, format: uuid}
+        purpose: {type: string, enum: [DOCUMENT_SIGNOFF, ACCOUNTING_POSTING]}
+        scope_type: {type: string, enum: [COMPANY, PROJECT, PROJECT_SET]}
+        project_ids:
+          type: array
+          uniqueItems: true
+          items: {type: string, format: uuid}
+        subject_ref: {type: string, minLength: 1, maxLength: 256}
+        subject_revision: {type: integer, minimum: 1}
+        subject_hash: {type: string, pattern: "^sha256:[0-9a-f]{64}$"}
+        requester_subject_id: {type: string, minLength: 1, maxLength: 128}
+        approval_policy_id: {type: string, format: uuid}
+        correlation_id: {type: string, minLength: 1, maxLength: 128}
+        causation_id: {type: string, minLength: 1, maxLength: 128}
+        expires_at: {type: [string, "null"], format: date-time}
+        accounting_review:
+          $ref: "#/components/schemas/AccountingReviewContext"
+        document_signoff_context:
+          $ref: "#/components/schemas/DocumentSignoffContext"
+      allOf:
+        - if:
+            properties:
+              purpose: {const: DOCUMENT_SIGNOFF}
+          then:
+            required: [document_signoff_context]
+            not:
+              required: [accounting_review]
+        - if:
+            properties:
+              purpose: {const: ACCOUNTING_POSTING}
+          then:
+            not:
+              required: [document_signoff_context]
+    DocumentSignoffContext:
+      type: object
+      additionalProperties: false
+      required:
+        - schema_version
+        - envelope_id
+        - approved_document_id
+        - document_revision
+        - document_type
+        - work_code
+        - document_content_hash
+        - attachment_manifest_hash
+        - approved_amount
+        - approved_currency
+        - tolerance_policy_hash
+        - valid_from
+        - valid_until
+        - subject_hash
+      properties:
+        schema_version:
+          type: string
+          enum: [eos_document_signoff_context.v1, eos_document_signoff_context.v2]
+        envelope_id: {type: string, format: uuid}
+        approved_document_id: {type: string, minLength: 1, maxLength: 128}
+        document_revision: {type: integer, minimum: 1}
+        document_type: {type: string, minLength: 1, maxLength: 64}
+        work_code: {type: string, pattern: "^FL[0-9]{7}$"}
+        document_content_hash: {type: string, pattern: "^sha256:[0-9a-f]{64}$"}
+        attachment_manifest_hash: {type: string, pattern: "^sha256:[0-9a-f]{64}$"}
+        approved_amount: {type: string, pattern: "^[0-9]+(?:\\.[0-9]{1,4})?$"}
+        approved_currency: {type: string, pattern: "^[A-Z]{3}$"}
+        tolerance_policy_hash:
+          type: [string, "null"]
+          pattern: "^sha256:[0-9a-f]{64}$"
+        valid_from: {type: string, format: date-time}
+        valid_until: {type: [string, "null"], format: date-time}
+        subject_hash: {type: string, pattern: "^sha256:[0-9a-f]{64}$"}
+        allowed_project_codes:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items:
+            type: string
+            pattern: "^[A-Z0-9]{4}[DMSOIG][0-9]{6}$"
+      allOf:
+        - if:
+            properties:
+              schema_version: {const: eos_document_signoff_context.v2}
+          then:
+            required: [allowed_project_codes]
+    AccountingReviewContext:
+      type: object
+      additionalProperties: false
+      required:
+        - schema_version
+        - candidate_id
+        - candidate_revision
+        - candidate_hash
+        - document_envelope_hash
+        - fx_rate_set_hash
+        - rule_release_hash
+        - accounting_period_id
+        - candidate_preparer_subject_id
+        - business_approver_subject_ids
+        - original_currency
+        - original_amount
+        - market_base_rate
+        - rate_reference_date
+        - rate_publication
+        - functional_currency
+        - functional_amount
+        - fx_exception
+      properties:
+        schema_version:
+          type: string
+          enum: [eos_accounting_review_context.v2, eos_accounting_review_context.v3]
+        candidate_id: {type: string, format: uuid}
+        candidate_revision: {type: integer, minimum: 1}
+        candidate_hash: {type: string, pattern: "^sha256:[0-9a-f]{64}$"}
+        candidate_version: {type: integer, minimum: 1}
+        validation_hash: {type: string, pattern: "^sha256:[0-9a-f]{64}$"}
+        validation_observed_at: {type: string, format: date-time}
+        document_envelope_hash: {type: string, pattern: "^sha256:[0-9a-f]{64}$"}
+        fx_rate_set_hash: {type: string, pattern: "^sha256:[0-9a-f]{64}$"}
+        rule_release_hash: {type: string, pattern: "^sha256:[0-9a-f]{64}$"}
+        accounting_period_id: {type: string, format: uuid}
+        candidate_preparer_subject_id: {type: string, minLength: 1, maxLength: 128}
+        business_approver_subject_ids:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items: {type: string, minLength: 1, maxLength: 128}
+        original_currency: {type: string, pattern: "^[A-Z]{3}$"}
+        original_amount: {type: string, pattern: "^[0-9]+(?:\\.[0-9]+)?$"}
+        market_base_rate: {type: string, pattern: "^[0-9]+(?:\\.[0-9]+)?$"}
+        rate_reference_date: {type: string, format: date}
+        rate_publication: {type: string, minLength: 1, maxLength: 256}
+        functional_currency: {type: string, pattern: "^[A-Z]{3}$"}
+        functional_amount: {type: string, pattern: "^[0-9]+(?:\\.[0-9]+)?$"}
+        fx_exception: {type: [string, "null"], maxLength: 512}
+      allOf:
+        - if:
+            properties:
+              schema_version: {const: eos_accounting_review_context.v3}
+          then:
+            required: [candidate_version, validation_hash, validation_observed_at]
+    ScopedApprovalRequestReceipt:
+      type: object
+      additionalProperties: false
+      required:
+        - schema_version
+        - created
+        - tenant_id
+        - business_operation_id
+        - commit_state
+        - scoped_approval_case
+        - wc_publication
+      properties:
+        schema_version:
+          type: string
+          const: eos_scoped_approval_request_receipt.v2
+        created: {type: boolean}
+        tenant_id: {type: string}
+        business_operation_id: {type: string, format: uuid}
+        commit_state: {type: string, const: COMMITTED}
+        scoped_approval_case:
+          $ref: "#/components/schemas/ScopedApprovalCase"
+        candidate_review:
+          oneOf:
+            - type: object
+            - type: "null"
+        wc_publication:
+          type: object
+          additionalProperties: false
+          required: [work_item, created]
+          properties:
+            work_item: {type: object}
+            created: {type: boolean}
+    ScopedApprovalCase:
+      type: object
+      additionalProperties: false
+      required:
+        - schema_version
+        - tenant_id
+        - case_id
+        - company_id
+        - purpose
+        - scope_type
+        - project_set_hash
+        - project_ids
+        - subject_ref
+        - subject_revision
+        - subject_hash
+        - requester_ref
+        - approval_policy_ref
+        - oa_decision_ref
+        - authorization_revision_hash
+        - authorization_checked_at
+        - state
+        - active_stage_order
+        - stage_count
+        - target_role_ref
+        - version
+        - case_hash
+        - created_business_operation_id
+        - correlation_id
+        - causation_id
+        - expires_at
+        - created_at
+        - updated_at
+        - decided_at
+        - project_bindings
+      properties:
+        schema_version: {type: string, const: eos_scoped_approval_case.v2}
+        tenant_id: {type: string}
+        case_id: {type: string, format: uuid}
+        company_id: {type: string, format: uuid}
+        purpose: {type: string, enum: [DOCUMENT_SIGNOFF, ACCOUNTING_POSTING]}
+        scope_type: {type: string, enum: [COMPANY, PROJECT, PROJECT_SET]}
+        project_set_hash: {type: string, pattern: "^sha256:[0-9a-f]{64}$"}
+        project_ids:
+          type: array
+          uniqueItems: true
+          items: {type: string, format: uuid}
+        subject_ref: {type: string}
+        subject_revision: {type: integer, minimum: 1}
+        subject_hash: {type: string, pattern: "^sha256:[0-9a-f]{64}$"}
+        requester_ref: {type: object}
+        approval_policy_ref: {type: object}
+        oa_decision_ref: {type: string}
+        authorization_revision_hash: {type: string, pattern: "^sha256:[0-9a-f]{64}$"}
+        authorization_checked_at: {type: string, format: date-time}
+        state: {type: string, enum: [PENDING, APPROVED, REJECTED, CANCELLED, EXPIRED]}
+        active_stage_order: {type: [integer, "null"], minimum: 1, maximum: 5}
+        stage_count: {type: integer, minimum: 1, maximum: 5}
+        target_role_ref: {type: [string, "null"]}
+        version: {type: integer, minimum: 1}
+        case_hash: {type: string, pattern: "^sha256:[0-9a-f]{64}$"}
+        created_business_operation_id: {type: string, format: uuid}
+        correlation_id: {type: string}
+        causation_id: {type: string}
+        expires_at: {type: [string, "null"], format: date-time}
+        created_at: {type: string, format: date-time}
+        updated_at: {type: string, format: date-time}
+        decided_at: {type: [string, "null"], format: date-time}
+        project_bindings:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [project_id, company_id, authorization_scope_hash]
+            properties:
+              project_id: {type: string, format: uuid}
+              company_id: {type: string, format: uuid}
+              authorization_scope_hash:
+                type: string
+                pattern: "^sha256:[0-9a-f]{64}$"

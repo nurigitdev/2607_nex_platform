@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_eos/project_pnl_refresh_from_allocation.v1.schema.json",
+  "title": "EOS Project P&L Refresh From Allocation v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "operation",
+    "tenant_id",
+    "company_id",
+    "batch_id",
+    "period_id",
+    "allocation_reconciliation_hash",
+    "disposition",
+    "projections",
+    "refresh_hash"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "eos_project_pnl_refresh_from_allocation.v1"
+    },
+    "operation": {
+      "const": "FINANCE.PROJECT_PNL.REFRESH_FROM_ALLOCATION"
+    },
+    "tenant_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "company_id": {"type": "string", "format": "uuid"},
+    "batch_id": {"type": "string", "format": "uuid"},
+    "period_id": {"type": "string", "format": "uuid"},
+    "allocation_reconciliation_hash": {"$ref": "#/$defs/hash_ref"},
+    "disposition": {"enum": ["CREATED", "EXACT_REPLAY"]},
+    "projections": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "project_id",
+          "project_code",
+          "projection_id",
+          "projection_version",
+          "projection_hash",
+          "reconciliation_status",
+          "freshness_status"
+        ],
+        "properties": {
+          "project_id": {"type": "string", "format": "uuid"},
+          "project_code": {"type": "string", "minLength": 1, "maxLength": 64},
+          "projection_id": {"type": "string", "format": "uuid"},
+          "projection_version": {"type": "integer", "minimum": 1},
+          "projection_hash": {"$ref": "#/$defs/hash_ref"},
+          "reconciliation_status": {"const": "VERIFIED"},
+          "freshness_status": {"const": "CURRENT"}
+        }
+      }
+    },
+    "refresh_hash": {"$ref": "#/$defs/hash_ref"}
+  },
+  "$defs": {
+    "hash_ref": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    }
+  }
+}

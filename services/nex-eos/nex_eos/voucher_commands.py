@@ -177,6 +177,7 @@ class EosCreateVoucherDraftService:
                     project_id=command.project_ref["id"],
                     resource_type="voucher_draft",
                     resource_id=command.business_operation_id,
+                    correlation_id=command.trace["correlation_id"],
                 )
             )
         except EosAuthorizationError as exc:

@@ -5,6 +5,7 @@ from io import StringIO
 
 import pytest
 import run_platform as command
+import run_service
 from nex_runtime.runtime_orchestrator import RuntimeOrchestrationError
 
 
@@ -127,7 +128,10 @@ def test_build_orchestrator_and_main_config_projection(monkeypatch, capsys) -> N
         environ={},
         launcher=object(),
     )
-    assert len(current.manifest.processes) == 20
+    assert len(current.manifest.processes) == 21
+    assert "nex-wc-assignment-dispatch-worker" in {
+        process.process_id for process in current.manifest.processes
+    }
 
     runner = Orchestrator()
     monkeypatch.setattr(
@@ -158,3 +162,11 @@ def test_build_orchestrator_and_main_config_projection(monkeypatch, capsys) -> N
 def test_stop_signal_is_normalized_to_keyboard_interrupt() -> None:
     with pytest.raises(KeyboardInterrupt):
         command._handle_stop_signal(15, object())
+
+
+def test_ae_dev_service_includes_product_runtime_path() -> None:
+    ae_paths = run_service.service_python_paths("nex-ae-api")
+    oa_paths = run_service.service_python_paths("nex-oa")
+
+    assert ae_paths[-1] == command.ROOT / "domains" / "mybee"
+    assert command.ROOT / "domains" / "mybee" not in oa_paths

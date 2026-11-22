@@ -44,6 +44,7 @@ PACKAGED_DOMAIN_PROCESS_CAPABILITIES = (
     ("nex-cx-ingestion-worker", "job_claiming"),
     ("nex-wa-evidence-consumer", "job_claiming"),
     ("nex-ae-agent-runtime-worker", "job_claiming"),
+    ("nex-wc-assignment-dispatch-worker", "job_claiming"),
     ("nex-wc-event-delivery-worker", "event_delivering"),
     ("nex-eos-outbox-publisher", "outbox_publishing"),
 )
@@ -70,6 +71,7 @@ _DOMAIN_PROCESS_CAPABILITY_BY_ID = dict(PACKAGED_DOMAIN_PROCESS_CAPABILITIES)
 _DIRECT_BACKGROUND_MODULES = {
     "nex-wa-evidence-consumer": "nex_wa.consumer_main",
     "nex-ae-agent-runtime-worker": "nex_ae_api.agent_runtime_process",
+    "nex-wc-assignment-dispatch-worker": "nex_wc.assignment_dispatch_process",
     "nex-wc-event-delivery-worker": "nex_wc.event_delivery_process",
     "nex-eos-outbox-publisher": "nex_eos.outbox_publisher_process",
 }
@@ -382,6 +384,7 @@ def _packaged_command(
         command = (python_executable, "-m", direct_module)
         if process.process_id in {
             "nex-ae-agent-runtime-worker",
+            "nex-wc-assignment-dispatch-worker",
             "nex-wc-event-delivery-worker",
             "nex-eos-outbox-publisher",
         }:

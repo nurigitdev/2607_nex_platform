@@ -1,0 +1,69 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/mybee/semantic-account-resolution-v1.json",
+  "title": "MyBee deterministic semantic Account resolution Tool contract",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "skill_id",
+    "tool_id",
+    "operation_kind",
+    "authority",
+    "request_fields",
+    "result_fields",
+    "agent_constraints",
+    "runtime_admission"
+  ],
+  "properties": {
+    "schema_version": {"const": "mybee.semantic_account_resolution.v1"},
+    "skill_id": {"const": "FINANCE.ACCOUNT_SEMANTIC_RESOLVE"},
+    "tool_id": {"const": "FINANCE.ACCOUNT.RESOLVE_SEMANTIC"},
+    "operation_kind": {"const": "READ"},
+    "authority": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["service", "oa_scope", "fresh_authorization"],
+      "properties": {
+        "service": {"const": "nex-eos"},
+        "oa_scope": {"const": "finance:account:read"},
+        "fresh_authorization": {"const": true}
+      }
+    },
+    "request_fields": {
+      "const": ["company_id", "semantic_key", "effective_on", "currency"]
+    },
+    "result_fields": {
+      "const": [
+        "account_ref",
+        "account_code",
+        "definition_account_code",
+        "policy_evidence",
+        "evidence_hash"
+      ]
+    },
+    "agent_constraints": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "account_code_generation",
+        "account_uuid_authority",
+        "ambiguous_resolution"
+      ],
+      "properties": {
+        "account_code_generation": {"const": "FORBIDDEN"},
+        "account_uuid_authority": {"const": "EOS_ONLY"},
+        "ambiguous_resolution": {"const": "FAIL_CLOSED"}
+      }
+    },
+    "runtime_admission": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["state", "reason"],
+      "properties": {
+        "state": {"const": "CONTRACT_ONLY"},
+        "reason": {"type": "string", "minLength": 1}
+      }
+    }
+  }
+}

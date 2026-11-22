@@ -1161,7 +1161,13 @@ def _require_target_compatibility(
             continue
         configured = True
         granted = authorization.get(authorization_field)
-        if not isinstance(granted, (list, tuple)) or target not in granted:
+        if target_field == "target_role_ref" and isinstance(granted, (list, tuple)):
+            matches = str(target).casefold() in {
+                str(item).casefold() for item in granted
+            }
+        else:
+            matches = isinstance(granted, (list, tuple)) and target in granted
+        if not matches:
             raise AuthorizationSubjectDenied(
                 f"Decision principal does not match {target_field}."
             )

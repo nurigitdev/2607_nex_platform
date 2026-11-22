@@ -1,0 +1,87 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_wc/claimed_work_planning_source.v2.schema.json",
+  "title": "WC Claimed Work Planning Source v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "source_type",
+    "source_ref",
+    "goal",
+    "work_class",
+    "required_capability",
+    "project_ref",
+    "artifact_refs",
+    "evidence_refs",
+    "completion_policy",
+    "result_contract_ref",
+    "delegation_identity",
+    "business_request_context",
+    "business_context_hash"
+  ],
+  "properties": {
+    "schema_version": {"const": "p7.claimed_work_planning_source.v2"},
+    "source_type": {"const": "CLAIMED_WORKITEM"},
+    "source_ref": {"type": "string", "format": "uuid"},
+    "goal": {"type": "string", "minLength": 1, "maxLength": 4000},
+    "work_class": {"const": "BUSINESS_TRANSACTION"},
+    "required_capability": {"const": "FINANCE.VOUCHER.APPROVE_AND_POST"},
+    "project_ref": {"$ref": "#/$defs/entityRef"},
+    "artifact_refs": {
+      "type": "array",
+      "maxItems": 64,
+      "items": {"$ref": "#/$defs/entityRef"}
+    },
+    "evidence_refs": {
+      "type": "array",
+      "maxItems": 64,
+      "items": {"$ref": "#/$defs/entityRef"}
+    },
+    "completion_policy": {"const": "OWNER_SUBMITS"},
+    "result_contract_ref": {
+      "const": "contract://nex/mybee/finance/journal-posting-result/v1"
+    },
+    "delegation_identity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "delegation_id",
+        "delegation_revision",
+        "requester_ref",
+        "parent_agent_execution_id"
+      ],
+      "properties": {
+        "delegation_id": {"$ref": "#/$defs/scopedId"},
+        "delegation_revision": {"type": "integer", "minimum": 1},
+        "requester_ref": {"type": "string", "minLength": 1, "maxLength": 160},
+        "parent_agent_execution_id": {"$ref": "#/$defs/scopedId"}
+      }
+    },
+    "business_request_context": {
+      "$ref": "https://nex-platform.local/schemas/service/nex_ae_api/business_request_context.v1.schema.json"
+    },
+    "business_context_hash": {"$ref": "#/$defs/hashRef"}
+  },
+  "$defs": {
+    "scopedId": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$"
+    },
+    "hashRef": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "entityRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["entity_type", "entity_id"],
+      "properties": {
+        "entity_type": {"type": "string", "minLength": 1, "maxLength": 64},
+        "entity_id": {"type": "string", "minLength": 1, "maxLength": 160},
+        "version": {"type": ["string", "integer", "null"]},
+        "status": {"type": ["string", "null"], "maxLength": 64}
+      }
+    }
+  }
+}

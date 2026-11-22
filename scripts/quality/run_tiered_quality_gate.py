@@ -17,13 +17,30 @@ FULL_GATE_PATH = "scripts/quality/run_quality_gate.sh"
 DEFAULT_STATEMENT_MIN = 95.0
 DEFAULT_BRANCH_MIN = 94.0
 SAFE_COVERAGE_TARGET = re.compile(r"^[A-Za-z0-9_./-]+$")
-ALLOWED_COVERAGE_PREFIXES = ("services/", "providers/", "scripts/")
+ALLOWED_COVERAGE_PREFIXES = ("services/", "providers/", "scripts/", "domains/")
 
 
 @dataclass(frozen=True)
 class ServiceProfile:
     test_patterns: tuple[str, ...]
     coverage_targets: tuple[str, ...]
+    owned_tests: tuple[str, ...] = ()
+    coverage_reporters: tuple[str, ...] = ()
+
+
+AE_EXPLICIT_OWNED_TESTS = (
+    "tests/mybee_phase1/test_mybee_skill_admission.py",
+    "tests/mybee_phase1/test_w40_ca02_installed_configuration_wiring.py",
+    "tests/mybee_phase1/test_w40_ca02_runtime_ownership_audit.py",
+    "tests/mybee_phase1/test_w70_cp_m1_ga_ret_02.py",
+    "tests/mybee_phase1/test_w70_s8_01d_registry_bundle_locks.py",
+    "tests/mybee_phase1/test_w70_s8_01e_foundation_gate.py",
+)
+
+WC_EXPLICIT_OWNED_TESTS = (
+    "tests/test_gb2_ca00_s20a_active_runtime_branches.py",
+    "tests/test_gb2_ca00_s20c_wc_durable_boundaries.py",
+)
 
 
 SERVICE_PROFILES = {
@@ -41,6 +58,10 @@ SERVICE_PROFILES = {
             "test_ae_*.py",
         ),
         coverage_targets=("services/nex-ae-api/nex_ae_api",),
+        owned_tests=AE_EXPLICIT_OWNED_TESTS,
+        coverage_reporters=(
+            "scripts/quality/report_ae_coverage_ownership.py",
+        ),
     ),
     "nex-ae-web": ServiceProfile(
         test_patterns=("test_nex_ae_web_*.py", "test_ae_web_*.py"),
@@ -62,9 +83,18 @@ SERVICE_PROFILES = {
             "test_nex_ae_wc_*.py",
         ),
         coverage_targets=("services/nex-wc/nex_wc",),
+        owned_tests=WC_EXPLICIT_OWNED_TESTS,
     ),
     "nex-eos": ServiceProfile(
-        test_patterns=("test_nex_eos_*.py", "test_eos_*.py"),
+        test_patterns=(
+            "test_nex_eos_*.py",
+            "test_eos_*.py",
+            "test_gb2_ca00_s20b_trust_approval_boundaries.py",
+            "test_nex_oa_eos_mybee_project_entitlement_lifecycle.py",
+            "test_nex_oa_eos_mybee_project_entitlement_sync.py",
+            "test_nex_platform_p8_demo_domain_composition.py",
+            "test_nex_runtime_p8_demo_domain_activation.py",
+        ),
         coverage_targets=("services/nex-eos/nex_eos",),
     ),
     "nex-wa": ServiceProfile(
@@ -121,11 +151,15 @@ def build_slice_plan(
         raise ValueError(f"unsupported service profile: {service}")
 
     service_tests = _expand_test_patterns(root, profile.test_patterns)
+    owned_tests = [
+        _validated_file(root, path, prefix="tests", suffix=".py")
+        for path in profile.owned_tests
+    ]
     explicit_tests = [
         _validated_file(root, path, prefix="tests", suffix=".py")
         for path in focused_tests
     ]
-    tests = _deduplicated((*service_tests, *explicit_tests))
+    tests = _deduplicated((*service_tests, *owned_tests, *explicit_tests))
     targets = _deduplicated(
         (
             *profile.coverage_targets,
@@ -161,6 +195,21 @@ def build_slice_plan(
             scopes=tuple(coverage_targets),
         )
     )
+    for coverage_reporter in profile.coverage_reporters:
+        reporter = _validated_file(
+            root, coverage_reporter, prefix="scripts/quality", suffix=".py"
+        )
+        commands.append(
+            (
+                python_bin,
+                reporter,
+                "--coverage",
+                report,
+                "--output",
+                _supplemental_coverage_report_path(report, reporter),
+                "--summary",
+            )
+        )
     commands.extend((python_bin, smoke, "--summary") for smoke in smokes)
     return GatePlan(
         tier="slice",
@@ -377,11 +426,17 @@ def _validated_coverage_target(root: Path, raw: str) -> str:
         raise ValueError(f"invalid coverage target: {raw}")
     if not raw.startswith(ALLOWED_COVERAGE_PREFIXES):
         raise ValueError(
-            "coverage target must be a services/, providers/, or scripts/ path"
+            "coverage target must be a services/, providers/, scripts/, or domains/ path"
         )
     if not (root / raw).exists():
         raise ValueError(f"coverage path does not exist: {raw}")
     return raw
+
+
+def _supplemental_coverage_report_path(report: str, reporter: str) -> str:
+    report_name = Path(report).stem
+    reporter_name = Path(reporter).stem
+    return f"reports/coverage/{report_name}.{reporter_name}.json"
 
 
 def _coverage_source_argument(target: str) -> str:
@@ -391,7 +446,7 @@ def _coverage_source_argument(target: str) -> str:
     parts = path.parts
     if parts[0] == "scripts" and len(parts) == 3:
         return path.stem
-    if parts[0] in {"services", "providers"} and len(parts) >= 4:
+    if parts[0] in {"services", "providers", "domains"} and len(parts) >= 4:
         return ".".join((*parts[2:-1], path.stem))
     raise ValueError(f"Python coverage file is outside an import root: {target}")
 

@@ -28,6 +28,7 @@ CURRENT_JOURNEY_PROCESS_TO_SERVICE = {
     "nex-eos-api": "nex-eos",
     "nex-ae-web": "nex-ae-web",
     "nex-ae-agent-runtime-worker": "nex-ae-agent-runtime-worker",
+    "nex-wc-assignment-dispatch-worker": "nex-wc-assignment-dispatch-worker",
     "nex-wc-event-delivery-worker": "nex-wc-event-delivery-worker",
     "nex-eos-outbox-publisher": "nex-eos-outbox-publisher",
 }
@@ -40,6 +41,11 @@ CURRENT_JOURNEY_WORKERS = {
         "nex-ae-api",
         "ae-product-agent-runtime-1",
         "ae.agent_runtime.worker",
+    ),
+    "nex-wc-assignment-dispatch-worker": (
+        "nex-wc",
+        "wc-assignment-dispatch-worker-1",
+        "wc.assignment.dispatch.worker",
     ),
     "nex-wc-event-delivery-worker": (
         "nex-wc",
@@ -81,7 +87,7 @@ def admit_current_platform_installation(root: Path) -> dict[str, Any]:
     checks = {
         "current_topology_closed": closure["status"] == "PASS",
         "nine_artifacts_exact": len(catalog.artifacts) == 9,
-        "twenty_processes_exact": len(process_by_id) == 20,
+        "twenty_one_processes_exact": len(process_by_id) == 21,
         "current_process_binding_exact": {
             item.process_id for item in catalog.process_bindings
         }
@@ -106,6 +112,11 @@ def admit_current_platform_installation(root: Path) -> dict[str, Any]:
         ),
         "product_ae_worker_profile": _product_ae_worker_profile(
             services["nex-ae-agent-runtime-worker"]
+        ),
+        "product_wc_assignment_dispatch_profile": (
+            _product_wc_assignment_dispatch_profile(
+                services.get("nex-wc-assignment-dispatch-worker")
+            )
         ),
         "product_ae_image_contract_not_overridden": (
             _product_ae_image_contract_not_overridden(services["nex-ae-api"])
@@ -214,15 +225,74 @@ def _product_ae_worker_profile(service: Mapping[str, Any]) -> bool:
     )
 
 
+def _product_wc_assignment_dispatch_profile(service: object) -> bool:
+    if not isinstance(service, Mapping):
+        return False
+    command = tuple(service.get("command") or ())
+    entrypoint = tuple(service.get("entrypoint") or ())
+    environment = service.get("environment")
+    dependencies = service.get("depends_on")
+    healthcheck = service.get("healthcheck")
+    serialized = json.dumps(service, sort_keys=True).lower()
+    required_dependencies = {"openbao", "nex-wc", "nex-ae-api", "nex-oa"}
+    return (
+        command
+        == (
+            "python",
+            "-m",
+            "nex_wc.assignment_dispatch_process",
+            "--profile",
+            "staging_live",
+        )
+        and entrypoint
+        == (
+            "python",
+            "-m",
+            "nex_runtime.production_container_bootstrap",
+            "--owner",
+            "nex-wc",
+            "--",
+        )
+        and service.get("restart") == "unless-stopped"
+        and service.get("read_only") is True
+        and "ports" not in service
+        and isinstance(healthcheck, Mapping)
+        and tuple(healthcheck.get("test") or ())
+        == ("CMD", "python", "-c", "import os; os.kill(1, 0)")
+        and "ALL" in tuple(service.get("cap_drop") or ())
+        and "no-new-privileges:true" in tuple(service.get("security_opt") or ())
+        and isinstance(environment, Mapping)
+        and environment.get("NEX_DEPLOYMENT_BOUNDARY") == "CANONICAL_PLATFORM"
+        and environment.get("NEX_WC_ASSIGNMENT_DISPATCH_WORKER_ID")
+        == "wc-assignment-dispatch-worker-1"
+        and isinstance(dependencies, Mapping)
+        and required_dependencies.issubset(dependencies)
+        and all(
+            isinstance(dependencies[name], Mapping)
+            and dependencies[name].get("condition") == "service_healthy"
+            for name in required_dependencies
+        )
+        and not any(
+            marker in serialized
+            for marker in ("demo", "fixture", "nex_p8_demo", "p8_demo", "m1_")
+        )
+    )
+
+
 def _product_ae_image_contract_not_overridden(service: Mapping[str, Any]) -> bool:
     environment = service.get("environment")
     if not isinstance(environment, Mapping):
         return False
     return (
-        environment.get("NEX_AE_FINANCE_GOLDEN_A_AUTHORITY_PROFILE_PATH")
-        == "/app/deployment/product/config/finance-golden-a-vo00.v1.json"
+        "NEX_AE_FINANCE_GOLDEN_A_AUTHORITY_PROFILE_PATH" not in environment
+        and "NEX_AE_PRODUCT_CAPABILITY_RETIREMENT_PATH" not in environment
+        and "NEX_AE_NSL_BUNDLE_MANIFEST" not in environment
+        and "NEX_AE_NSL_SKILL_ROOT" not in environment
         and environment.get("NEX_AE_PRODUCT_CAPABILITY_REGISTRY_PATH")
-        == ("/app/deployment/product/config/ae-product-capability-registry.v1.json")
+        == (
+            "/app/deployment/product/repository/deployment/environments/"
+            "ae-product-capability-registry.mybee-m1.v4.json"
+        )
     )
 
 
@@ -255,6 +325,7 @@ def _canonical_environment_contract(
         "nex-eos",
         "nex-wa",
         "nex-ae-agent-runtime-worker",
+        "nex-wc-assignment-dispatch-worker",
         "nex-wc-event-delivery-worker",
         "nex-eos-outbox-publisher",
         "nex-wa-evidence-consumer",

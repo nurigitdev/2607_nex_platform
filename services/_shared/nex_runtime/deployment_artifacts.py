@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import PurePosixPath
 from typing import Any
 
@@ -61,7 +61,11 @@ DEFAULT_DEPLOYMENT_ARTIFACTS = (
         "python-service",
         "ae-runtime",
         "python-production",
-        ("services/_shared/nex_runtime", "services/nex-ae-api/nex_ae_api"),
+        (
+            "services/_shared/nex_runtime",
+            "services/nex-ae-api/nex_ae_api",
+            "domains/mybee/mybee_ax",
+        ),
     ),
     DeploymentArtifactDefinition(
         "nex-cx-runtime",
@@ -155,7 +159,12 @@ P8_DEMO_DEPLOYMENT_ARTIFACTS = (
 )
 
 CURRENT_DEPLOYMENT_ARTIFACTS = (
-    *P8_DEMO_DEPLOYMENT_ARTIFACTS[:-1],
+    *(
+        replace(artifact, build_target="ae-product-runtime")
+        if artifact.artifact_id == "nex-ae-runtime"
+        else artifact
+        for artifact in P8_DEMO_DEPLOYMENT_ARTIFACTS[:-1]
+    ),
     DeploymentArtifactDefinition(
         "nex-wa-runtime",
         "nex-wa",
@@ -178,6 +187,11 @@ CURRENT_PROCESS_ARTIFACT_BINDINGS = (
     ),
     ProcessArtifactBinding(
         "nex-ae-agent-runtime-worker", "nex-ae-runtime", "agent-runtime-worker"
+    ),
+    ProcessArtifactBinding(
+        "nex-wc-assignment-dispatch-worker",
+        "nex-wc-runtime",
+        "assignment-dispatch-worker",
     ),
     ProcessArtifactBinding(
         "nex-wc-event-delivery-worker", "nex-wc-runtime", "event-delivery-worker"

@@ -11,7 +11,9 @@ from pathlib import Path
 from typing import Any, TextIO
 
 from nex_runtime import (
+    OperationalEventEmitter,
     STOPPED,
+    SqlAlchemyOperationalEventStore,
     SqlAlchemyWorkerHeartbeatStore,
     WorkerHeartbeatEmitter,
     build_engine,
@@ -19,6 +21,7 @@ from nex_runtime import (
     check_sqlalchemy_engine,
     database_pool_settings,
     required_database_url,
+    resolve_service_endpoint,
 )
 from nex_runtime.runtime_package_admission import (
     build_runtime_package_check,
@@ -28,6 +31,7 @@ from sqlalchemy import inspect, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
+from nex_ae_api.agent_results import SqlAlchemyAgentResultRepository
 from nex_ae_api.agent_runtime_worker import (
     AE_AGENT_RUNTIME_WORKER_TYPE,
     AgentRuntimeShutdownToken,
@@ -35,8 +39,21 @@ from nex_ae_api.agent_runtime_worker import (
     install_agent_runtime_worker_signal_handlers,
     restore_agent_runtime_worker_signal_handlers,
 )
+from nex_ae_api.mybee_product_admission import (
+    mybee_product_admission_ready,
+    not_required_mybee_product_admission,
+    require_mybee_product_package,
+)
 from nex_ae_api.nsl_backend_profiles import NSL_V01_PROCESS_ISOLATED_BACKEND
+from nex_ae_api.product_capabilities import load_product_capability_registry
+from nex_ae_api.product_coordinator_activation import (
+    build_activated_m1_product_planning_composition,
+)
+from nex_ae_api.product_planning_runtime import (
+    build_contract_m1_product_planning_composition,
+)
 from nex_ae_api.product_runtime_profile import (
+    build_installed_product_skill_runtime,
     build_product_runtime_executor_profile,
 )
 from nex_ae_api.runtime_composition import (
@@ -44,9 +61,19 @@ from nex_ae_api.runtime_composition import (
     RuntimeExecutorProfile,
     build_installed_runtime_composition,
 )
+from nex_ae_api.service_auth import resolve_ae_outbound_service_token
 from nex_ae_api.step_executors import (
     P5DeterministicProjectionExecutor,
     P5StepExecutorRegistry,
+)
+from nex_ae_api.wa_completion_notifications import (
+    build_ae_wa_post_completion_notifier,
+)
+from nex_ae_api.wa_source_projections import SqlAlchemyAgentResultWaProjectionSource
+from nex_ae_api.work_result_publication import (
+    HttpWcWorkResultClient,
+    SqlAlchemyInstalledBackgroundResultCloser,
+    SqlAlchemyWcWorkResultPublisher,
 )
 
 PROCESS_ID = "nex-ae-agent-runtime-worker"
@@ -87,9 +114,13 @@ class InstalledAgentRuntimeProcess:
     engine: Engine
     sessions: sessionmaker[Session]
     composition: InstalledRuntimeComposition
+    mybee_product_admission: Mapping[str, Any] | None = None
 
     def readiness(self) -> dict[str, Any]:
         database = _database_readiness(self.sessions)
+        mybee_admission = (
+            self.mybee_product_admission or not_required_mybee_product_admission()
+        )
         worker = build_agent_runtime_worker_check(
             self.composition.worker_config,
             available_executor_kinds=(self.composition.executor_profile.executor_kinds),
@@ -97,7 +128,7 @@ class InstalledAgentRuntimeProcess:
                 self.composition.executor_profile.backend_profiles
             ),
             in_process_package_readiness=(
-                self.composition.executor_profile.package_readiness
+                self.composition.executor_profile.worker_package_readiness
             ),
         )
         checks = {
@@ -120,6 +151,9 @@ class InstalledAgentRuntimeProcess:
             ),
             "package_readiness_satisfied": worker.get("in_process_package_status")
             in {"NOT_CONFIGURED", "PASS"},
+            "mybee_product_package_admitted": mybee_product_admission_ready(
+                mybee_admission
+            ),
         }
         ready = all(checks.values())
         return {
@@ -133,6 +167,7 @@ class InstalledAgentRuntimeProcess:
             "checks": checks,
             "database": database,
             "worker": worker,
+            "mybee_product_package": dict(mybee_admission),
             "executor_kinds": list(self.composition.executor_profile.executor_kinds),
             "backend_profiles": list(
                 self.composition.executor_profile.backend_profiles
@@ -230,11 +265,68 @@ def build_installed_agent_runtime_process(
             },
         )
         selected_executor_profile = executor_profile
+        mybee_admission = not_required_mybee_product_admission()
+        if selected in {"staging_live", "production"}:
+            mybee_admission = require_mybee_product_package()
+        product_skill_runtime = None
         if selected_executor_profile is None:
+            if selected in {"staging_live", "production"}:
+                product_skill_runtime = build_installed_product_skill_runtime(
+                    sessions, env
+                )
             selected_executor_profile = (
-                build_product_runtime_executor_profile(sessions, env)
+                build_product_runtime_executor_profile(
+                    sessions,
+                    env,
+                    runtime=product_skill_runtime,
+                )
                 if selected in {"staging_live", "production"}
                 else build_deterministic_component_executor_profile()
+            )
+        completion_notifier = None
+        background_result_closer = None
+        product_planning = None
+        if selected in {"staging_live", "production"}:
+            product_capabilities = load_product_capability_registry(env)
+            if str(env.get("NEX_AE_PRODUCT_COORDINATOR_ACTIVATION_PATH") or "").strip():
+                product_planning = build_activated_m1_product_planning_composition(
+                    sessions=sessions,
+                    product_capabilities=product_capabilities,
+                    environ=env,
+                    product_runtime=product_skill_runtime,
+                )
+            else:
+                product_planning = build_contract_m1_product_planning_composition(
+                    sessions=sessions,
+                    product_capabilities=product_capabilities,
+                )
+            completion_notifier = build_ae_wa_post_completion_notifier(
+                agent_results=SqlAlchemyAgentResultWaProjectionSource(
+                    SqlAlchemyAgentResultRepository(sessions)
+                ),
+                environ=env,
+                event_emitter=OperationalEventEmitter(
+                    service_id=SERVICE_ID,
+                    store=SqlAlchemyOperationalEventStore(sessions),
+                ),
+            )
+            wc_endpoint = resolve_service_endpoint("nex-wc", environ=env)
+            wc_client = HttpWcWorkResultClient(
+                base_url=str(env.get("NEX_WC_BASE_URL") or wc_endpoint.base_url),
+                service_token=resolve_ae_outbound_service_token(
+                    env.get("NEX_AE_TO_WC_SERVICE_TOKEN"),
+                    audience="nex-wc",
+                    environ=env,
+                ),
+                timeout_seconds=float(env.get("NEX_AE_TO_WC_TIMEOUT_SECONDS", "15")),
+            )
+            background_result_closer = SqlAlchemyInstalledBackgroundResultCloser(
+                sessions,
+                publisher=SqlAlchemyWcWorkResultPublisher(
+                    sessions,
+                    wc_client,
+                    completion_notifier=completion_notifier,
+                ),
             )
         composition = build_installed_runtime_composition(
             sessions=sessions,
@@ -242,6 +334,9 @@ def build_installed_agent_runtime_process(
             worker_id=worker_id,
             environ=env,
             executor_profile=selected_executor_profile,
+            completion_notifier=completion_notifier,
+            background_result_closer=background_result_closer,
+            product_planning=product_planning,
         )
         return InstalledAgentRuntimeProcess(
             profile=selected,
@@ -249,6 +344,7 @@ def build_installed_agent_runtime_process(
             engine=engine,
             sessions=sessions,
             composition=composition,
+            mybee_product_admission=mybee_admission,
         )
     except Exception as exc:
         if engine is not None:
@@ -293,7 +389,16 @@ def run_installed_agent_runtime_process(
         raise AgentRuntimeProcessError("max_cycles must be between 1 and 100000")
     readiness = process.readiness()
     if readiness["readiness_status"] != "READY":
-        raise AgentRuntimeProcessError("AE Agent Runtime process is not ready")
+        checks = readiness.get("checks")
+        failed_checks = (
+            sorted(str(name) for name, passed in checks.items() if passed is not True)
+            if isinstance(checks, Mapping)
+            else ["readiness_contract_unavailable"]
+        )
+        raise AgentRuntimeProcessError(
+            "AE Agent Runtime process is not ready; failed_checks="
+            + ",".join(failed_checks)
+        )
     stop = should_stop or (lambda: False)
     stream = out or sys.stdout
     completed_cycles = 0
@@ -316,6 +421,7 @@ def run_installed_agent_runtime_process(
         work_cycles += result.get("status") == "WORK"
         failed_count += int(result.get("failed_count") or 0)
         if result.get("status") == "WORK":
+            settlement = _bounded_settlement_diagnostics(result)
             print(
                 json.dumps(
                     {
@@ -324,6 +430,7 @@ def run_installed_agent_runtime_process(
                         "state": "WORK",
                         "execution_count": result.get("execution_count", 0),
                         "failed_count": result.get("failed_count", 0),
+                        **settlement,
                     },
                     sort_keys=True,
                 ),
@@ -350,6 +457,66 @@ def run_installed_agent_runtime_process(
     }
     print(json.dumps({**record, "state": "STOPPED"}, sort_keys=True), file=stream)
     return record
+
+
+def _bounded_settlement_diagnostics(result: Mapping[str, Any]) -> dict[str, Any]:
+    execution_failures = result.get("execution_failures")
+    admitted_execution_failures = []
+    if isinstance(execution_failures, Sequence) and not isinstance(
+        execution_failures, (str, bytes)
+    ):
+        for failure in execution_failures[:10]:
+            if not isinstance(failure, Mapping):
+                continue
+            error_code = failure.get("error_code")
+            admitted_execution_failures.append(
+                {
+                    "error_code": (
+                        error_code[:128]
+                        if isinstance(error_code, str) and error_code.strip()
+                        else "unknown"
+                    )
+                }
+            )
+    diagnostics: dict[str, Any] = {
+        "runtime_execution": {
+            "failed_count": len(admitted_execution_failures),
+            "failures": admitted_execution_failures,
+            "content_included": False,
+        }
+    }
+    for source, target in (
+        ("result_closure", "ia_result_settlement"),
+        ("background_result_closure", "background_result_settlement"),
+    ):
+        closure = result.get(source)
+        if not isinstance(closure, Mapping):
+            continue
+        failures = closure.get("failures")
+        admitted_failures = []
+        if isinstance(failures, Sequence) and not isinstance(failures, (str, bytes)):
+            for failure in failures[:10]:
+                if not isinstance(failure, Mapping):
+                    continue
+                error_code = failure.get("error_code")
+                if not isinstance(error_code, str) or not error_code.strip():
+                    error_code = "unknown"
+                admitted_failures.append(
+                    {
+                        "error_code": error_code[:128],
+                        "retryable": bool(failure.get("retryable")),
+                    }
+                )
+        diagnostics[target] = {
+            "candidate_count": int(closure.get("candidate_count") or 0),
+            "finalized_count": int(closure.get("finalized_count") or 0),
+            "published_count": int(closure.get("published_count") or 0),
+            "replayed_count": int(closure.get("replayed_count") or 0),
+            "failed_count": int(closure.get("failed_count") or 0),
+            "failures": admitted_failures,
+            "content_included": False,
+        }
+    return diagnostics
 
 
 def run_live(

@@ -45,6 +45,7 @@ DEFAULT_IMAGE_REPORT = (
     ROOT / "reports/deployment/canonical-platform-oci-image-build.json"
 )
 DEFAULT_REPORT = ROOT / "reports/deployment/canonical-platform-compose-render.json"
+CANONICAL_AE_WORKER_LEASE_SECONDS = 600
 
 
 def check_canonical_platform_compose(
@@ -176,6 +177,7 @@ def _admit_rendered_canonical_compose(
     for process_id in (
         "nex-wa-evidence-consumer",
         "nex-ae-agent-runtime-worker",
+        "nex-wc-assignment-dispatch-worker",
         "nex-wc-event-delivery-worker",
         "nex-eos-outbox-publisher",
     ):
@@ -184,6 +186,62 @@ def _admit_rendered_canonical_compose(
             raise TypeError(f"canonical process is missing: {process_id}")
         if service.get("restart") != "unless-stopped" or "ports" in service:
             raise ValueError(f"canonical process policy drift: {process_id}")
+    ae_worker = services.get("nex-ae-agent-runtime-worker")
+    if not isinstance(ae_worker, Mapping):
+        raise TypeError("canonical AE Agent Runtime worker is missing")
+    ae_worker_environment = ae_worker.get("environment")
+    if not isinstance(ae_worker_environment, Mapping):
+        raise TypeError("canonical AE Agent Runtime worker environment is missing")
+    ae_worker_lease = int(
+        str(ae_worker_environment.get("NEX_AE_AGENT_WORKER_LEASE_SECONDS") or "0")
+    )
+    if ae_worker_lease != CANONICAL_AE_WORKER_LEASE_SECONDS:
+        raise ValueError("canonical AE Agent Runtime worker lease policy drift")
+    assignment_dispatcher = services.get("nex-wc-assignment-dispatch-worker")
+    if not isinstance(assignment_dispatcher, Mapping):
+        raise TypeError("canonical assignment dispatcher is missing")
+    event_delivery = services.get("nex-wc-event-delivery-worker")
+    if not isinstance(event_delivery, Mapping):
+        raise TypeError("canonical event delivery worker is missing")
+    assignment_environment = assignment_dispatcher.get("environment")
+    delivery_environment = event_delivery.get("environment")
+    if not isinstance(assignment_environment, Mapping) or not isinstance(
+        delivery_environment, Mapping
+    ):
+        raise TypeError("canonical WC worker environment is missing")
+    assignment_lease = int(
+        str(assignment_environment.get("NEX_WC_CLAIM_LEASE_SECONDS") or "0")
+    )
+    delivery_lease = int(
+        str(delivery_environment.get("NEX_WC_CLAIM_LEASE_SECONDS") or "0")
+    )
+    handoff_timeout = float(
+        str(delivery_environment.get("NEX_WC_AE_DELIVERY_TIMEOUT_SECONDS") or "0")
+    )
+    if (
+        assignment_lease != delivery_lease
+        or assignment_lease < 2 * handoff_timeout
+    ):
+        raise ValueError("canonical WC handoff lease policy drift")
+    dispatcher_dependencies = assignment_dispatcher.get("depends_on")
+    required_dispatcher_dependencies = {
+        "openbao",
+        "nex-wc",
+        "nex-ae-api",
+        "nex-oa",
+    }
+    if not isinstance(dispatcher_dependencies, Mapping) or not all(
+        isinstance(dispatcher_dependencies.get(name), Mapping)
+        and dispatcher_dependencies[name].get("condition") == "service_healthy"
+        for name in required_dispatcher_dependencies
+    ):
+        raise ValueError("canonical assignment dispatcher start-order drift")
+    dispatcher_serialized = json.dumps(assignment_dispatcher, sort_keys=True).lower()
+    if any(
+        marker in dispatcher_serialized
+        for marker in ("demo", "fixture", "nex_p8_demo", "p8_demo", "m1_")
+    ):
+        raise ValueError("canonical assignment dispatcher retains scenario residue")
     serialized = json.dumps(rendered, sort_keys=True)
     if "nuri1004" in serialized or "_TEST_DATABASE_URL" in serialized:
         raise ValueError("canonical Compose exposes forbidden database input")
@@ -199,6 +257,7 @@ def _admit_rendered_canonical_compose(
         "nex-eos",
         "nex-wa",
         "nex-ae-agent-runtime-worker",
+        "nex-wc-assignment-dispatch-worker",
         "nex-wc-event-delivery-worker",
         "nex-eos-outbox-publisher",
         "nex-wa-evidence-consumer",
@@ -219,7 +278,7 @@ def _admit_rendered_canonical_compose(
         "status": "PASS",
         "service_count": len(services),
         "image_count": len(image_references),
-        "installed_process_count": 20,
+        "installed_process_count": 21,
         "canonical_runtime_environment_count": len(runtime_services),
         "secret_included": False,
         "database_url_included": False,

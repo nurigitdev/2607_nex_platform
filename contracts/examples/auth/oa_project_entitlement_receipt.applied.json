@@ -1,0 +1,11 @@
+{
+  "receipt_schema_version": "oa_project_entitlement_receipt.v1",
+  "event_id": "33333333-3333-4333-8333-333333333333",
+  "event_payload_hash": "sha256:fc91418dabcc31787f28831804a4bac8673724ac2cb4c5300efcdaa3355ee3f1",
+  "receipt_ref": "oa.project-entitlement:33333333-3333-4333-8333-333333333333:v1",
+  "tenant_id": "VO00",
+  "project_code": "VO00D260001",
+  "source_version": 1,
+  "inbox_state": "APPLIED",
+  "replayed": false
+}

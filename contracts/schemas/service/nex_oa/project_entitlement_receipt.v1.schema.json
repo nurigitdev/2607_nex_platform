@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_oa/project_entitlement_receipt.v1.schema.json",
+  "title": "OA Project Entitlement Receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "receipt_schema_version",
+    "event_id",
+    "event_payload_hash",
+    "receipt_ref",
+    "tenant_id",
+    "project_code",
+    "source_version",
+    "inbox_state",
+    "replayed"
+  ],
+  "properties": {
+    "receipt_schema_version": { "const": "oa_project_entitlement_receipt.v1" },
+    "event_id": { "type": "string", "format": "uuid" },
+    "event_payload_hash": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "receipt_ref": { "type": "string", "minLength": 1, "maxLength": 512 },
+    "tenant_id": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "project_code": {
+      "type": "string",
+      "pattern": "^[A-Z0-9]{4}[DMSOIG][0-9]{6}$"
+    },
+    "source_version": { "type": "integer", "minimum": 1 },
+    "inbox_state": { "const": "APPLIED" },
+    "replayed": { "type": "boolean" }
+  }
+}

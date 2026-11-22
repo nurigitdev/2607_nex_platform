@@ -40,8 +40,8 @@ def test_current_installation_admits_current_manifest_and_compose_layers() -> No
 
     assert result["status"] == "ADMITTED"
     assert result["artifact_count"] == 9
-    assert result["process_count"] == 20
-    assert result["journey_process_count"] == 9
+    assert result["process_count"] == 21
+    assert result["journey_process_count"] == 10
     assert result["additive_process_count"] == 2
     assert result["compose_layer_count"] == 4
     assert all(result["checks"].values())
@@ -51,6 +51,7 @@ def test_current_installation_admits_current_manifest_and_compose_layers() -> No
         item[1] for item in installation.CURRENT_JOURNEY_WORKERS.values()
     } == {
         "ae-product-agent-runtime-1",
+        "wc-assignment-dispatch-worker-1",
         "wc-event-delivery-worker-1",
         "eos-outbox-publisher-1",
     }
@@ -107,12 +108,9 @@ def test_product_ae_image_contract_cannot_be_overridden_by_compose() -> None:
     assert installation._product_ae_image_contract_not_overridden(
         {
             "environment": {
-                "NEX_AE_FINANCE_GOLDEN_A_AUTHORITY_PROFILE_PATH": (
-                    "/app/deployment/product/config/finance-golden-a-vo00.v1.json"
-                ),
                 "NEX_AE_PRODUCT_CAPABILITY_REGISTRY_PATH": (
-                    "/app/deployment/product/config/"
-                    "ae-product-capability-registry.v1.json"
+                    "/app/deployment/product/repository/deployment/environments/"
+                        "ae-product-capability-registry.mybee-m1.v4.json"
                 ),
             }
         }
@@ -120,9 +118,15 @@ def test_product_ae_image_contract_cannot_be_overridden_by_compose() -> None:
     assert not installation._product_ae_image_contract_not_overridden(
         {
             "environment": {
+                "NEX_AE_FINANCE_GOLDEN_A_AUTHORITY_PROFILE_PATH": (
+                    "/app/deployment/product/config/finance-golden-a-vo00.v1.json"
+                ),
                 "NEX_AE_PRODUCT_CAPABILITY_REGISTRY_PATH": (
-                    "/app/deployment/p8-demo/config/registry.json"
-                )
+                    "/app/deployment/product/config/ae-product-capability-registry.v1.json"
+                ),
+                "NEX_AE_PRODUCT_CAPABILITY_RETIREMENT_PATH": (
+                    "/app/deployment/product/config/golden-a-selection-freeze.v1.json"
+                ),
             }
         }
     )
@@ -137,7 +141,7 @@ def test_s18_source_admission_is_current_and_nonexecuting() -> None:
     assert result["status"] == "SOURCE_ADMITTED"
     assert result["executed"] is False
     assert result["current_artifact_count"] == 9
-    assert result["current_process_count"] == 20
+    assert result["current_process_count"] == 21
     assert result["platform_integrated"] is True
     assert result["runtime_transition_fixture"] is False
     assert result["manual_domain_transition"] is False
@@ -211,12 +215,12 @@ def test_s18_summary_is_bounded() -> None:
         {
             "status": "PASS",
             "executed": True,
-            "current_process_count": 20,
+            "current_process_count": 21,
             "actual_postgres": True,
             "actual_remote_generation": True,
             "actual_playwright": True,
         }
     ) == (
         "gb2_ca00_s18_installed_current_platform=pass executed=true "
-        "processes=20 postgres=true provider=true playwright=true"
+        "processes=21 postgres=true provider=true playwright=true"
     )

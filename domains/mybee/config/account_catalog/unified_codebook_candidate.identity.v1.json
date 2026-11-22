@@ -1,0 +1,28 @@
+{
+  "schema_version": "nex.mybee.coa.candidate-identity.v1",
+  "identity_id": "mybee.finance.k-ifrs-nfi.design-candidate.v0.1",
+  "catalog_profile": "MYBEE-KIFRS-NFI",
+  "status": "STRUCTURE_VALIDATED_ACCOUNTING_APPROVAL_PENDING",
+  "candidate_path": "docs/transition/MyBee_Phase1/NeX_MyBee_COA_Codebook_Candidate_v0.1.json",
+  "candidate_file_sha256": "sha256:904a122075109a1bb9021207075b1b3229f59d977cb0aee84c237de15ceaac04",
+  "candidate_semantic_hash": "sha256:804cbc36814397ba9a74522dc7de7ffa444e001cde8ff6cbf8b8959129893fc0",
+  "identity_set_hash": "sha256:412dee6066d65620e0b817bc652ab319b2ce33eccfccdce1b6e2cd77a0c4a673",
+  "node_contract_hash": "sha256:e988aaf0f5eccb9578591d8e4f678cb8d751019583389346178a427771be7c13",
+  "total_nodes": 166,
+  "accounting_owner_approved": false,
+  "runtime_seed_allowed": false,
+  "approved_proof_ref": null,
+  "code_identity_policy": "CODE_AND_SEMANTIC_KEY_NEVER_REUSED",
+  "terminology_classification": "INTERNAL_MYBEE_PRODUCT_CODE_NOT_OFFICIAL_KIFRS_OR_DART_ID",
+  "required_fx_semantic_keys": [
+    "MB-COA-ACCOUNTS-PAYABLE-FX",
+    "MB-COA-ACCOUNTS-RECEIVABLE-FX",
+    "MB-COA-BANK-FX-DEPOSIT",
+    "MB-COA-FX-REALIZED-GAIN",
+    "MB-COA-FX-REALIZED-LOSS",
+    "MB-COA-FX-REVALUATION-GAIN",
+    "MB-COA-FX-REVALUATION-LOSS",
+    "MB-COA-OTHER-PAYABLES-FX"
+  ],
+  "next_gate": "PRODUCT_ACCOUNTING_OWNER_APPROVAL_OF_EXACT_DATASET"
+}

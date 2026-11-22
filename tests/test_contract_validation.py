@@ -4,10 +4,9 @@ import json
 from pathlib import Path
 
 import pytest
+import validate_contracts
 import yaml
 from jsonschema_path.loaders import JsonschemaSafeLoader
-
-import validate_contracts
 
 
 def write_json(path: Path, payload: object) -> None:
@@ -79,6 +78,67 @@ def test_validate_contract_tree_accepts_valid_contract_package(tmp_path: Path) -
     assert summary.example_count == 1
     assert summary.negative_example_count == 1
     assert summary.openapi_count == 1
+
+
+def test_validate_contract_tree_resolves_repository_schema_ids(tmp_path: Path) -> None:
+    build_contract_fixture(tmp_path)
+    shared_schema = {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "$id": "urn:nex:test:shared",
+        "type": "object",
+        "additionalProperties": False,
+        "required": ["value"],
+        "properties": {"value": {"type": "string"}},
+    }
+    wrapper_schema = {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "$id": "urn:nex:test:wrapper",
+        "type": "object",
+        "additionalProperties": False,
+        "required": ["shared"],
+        "properties": {"shared": {"$ref": "urn:nex:test:shared"}},
+    }
+    write_json(tmp_path / "schemas/common/shared.v1.schema.json", shared_schema)
+    write_json(tmp_path / "schemas/common/wrapper.v1.schema.json", wrapper_schema)
+    write_json(tmp_path / "examples/wrapper.json", {"shared": {"value": "ok"}})
+    write_json(
+        tmp_path / "examples/index.json",
+        {
+            "examples": [
+                {
+                    "name": "wrapper",
+                    "path": "examples/wrapper.json",
+                    "schema": "schemas/common/wrapper.v1.schema.json",
+                }
+            ]
+        },
+    )
+
+    summary = validate_contracts.validate_contract_tree(tmp_path)
+
+    assert summary.ok
+    assert summary.schema_count == 3
+    assert summary.example_count == 1
+
+
+def test_validate_payload_preserves_standalone_schema_compatibility() -> None:
+    validate_contracts.validate_payload(minimal_schema(), {"name": "valid"})
+
+    with pytest.raises(validate_contracts.ValidationError):
+        validate_contracts.validate_payload(minimal_schema(), {})
+
+
+def test_validate_contract_tree_reports_registry_build_failure(tmp_path: Path) -> None:
+    build_contract_fixture(tmp_path)
+    write_json(
+        tmp_path / "schemas/common/unknown-dialect.v1.schema.json",
+        {"$id": "urn:nex:test:unknown-dialect", "type": "object"},
+    )
+
+    summary = validate_contracts.validate_contract_tree(tmp_path)
+
+    assert not summary.ok
+    assert any("registry build failed" in failure for failure in summary.failures)
 
 
 def test_contract_inventory_counts_tracks_current_files_and_indexes(

@@ -8,6 +8,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
 
+from nex_ae_api.agent_authority import AgentAuthoritySynchronizer
 from nex_ae_api.agent_execution import (
     AgentExecutionAdmissionService,
     SqlAlchemyAgentExecutionRepository,
@@ -259,6 +260,7 @@ def attach_agent_runtime_foundation(
     *,
     application: ChatApplicationService | None = None,
     environ: Mapping[str, str] | None = None,
+    authority_synchronizer: AgentAuthoritySynchronizer | None = None,
 ) -> AgentRuntimeFoundation:
     mode = agent_runtime_mode(environ)
     session_factory = getattr(persistence, "api_session_factory", None)
@@ -283,7 +285,10 @@ def attach_agent_runtime_foundation(
         app.state.ae_agent_runtime = foundation
         return foundation
 
-    identities = SqlAlchemyAgentIdentityRegistry(session_factory)
+    identities = SqlAlchemyAgentIdentityRegistry(
+        session_factory,
+        authority_synchronizer=authority_synchronizer,
+    )
     executions = SqlAlchemyAgentExecutionRepository(session_factory)
     dispatcher_config = load_agent_runtime_dispatcher_config(environ)
     jobs = SqlAlchemyRuntimeJobQueue(

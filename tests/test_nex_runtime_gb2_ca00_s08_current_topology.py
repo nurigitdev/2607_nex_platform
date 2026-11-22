@@ -37,14 +37,14 @@ def test_current_topology_closure_is_exact_and_source_backed() -> None:
     assert result["status"] == "PASS"
     assert result["issues"] == []
     assert result["artifact_count"] == 9
-    assert result["process_count"] == 20
+    assert result["process_count"] == 21
     assert result["endpoint_count"] == 9
-    assert result["background_process_count"] == 11
-    assert result["domain_work_process_count"] == 5
+    assert result["background_process_count"] == 12
+    assert result["domain_work_process_count"] == 6
     assert result["lifecycle_only_process_count"] == 6
-    assert len(result["responsibilities"]) == 20
-    assert len(result["startup"]["local_order"]) == 20
-    assert len(result["startup"]["protected_order"]) == 20
+    assert len(result["responsibilities"]) == 21
+    assert len(result["startup"]["local_order"]) == 21
+    assert len(result["startup"]["protected_order"]) == 21
     assert all(result["command_source_checks"].values())
     assert result["content_included"] is False
     assert result["secret_included"] is False
@@ -71,16 +71,20 @@ def test_current_protected_profile_requires_promoted_edges() -> None:
     environment = synthetic_protected_environment()
     resolved = resolve_current_runtime_profile("test", environ=environment)
 
-    assert len(resolved.required_environment_names) == 33
+    assert len(resolved.required_environment_names) == 35
     assert "NEX_WC_AE_BASE_URL" in CURRENT_SERVICE_ENDPOINT_ENV_NAMES
+    assert "NEX_WC_OA_BASE_URL" in CURRENT_SERVICE_ENDPOINT_ENV_NAMES
     assert {
         "NEX_WC_TO_AE_SERVICE_TOKEN",
+        "NEX_WC_TO_OA_SERVICE_TOKEN",
         "NEX_EOS_TO_AE_SERVICE_TOKEN",
     }.issubset(CURRENT_SIGNED_TRUST_ENV_NAMES)
 
     for name in (
         "NEX_WC_AE_BASE_URL",
+        "NEX_WC_OA_BASE_URL",
         "NEX_WC_TO_AE_SERVICE_TOKEN",
+        "NEX_WC_TO_OA_SERVICE_TOKEN",
         "NEX_EOS_TO_AE_SERVICE_TOKEN",
     ):
         incomplete = dict(environment)

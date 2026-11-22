@@ -1,0 +1,58 @@
+{
+  "schema_version": "nex.mybee.coa.candidate-negative-cases.v1",
+  "cases": [
+    {
+      "case_id": "duplicate-account-code",
+      "mutation": "duplicate_code",
+      "target_key": "MB-COA-BANK-DEMAND-DEPOSIT",
+      "source_key": "MB-COA-CASH-ON-HAND",
+      "expected_finding": "ACCOUNT_CODE_DUPLICATE"
+    },
+    {
+      "case_id": "duplicate-semantic-key",
+      "mutation": "duplicate_semantic_key",
+      "target_key": "MB-COA-BANK-DEMAND-DEPOSIT",
+      "source_key": "MB-COA-CASH-ON-HAND",
+      "expected_finding": "SEMANTIC_KEY_DUPLICATE"
+    },
+    {
+      "case_id": "global-candidate-uses-tenant-suffix",
+      "mutation": "set_code",
+      "target_key": "MB-COA-CASH-ON-HAND",
+      "value": "10101801",
+      "expected_finding": "STANDARD_LEAF_SUFFIX_RESERVED"
+    },
+    {
+      "case_id": "hierarchy-parent-drift",
+      "mutation": "set_parent",
+      "target_key": "MB-COA-CASH-ON-HAND",
+      "value": "10201000",
+      "expected_finding": "ACCOUNT_PARENT_MISMATCH"
+    },
+    {
+      "case_id": "cross-release-code-semantic-drift",
+      "mutation": "prior_identity_drift",
+      "target_key": "MB-COA-CASH-ON-HAND",
+      "value": "MB-COA-DIFFERENT-MEANING",
+      "expected_finding": "CODE_SEMANTIC_DRIFT"
+    },
+    {
+      "case_id": "unapproved-source-seed-attempt",
+      "mutation": "enable_runtime_seed",
+      "expected_finding": "CANDIDATE_SEED_PREMATURE"
+    },
+    {
+      "case_id": "category-mismatch",
+      "mutation": "set_category",
+      "target_key": "MB-COA-CASH-ON-HAND",
+      "value": "EXPENSE",
+      "expected_finding": "ACCOUNT_CATEGORY_INVALID"
+    },
+    {
+      "case_id": "missing-required-fx-account",
+      "mutation": "remove_account",
+      "target_key": "MB-COA-BANK-FX-DEPOSIT",
+      "expected_finding": "REQUIRED_FX_ACCOUNT_MISSING"
+    }
+  ]
+}

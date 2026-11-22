@@ -1,0 +1,27 @@
+{
+  "response_schema_version": "oa_project_decision_response.v1",
+  "service_id": "nex-oa",
+  "decision": {
+    "decision_schema_version": "oa_project_authorization_decision.v1",
+    "decision_ref": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "tenant_id": "VO00",
+    "subject_id": "employee-2003",
+    "project_code": "VO00D260001",
+    "action": "finance:voucher-candidate:create",
+    "allowed": true,
+    "reason_code": "ALLOW",
+    "project_role": "MEMBER",
+    "project_status": "ACTIVE",
+    "grant_status": "ACTIVE",
+    "source_version": 1,
+    "minimum_source_version": 1,
+    "projection_event_hash": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "applicable_global_scopes": ["finance:voucher-candidate:create"],
+    "authorization_revision_hash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "correlation_id": "request-w40-ca01-s03-private",
+    "decided_at": "2026-11-12T09:00:00Z"
+  },
+  "request_id": "request-w40-ca01-s03-private",
+  "trace_id": "trace-w40-ca01-s03-private",
+  "access_token": "private-value"
+}

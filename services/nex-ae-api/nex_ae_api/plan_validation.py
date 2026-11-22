@@ -147,12 +147,8 @@ def build_plan_validation_result(
             agent_plan.get("agent_plan_version"),
             agent_plan.get("plan_hash"),
         ),
-        "execution_id": _required_uuid(
-            "execution_id", agent_plan.get("execution_id")
-        ),
-        "validator_version": _required_text(
-            "validator_version", validator_version, 64
-        ),
+        "execution_id": _required_uuid("execution_id", agent_plan.get("execution_id")),
+        "validator_version": _required_text("validator_version", validator_version, 64),
         "status": status,
         "runtime_directive": outcome.runtime_directive,
         "validated_context_ref": _versioned_ref(
@@ -164,8 +160,10 @@ def build_plan_validation_result(
         "topological_step_order": _normalize_step_order(topological_step_order),
         "validated_at": _required_datetime("validated_at", validated_at),
     }
-    if status == "VALID" and result["issues"] and any(
-        item["severity"] == "ERROR" for item in result["issues"]
+    if (
+        status == "VALID"
+        and result["issues"]
+        and any(item["severity"] == "ERROR" for item in result["issues"])
     ):
         raise _invalid("VALID result cannot contain ERROR issues.")
     if status != "VALID" and not result["issues"]:
@@ -295,7 +293,10 @@ def validate_plan_validation_result(value: Mapping[str, Any]) -> dict[str, Any]:
         "validated_at",
         "result_hash",
     }
-    if set(record) != fields or record["schema_version"] != PLAN_VALIDATION_SCHEMA_VERSION:
+    if (
+        set(record) != fields
+        or record["schema_version"] != PLAN_VALIDATION_SCHEMA_VERSION
+    ):
         raise _invalid("PlanValidationResult fields or schema version are invalid.")
     _required_uuid("validation_result_id", record["validation_result_id"])
     _validate_versioned_ref("agent_plan_ref", record["agent_plan_ref"])
@@ -419,8 +420,7 @@ def _evaluate_plan(
         return _decision(
             "CONTEXT_REFRESH_REQUIRED",
             "REQUIRED_ENTITY_UNRESOLVED",
-            "Required entity selectors are unresolved: "
-            + ", ".join(missing_selectors),
+            "Required entity selectors are unresolved: " + ", ".join(missing_selectors),
             field_path="agent_context.resolved_entities",
         )
     if plan["plan_kind"] not in {"DIRECT", "KNOWN_TEMPLATE"}:
@@ -493,7 +493,11 @@ def _topological_order(
         order.append(current)
         for dependent in sorted(dependents[current]):
             incoming[dependent].discard(current)
-            if not incoming[dependent] and dependent not in order and dependent not in ready:
+            if (
+                not incoming[dependent]
+                and dependent not in order
+                and dependent not in ready
+            ):
                 ready.append(dependent)
         ready.sort()
     if len(order) != len(ids):
@@ -530,13 +534,9 @@ def _validate_plan_semantics(
             )
     for step_id, step in steps.items():
         if step["step_type"] == "DELEGATE_WORK":
-            project = agent_context.get("project_ref")
             delegation = step["delegation"]
-            if (
-                not isinstance(project, Mapping)
-                or project.get("resource_type") != "PROJECT"
-                or project.get("resource_id")
-                != delegation["project_scope_ref"]
+            if delegation["project_scope_ref"] not in _trusted_project_scope_refs(
+                agent_context
             ):
                 return _issue(
                     "DELEGATION_PROJECT_SCOPE_MISMATCH",
@@ -577,6 +577,30 @@ def _validate_plan_semantics(
                 field_path="steps.report.source_step_refs",
             )
     return None
+
+
+def _trusted_project_scope_refs(agent_context: Mapping[str, Any]) -> set[str]:
+    refs: set[str] = set()
+    project = agent_context.get("project_ref")
+    if isinstance(project, Mapping) and project.get("resource_type") == "PROJECT":
+        resource_id = project.get("resource_id")
+        if isinstance(resource_id, str) and resource_id:
+            refs.add(resource_id)
+    entities = agent_context.get("resolved_entities")
+    if isinstance(entities, list):
+        for item in entities:
+            resource = item.get("resource_ref") if isinstance(item, Mapping) else None
+            resource_id = (
+                resource.get("resource_id") if isinstance(resource, Mapping) else None
+            )
+            if (
+                isinstance(resource, Mapping)
+                and resource.get("resource_type") == "PROJECT"
+                and isinstance(resource_id, str)
+                and resource_id
+            ):
+                refs.add(resource_id)
+    return refs
 
 
 def _validate_capabilities(
@@ -755,7 +779,10 @@ def _normalize_step_order(value: Sequence[str]) -> list[str]:
         not isinstance(value, list | tuple)
         or len(value) > 12
         or len(set(value)) != len(value)
-        or any(not isinstance(item, str) or _STEP_ID.fullmatch(item) is None for item in value)
+        or any(
+            not isinstance(item, str) or _STEP_ID.fullmatch(item) is None
+            for item in value
+        )
     ):
         raise _invalid("PlanValidation topological step order is invalid.")
     return list(value)
@@ -780,23 +807,31 @@ def _require_exact_persisted_lineage(
     session: Session, tenant_id: str, result: Mapping[str, Any]
 ) -> None:
     plan_ref = result["agent_plan_ref"]
-    plan = session.execute(
-        text(
-            "SELECT agent_plan_version, agent_execution_id, agent_context_id, "
-            "plan_hash FROM ae_agent_plan WHERE tenant_id = :tenant_id "
-            "AND agent_plan_id = :plan_id"
-        ),
-        {"tenant_id": tenant_id, "plan_id": plan_ref["id"]},
-    ).mappings().first()
+    plan = (
+        session.execute(
+            text(
+                "SELECT agent_plan_version, agent_execution_id, agent_context_id, "
+                "plan_hash FROM ae_agent_plan WHERE tenant_id = :tenant_id "
+                "AND agent_plan_id = :plan_id"
+            ),
+            {"tenant_id": tenant_id, "plan_id": plan_ref["id"]},
+        )
+        .mappings()
+        .first()
+    )
     context_ref = result["validated_context_ref"]
-    context = session.execute(
-        text(
-            "SELECT context_generation, agent_execution_id, context_hash "
-            "FROM ae_agent_context WHERE tenant_id = :tenant_id "
-            "AND context_id = :context_id"
-        ),
-        {"tenant_id": tenant_id, "context_id": context_ref["id"]},
-    ).mappings().first()
+    context = (
+        session.execute(
+            text(
+                "SELECT context_generation, agent_execution_id, context_hash "
+                "FROM ae_agent_context WHERE tenant_id = :tenant_id "
+                "AND context_id = :context_id"
+            ),
+            {"tenant_id": tenant_id, "context_id": context_ref["id"]},
+        )
+        .mappings()
+        .first()
+    )
     if (
         plan is None
         or int(plan["agent_plan_version"]) != plan_ref["version"]
@@ -848,21 +883,27 @@ _EXECUTION_TRANSITION_SQL = """
 def _load_validation(
     session: Session, tenant_id: str, validation_result_id: str
 ) -> dict[str, Any] | None:
-    row = session.execute(
-        text(
-            "SELECT result_json FROM ae_plan_validation "
-            "WHERE tenant_id = :tenant_id "
-            "AND validation_result_id = :validation_result_id"
-        ),
-        {
-            "tenant_id": tenant_id,
-            "validation_result_id": validation_result_id,
-        },
-    ).mappings().first()
+    row = (
+        session.execute(
+            text(
+                "SELECT result_json FROM ae_plan_validation "
+                "WHERE tenant_id = :tenant_id "
+                "AND validation_result_id = :validation_result_id"
+            ),
+            {
+                "tenant_id": tenant_id,
+                "validation_result_id": validation_result_id,
+            },
+        )
+        .mappings()
+        .first()
+    )
     return None if row is None else _json_value(row["result_json"])
 
 
-def _versioned_ref(record_id: object, version: object, hash_ref: object) -> dict[str, Any]:
+def _versioned_ref(
+    record_id: object, version: object, hash_ref: object
+) -> dict[str, Any]:
     value = {"id": record_id, "version": version, "hash": hash_ref}
     _validate_versioned_ref("reference", value)
     return value
@@ -891,7 +932,9 @@ def _required_uuid(field: str, value: object) -> str:
 
 def _required_text(field: str, value: object, maximum: int) -> str:
     if not isinstance(value, str) or not value.strip() or len(value) > maximum:
-        raise _invalid(f"{field} must be a non-empty string up to {maximum} characters.")
+        raise _invalid(
+            f"{field} must be a non-empty string up to {maximum} characters."
+        )
     return value.strip()
 
 

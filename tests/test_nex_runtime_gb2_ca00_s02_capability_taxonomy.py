@@ -58,6 +58,7 @@ def test_promotion_targets_have_distinct_pre_admitted_capabilities() -> None:
     bindings = dict(PACKAGED_DOMAIN_PROCESS_CAPABILITIES)
 
     assert bindings["nex-ae-agent-runtime-worker"] == "job_claiming"
+    assert bindings["nex-wc-assignment-dispatch-worker"] == "job_claiming"
     assert bindings["nex-wc-event-delivery-worker"] == "event_delivering"
     assert bindings["nex-eos-outbox-publisher"] == "outbox_publishing"
     assert len(PACKAGED_DOMAIN_PROCESS_CAPABILITIES) == len(bindings)
@@ -107,10 +108,10 @@ def test_historical_and_current_manifests_remain_compatible() -> None:
     assert historical_projection["job_claiming_background_count"] == 1
     assert historical_projection["lifecycle_only_background_count"] == 6
 
-    assert current_projection["entrypoint_count"] == 20
-    assert current_projection["background_entrypoint_count"] == 11
-    assert current_projection["domain_work_background_count"] == 5
-    assert current_projection["job_claiming_background_count"] == 3
+    assert current_projection["entrypoint_count"] == 21
+    assert current_projection["background_entrypoint_count"] == 12
+    assert current_projection["domain_work_background_count"] == 6
+    assert current_projection["job_claiming_background_count"] == 4
     assert current_projection["lifecycle_only_background_count"] == 6
     assert current_projection["event_delivering_background_count"] == 1
     assert current_projection["outbox_publishing_background_count"] == 1
@@ -118,7 +119,7 @@ def test_historical_and_current_manifests_remain_compatible() -> None:
     assert current_projection["capability_counts"] == {
         "request_serving": 8,
         "static_serving": 1,
-        "job_claiming": 3,
+        "job_claiming": 4,
         "event_delivering": 1,
         "outbox_publishing": 1,
         "scheduled_maintenance": 0,

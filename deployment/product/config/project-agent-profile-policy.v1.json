@@ -1,0 +1,12 @@
+{
+  "schema_version": "ae.project_agent_profile_policy.v1",
+  "policy_ref": "policy://nex-platform/project-agent-lifecycle/v1",
+  "profile_ref": "agent-profile://nex-platform/project-agent/v1",
+  "state_capability_modes": {
+    "ACTIVE": "ORDINARY",
+    "INACTIVE": "SUSPENDED",
+    "CLOSING": "CLOSURE",
+    "CLOSED": "RETIRED"
+  },
+  "policy_hash": "sha256:ec35609b1bcf49dea680e0d64c63947a73b6fa124a575fdf5a55d406a0b3ab21"
+}

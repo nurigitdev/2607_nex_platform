@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from collections.abc import Mapping
-from dataclasses import dataclass
 import json
-from pathlib import Path
 import re
 import ssl
+from collections.abc import Mapping
+from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Protocol
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlsplit
@@ -16,13 +16,12 @@ from .production_secret_materialization import (
     SecretResolutionContext,
 )
 
-
 OPENBAO_PROVIDER_ID = "openbao"
 OPENBAO_KV_MOUNT = "kv"
 _VERSION = re.compile(r"^v([1-9][0-9]*)$")
 _RESOURCE = re.compile(
     r"^/nex-platform/(?P<namespace>staging|production)/"
-    r"(?P<owner>nex-(?:oa|ae-api|cx|mo|ag|wc|eos))/"
+    r"(?P<owner>nex-(?:oa|ae-api|cx|mo|ag|wc|eos|wa))/"
     r"(?P<target>NEX_[A-Z0-9_]+)@(?P<version>v[1-9][0-9]*)$"
 )
 

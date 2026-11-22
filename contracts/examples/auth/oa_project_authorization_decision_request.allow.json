@@ -1,0 +1,8 @@
+{
+  "tenant_id": "VO00",
+  "subject_id": "employee-2003",
+  "project_code": "VO00D260001",
+  "action": "finance:voucher-candidate:create",
+  "correlation_id": "request-w40-ca01-s03",
+  "minimum_source_version": 1
+}

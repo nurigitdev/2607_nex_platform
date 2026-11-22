@@ -1,4 +1,5 @@
 import os
+from dataclasses import replace
 
 from nex_runtime import (
     SERVICE_SPECS,
@@ -12,6 +13,7 @@ from nex_runtime.compatibility import register_generation_compatibility_routes
 from nex_runtime.prompts import register_prompt_registry_routes
 from nex_runtime.recovery import register_generation_recovery_policy_routes
 
+from nex_ae_api.agent_authority import build_agent_authority_synchronizer
 from nex_ae_api.agent_identity import SqlAlchemyAgentIdentityRegistry
 from nex_ae_api.agent_registry_api import register_agent_registry_routes
 from nex_ae_api.agent_results import SqlAlchemyAgentResultRepository
@@ -27,6 +29,7 @@ from nex_ae_api.analytics import (
 )
 from nex_ae_api.approval_decision_event_api import (
     ApprovalDecisionEventRouter,
+    EosProductApprovalReceiptAdmission,
     HttpEosBusinessApprovalDecisionClient,
     SqlAlchemyNslApprovalDecisionAdmission,
     register_approval_decision_event_routes,
@@ -37,6 +40,7 @@ from nex_ae_api.artifacts import (
     register_artifact_handoff_routes,
 )
 from nex_ae_api.auth_sessions import register_auth_session_routes
+from nex_ae_api.background_planning import build_installed_claim_handoff_admission
 from nex_ae_api.chat import register_chat_routes
 from nex_ae_api.claim_handoff_api import register_claim_handoff_routes
 from nex_ae_api.documents import register_document_library_routes
@@ -50,6 +54,25 @@ from nex_ae_api.nsl_approval_events import SqlAlchemyNslApprovalEventService
 from nex_ae_api.private_object_store import (
     AePrivateObjectStorageError,
     build_ae_private_object_store,
+)
+from nex_ae_api.product_coordinator_activation import (
+    build_activated_m1_product_planning_composition,
+)
+from nex_ae_api.product_planning_event_api import (
+    register_product_planning_event_routes,
+)
+from nex_ae_api.product_planning_runtime import (
+    build_contract_m1_product_planning_composition,
+)
+from nex_ae_api.product_preparation_persistence import (
+    SqlAlchemyGeneralizedWaitEventRepository,
+)
+from nex_ae_api.project_agent_lifecycle import (
+    AdmittedProjectAgentProfilePolicy,
+    SqlAlchemyProjectAgentLifecycleService,
+)
+from nex_ae_api.project_agent_lifecycle_api import (
+    register_project_agent_lifecycle_routes,
 )
 from nex_ae_api.prompts import build_default_ae_prompt_store
 from nex_ae_api.recovery_requests import register_generation_recovery_request_routes
@@ -78,13 +101,13 @@ from nex_ae_api.wa_source_projections import (
     register_wa_agent_result_source_routes,
     register_wa_artifact_source_routes,
 )
-from nex_ae_api.work_result_event_api import register_work_result_event_routes
-from nex_ae_api.work_result_events import SqlAlchemyWorkResultEventService
-from nex_ae_api.workspace import register_workspace_routes
 from nex_ae_api.web_operations import (
     build_ae_web_operations_summary,
     register_ae_web_operations_routes,
 )
+from nex_ae_api.work_result_event_api import register_work_result_event_routes
+from nex_ae_api.work_result_events import SqlAlchemyWorkResultEventService
+from nex_ae_api.workspace import register_workspace_routes
 from nex_ae_api.workspace_result_publication import (
     SqlAlchemyInteractionAgentResultSource,
 )
@@ -153,9 +176,7 @@ register_chat_routes(
 register_interaction_agent_result_routes(
     app,
     source=(
-        SqlAlchemyInteractionAgentResultSource(
-            SERVICE_PERSISTENCE.api_session_factory
-        )
+        SqlAlchemyInteractionAgentResultSource(SERVICE_PERSISTENCE.api_session_factory)
         if SERVICE_PERSISTENCE.api_session_factory is not None
         else None
     ),
@@ -164,9 +185,7 @@ register_wa_agent_result_source_routes(
     app,
     source=(
         SqlAlchemyAgentResultWaProjectionSource(
-            SqlAlchemyAgentResultRepository(
-                SERVICE_PERSISTENCE.api_session_factory
-            )
+            SqlAlchemyAgentResultRepository(SERVICE_PERSISTENCE.api_session_factory)
         )
         if SERVICE_PERSISTENCE.api_session_factory is not None
         else None
@@ -176,22 +195,18 @@ register_wa_artifact_source_routes(
     app,
     source=(
         SqlAlchemyArtifactWaProjectionSource(
-            SqlAlchemyArtifactRecordStore(
-                SERVICE_PERSISTENCE.api_session_factory
-            )
+            SqlAlchemyArtifactRecordStore(SERVICE_PERSISTENCE.api_session_factory)
         )
         if SERVICE_PERSISTENCE.api_session_factory is not None
         else None
     ),
 )
+AE_AGENT_AUTHORITY = build_agent_authority_synchronizer()
 AE_AGENT_RUNTIME = attach_agent_runtime_foundation(
     app,
     SERVICE_PERSISTENCE,
     application=app.state.ae_chat_application_service,
-)
-register_claim_handoff_routes(
-    app,
-    admission=AE_AGENT_RUNTIME.admission,
+    authority_synchronizer=AE_AGENT_AUTHORITY,
 )
 AE_WORK_RESULT_EVENTS = (
     SqlAlchemyWorkResultEventService(
@@ -204,38 +219,33 @@ AE_WORK_RESULT_EVENTS = (
 )
 app.state.ae_work_result_events = AE_WORK_RESULT_EVENTS
 register_work_result_event_routes(app, admission=AE_WORK_RESULT_EVENTS)
-AE_APPROVAL_DECISION_EVENTS = None
-if (
-    SERVICE_PERSISTENCE.api_session_factory is not None
-    and AE_AGENT_RUNTIME.jobs is not None
-    and os.getenv("NEX_AE_TO_EOS_SERVICE_TOKEN", "").strip()
-):
-    AE_APPROVAL_DECISION_EVENTS = ApprovalDecisionEventRouter(
-        nsl_admission=SqlAlchemyNslApprovalDecisionAdmission(
-            SERVICE_PERSISTENCE.api_session_factory,
-            event_service=SqlAlchemyNslApprovalEventService(
-                SERVICE_PERSISTENCE.api_session_factory,
-                runtime_jobs=AE_AGENT_RUNTIME.jobs,
-            ),
-        ),
-        business_admission=HttpEosBusinessApprovalDecisionClient(
-            base_url=os.getenv("NEX_EOS_BASE_URL", "http://127.0.0.1:8107"),
-            service_token=os.environ["NEX_AE_TO_EOS_SERVICE_TOKEN"],
-        ),
-    )
-app.state.ae_approval_decision_events = AE_APPROVAL_DECISION_EVENTS
-register_approval_decision_event_routes(
-    app,
-    admission=AE_APPROVAL_DECISION_EVENTS,
-)
 register_eos_outbox_event_routes(
     app,
     store=SERVICE_PERSISTENCE.operational_event_store,
 )
+AE_PROJECT_AGENT_LIFECYCLE = None
+_project_agent_policy_path = os.getenv(
+    "NEX_AE_PROJECT_AGENT_PROFILE_POLICY_PATH", ""
+).strip()
+if SERVICE_PERSISTENCE.api_session_factory is not None and _project_agent_policy_path:
+    AE_PROJECT_AGENT_LIFECYCLE = SqlAlchemyProjectAgentLifecycleService(
+        SERVICE_PERSISTENCE.api_session_factory,
+        profile_policy=AdmittedProjectAgentProfilePolicy.from_path(
+            _project_agent_policy_path
+        ),
+        authority_synchronizer=AE_AGENT_AUTHORITY,
+    )
+register_project_agent_lifecycle_routes(
+    app,
+    service=AE_PROJECT_AGENT_LIFECYCLE,
+)
 register_agent_registry_routes(
     app,
     registry=(
-        SqlAlchemyAgentIdentityRegistry(SERVICE_PERSISTENCE.api_session_factory)
+        SqlAlchemyAgentIdentityRegistry(
+            SERVICE_PERSISTENCE.api_session_factory,
+            authority_synchronizer=AE_AGENT_AUTHORITY,
+        )
         if SERVICE_PERSISTENCE.api_session_factory is not None
         else None
     ),
@@ -245,6 +255,85 @@ AE_SEMANTIC_CANDIDATE_ADMISSION = attach_semantic_candidate_admission(
     SERVICE_PERSISTENCE,
     AE_AGENT_RUNTIME,
     prompt_store=AE_PROMPT_STORE,
+)
+AE_PRODUCT_PLANNING = None
+if (
+    SERVICE_PERSISTENCE.api_session_factory is not None
+    and AE_SEMANTIC_CANDIDATE_ADMISSION.service is not None
+):
+    _product_capabilities = (
+        AE_SEMANTIC_CANDIDATE_ADMISSION.service.product_capability_registry
+    )
+    if os.getenv("NEX_AE_PRODUCT_COORDINATOR_ACTIVATION_PATH", "").strip():
+        AE_PRODUCT_PLANNING = build_activated_m1_product_planning_composition(
+            sessions=SERVICE_PERSISTENCE.api_session_factory,
+            product_capabilities=_product_capabilities,
+            environ=os.environ,
+        )
+    else:
+        AE_PRODUCT_PLANNING = build_contract_m1_product_planning_composition(
+            sessions=SERVICE_PERSISTENCE.api_session_factory,
+            product_capabilities=_product_capabilities,
+        )
+    AE_SEMANTIC_CANDIDATE_ADMISSION = replace(
+        AE_SEMANTIC_CANDIDATE_ADMISSION,
+        service=replace(
+            AE_SEMANTIC_CANDIDATE_ADMISSION.service,
+            product_planning_router=AE_PRODUCT_PLANNING.public_router,
+        ),
+    )
+    app.state.ae_semantic_candidate_admission = AE_SEMANTIC_CANDIDATE_ADMISSION
+app.state.ae_product_planning = AE_PRODUCT_PLANNING
+register_product_planning_event_routes(
+    app,
+    admission=(
+        None if AE_PRODUCT_PLANNING is None else AE_PRODUCT_PLANNING.event_admission
+    ),
+)
+AE_APPROVAL_DECISION_EVENTS = None
+if (
+    SERVICE_PERSISTENCE.api_session_factory is not None
+    and AE_AGENT_RUNTIME.jobs is not None
+    and os.getenv("NEX_AE_TO_EOS_SERVICE_TOKEN", "").strip()
+):
+    _eos_approval_client = HttpEosBusinessApprovalDecisionClient(
+        base_url=os.getenv("NEX_EOS_BASE_URL", "http://127.0.0.1:8107"),
+        service_token=os.environ["NEX_AE_TO_EOS_SERVICE_TOKEN"],
+    )
+    AE_APPROVAL_DECISION_EVENTS = ApprovalDecisionEventRouter(
+        nsl_admission=SqlAlchemyNslApprovalDecisionAdmission(
+            SERVICE_PERSISTENCE.api_session_factory,
+            event_service=SqlAlchemyNslApprovalEventService(
+                SERVICE_PERSISTENCE.api_session_factory,
+                runtime_jobs=AE_AGENT_RUNTIME.jobs,
+            ),
+        ),
+        business_admission=EosProductApprovalReceiptAdmission(
+            eos_client=_eos_approval_client,
+            wait_contexts=SqlAlchemyGeneralizedWaitEventRepository(
+                SERVICE_PERSISTENCE.api_session_factory
+            ),
+            product_events=(
+                None
+                if AE_PRODUCT_PLANNING is None
+                else AE_PRODUCT_PLANNING.event_admission
+            ),
+        ),
+    )
+app.state.ae_approval_decision_events = AE_APPROVAL_DECISION_EVENTS
+register_approval_decision_event_routes(
+    app,
+    admission=AE_APPROVAL_DECISION_EVENTS,
+)
+AE_INSTALLED_CLAIM_HANDOFF = build_installed_claim_handoff_admission(
+    agent_runtime=AE_AGENT_RUNTIME,
+    semantic_runtime=AE_SEMANTIC_CANDIDATE_ADMISSION,
+    session_factory=SERVICE_PERSISTENCE.api_session_factory,
+)
+app.state.ae_installed_claim_handoff = AE_INSTALLED_CLAIM_HANDOFF
+register_claim_handoff_routes(
+    app,
+    admission=AE_INSTALLED_CLAIM_HANDOFF,
 )
 register_ae_web_operations_routes(
     app,

@@ -95,8 +95,8 @@ or Retry-After settings. The client timeout is:
 MO generation service budget + AE safety margin
 ```
 
-The default service budget is 125 seconds and the safety margin is five
-seconds, producing the 130-second AE default. Deployment configuration keeps
+The default service budget is 255 seconds and the safety margin is five
+seconds, producing the 260-second AE default. Deployment configuration keeps
 the service budget aligned with MO's internal provider retry policy. An
 explicit shorter client timeout fails configuration before HTTP execution.
 

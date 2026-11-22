@@ -1,0 +1,31 @@
+{
+  "schema_version": "ae.verified_product_runtime_activation.v1",
+  "decision_id": "CP-M1-E2E-FX-01A.5",
+  "decided_at": "2026-11-15T00:00:00Z",
+  "activation_state": "ACTIVE_WITH_BOUNDED_ROLLBACK",
+  "runtime_profile": "VERIFIED_PRODUCT_RELEASE",
+  "runtime_admission_ref": "deployment/locks/ae-mybee-m1-runtime-admission.v1.json",
+  "runtime_admission_hash": "sha256:3b561a8bd71f2702dd1020c096e0936efd49818200e3a8248dcb842395dd280d",
+  "signed_release_ref": "deployment/locks/ae-mybee-m1-signed-skill-checkpoint.v1.json",
+  "signed_release_hash": "sha256:0034adc847aedc5d4fe99a446f7b60dfaef5db218ebbed96ba0f96bf32feecf4",
+  "product_registry_ref": "deployment/environments/ae-product-capability-registry.mybee-m1.v1.json",
+  "product_registry_hash": "sha256:104e60e12282ab9849932487e931d22910a5a75abcd05dcd646e5251c3140cc5",
+  "runtime_selectable_capabilities": [
+    "FINANCE.VOUCHER.APPROVE_AND_POST",
+    "PROJECT.WORK_CODE_SET.GET"
+  ],
+  "bounded_rollback": {
+    "profile": "GOLDEN_A_ROLLBACK",
+    "receipt_ref": "deployment/retirement/golden-a-rollback-receipt.v1.json",
+    "receipt_sha256": "sha256:94326deafc88e0d8d7613c8078de9847fb078ecf578fc77496e0eee7445d44bd",
+    "retirement_boundary": "CP-M1-GA-RET-02"
+  },
+  "readiness": {
+    "exact_signed_release_required": true,
+    "exact_registry_required": true,
+    "exact_operation_registry_required": true,
+    "actual_postgresql_gate_required": true,
+    "remote_provider_required": false
+  },
+  "content_hash": "sha256:6a1aa2a44eaf25e52afa33ed09ad0ea69f351ea8a309e5614b6f6162c096f3af"
+}

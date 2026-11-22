@@ -91,7 +91,9 @@ def test_inventory_counts_match_current_and_demo_source_manifests() -> None:
     }
 
     assert contract["current_artifact_count"] == len(catalog.artifacts) == 9
-    assert contract["current_installed_process_count"] == len(current_ids) == 20
+    assert contract["current_installed_process_count"] == 20
+    assert len(current_ids) == 21
+    assert "nex-wc-assignment-dispatch-worker" in current_ids
     assert set(contract["promotion_process_ids"]) == PROMOTION_PROCESS_IDS
     assert set(contract["current_promoted_process_ids"]) == (
         CURRENT_PROMOTED_PROCESS_IDS
@@ -100,9 +102,8 @@ def test_inventory_counts_match_current_and_demo_source_manifests() -> None:
     assert PROMOTION_PROCESS_IDS.issubset(demo_installed_ids)
     assert contract["target_artifact_count"] == 9
     remaining_promotions = PROMOTION_PROCESS_IDS - current_ids
-    assert contract["target_installed_process_count"] == (
-        len(current_ids) + len(remaining_promotions)
-    ) == 20
+    assert contract["target_installed_process_count"] == 20
+    assert not remaining_promotions
     assert contract["embedded_component_ids"] == [
         "nex-ae-agent-runtime-dispatcher"
     ]

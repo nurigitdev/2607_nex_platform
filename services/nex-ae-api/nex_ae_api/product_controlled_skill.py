@@ -129,7 +129,7 @@ class ProductExecutionAuthority:
     project_id: str
     agent_id: str
     org_scope_refs: tuple[str, ...]
-    business_result_seed: Mapping[str, Any]
+    business_result_seed: Mapping[str, Any] | None
 
 
 class ProductControlledSkillRuntime:

@@ -78,6 +78,8 @@ commands for new evidence:
 ```text
 run_canonical_platform_trust_admission.py
 run_canonical_platform_external_dependencies.py
+run_canonical_platform_database_guardrails.py
+run_canonical_platform_migrations.py
 run_canonical_platform_installed_acceptance.py
 run_canonical_platform_golden_journey.py
 ```
@@ -88,8 +90,16 @@ to these modules and must not be used in new automation.
 
 ## Migration Boundary
 
-`run_canonical_platform_migrations.py` promotes the existing guarded seven-core
-database migration closure. NeX-WA retains its independently admitted P9
-migration lifecycle; a future slice must unify backup admission before WA is
-added to the guarded multi-database transaction boundary. The command does not
-claim that one backup manifest currently covers WA.
+`run_canonical_platform_database_guardrails.py` admits the exact current
+eight-database development release set: OA, AG, AE, CX, MO, WC, EOS, and WA.
+With the explicit `BACKUP_CURRENT_PLATFORM_DEV_DATABASES` confirmation it
+creates one hash-bound logical-backup manifest that covers all eight database
+identities and their pre-migration inventories. Partial and historical
+seven-database manifests are rejected.
+
+`run_canonical_platform_migrations.py` requires that eight-database manifest
+and the separate `MIGRATE_CURRENT_PLATFORM_DEV_DATABASES` confirmation before
+applying migrations in canonical service order. It then reinspects all eight
+databases and fails unless every source inventory is current. P8 Demo's
+seven-database backup, fixture, and confirmation contracts remain historical
+compatibility boundaries and are not accepted by the canonical command.

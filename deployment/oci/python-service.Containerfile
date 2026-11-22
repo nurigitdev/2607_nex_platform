@@ -51,9 +51,43 @@ RUN python -c "import importlib.util; assert importlib.util.find_spec('nex_oa')"
 CMD ["python", "-m", "uvicorn", "nex_oa.main:app", "--host", "0.0.0.0", "--port", "8101"]
 
 FROM python-source AS ae-runtime
-ENV PYTHONPATH=/app/services/_shared:/app/services/nex-ae-api
-RUN python -c "import importlib.util; assert importlib.util.find_spec('nex_ae_api')"
+COPY --chown=65532:65532 domains/mybee/mybee_ax /app/domains/mybee/mybee_ax
+ENV PYTHONPATH=/app/services/_shared:/app/services/nex-ae-api:/app/domains/mybee
+RUN python -c "import importlib.util; assert importlib.util.find_spec('nex_ae_api'); assert importlib.util.find_spec('mybee_ax')"
 CMD ["python", "-m", "uvicorn", "nex_ae_api.main:app", "--host", "0.0.0.0", "--port", "8103"]
+
+FROM ae-runtime AS ae-product-runtime
+USER 0:0
+COPY --chown=65532:65532 deployment/product/wheel/nex_skill_language-0.2.1-py3-none-any.whl /app/deployment/product/wheel/nex_skill_language-0.2.1-py3-none-any.whl
+RUN python -m pip install --no-index --no-deps /app/deployment/product/wheel/nex_skill_language-0.2.1-py3-none-any.whl
+COPY --chown=65532:65532 deployment/locks /app/deployment/product/repository/deployment/locks
+COPY --chown=65532:65532 deployment/environments /app/deployment/product/repository/deployment/environments
+COPY --chown=65532:65532 deployment/product/config /app/deployment/product/config
+COPY --chown=65532:65532 domains/mybee/skills /app/deployment/product/repository/domains/mybee/skills
+COPY --chown=65532:65532 domains/mybee/catalog /app/deployment/product/repository/domains/mybee/catalog
+COPY --chown=65532:65532 contracts/admissions /app/deployment/product/repository/contracts/admissions
+COPY --chown=65532:65532 contracts/openapi /app/deployment/product/repository/contracts/openapi
+COPY --chown=65532:65532 contracts/schemas/service/nex_eos /app/deployment/product/repository/contracts/schemas/service/nex_eos
+COPY --chown=65532:65532 domains/mybee/skills /app/domains/mybee/skills
+COPY --chown=65532:65532 contracts /app/contracts
+RUN install -d -o 65532 -g 65532 -m 0700 /var/lib/nex-platform/ae-runtime/nsl
+ENV NEX_AE_PRODUCT_RUNTIME_PROFILE=VERIFIED_PRODUCT_RELEASE \
+    NEX_AE_PRODUCT_REPOSITORY_ROOT=/app/deployment/product/repository \
+    NEX_AE_M1_REPOSITORY_ROOT=/app/deployment/product/repository \
+    NEX_AE_M1_SIGNED_SKILL_LOCK=/app/deployment/product/repository/deployment/locks/ae-mybee-m1-signed-skill-checkpoint.v3.json \
+    NEX_AE_M1_SIGNED_PACKAGE_PATH=/app/deployment/product/repository/domains/mybee/skills/m1_checkpoint/mybee-m1-d04-d12.v3.nsp \
+    NEX_AE_PRODUCT_RUNTIME_ADMISSION_PATH=/app/deployment/product/repository/deployment/locks/ae-mybee-m1-runtime-admission.v4.json \
+    NEX_AE_PRODUCT_RUNTIME_ACTIVATION_PATH=/app/deployment/product/repository/deployment/locks/ae-mybee-m1-runtime-activation.v4.json \
+    NEX_AE_PRODUCT_COORDINATOR_ACTIVATION_PATH=/app/deployment/product/repository/deployment/locks/ae-mybee-m1-product-coordinator-activation.v3.json \
+    NEX_AE_PRODUCT_COORDINATOR_ROLLBACK_PATH=/app/deployment/product/repository/deployment/locks/ae-mybee-m1-product-coordinator-rollback.v3.json \
+    NEX_AE_PRODUCT_TOOL_CATALOG_PATH=/app/deployment/product/repository/domains/mybee/skills/m1_checkpoint/tool_catalog.v1.json \
+    NEX_AE_PRODUCT_RUNTIME_CONTEXT_PATH=/app/deployment/product/repository/domains/mybee/skills/m1_checkpoint/context.json \
+    NEX_AE_PRODUCT_CAPABILITY_REGISTRY_PATH=/app/deployment/product/repository/deployment/environments/ae-product-capability-registry.mybee-m1.v4.json \
+    NEX_AE_NSL_WHEEL=/app/deployment/product/wheel/nex_skill_language-0.2.1-py3-none-any.whl \
+    NEX_AE_AGENT_WORKER_NSL_WHEEL_LOCK=/app/deployment/product/repository/deployment/locks/nsl-v0.2.1-wheel.json \
+    NEX_AE_NSL_PLATFORM_LOCK=/app/deployment/product/repository/deployment/locks/python-production.lock
+USER 65532:65532
+RUN python -c "import mybee_ax, nsl; from nex_ae_api.agent_runtime_process import build_source_check; from nex_ae_api.mybee_product_admission import require_mybee_product_package; assert nsl.__version__ == '0.2.1'; assert mybee_ax.PACKAGE_VERSION == '0.1.0'; assert require_mybee_product_package()['status'] == 'PASS'; assert build_source_check()['status'] == 'PASS'"
 
 FROM python-source AS cx-runtime
 ENV PYTHONPATH=/app/services/_shared:/app/services/nex-cx

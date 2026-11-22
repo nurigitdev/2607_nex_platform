@@ -1,0 +1,40 @@
+{
+  "schema_version": "eos_journal_reconciliation.v1",
+  "operation": "FINANCE.JOURNAL.RECONCILE",
+  "tenant_id": "VO00",
+  "business_operation_id": "32000000-0000-4000-8000-000000000052",
+  "posting_operation": "FINANCE.VOUCHER.APPROVE_AND_POST",
+  "idempotency_key": "w40-s4-04-atomic-posting",
+  "payload_hash": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "commit_state": "COMMITTED",
+  "reconciliation_status": "COMMITTED_CONFIRMED",
+  "verification_status": "VERIFIED",
+  "retry_disposition": "DO_NOT_REPOST",
+  "new_idempotency_key_allowed": false,
+  "last_observed_at": "2026-11-12T02:01:00Z",
+  "journal": {
+    "company_id": "32000000-0000-4000-8000-000000000001",
+    "journal_id": "32000000-0000-4000-8000-000000000051",
+    "journal_no": "VO00-2026-000001",
+    "journal_hash": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "candidate_id": "32000000-0000-4000-8000-000000000010",
+    "candidate_revision": 1,
+    "accounting_acceptance_id": "32000000-0000-4000-8000-000000000050",
+    "accounting_acceptance_hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "accounting_period_id": "32000000-0000-4000-8000-000000000021",
+    "project_codes": ["VO00D260001"],
+    "line_count": 2,
+    "total_debit_functional": "11000.0000",
+    "total_credit_functional": "11000.0000",
+    "posted_at": "2026-11-12T02:01:00Z"
+  },
+  "outbox": {
+    "outbox_id": "32000000-0000-4000-8000-000000000054",
+    "event_id": "32000000-0000-4000-8000-000000000055",
+    "event_type": "FINANCE.JOURNAL_POSTED.v1",
+    "event_payload_hash": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+    "delivery_state": "PENDING",
+    "attempt_count": 0,
+    "projector_state": "STALE"
+  }
+}

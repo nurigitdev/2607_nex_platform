@@ -2,6 +2,7 @@
 addopts = "-ra"
 testpaths = ["tests"]
 pythonpath = [
+  "domains/mybee",
   "services/_shared",
   "services/nex-oa",
   "services/nex-ag",
@@ -21,7 +22,7 @@ pythonpath = [
 
 [tool.coverage.run]
 branch = true
-source = ["services", "scripts", "providers"]
+source = ["services", "scripts", "providers", "domains"]
 omit = [
   "*/__init__.py"
 ]

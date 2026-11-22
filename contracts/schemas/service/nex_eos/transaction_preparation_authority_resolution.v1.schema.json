@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/nex_eos/transaction_preparation_authority_resolution.v1.schema.json",
+  "title": "EOS Transaction Preparation Authority Resolution",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "operation", "request_hash", "authority", "accounting_period", "resolution_hash"],
+  "properties": {
+    "schema_version": {"const": "eos_transaction_preparation_authority_resolution.v1"},
+    "operation": {"const": "FINANCE.TRANSACTION_PREPARATION_AUTHORITY.RESOLVE"},
+    "request_hash": {"$ref": "#/$defs/hashRef"},
+    "authority": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version", "tenant_id", "requester_subject_id", "company_id", "company_code",
+        "company_selector_kind", "company_selector_value", "company_version", "company_evidence_hash",
+        "functional_currency", "primary_project_id", "primary_project_code", "project_refs",
+        "project_authorizations", "debit_account_id", "debit_semantic_key", "debit_account_evidence_hash",
+        "credit_account_id", "credit_semantic_key", "credit_account_evidence_hash",
+        "business_approval_policy_id", "business_approval_policy_version", "business_approval_policy_hash",
+        "accounting_approval_policy_id", "accounting_approval_policy_version", "accounting_approval_policy_hash",
+        "project_authorization_ref", "project_authorization_revision_hash", "authority_effective_at", "authority_hash"
+      ],
+      "properties": {
+        "schema_version": {"const": "nex.mybee.m1-preparation-authority.v1"},
+        "tenant_id": {"type": "string"}, "requester_subject_id": {"type": "string"},
+        "company_id": {"type": "string", "format": "uuid"}, "company_code": {"type": "string"},
+        "company_selector_kind": {"enum": ["CODE", "NAME", "CODE_OR_NAME"]},
+        "company_selector_value": {"type": "string"}, "company_version": {"type": "integer", "minimum": 1},
+        "company_evidence_hash": {"$ref": "#/$defs/hashRef"}, "functional_currency": {"type": "string", "pattern": "^[A-Z]{3}$"},
+        "primary_project_id": {"type": "string", "format": "uuid"}, "primary_project_code": {"$ref": "#/$defs/projectCode"},
+        "project_refs": {"type": "array", "minItems": 1, "maxItems": 12, "items": {"$ref": "#/$defs/projectRef"}},
+        "project_authorizations": {"type": "array", "minItems": 1, "maxItems": 12, "items": {"$ref": "#/$defs/projectAuthorization"}},
+        "debit_account_id": {"type": "string", "format": "uuid"}, "debit_semantic_key": {"type": "string"},
+        "debit_account_evidence_hash": {"$ref": "#/$defs/hashRef"},
+        "credit_account_id": {"type": "string", "format": "uuid"}, "credit_semantic_key": {"type": "string"},
+        "credit_account_evidence_hash": {"$ref": "#/$defs/hashRef"},
+        "business_approval_policy_id": {"type": "string", "format": "uuid"}, "business_approval_policy_version": {"type": "integer", "minimum": 1},
+        "business_approval_policy_hash": {"$ref": "#/$defs/hashRef"},
+        "accounting_approval_policy_id": {"type": "string", "format": "uuid"}, "accounting_approval_policy_version": {"type": "integer", "minimum": 1},
+        "accounting_approval_policy_hash": {"$ref": "#/$defs/hashRef"},
+        "project_authorization_ref": {"type": "string"}, "project_authorization_revision_hash": {"$ref": "#/$defs/hashRef"},
+        "authority_effective_at": {"type": "string", "format": "date-time"}, "authority_hash": {"$ref": "#/$defs/hashRef"}
+      }
+    },
+    "accounting_period": {
+      "type": "object", "additionalProperties": false,
+      "required": ["period_id", "fiscal_year", "period_no", "state", "version", "start_date", "end_date", "evidence_hash"],
+      "properties": {
+        "period_id": {"type": "string", "format": "uuid"}, "fiscal_year": {"type": "integer"},
+        "period_no": {"type": "integer", "minimum": 1}, "state": {"const": "OPEN"}, "version": {"type": "integer", "minimum": 1},
+        "start_date": {"type": "string", "format": "date"}, "end_date": {"type": "string", "format": "date"},
+        "evidence_hash": {"$ref": "#/$defs/hashRef"}
+      }
+    },
+    "resolution_hash": {"$ref": "#/$defs/hashRef"}
+  },
+  "$defs": {
+    "hashRef": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "projectCode": {"type": "string", "pattern": "^[A-Z0-9]{4}[DMSOIG][0-9]{6}$"},
+    "projectRef": {
+      "type": "object", "additionalProperties": false,
+      "required": ["project_id", "project_code", "project_version"],
+      "properties": {"project_id": {"type": "string", "format": "uuid"}, "project_code": {"$ref": "#/$defs/projectCode"}, "project_version": {"type": "integer", "minimum": 1}}
+    },
+    "projectAuthorization": {
+      "type": "object", "additionalProperties": false,
+      "required": ["project_code", "decision_ref", "revision_hash", "source_version"],
+      "properties": {"project_code": {"$ref": "#/$defs/projectCode"}, "decision_ref": {"type": "string"}, "revision_hash": {"$ref": "#/$defs/hashRef"}, "source_version": {"type": "integer", "minimum": 1}}
+    }
+  }
+}

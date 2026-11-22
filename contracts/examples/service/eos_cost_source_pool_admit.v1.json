@@ -1,0 +1,5 @@
+{
+  "schema_version": "eos_cost_source_pool_admit.v1",
+  "source_kind": "SERVICE",
+  "allocation_mode": "MANAGEMENT_ALLOCATION"
+}

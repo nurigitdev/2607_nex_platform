@@ -1,0 +1,63 @@
+{
+  "schema_version": "nex.mybee.m1-transaction-orchestration-boundary.v1",
+  "slice": "CP-M1-E2E-FX-01B.1",
+  "status": "CONTRACT_ADMITTED_RUNTIME_UNCHANGED",
+  "database_migration": false,
+  "remote_provider_required": false,
+  "runtime_contracts": [
+    {
+      "contract": "WorkIntent",
+      "current_versions": ["1.1"],
+      "successor_version": "1.2",
+      "activation_slice": "CP-M1-E2E-FX-01B.2"
+    },
+    {
+      "contract": "DelegationSpec",
+      "current_versions": ["1.0", "1.1"],
+      "successor_version": "1.2",
+      "activation_slice": "CP-M1-E2E-FX-01B.3"
+    },
+    {
+      "contract": "ClaimedWorkPlanningSource",
+      "current_versions": ["p7.claimed_work_planning_source.v1"],
+      "successor_version": "p7.claimed_work_planning_source.v2",
+      "activation_slice": "CP-M1-E2E-FX-01B.3"
+    }
+  ],
+  "persistence_boundaries": [
+    {"owner": "nex-ae-api", "store": "ae_work_intent.intent_json", "payload": "WorkIntent v1.2"},
+    {"owner": "nex-wc", "store": "wc_work_item payload", "payload": "DelegationSpec v1.2"},
+    {"owner": "nex-ae-api", "store": "claimed planning source JSON", "payload": "ClaimedWorkPlanningSource v2"},
+    {"owner": "nex-ae-api", "store": "executable plan JSON", "payload": "context hash and authority-derived inputs"},
+    {"owner": "nex-ae-api", "store": "result/evidence refs", "payload": "redacted authority references"}
+  ],
+  "operation_activation": [
+    {"operation_id": "PROJECT.WORK_CODE_SET.GET", "state": "ACTIVE_SIGNED_SKILL"},
+    {"operation_id": "FINANCE.VOUCHER_CANDIDATE.CREATE_V2", "state": "CONTRACT_ONLY"},
+    {"operation_id": "FINANCE.VOUCHER_CANDIDATE.VALIDATE", "state": "CONTRACT_ONLY"},
+    {"operation_id": "FINANCE.VOUCHER_POSTING.ADMIT", "state": "CONTRACT_ONLY"},
+    {"operation_id": "FINANCE.VOUCHER.APPROVE_AND_POST", "state": "ACTIVE_SIGNED_SKILL"},
+    {"operation_id": "FINANCE.COST_ALLOCATION.RUN", "state": "CONTRACT_ONLY"},
+    {"operation_id": "FINANCE.COST_ALLOCATION.VERIFY", "state": "CONTRACT_ONLY"},
+    {"operation_id": "FINANCE.PROJECT_PNL.GET", "state": "CONTRACT_ONLY"}
+  ],
+  "source_boundaries": [
+    {"boundary": "public_intake", "path": "services/nex-ae-api/nex_ae_api/work_intent.py", "owner": "nex-ae-api"},
+    {"boundary": "project_delegation", "path": "services/nex-ae-api/nex_ae_api/project_delegation_planning.py", "owner": "nex-ae-api"},
+    {"boundary": "work_item_admission", "path": "services/nex-wc/nex_wc/work_items.py", "owner": "nex-wc"},
+    {"boundary": "claim_handoff", "path": "services/nex-wc/nex_wc/coordination.py", "owner": "nex-wc"},
+    {"boundary": "background_intent", "path": "services/nex-ae-api/nex_ae_api/background_planning.py", "owner": "nex-ae-api"},
+    {"boundary": "delegation_dispatch", "path": "services/nex-ae-api/nex_ae_api/delegated_work.py", "owner": "nex-ae-api"},
+    {"boundary": "runtime_composition", "path": "services/nex-ae-api/nex_ae_api/product_runtime_profile.py", "owner": "nex-ae-api"}
+  ],
+  "prohibited_shortcuts": [
+    "RAW_PROMPT_DUPLICATION",
+    "MODEL_SUPPLIED_AUTHORITY",
+    "FIXED_BUSINESS_RUNTIME_VALUE",
+    "GOLDEN_A_FALLBACK",
+    "RUNNER_DIRECT_PRIVATE_SQL",
+    "RUNNER_OWNED_PRODUCT_TRANSITION",
+    "UNSIGNED_SKILL_SUBSTITUTION"
+  ],
+  "next_slice": "CP-M1-E2E-FX-01B.2"
+}

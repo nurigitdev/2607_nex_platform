@@ -22,6 +22,7 @@ CANONICAL_DEPLOYMENT_ENTRYPOINTS = (
     "scripts/deployment/build_canonical_platform_images.py",
     "scripts/deployment/build_canonical_platform_ae_runtime_image.py",
     "scripts/deployment/check_canonical_platform_compose.py",
+    "scripts/deployment/run_canonical_platform_database_guardrails.py",
     "scripts/deployment/run_canonical_platform_external_dependencies.py",
     "scripts/deployment/run_canonical_platform_migrations.py",
     "scripts/deployment/run_canonical_platform_trust_admission.py",
@@ -53,7 +54,6 @@ LEGACY_DEPLOYMENT_WRAPPERS = {
 PRODUCT_RUNTIME_PATHS = (
     "services/nex-ae-api/nex_ae_api/agent_runtime_process.py",
     "services/nex-ae-api/nex_ae_api/product_runtime_profile.py",
-    "services/nex-ae-api/nex_ae_api/product_controlled_skill.py",
 )
 
 
@@ -87,9 +87,6 @@ def audit_product_runtime_deployment(root: Path = ROOT) -> dict[str, Any]:
             issues.append(f"legacy deployment wrapper target drift: {relative}")
         if "sys.modules[__name__] = importlib.import_module(_TARGET)" not in source:
             issues.append(f"legacy deployment wrapper is not transparent: {relative}")
-    controlled_runtime = sources[
-        "services/nex-ae-api/nex_ae_api/product_controlled_skill.py"
-    ]
     fixture_runtime_tokens = (
         "protected_input",
         "finance_golden_a_activation",
@@ -97,7 +94,9 @@ def audit_product_runtime_deployment(root: Path = ROOT) -> dict[str, Any]:
         "NEX_AE_FINANCE_GOLDEN_A_AUTHORITY_PROFILE_PATH",
     )
     fixture_runtime_use = any(
-        token in controlled_runtime for token in fixture_runtime_tokens
+        token in sources[relative]
+        for relative in PRODUCT_RUNTIME_PATHS
+        for token in fixture_runtime_tokens
     )
     if fixture_runtime_use:
         issues.append("product runtime reads protected fixture-like business input")
@@ -118,38 +117,44 @@ def audit_product_runtime_deployment(root: Path = ROOT) -> dict[str, Any]:
     worker_environment = worker.get("environment")
     if not isinstance(worker_environment, Mapping):
         issues.append("AE worker environment is unavailable")
-    elif str(worker_environment.get("NEX_AE_AGENT_WORKER_EXECUTOR_KINDS") or "").split(
-        ","
-    ) != [
-        "DETERMINISTIC_AGGREGATE",
-        "DETERMINISTIC_REPORT",
-        "LOCAL_SKILL",
-        "P4_CHAT_RAG_COMPATIBILITY",
-    ]:
-        issues.append("AE worker product executor profile is incomplete")
+    else:
+        if str(
+            worker_environment.get("NEX_AE_AGENT_WORKER_EXECUTOR_KINDS") or ""
+        ).split(",") != [
+            "DETERMINISTIC_AGGREGATE",
+            "DETERMINISTIC_REPORT",
+            "LOCAL_SKILL",
+            "P4_CHAT_RAG_COMPATIBILITY",
+            "WC_DELEGATE_WORK",
+        ]:
+            issues.append("AE worker product executor profile is incomplete")
+        if str(
+            worker_environment.get("NEX_AE_AGENT_WORKER_LEASE_SECONDS") or ""
+        ) != "600":
+            issues.append("AE worker product lease policy has drifted")
 
     container = sources["deployment/oci/canonical-platform-ae-runtime.Containerfile"]
     if "COPY --chown=65532:65532 fixtures" in container:
         issues.append("business fixtures are packaged into the product runtime image")
-    if "NEX_AE_NSL_BUNDLE_MANIFEST" not in container:
-        issues.append("product NSL bundle is not packaged")
+    if "ae-mybee-m1-runtime-admission.v4.json" not in container:
+        issues.append("generalized product runtime admission is not packaged")
+    if "NEX_AE_NSL_BUNDLE_MANIFEST" in container or "golden-a" in container:
+        issues.append("historical Golden A bundle remains in active image")
 
-    bundle = json.loads(
-        (root / "deployment/locks/ae-product-nsl-runtime-bundle.v1.json").read_text(
-            encoding="utf-8"
-        )
-    )
-    skill_files = bundle.get("skill", {}).get("files", {})
-    if any("fixture" in str(name).lower() for name in skill_files):
-        issues.append("product NSL bundle contains a business fixture")
     registry = json.loads(
         (
-            root / "deployment/environments/ae-product-capability-registry.v1.json"
+            root
+            / "deployment/environments/ae-product-capability-registry.mybee-m1.v4.json"
         ).read_text(encoding="utf-8")
     )
-    artifact = registry["registrations"][0]["skill_artifact"]
-    if artifact.get("bundle_id") != bundle.get("bundle_id"):
-        issues.append("Product Capability Registry bundle identity drift")
+    capability_ids = [
+        item["capability"]["capability_id"] for item in registry["registrations"]
+    ]
+    if capability_ids != [
+        "FINANCE.VOUCHER.APPROVE_AND_POST",
+        "PROJECT.WORK_CODE_SET.GET",
+    ]:
+        issues.append("generalized Product Capability Registry has drifted")
 
     return {
         "schema_version": "gb2_product_runtime_deployment_audit.v1",

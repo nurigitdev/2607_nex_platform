@@ -1,0 +1,133 @@
+{
+  "schema_version": "nex.mybee.work-code-catalog.v1",
+  "catalog_id": "mybee.fl.d12.project-governance",
+  "catalog_version": "1.0.0",
+  "revision": 1,
+  "status": "SOURCE_ADMITTED_RUNTIME_INACTIVE",
+  "domain_group": {
+    "code": "D12_PROJECT",
+    "name_ko": "프로젝트 관리"
+  },
+  "owner": {
+    "domain_policy": "nex-mybee-ax",
+    "business_state": "nex-eos",
+    "workflow": "nex-wc"
+  },
+  "source_provenance": {
+    "authority": "NEX_MYBEE_PHASE1_DESIGN_SET",
+    "pdf_page_reconciliation": "OPEN_G_SRC_PDF",
+    "evidence": [
+      {
+        "path": "docs/transition/MyBee_Phase1/NeX_MyBee_D04_D12_Pre_Architecture_Decision_v1.0.md",
+        "sha256": "sha256:1a16fdbcd9cbd1601104c7a3ff5a8f06c6793dcdea13a6a57ac8150c90e0bc05"
+      },
+      {
+        "path": "docs/transition/MyBee_Phase1/NeX_MyBee_D04_D12_EOS_Source_Audit_and_Gap_Analysis_v1.0.md",
+        "sha256": "sha256:36b7d0ef6ce3582e787d24ca03cb2daa619885e66b6cf939e1dcc7cf278c48b9"
+      },
+      {
+        "path": "docs/transition/MyBee_Phase1/NeX_MyBee_D04_D12_Accounting_Transaction_Contract_Closure_v1.0_RC1.md",
+        "sha256": "sha256:d71080c3bcade1b1439a13b2fd3ab2f9704d88485ad3c89871c00ddb8bd5050a"
+      },
+      {
+        "path": "docs/transition/MyBee_Phase1/NeX_MyBee_D04_D12_EOS_SRS_v1.0.md",
+        "sha256": "sha256:7facf0620ce5e8b9d14c4a0c4895e6a2fb55e67edbe3578a6eb2536c661616fe"
+      },
+      {
+        "path": "docs/transition/MyBee_Phase1/NeX_MyBee_Implementation_Slice_Plan_Execution_Matrix_v1.2.json",
+        "sha256": "sha256:e8017d251abb54078b5d989726f62395974f761d17a63f5e433a55c8ca216aab"
+      }
+    ]
+  },
+  "mandatory_code_ids": [
+    "FL0012004",
+    "FL0012005",
+    "FL0012006",
+    "FL0012013",
+    "FL0012026"
+  ],
+  "work_codes": [
+    {
+      "code_id": "FL0012004",
+      "name_ko": "프로젝트 개설",
+      "purpose": "승인된 Project Business Request를 EOS Project 정본으로 개설한다.",
+      "domain_group": "D12_PROJECT",
+      "owner_service": "nex-eos",
+      "lifecycle_stage": "PROJECT_OPEN",
+      "execution_phase": "PROJECT_ACTIVATION",
+      "required_for_project_work_set": true,
+      "consumer_mapping": {
+        "status": "DECLARED_NOT_BOUND",
+        "api_operation_id": null,
+        "nsl_tool_id": null
+      }
+    },
+    {
+      "code_id": "FL0012005",
+      "name_ko": "업무 구성 확정",
+      "purpose": "필수 업무코드 집합을 승인하고 불변 revision으로 고정한다.",
+      "domain_group": "D12_PROJECT",
+      "owner_service": "nex-eos",
+      "lifecycle_stage": "WORK_SET_APPROVAL",
+      "execution_phase": "CONFIGURATION",
+      "required_for_project_work_set": true,
+      "consumer_mapping": {
+        "status": "DECLARED_NOT_BOUND",
+        "api_operation_id": null,
+        "nsl_tool_id": null
+      }
+    },
+    {
+      "code_id": "FL0012006",
+      "name_ko": "PM 지정",
+      "purpose": "사람 PM과 PA logical identity를 구분하고 책임 역할을 승인한다.",
+      "domain_group": "D12_PROJECT",
+      "owner_service": "nex-eos",
+      "lifecycle_stage": "PM_ASSIGNMENT",
+      "execution_phase": "CONFIGURATION",
+      "required_for_project_work_set": true,
+      "consumer_mapping": {
+        "status": "DECLARED_NOT_BOUND",
+        "api_operation_id": null,
+        "nsl_tool_id": null
+      }
+    },
+    {
+      "code_id": "FL0012013",
+      "name_ko": "진행 보고 집계",
+      "purpose": "Project 진행 상태와 정기 보고 증적을 집계한다.",
+      "domain_group": "D12_PROJECT",
+      "owner_service": "nex-eos",
+      "lifecycle_stage": "PROGRESS_AGGREGATION",
+      "execution_phase": "OPERATIONS",
+      "required_for_project_work_set": true,
+      "consumer_mapping": {
+        "status": "DECLARED_NOT_BOUND",
+        "api_operation_id": null,
+        "nsl_tool_id": null
+      }
+    },
+    {
+      "code_id": "FL0012026",
+      "name_ko": "프로젝트 종결",
+      "purpose": "최종 원가와 미기표·미배부·미결재 항목을 검증한 뒤 Project를 종결한다.",
+      "domain_group": "D12_PROJECT",
+      "owner_service": "nex-eos",
+      "lifecycle_stage": "PROJECT_CLOSE",
+      "execution_phase": "CLOSURE",
+      "required_for_project_work_set": true,
+      "consumer_mapping": {
+        "status": "DECLARED_NOT_BOUND",
+        "api_operation_id": null,
+        "nsl_tool_id": null
+      }
+    }
+  ],
+  "release_attestation": {
+    "profile": "SOURCE_AUTHORITY_CONTENT_DIGEST_V1",
+    "authority": "NEX_MYBEE_PHASE1_DESIGN_CLOSURE",
+    "evidence_ref": "docs/slices/mybee_phase1_mb1_01_work_code_catalog.md",
+    "content_digest": "sha256:31e5a24a8a5e62f80fc1571a4a232723a90f9c1b628841ae80df24654848c8ba",
+    "runtime_signature_status": "DEFERRED_TO_ADMITTED_SKILL_PACK"
+  }
+}

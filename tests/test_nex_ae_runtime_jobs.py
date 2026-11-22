@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-from datetime import UTC, datetime
 from pathlib import Path
 from uuid import UUID
 
@@ -126,6 +125,45 @@ def _claim(queue, **overrides):
         "now": NOW,
     }
     return queue.claim(**{**values, **overrides})
+
+
+@pytest.mark.parametrize(
+    ("overrides", "message"),
+    (
+        (
+            {
+                "job_type": "RESUME_EXECUTION",
+                "executable_step_id": "step-a",
+            },
+            "requires wait_id",
+        ),
+        ({"wait_id": "wait-a"}, "Only RESUME_EXECUTION may reference wait_id"),
+        (
+            {"resume_target_kind": "PRODUCT_COORDINATOR"},
+            "Only RESUME_EXECUTION may use a Product resume target",
+        ),
+        (
+            {"resume_target_kind": "UNKNOWN"},
+            "must be EXECUTABLE_STEP or PRODUCT_COORDINATOR",
+        ),
+        (
+            {"job_type": "RESUME_EXECUTION", "wait_id": "wait-a"},
+            "require executable_step_id",
+        ),
+        (
+            {
+                "job_type": "RESUME_EXECUTION",
+                "wait_id": "wait-a",
+                "resume_target_kind": "PRODUCT_COORDINATOR",
+                "executable_step_id": "step-a",
+            },
+            "cannot reference executable_step_id",
+        ),
+    ),
+)
+def test_runtime_job_resume_target_admission_rejects_invalid_shapes(overrides, message):
+    with pytest.raises(RuntimeJobError, match=message):
+        _enqueue(_queue(), **overrides)
 
 
 def _validator(path: Path):
@@ -511,7 +549,9 @@ def test_cancel_missing_reload_and_store_failures_are_typed(monkeypatch) -> None
     assert attempt_conflict.value.error_code == "ae.runtime_job_write_conflict"
 
 
-def test_finish_missing_conflict_reload_and_store_failures_are_typed(monkeypatch) -> None:
+def test_finish_missing_conflict_reload_and_store_failures_are_typed(
+    monkeypatch,
+) -> None:
     queue = _queue()
     with pytest.raises(RuntimeJobError) as missing:
         queue.complete(

@@ -430,6 +430,27 @@ def test_domain_intent_activation_fails_closed_on_error_or_replay_drift() -> Non
     assert replay.value.error_code == "DOMAIN_INTENT_ACTIVATION_DRIFT"
 
 
+def test_work_intent_failure_is_projected_as_typed_intent_stage_error(
+) -> None:
+    service, *_ = _components()
+
+    class FailingIntentStage:
+        def generate_and_resolve(self, **_kwargs):
+            raise admission_module.WorkIntentError(
+                "ae.business_request_context_invalid",
+                "Business request context is invalid.",
+            )
+
+    with pytest.raises(admission_module.SemanticCandidateAdmissionError) as raised:
+        replace(service, intent_stage=FailingIntentStage()).admit_and_compile(
+            _request()
+        )
+
+    assert raised.value.status_code == 422
+    assert raised.value.error_code == "ae.business_request_context_invalid"
+    assert raised.value.semantic_stage == "INTENT"
+
+
 def test_resume_reconstructs_missing_canonical_work_intent_without_provider() -> None:
     service, client, _, intents, _, _, _, _ = _components()
     first = service.admit_and_compile(_request())
@@ -704,6 +725,15 @@ def test_claimed_workitem_reuses_candidate_validation_and_compile_pipeline() -> 
                 estimated_used_tokens=128,
             )
 
+    original_intent_stage = service.intent_stage
+    materialization_controls = []
+
+    class CapturingIntentStage:
+        def generate_and_resolve(self, **kwargs):
+            materialization_controls.append(kwargs.get("materialize_work_intent"))
+            return original_intent_stage.generate_and_resolve(**kwargs)
+
+    service = replace(service, intent_stage=CapturingIntentStage())
     result = service.admit_and_compile(
         replace(
             _request(),
@@ -718,6 +748,7 @@ def test_claimed_workitem_reuses_candidate_validation_and_compile_pipeline() -> 
     )
 
     assert result.status == "COMPILED"
+    assert materialization_controls == [False]
     assert client.calls == ["INTENT", "CONTEXT", "PLAN"]
     assert admission.calls == 0
     work_intent = next(iter(intents.records.values()))

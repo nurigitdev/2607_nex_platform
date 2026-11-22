@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_eos/voucher_candidate_validate.v1.schema.json",
+  "title": "EOS VoucherCandidate Validate v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "tenant_id", "expected_revision_no",
+    "expected_candidate_hash", "as_of"
+  ],
+  "properties": {
+    "schema_version": {"const": "eos_voucher_candidate_validate.v1"},
+    "tenant_id": {"type": "string", "minLength": 1, "maxLength": 128},
+    "expected_revision_no": {"type": "integer", "minimum": 1},
+    "expected_candidate_hash": {
+      "type": "string", "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "as_of": {"type": "string", "format": "date-time"}
+  }
+}

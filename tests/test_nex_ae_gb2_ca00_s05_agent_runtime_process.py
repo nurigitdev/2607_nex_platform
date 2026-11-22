@@ -176,17 +176,38 @@ def test_local_mock_check_is_package_only_and_execution_is_rejected() -> None:
 def test_protected_profile_selects_product_executor_composition(monkeypatch) -> None:
     engine = _sqlite_engine()
     product_profile = process.build_deterministic_component_executor_profile()
+    product_skill_runtime = SimpleNamespace()
     observed = []
     monkeypatch.setattr(
         process,
+        "build_installed_product_skill_runtime",
+        lambda sessions, environ: product_skill_runtime,
+    )
+    monkeypatch.setattr(
+        process,
         "build_product_runtime_executor_profile",
-        lambda sessions, environ: (
-            observed.append((sessions, environ)) or product_profile
+        lambda sessions, environ, **values: (
+            observed.append((sessions, environ, values)) or product_profile
+        ),
+    )
+    monkeypatch.setattr(
+        process,
+        "build_activated_m1_product_planning_composition",
+        lambda **values: SimpleNamespace(
+            assignment_handler=None,
+            runtime_registry=SimpleNamespace(identities=()),
+            environ=values["environ"],
         ),
     )
     installed = process.build_installed_agent_runtime_process(
         "staging_live",
-        environ={"NEX_AE_DATABASE_URL": "sqlite+pysqlite:///:memory:"},
+        environ={
+            "NEX_AE_DATABASE_URL": "sqlite+pysqlite:///:memory:",
+            "NEX_AE_PRODUCT_CAPABILITY_REGISTRY_PATH": str(
+                process.ROOT
+                / "deployment/environments/ae-product-capability-registry.mybee-m1.v4.json"
+            ),
+        },
         engine_factory=lambda *_args, **_kwargs: engine,
         engine_checker=lambda _engine: True,
         session_factory_builder=lambda value: sessionmaker(bind=value),
@@ -195,7 +216,11 @@ def test_protected_profile_selects_product_executor_composition(monkeypatch) -> 
         assert installed.profile == "staging_live"
         assert installed.database_environment == "NEX_AE_DATABASE_URL"
         assert installed.composition.executor_profile is product_profile
+        assert installed.composition.product_planning is not None
+        assert installed.composition.product_planning.assignment_handler is None
+        assert not hasattr(installed, "mybee_product_consumer")
         assert len(observed) == 1
+        assert observed[0][2]["runtime"] is product_skill_runtime
     finally:
         installed.close()
 
@@ -230,6 +255,87 @@ def test_installed_loop_reports_work_idle_and_bounded_stop() -> None:
     ]
 
 
+def test_installed_loop_reports_bounded_result_settlement_failures() -> None:
+    installed = _fake_process(
+        {
+            "status": "WORK",
+            "execution_count": 1,
+            "failed_count": 2,
+            "execution_failures": [
+                {
+                    "error_code": "ae.work_result_resume_invalid",
+                    "tenant_id": "protected-tenant",
+                }
+            ],
+            "result_closure": {
+                "candidate_count": 1,
+                "finalized_count": 0,
+                "published_count": 0,
+                "replayed_count": 0,
+                "failed_count": 1,
+                "failures": [
+                    {
+                        "tenant_id": "protected-tenant",
+                        "agent_execution_id": "protected-execution",
+                        "error_code": "ae.workspace_result_lineage_invalid",
+                        "retryable": False,
+                    }
+                ],
+            },
+            "background_result_closure": {
+                "candidate_count": 1,
+                "finalized_count": 1,
+                "published_count": 0,
+                "replayed_count": 0,
+                "failed_count": 1,
+                "failures": [
+                    {
+                        "tenant_id": "protected-tenant",
+                        "agent_execution_id": "protected-execution",
+                        "error_code": "ae.wc_work_result_http_failed",
+                        "retryable": True,
+                    }
+                ],
+            },
+        }
+    )
+    output = StringIO()
+
+    process.run_installed_agent_runtime_process(
+        installed,
+        max_cycles=1,
+        out=output,
+    )
+
+    work = json.loads(output.getvalue().splitlines()[1])
+    assert work["runtime_execution"] == {
+        "failed_count": 1,
+        "failures": [{"error_code": "ae.work_result_resume_invalid"}],
+        "content_included": False,
+    }
+    assert work["ia_result_settlement"] == {
+        "candidate_count": 1,
+        "finalized_count": 0,
+        "published_count": 0,
+        "replayed_count": 0,
+        "failed_count": 1,
+        "failures": [
+            {
+                "error_code": "ae.workspace_result_lineage_invalid",
+                "retryable": False,
+            }
+        ],
+        "content_included": False,
+    }
+    assert work["background_result_settlement"]["failures"] == [
+        {
+            "error_code": "ae.wc_work_result_http_failed",
+            "retryable": True,
+        }
+    ]
+    assert "tenant_id" not in str(work)
+
+
 def test_installed_loop_honors_shutdown_and_rejects_bad_bounds() -> None:
     installed = _fake_process()
 
@@ -249,9 +355,29 @@ def test_installed_loop_honors_shutdown_and_rejects_bad_bounds() -> None:
                 installed, max_cycles=value, out=StringIO()
             )
 
-    not_ready = SimpleNamespace(readiness=lambda: {"readiness_status": "NOT_READY"})
-    with pytest.raises(process.AgentRuntimeProcessError, match="not ready"):
+    not_ready = SimpleNamespace(
+        readiness=lambda: {
+            "readiness_status": "NOT_READY",
+            "checks": {
+                "database_connected": True,
+                "package_readiness_satisfied": False,
+            },
+        }
+    )
+    with pytest.raises(
+        process.AgentRuntimeProcessError,
+        match="failed_checks=package_readiness_satisfied",
+    ):
         process.run_installed_agent_runtime_process(not_ready, out=StringIO())
+
+    missing_contract = SimpleNamespace(
+        readiness=lambda: {"readiness_status": "NOT_READY"}
+    )
+    with pytest.raises(
+        process.AgentRuntimeProcessError,
+        match="failed_checks=readiness_contract_unavailable",
+    ):
+        process.run_installed_agent_runtime_process(missing_contract, out=StringIO())
 
 
 def test_builder_disposes_engine_and_sanitizes_database_failure() -> None:

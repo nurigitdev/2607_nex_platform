@@ -33,6 +33,53 @@ NODE_BASE_IMAGE = (
 )
 PYTHON_CONTAINERFILE = "deployment/oci/python-service.Containerfile"
 NODE_CONTAINERFILE = "deployment/oci/ae-web.Containerfile"
+AE_PRODUCT_RUNTIME_CONTEXT_PATHS = (
+    "deployment/locks/ae-mybee-m1-runtime-admission.v4.json",
+    "deployment/locks/ae-mybee-m1-runtime-admission.v3.json",
+    "deployment/locks/ae-mybee-m1-runtime-admission.v2.json",
+    "deployment/locks/ae-mybee-m1-runtime-activation.v4.json",
+    "deployment/locks/ae-mybee-m1-runtime-activation.v3.json",
+    "deployment/locks/ae-mybee-m1-runtime-activation.v2.json",
+    "deployment/locks/ae-mybee-m1-generalized-rollback.v3.json",
+    "deployment/locks/ae-mybee-m1-generalized-rollback.v2.json",
+    "deployment/locks/ae-mybee-m1-generalized-rollback.v1.json",
+    "deployment/locks/ae-mybee-m1-product-coordinator-activation.v3.json",
+    "deployment/locks/ae-mybee-m1-product-coordinator-activation.v2.json",
+    "deployment/locks/ae-mybee-m1-product-coordinator-activation.v1.json",
+    "deployment/locks/ae-mybee-m1-product-coordinator-rollback.v3.json",
+    "deployment/locks/ae-mybee-m1-product-coordinator-rollback.v2.json",
+    "deployment/locks/ae-mybee-m1-product-coordinator-rollback.v1.json",
+    "deployment/locks/ae-mybee-m1-signed-skill-checkpoint.v3.json",
+    "deployment/locks/ae-mybee-m1-signed-skill-checkpoint.v2.json",
+    "deployment/locks/ae-mybee-m1-signed-skill-checkpoint.v1.json",
+    "deployment/locks/nsl-v0.2.1-wheel.json",
+    "deployment/environments/ae-product-capability-registry.mybee-m1.v4.json",
+    "deployment/environments/ae-product-capability-registry.mybee-m1.v3.json",
+    "deployment/environments/ae-product-capability-registry.mybee-m1.v2.json",
+    "deployment/product/config/project-agent-profile-policy.v1.json",
+    "domains/mybee/skills/m1_checkpoint/context.json",
+    "domains/mybee/skills/m1_checkpoint/mybee-m1-d04-d12.v3.nsp",
+    "domains/mybee/skills/m1_checkpoint/mybee-m1-d04-d12.v2.nsp",
+    "domains/mybee/skills/m1_checkpoint/mybee-m1-d04-d12.v1.nsp",
+    "domains/mybee/skills/m1_checkpoint/mybee-m1-release-public-key.v3.json",
+    "domains/mybee/skills/m1_checkpoint/mybee-m1-release-public-key.v2.json",
+    "domains/mybee/skills/m1_checkpoint/mybee-m1-release-public-key.v1.json",
+    "domains/mybee/skills/m1_checkpoint/tool_catalog.v1.json",
+    "domains/mybee/skills/d04_accounting/journal_posting.v1_0_2.ns",
+    "domains/mybee/skills/d04_accounting/journal_posting.v1_0_1.ns",
+    "domains/mybee/skills/d04_accounting/journal_posting.v1.ns",
+    "domains/mybee/skills/d04_accounting/manifest.v1.json",
+    "domains/mybee/skills/d04_accounting/tool_bindings.v1.json",
+    "domains/mybee/skills/d12_project/work_code_context.v1.ns",
+    "domains/mybee/skills/d12_project/manifest.v1.json",
+    "domains/mybee/skills/d12_project/tool_bindings.v1.json",
+    "domains/mybee/skills/tool_inventory.v1.json",
+    "contracts/admissions/nex_eos/w70_tool_contract_admission.v1.json",
+    "contracts/openapi/nex-eos.openapi.yaml",
+    "contracts/schemas/service/nex_eos",
+    "domains/mybee/catalog/work_codes/catalog.v1.json",
+    "domains/mybee/catalog/work_codes/schema.json",
+)
 _EXCLUDED_PARTS = {"__pycache__", ".pytest_cache", "node_modules", "test", "tests"}
 _EXCLUDED_SUFFIXES = {".pyc", ".pyo"}
 
@@ -81,6 +128,11 @@ def build_default_oci_definitions(
                 "scripts/db",
                 "deployment/locks/python-production.lock",
                 "deployment/security/production-configuration.yaml",
+                *(
+                    AE_PRODUCT_RUNTIME_CONTEXT_PATHS
+                    if artifact.build_target == "ae-product-runtime"
+                    else ()
+                ),
             )
             containerfile = PYTHON_CONTAINERFILE
             base_image = PYTHON_BASE_IMAGE
@@ -222,6 +274,13 @@ def materialize_oci_build_context(
     _copy_path(root, destination, definition.containerfile, "Containerfile")
     for context_path in definition.context_paths:
         _copy_path(root, destination, context_path, context_path)
+    return inspect_oci_build_context(destination, definition)
+
+
+def inspect_oci_build_context(
+    destination: Path,
+    definition: OciBuildDefinition,
+) -> OciBuildContextManifest:
     files = tuple(
         OciContextFile(
             path=path.relative_to(destination).as_posix(),

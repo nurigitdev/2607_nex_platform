@@ -1,0 +1,306 @@
+{
+  "schema_version": "nex.mybee.w70-s8-01-foundation-gate.v1",
+  "gate_id": "mybee.phase1.w70.s8-01.foundation",
+  "gate_state": "PASS",
+  "runtime_wheel": {
+    "lock_ref": "deployment/locks/nsl-v0.2.1-wheel.json",
+    "lock_sha256": "sha256:7efa6376602f1c89951657ba170a51ae7157189a0f46e607cebbb9ef949964ea",
+    "package_version": "0.2.1",
+    "wheel_sha256": "sha256:a89ce5fde1a32749565ba0906a2f1faf1d440ff6db2dfc07c0b2a581378507cb",
+    "release_admission_hash": "sha256:a7a27b3804ab1a2dc203b447c83f3d844a8dcbf9101801b05aa88df66cb6ee47",
+    "public_api_complete": true,
+    "runtime_import_origin": "installed_distribution"
+  },
+  "compile_profiles": [
+    {
+      "profile_id": "D04_READ",
+      "domain_code": "D04_ACCOUNTING",
+      "operation_semantics": "READ",
+      "source_ref": "domains/mybee/skills/foundation_gate/d04_read_profile.ns",
+      "source_sha256": "sha256:8cd76559c9f965ae8a79491503f70406c89c4f797f91c3c8ab58e16334f0a6d7",
+      "tool_catalog_ref": "domains/mybee/skills/foundation_gate/tool_catalog.v1.json",
+      "tool_catalog_sha256": "sha256:139137b1ee2fb78a00f621cad4da2e730133647afa942a6c091aa5ad4c22c172",
+      "skill_id": "W70.FOUNDATION.D04_READ_PROFILE",
+      "skill_version": "1.0.0",
+      "semantic_hash": "sha256:a9174b9762c5bcfd22fde253975303d38e73111b8f9ce9dcd028b12c770bb35b",
+      "nso_sha256": "sha256:75293404b021b1f63336968e48145dc94e6fc3c61da2631e55887e35147a12e2",
+      "admission_state": "PROFILE_COMPILE_ADMITTED",
+      "product_skill": false
+    },
+    {
+      "profile_id": "D04_GOVERNED_WRITE",
+      "domain_code": "D04_ACCOUNTING",
+      "operation_semantics": "GOVERNED_WRITE",
+      "source_ref": "domains/mybee/skills/foundation_gate/d04_write_profile.ns",
+      "source_sha256": "sha256:04d07acb03941723481a32e67b04fb0c425af8aeb74c396ae70a6d843a978532",
+      "tool_catalog_ref": "domains/mybee/skills/foundation_gate/tool_catalog.v1.json",
+      "tool_catalog_sha256": "sha256:139137b1ee2fb78a00f621cad4da2e730133647afa942a6c091aa5ad4c22c172",
+      "skill_id": "W70.FOUNDATION.D04_WRITE_PROFILE",
+      "skill_version": "1.0.0",
+      "semantic_hash": "sha256:1842477300b82454289b82729431cd02e4e4e996c74658ab5f3ee3ea3bec94c9",
+      "nso_sha256": "sha256:c009d28b107e39b9020209dab2410630a009e1ff443e4da5b8972ee2ff661894",
+      "admission_state": "PROFILE_COMPILE_ADMITTED",
+      "product_skill": false
+    },
+    {
+      "profile_id": "D12_READ",
+      "domain_code": "D12_PROJECT",
+      "operation_semantics": "READ",
+      "source_ref": "domains/mybee/skills/foundation_gate/d12_read_profile.ns",
+      "source_sha256": "sha256:71d95680ebc252539b42dbb5f57b28c610b59d9b0dd6ceb98d8cafd32c43b908",
+      "tool_catalog_ref": "domains/mybee/skills/foundation_gate/tool_catalog.v1.json",
+      "tool_catalog_sha256": "sha256:139137b1ee2fb78a00f621cad4da2e730133647afa942a6c091aa5ad4c22c172",
+      "skill_id": "W70.FOUNDATION.D12_READ_PROFILE",
+      "skill_version": "1.0.0",
+      "semantic_hash": "sha256:553f33ae841a40d5d9c307d7f528c1d7554661b5934ab8c8c8b3b887310dada4",
+      "nso_sha256": "sha256:59526c2a8ebd014a04042f8f3d43f61fb62e0ca3aa4416ecec9d4618454f5e6b",
+      "admission_state": "PROFILE_COMPILE_ADMITTED",
+      "product_skill": false
+    }
+  ],
+  "negative_compile_cases": [
+    {
+      "case_id": "STATUS_ONLY_TOOL_NOT_IN_ADMITTED_COMPILER_CATALOG",
+      "source_ref": "domains/mybee/skills/foundation_gate/status_only_negative.ns",
+      "source_sha256": "sha256:704c0981666051f19ceecc0444a4de0079d306cb0df802dabac0d7b540eb771e",
+      "expected_error_code": "NSL-E4001",
+      "observed_error_code": "NSL-E4001",
+      "outcome": "REJECTED_AS_EXPECTED"
+    }
+  ],
+  "candidate_admission": {
+    "total": 18,
+    "fully_typed": 11,
+    "status_only": 7,
+    "runtime_selectable": 0,
+    "admissions": [
+      {
+        "capability_id": "FINANCE.COST_ALLOCATION.RUN",
+        "pack_id": "MYBEE.D04.ACCOUNTING",
+        "contract_typing_state": "FULLY_TYPED",
+        "compile_admission_state": "PROFILE_COMPILE_ADMITTED_SKILL_SOURCE_PENDING",
+        "runtime_selectable": false,
+        "activation_blocker": "SIGNED_PRODUCT_SKILL_REQUIRED"
+      },
+      {
+        "capability_id": "FINANCE.COST_ALLOCATION.VERIFY",
+        "pack_id": "MYBEE.D04.ACCOUNTING",
+        "contract_typing_state": "FULLY_TYPED",
+        "compile_admission_state": "PROFILE_COMPILE_ADMITTED_SKILL_SOURCE_PENDING",
+        "runtime_selectable": false,
+        "activation_blocker": "SIGNED_PRODUCT_SKILL_REQUIRED"
+      },
+      {
+        "capability_id": "FINANCE.COST_ALLOCATION_PLAN.RELEASE",
+        "pack_id": "MYBEE.D04.ACCOUNTING",
+        "contract_typing_state": "STATUS_ONLY",
+        "compile_admission_state": "BLOCKED_STATUS_ONLY_CONTRACT",
+        "runtime_selectable": false,
+        "activation_blocker": "CANONICAL_SUCCESS_RESPONSE_SCHEMA_REQUIRED"
+      },
+      {
+        "capability_id": "FINANCE.FX_RATE.HISTORY",
+        "pack_id": "MYBEE.D04.ACCOUNTING",
+        "contract_typing_state": "STATUS_ONLY",
+        "compile_admission_state": "BLOCKED_STATUS_ONLY_CONTRACT",
+        "runtime_selectable": false,
+        "activation_blocker": "CANONICAL_SUCCESS_RESPONSE_SCHEMA_REQUIRED"
+      },
+      {
+        "capability_id": "FINANCE.FX_RATE.IMPORT",
+        "pack_id": "MYBEE.D04.ACCOUNTING",
+        "contract_typing_state": "STATUS_ONLY",
+        "compile_admission_state": "BLOCKED_STATUS_ONLY_CONTRACT",
+        "runtime_selectable": false,
+        "activation_blocker": "CANONICAL_SUCCESS_RESPONSE_SCHEMA_REQUIRED"
+      },
+      {
+        "capability_id": "FINANCE.FX_RATE.RESOLVE",
+        "pack_id": "MYBEE.D04.ACCOUNTING",
+        "contract_typing_state": "STATUS_ONLY",
+        "compile_admission_state": "BLOCKED_STATUS_ONLY_CONTRACT",
+        "runtime_selectable": false,
+        "activation_blocker": "CANONICAL_SUCCESS_RESPONSE_SCHEMA_REQUIRED"
+      },
+      {
+        "capability_id": "FINANCE.PROJECT_PNL.GET",
+        "pack_id": "MYBEE.D04.ACCOUNTING",
+        "contract_typing_state": "FULLY_TYPED",
+        "compile_admission_state": "PROFILE_COMPILE_ADMITTED_SKILL_SOURCE_PENDING",
+        "runtime_selectable": false,
+        "activation_blocker": "SIGNED_PRODUCT_SKILL_REQUIRED"
+      },
+      {
+        "capability_id": "FINANCE.VOUCHER.APPROVE_AND_POST",
+        "pack_id": "MYBEE.D04.ACCOUNTING",
+        "contract_typing_state": "FULLY_TYPED",
+        "compile_admission_state": "PROFILE_COMPILE_ADMITTED_SKILL_SOURCE_PENDING",
+        "runtime_selectable": false,
+        "activation_blocker": "SIGNED_PRODUCT_SKILL_REQUIRED"
+      },
+      {
+        "capability_id": "FINANCE.VOUCHER_CANDIDATE.CREATE_V2",
+        "pack_id": "MYBEE.D04.ACCOUNTING",
+        "contract_typing_state": "FULLY_TYPED",
+        "compile_admission_state": "PROFILE_COMPILE_ADMITTED_SKILL_SOURCE_PENDING",
+        "runtime_selectable": false,
+        "activation_blocker": "SIGNED_PRODUCT_SKILL_REQUIRED"
+      },
+      {
+        "capability_id": "FINANCE.VOUCHER_CANDIDATE.GET_V2",
+        "pack_id": "MYBEE.D04.ACCOUNTING",
+        "contract_typing_state": "STATUS_ONLY",
+        "compile_admission_state": "BLOCKED_STATUS_ONLY_CONTRACT",
+        "runtime_selectable": false,
+        "activation_blocker": "CANONICAL_SUCCESS_RESPONSE_SCHEMA_REQUIRED"
+      },
+      {
+        "capability_id": "FINANCE.VOUCHER_CANDIDATE.VALIDATE",
+        "pack_id": "MYBEE.D04.ACCOUNTING",
+        "contract_typing_state": "FULLY_TYPED",
+        "compile_admission_state": "PROFILE_COMPILE_ADMITTED_SKILL_SOURCE_PENDING",
+        "runtime_selectable": false,
+        "activation_blocker": "SIGNED_PRODUCT_SKILL_REQUIRED"
+      },
+      {
+        "capability_id": "FINANCE.VOUCHER_DRAFT.CREATE",
+        "pack_id": "MYBEE.D04.ACCOUNTING",
+        "contract_typing_state": "FULLY_TYPED",
+        "compile_admission_state": "PROFILE_COMPILE_ADMITTED_SKILL_SOURCE_PENDING",
+        "runtime_selectable": false,
+        "activation_blocker": "SIGNED_PRODUCT_SKILL_REQUIRED"
+      },
+      {
+        "capability_id": "FINANCE.VOUCHER_POSTING.ADMIT",
+        "pack_id": "MYBEE.D04.ACCOUNTING",
+        "contract_typing_state": "FULLY_TYPED",
+        "compile_admission_state": "PROFILE_COMPILE_ADMITTED_SKILL_SOURCE_PENDING",
+        "runtime_selectable": false,
+        "activation_blocker": "SIGNED_PRODUCT_SKILL_REQUIRED"
+      },
+      {
+        "capability_id": "PROJECT.BUSINESS_READINESS.GET",
+        "pack_id": "MYBEE.D12.PROJECT",
+        "contract_typing_state": "FULLY_TYPED",
+        "compile_admission_state": "PROFILE_COMPILE_ADMITTED_SKILL_SOURCE_PENDING",
+        "runtime_selectable": false,
+        "activation_blocker": "SIGNED_PRODUCT_SKILL_REQUIRED"
+      },
+      {
+        "capability_id": "PROJECT.WORK_ASSIGNMENT.ASSIGN",
+        "pack_id": "MYBEE.D12.PROJECT",
+        "contract_typing_state": "STATUS_ONLY",
+        "compile_admission_state": "BLOCKED_STATUS_ONLY_CONTRACT",
+        "runtime_selectable": false,
+        "activation_blocker": "CANONICAL_SUCCESS_RESPONSE_SCHEMA_REQUIRED"
+      },
+      {
+        "capability_id": "PROJECT.WORK_ASSIGNMENT.LIST",
+        "pack_id": "MYBEE.D12.PROJECT",
+        "contract_typing_state": "FULLY_TYPED",
+        "compile_admission_state": "PROFILE_COMPILE_ADMITTED_SKILL_SOURCE_PENDING",
+        "runtime_selectable": false,
+        "activation_blocker": "SIGNED_PRODUCT_SKILL_REQUIRED"
+      },
+      {
+        "capability_id": "PROJECT.WORK_CODE_SET.APPROVE",
+        "pack_id": "MYBEE.D12.PROJECT",
+        "contract_typing_state": "STATUS_ONLY",
+        "compile_admission_state": "BLOCKED_STATUS_ONLY_CONTRACT",
+        "runtime_selectable": false,
+        "activation_blocker": "CANONICAL_SUCCESS_RESPONSE_SCHEMA_REQUIRED"
+      },
+      {
+        "capability_id": "PROJECT.WORK_CODE_SET.GET",
+        "pack_id": "MYBEE.D12.PROJECT",
+        "contract_typing_state": "FULLY_TYPED",
+        "compile_admission_state": "PROFILE_COMPILE_ADMITTED_SKILL_SOURCE_PENDING",
+        "runtime_selectable": false,
+        "activation_blocker": "SIGNED_PRODUCT_SKILL_REQUIRED"
+      }
+    ]
+  },
+  "alias_admission": {
+    "registry_version": "mybee-w70-s8-01a.v1",
+    "aliases": [
+      {
+        "requested_operation": "FINANCE.CREATE_VOUCHER_DRAFT",
+        "canonical_operation": "FINANCE.VOUCHER_DRAFT.CREATE",
+        "registry_version": "mybee-w70-s8-01a.v1",
+        "alias_applied": true
+      },
+      {
+        "requested_operation": "FINANCE.VOUCHER.APPROVE_AND_POST.ADMISSION",
+        "canonical_operation": "FINANCE.VOUCHER_POSTING.ADMIT",
+        "registry_version": "mybee-w70-s8-01a.v1",
+        "alias_applied": true
+      },
+      {
+        "requested_operation": "createEosVoucherDraft",
+        "canonical_operation": "FINANCE.VOUCHER_DRAFT.CREATE",
+        "registry_version": "mybee-w70-s8-01a.v1",
+        "alias_applied": true
+      }
+    ]
+  },
+  "trust_admission": {
+    "candidate_bundles": [
+      {
+        "domain_code": "D04_ACCOUNTING",
+        "bundle_id": "nex-mybee-d04-accounting-candidate-v1",
+        "bundle_ref": "deployment/locks/ae-mybee-d04-accounting-candidate-bundle.v1.json",
+        "bundle_sha256": "sha256:a2dc94ccf931d37e81810e2db4075c5a9ce4d795106c6bdaf540e92312a47990",
+        "content_hash": "sha256:a9f208dd28fa181a4a59e884c988f244c91bdce3348cb5879c52c2a1757b4405",
+        "trust_policy_id": "policy://nex/ae/mybee/d04-accounting/v1",
+        "signature_status": "NOT_SIGNED",
+        "runtime_selectable": false,
+        "admission_state": "BLOCKED_UNSIGNED"
+      },
+      {
+        "domain_code": "D12_PROJECT",
+        "bundle_id": "nex-mybee-d12-project-candidate-v1",
+        "bundle_ref": "deployment/locks/ae-mybee-d12-project-candidate-bundle.v1.json",
+        "bundle_sha256": "sha256:112dad51bef89be3b166d774545a8b168aaac329cf12d5d855fe7efa66bbdcb5",
+        "content_hash": "sha256:bb89d324e1a4bbdb94fa6ba3e31694be33a5d52b54eac96576c6d13fa1bda71c",
+        "trust_policy_id": "policy://nex/ae/mybee/d12-project/v1",
+        "signature_status": "NOT_SIGNED",
+        "runtime_selectable": false,
+        "admission_state": "BLOCKED_UNSIGNED"
+      }
+    ],
+    "unsigned_runtime_activation": "FAIL_CLOSED",
+    "cross_tenant_artifact_resolution": "TENANT_SCOPED_FAIL_CLOSED"
+  },
+  "registry_continuity": {
+    "candidate_registry_ref": "deployment/environments/ae-product-capability-registry.v2.json",
+    "candidate_registry_sha256": "sha256:b3393af077187fc5ded04493fbb8d1b2e38afdf35e9cebf26fa4b4bbce80b3eb",
+    "candidate_registry_hash": "sha256:efc5c881406fb39e2818cb289bc8836c66b08709c561197ded1e1efbeaf2217c",
+    "candidate_registry_version": 2,
+    "bundle_set_ref": "deployment/locks/ae-product-nsl-runtime-bundles.v2.json",
+    "bundle_set_sha256": "sha256:36c76a9ed8f1d70eb8b444178bf31b871420863ebd4a811b6582e2d15ddafa35",
+    "bundle_set_readiness": {
+      "schema_version": "nex_nsl_runtime_bundle_set_readiness.v1",
+      "status": "PASS",
+      "bundle_set_id": "nex-ae-product-nsl-bundles-mybee-w70",
+      "bundle_set_version": 2,
+      "bundle_count": 3,
+      "active_bundle_count": 1,
+      "candidate_bundle_count": 2,
+      "content_hash": "sha256:553637ac3e1f351b68bf07e53efa1f3a5d8174404977541d8b22bc4a1634b9ca"
+    },
+    "active_registry_ref": "deployment/environments/ae-product-capability-registry.v1.json",
+    "active_registry_sha256": "sha256:cb43b573d2e9284b79b10502a68b9a7f9fed2939b0a88db5c745b4c5396ec126",
+    "active_registry_hash": "sha256:4ec6072f169c437116ee435213dc9f8a695be6661937bd0b117d1c74dd8c1938",
+    "active_bundle_ref": "deployment/locks/ae-product-nsl-runtime-bundle.v1.json",
+    "active_bundle_sha256": "sha256:f5f7ab97aaa5abc3642a734b153313b5af6c695790c4974a9d3b2ed8f897e27c",
+    "active_bundle_id": "nex-product-nsl-v0.2.1-finance-voucher-draft-v1",
+    "golden_a_runtime_unchanged": true
+  },
+  "activation_decision": {
+    "foundation_gate": "PASS",
+    "candidate_product_skills": "NOT_ACTIVATED",
+    "signed_minimal_skill_owner": "CP-M1-MB8-01",
+    "remote_provider_required": false
+  },
+  "content_hash": "sha256:06fed0f905c681c3e3b4ea5c710873099d66a6ab64088e22027ea02e65b2728b"
+}

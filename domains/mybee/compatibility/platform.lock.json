@@ -1,0 +1,40 @@
+{
+  "schema_version": "nex.mybee.platform-lock.v1",
+  "slice_id": "S0-01",
+  "status": "PINNED_FOR_PHASE1_ENTRY",
+  "platform": {
+    "repository": "nurigitdev/2607_nex_platform",
+    "master_baseline_commit": "9fe6ddb151bd121c8fb66fbde62cc24cca29eddb",
+    "frozen_authority_sha256": "sha256:3bc08ce2b50a89150a45f25b292b8159f16ac2009707eee828fc438d82329f2a"
+  },
+  "openapi": {
+    "nex-oa": {
+      "path": "contracts/openapi/nex-oa.openapi.yaml",
+      "sha256": "sha256:810a70f1ce6f872d098c8596c7ff41a9e4a23695db9c19b68c2c47826db90005"
+    },
+    "nex-ae-api": {
+      "path": "contracts/openapi/nex-ae-api.openapi.yaml",
+      "sha256": "sha256:170aeeca6b375484dcf7e49a568139a8a54e20d9bc9c26b599c5db042a23573c"
+    },
+    "nex-wc": {
+      "path": "contracts/openapi/nex-wc.openapi.yaml",
+      "sha256": "sha256:74d75d6ffe838f94a6777905e250a3abf85de7d590a2f2b7f7d30ac702cc8da4"
+    },
+    "nex-eos": {
+      "path": "contracts/openapi/nex-eos.openapi.yaml",
+      "sha256": "sha256:03cd28bb04a2d83cb6a1848590dd7202e9b1cea92e0fac7d890d0f8d4fc29b96"
+    },
+    "nex-wa": {
+      "path": "contracts/openapi/nex-wa.openapi.yaml",
+      "sha256": "sha256:122cba18fa2e0bf1aa7225d273a4c19ef67c3232af4b3376d04473b927e1a524"
+    }
+  },
+  "nsl_runtime": {
+    "lock_path": "deployment/locks/nsl-v0.2.1-wheel.json",
+    "lock_sha256": "sha256:7efa6376602f1c89951657ba170a51ae7157189a0f46e607cebbb9ef949964ea",
+    "distribution": "nex-skill-language",
+    "package_version": "0.2.1",
+    "source_revision": "d53658ec2ab0b42e995fe0ebe80badd53218feec",
+    "wheel_sha256": "sha256:a89ce5fde1a32749565ba0906a2f1faf1d440ff6db2dfc07c0b2a581378507cb"
+  }
+}

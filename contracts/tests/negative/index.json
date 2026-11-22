@@ -1225,6 +1225,81 @@
       "name": "ae_project_membership_batch_skill_binding_model_authority",
       "path": "tests/negative/planning/ae_project_membership_batch_skill_binding.model_authority.json",
       "schema": "schemas/service/nex_ae_api/project_membership_batch_skill_binding.v1.schema.json"
+    },
+    {
+      "name": "eos_voucher_candidate_create_missing_project_code",
+      "path": "tests/negative/service/eos_voucher_candidate_create.missing_project_code.json",
+      "schema": "schemas/service/nex_eos/voucher_candidate_create.v2.schema.json"
+    },
+    {
+      "name": "eos_voucher_candidate_revise_missing_return_event",
+      "path": "tests/negative/service/eos_voucher_candidate_revise.missing_return_event.json",
+      "schema": "schemas/service/nex_eos/voucher_candidate_revise.v1.schema.json"
+    },
+    {
+      "name": "eos_voucher_candidate_validate_missing_hash",
+      "path": "tests/negative/service/eos_voucher_candidate_validate.missing_hash.json",
+      "schema": "schemas/service/nex_eos/voucher_candidate_validate.v1.schema.json"
+    },
+    {
+      "name": "eos_voucher_candidate_review_invalidate_missing_reason",
+      "path": "tests/negative/service/eos_voucher_candidate_review_invalidate.missing_reason.json",
+      "schema": "schemas/service/nex_eos/voucher_candidate_review_invalidate.v1.schema.json"
+    },
+    {
+      "name": "oa_project_authorization_decision_request_private_field",
+      "path": "tests/negative/auth/oa_project_authorization_decision_request.private_field.json",
+      "schema": "schemas/service/nex_oa/project_authorization_decision_request.v1.schema.json"
+    },
+    {
+      "name": "oa_project_authorization_decision_response_private_field",
+      "path": "tests/negative/auth/oa_project_authorization_decision_response.private_field.json",
+      "schema": "schemas/service/nex_oa/project_authorization_decision_response.v1.schema.json"
+    },
+    {
+      "name": "oa_project_entitlement_event_hash_missing",
+      "path": "tests/negative/auth/oa_project_entitlement_event.hash_missing.json",
+      "schema": "schemas/service/nex_oa/project_entitlement_event.v1.schema.json"
+    },
+    {
+      "name": "oa_project_entitlement_receipt_wrong_state",
+      "path": "tests/negative/auth/oa_project_entitlement_receipt.wrong_state.json",
+      "schema": "schemas/service/nex_oa/project_entitlement_receipt.v1.schema.json"
+    },
+    {
+      "name": "oa_project_entitlement_projection_request_missing_correlation",
+      "path": "tests/negative/auth/oa_project_entitlement_projection_request.missing_correlation.json",
+      "schema": "schemas/service/nex_oa/project_entitlement_projection_request.v1.schema.json"
+    },
+    {
+      "name": "oa_project_entitlement_projection_bad_hash",
+      "path": "tests/negative/auth/oa_project_entitlement_projection.bad_hash.json",
+      "schema": "schemas/service/nex_oa/project_entitlement_projection.v1.schema.json"
+    },
+    {
+      "name": "eos_accounting_posting_admission_request_missing_proof",
+      "path": "tests/negative/service/eos_accounting_posting_admission_request.missing_proof.json",
+      "schema": "schemas/service/nex_eos/accounting_posting_admission_request.v1.schema.json"
+    },
+    {
+      "name": "eos_journal_reconciliation_unknown_with_journal",
+      "path": "tests/negative/service/eos_journal_reconciliation.unknown_with_journal.json",
+      "schema": "schemas/service/nex_eos/journal_reconciliation.v1.schema.json"
+    },
+    {
+      "name": "tool_contract_admission_lowercase_method",
+      "path": "tests/negative/common/tool_contract_admission.lowercase_method.json",
+      "schema": "schemas/common/tool_contract_admission.v1.schema.json"
+    },
+    {
+      "name": "tool_contract_admission_non_success_status",
+      "path": "tests/negative/common/tool_contract_admission.non_success_status.json",
+      "schema": "schemas/common/tool_contract_admission.v1.schema.json"
+    },
+    {
+      "name": "tool_contract_admission_skill_local_schema",
+      "path": "tests/negative/common/tool_contract_admission.skill_local_schema.json",
+      "schema": "schemas/common/tool_contract_admission.v1.schema.json"
     }
   ]
 }

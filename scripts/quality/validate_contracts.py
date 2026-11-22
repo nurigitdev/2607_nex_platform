@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import argparse
-from importlib.resources import files
 import json
 from dataclasses import dataclass, field
+from importlib.resources import files
 from pathlib import Path
 from typing import Any
 
@@ -11,6 +11,8 @@ import yaml
 from jsonschema import Draft202012Validator, ValidationError
 from openapi_spec_validator import validate
 from openapi_spec_validator.validation import OpenAPIV31SpecValidator
+from referencing import Registry, Resource
+from referencing.exceptions import CannotDetermineSpecification
 
 SUPPORTED_OPENAPI_SUFFIXES = {".json", ".yaml", ".yml"}
 
@@ -97,8 +99,25 @@ def contract_inventory_counts(root: Path) -> dict[str, int]:
     }
 
 
-def validate_payload(schema: dict[str, Any], payload: Any) -> None:
-    Draft202012Validator(schema).validate(payload)
+def build_schema_registry(root: Path) -> Registry:
+    registry = Registry()
+    for schema_path in iter_schema_files(root):
+        schema = load_structured_file(schema_path)
+        schema_id = schema.get("$id") if isinstance(schema, dict) else None
+        if isinstance(schema_id, str) and schema_id:
+            registry = registry.with_resource(
+                schema_id, Resource.from_contents(schema)
+            )
+    return registry
+
+
+def validate_payload(
+    schema: dict[str, Any], payload: Any, *, registry: Registry | None = None
+) -> None:
+    if registry is None:
+        Draft202012Validator(schema).validate(payload)
+        return
+    Draft202012Validator(schema, registry=registry).validate(payload)
 
 
 def validate_json_schemas(root: Path, summary: ContractValidationSummary) -> None:
@@ -111,7 +130,12 @@ def validate_json_schemas(root: Path, summary: ContractValidationSummary) -> Non
             summary.schema_count += 1
 
 
-def validate_examples(root: Path, summary: ContractValidationSummary) -> None:
+def validate_examples(
+    root: Path,
+    summary: ContractValidationSummary,
+    *,
+    registry: Registry | None = None,
+) -> None:
     try:
         examples = load_example_index(root)
     except Exception as exc:
@@ -124,7 +148,7 @@ def validate_examples(root: Path, summary: ContractValidationSummary) -> None:
             schema_path = root / entry["schema"]
             schema = load_structured_file(schema_path)
             payload = load_structured_file(example_path)
-            validate_payload(schema, payload)
+            validate_payload(schema, payload, registry=registry)
         except KeyError as exc:
             summary.failures.append(f"examples/index.json: missing key {exc}")
         except Exception as exc:
@@ -133,7 +157,12 @@ def validate_examples(root: Path, summary: ContractValidationSummary) -> None:
             summary.example_count += 1
 
 
-def validate_negative_examples(root: Path, summary: ContractValidationSummary) -> None:
+def validate_negative_examples(
+    root: Path,
+    summary: ContractValidationSummary,
+    *,
+    registry: Registry | None = None,
+) -> None:
     try:
         examples = load_negative_example_index(root)
     except Exception as exc:
@@ -154,7 +183,7 @@ def validate_negative_examples(root: Path, summary: ContractValidationSummary) -
             continue
 
         try:
-            validate_payload(schema, payload)
+            validate_payload(schema, payload, registry=registry)
         except ValidationError:
             summary.negative_example_count += 1
         except Exception as exc:
@@ -184,8 +213,13 @@ def validate_openapi_specs(root: Path, summary: ContractValidationSummary) -> No
 def validate_contract_tree(root: Path) -> ContractValidationSummary:
     summary = ContractValidationSummary()
     validate_json_schemas(root, summary)
-    validate_examples(root, summary)
-    validate_negative_examples(root, summary)
+    try:
+        registry = build_schema_registry(root)
+    except (OSError, ValueError, CannotDetermineSpecification) as exc:
+        summary.failures.append(f"{root / 'schemas'}: registry build failed: {exc}")
+        return summary
+    validate_examples(root, summary, registry=registry)
+    validate_negative_examples(root, summary, registry=registry)
     validate_openapi_specs(root, summary)
     return summary
 

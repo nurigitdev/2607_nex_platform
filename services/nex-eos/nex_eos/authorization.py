@@ -61,6 +61,8 @@ class EosAuthorizationTarget:
     resource_type: str
     resource_id: str
     org_unit_id: str | None = None
+    project_code: str | None = None
+    correlation_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -75,6 +77,9 @@ class EosAuthorizationEvidence:
     org_unit_id: str | None
     authorization_revision_hash: str
     authorization_checked_at: datetime
+    project_decision_ref: str | None = None
+    project_code: str | None = None
+    project_source_version: int | None = None
 
     def to_metadata(self) -> dict[str, Any]:
         return {
@@ -96,9 +101,13 @@ class EosVoucherAuthorizationClient:
         self,
         source: AuthorizationSource,
         *,
+        required_scope: str = EOS_VOUCHER_CREATE_SCOPE,
+        project_authorizer=None,
         clock=None,
     ) -> None:
         self._source = source
+        self._required_scope = _scoped_id("required_scope", required_scope)
+        self._project_authorizer = project_authorizer
         self._clock = clock or (lambda: datetime.now(UTC))
 
     def authorize_create(
@@ -111,7 +120,7 @@ class EosVoucherAuthorizationClient:
                 subject_id=normalized.subject_id,
             )
         except AuthorizationSubjectDenied as exc:
-            raise _denied() from exc
+            raise _denied(self._required_scope) from exc
         except Exception as exc:
             raise EosAuthorizationError(
                 "EOS_AUTHORIZATION_UNAVAILABLE",
@@ -119,7 +128,43 @@ class EosVoucherAuthorizationClient:
                 status_code=503,
                 retryable=True,
             ) from exc
-        revision_hash = _require_authorization(authorization, normalized)
+        revision_hash = _require_authorization(
+            authorization,
+            normalized,
+            required_scope=self._required_scope,
+        )
+        project_evidence = None
+        if self._project_authorizer is not None:
+            from .project_authorization import EosProjectAuthorizationError
+
+            try:
+                project_evidence = self._project_authorizer.authorize(
+                    tenant_id=normalized.tenant_id,
+                    subject_id=normalized.subject_id,
+                    project_id=normalized.project_id,
+                    expected_project_code=normalized.project_code,
+                    action=self._required_scope,
+                    correlation_id=(
+                        normalized.correlation_id
+                        or f"eos-auth:{normalized.resource_id}"
+                    ),
+                )
+            except EosProjectAuthorizationError as exc:
+                raise EosAuthorizationError(
+                    exc.error_code,
+                    exc.detail,
+                    status_code=exc.status_code,
+                    retryable=exc.retryable,
+                ) from exc
+            if _bare_hash(project_evidence.authorization_revision_hash) != _bare_hash(
+                revision_hash
+            ):
+                raise EosAuthorizationError(
+                    "EOS_PROJECT_AUTHORIZATION_UNAVAILABLE",
+                    "OA authorization revision changed across the Project decision.",
+                    status_code=503,
+                    retryable=True,
+                )
         checked_at = self._clock()
         if not isinstance(checked_at, datetime) or checked_at.tzinfo is None:
             raise EosAuthorizationError(
@@ -131,13 +176,22 @@ class EosVoucherAuthorizationClient:
             tenant_id=normalized.tenant_id,
             subject_id=normalized.subject_id,
             service_subject=normalized.service_subject,
-            required_scope=EOS_VOUCHER_CREATE_SCOPE,
+            required_scope=self._required_scope,
             project_id=normalized.project_id,
             resource_type=normalized.resource_type,
             resource_id=normalized.resource_id,
             org_unit_id=normalized.org_unit_id,
             authorization_revision_hash=revision_hash,
             authorization_checked_at=checked_at.astimezone(UTC),
+            project_decision_ref=(
+                project_evidence.decision_ref if project_evidence is not None else None
+            ),
+            project_code=(
+                project_evidence.project_code if project_evidence is not None else None
+            ),
+            project_source_version=(
+                project_evidence.source_version if project_evidence is not None else None
+            ),
         )
 
 
@@ -181,7 +235,12 @@ class HttpOaAuthorizationSource:
                     error_code=error_code,
                 ) from exc
             raise RuntimeError(f"OA authorization failed with HTTP {exc.code}") from exc
-        except (URLError, TimeoutError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        except (
+            URLError,
+            TimeoutError,
+            UnicodeDecodeError,
+            json.JSONDecodeError,
+        ) as exc:
             raise RuntimeError("OA authorization request failed") from exc
         if not isinstance(payload, Mapping) or not isinstance(
             payload.get("authorization"), Mapping
@@ -214,28 +273,42 @@ def _normalize_target(value: object) -> EosAuthorizationTarget:
             if value.org_unit_id is not None
             else None
         ),
+        project_code=(
+            _scoped_id("project_code", value.project_code)
+            if value.project_code is not None
+            else None
+        ),
+        correlation_id=(
+            _scoped_id("correlation_id", value.correlation_id)
+            if value.correlation_id is not None
+            else None
+        ),
     )
 
 
 def _require_authorization(
-    value: object, target: EosAuthorizationTarget
+    value: object,
+    target: EosAuthorizationTarget,
+    *,
+    required_scope: str = EOS_VOUCHER_CREATE_SCOPE,
 ) -> str:
     if not isinstance(value, Mapping):
-        raise _denied()
+        raise _denied(required_scope)
     if value.get("active") is not True:
-        raise _denied()
-    if value.get("tenant_id") != target.tenant_id or value.get(
-        "subject_id"
-    ) != target.subject_id:
-        raise _denied()
+        raise _denied(required_scope)
+    if (
+        value.get("tenant_id") != target.tenant_id
+        or value.get("subject_id") != target.subject_id
+    ):
+        raise _denied(required_scope)
     scopes = _string_set(value.get("scopes"), "scopes", deny=True)
-    if EOS_VOUCHER_CREATE_SCOPE not in scopes:
-        raise _denied()
+    if required_scope not in scopes:
+        raise _denied(required_scope)
     revision_hash = value.get("revision_hash")
     if not isinstance(revision_hash, str) or not _REVISION_HASH.fullmatch(
         revision_hash
     ):
-        raise _denied()
+        raise _denied(required_scope)
     _require_optional_scope(value, "project_ids", target.project_id)
     if target.org_unit_id is not None:
         _require_optional_scope(value, "org_unit_ids", target.org_unit_id)
@@ -291,10 +364,14 @@ def _problem_error_code(exc: HTTPError) -> str | None:
     return value if isinstance(value, str) else None
 
 
-def _denied() -> EosAuthorizationError:
+def _bare_hash(value: str) -> str:
+    return value.removeprefix("sha256:")
+
+
+def _denied(required_scope: str = EOS_VOUCHER_CREATE_SCOPE) -> EosAuthorizationError:
     return EosAuthorizationError(
         "EOS_AUTHORIZATION_DENIED",
-        "Current finance:voucher-draft:create authorization was denied.",
+        f"Current {required_scope} authorization was denied.",
         status_code=403,
     )
 

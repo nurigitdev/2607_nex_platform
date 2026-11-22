@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_eos/cost_source_pool.v1.schema.json",
+  "title": "EOS Cost SourcePool v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "operation", "idempotency_disposition", "tenant_id",
+    "company_id", "pool_id", "journal_id", "journal_line_no",
+    "eligible_component_id", "source_business_operation_id",
+    "source_project_id", "source_project_code", "source_kind",
+    "allocation_mode", "source_amount_functional",
+    "eligible_amount_functional", "functional_currency", "account_id",
+    "account_category", "monetary_class", "recognition_date", "recognized_at",
+    "period_id", "source_record_ref", "source_hash",
+    "eligibility_policy_hash", "pool_state", "source_journal_hash", "created_at"
+  ],
+  "properties": {
+    "schema_version": {"const": "eos_cost_source_pool.v1"},
+    "operation": {
+      "enum": ["FINANCE.COST_SOURCE_POOL.ADMIT", "FINANCE.COST_SOURCE_POOL.GET"]
+    },
+    "idempotency_disposition": {"enum": ["CREATED", "EXACT_REPLAY"]},
+    "tenant_id": {"$ref": "#/$defs/scoped_id"},
+    "company_id": {"type": "string", "format": "uuid"},
+    "pool_id": {"type": "string", "format": "uuid"},
+    "journal_id": {"type": "string", "format": "uuid"},
+    "journal_line_no": {"type": "integer", "minimum": 1},
+    "eligible_component_id": {"type": "string", "minLength": 1, "maxLength": 128},
+    "source_business_operation_id": {"type": "string", "format": "uuid"},
+    "source_project_id": {"type": "string", "format": "uuid"},
+    "source_project_code": {
+      "type": "string", "pattern": "^[A-Z0-9]{4}[DMSOIG][0-9]{6}$"
+    },
+    "source_kind": {
+      "enum": [
+        "PAYROLL", "PURCHASE", "SERVICE", "SHARED_EXPENSE",
+        "REVENUE", "FX_GAIN_LOSS", "OTHER"
+      ]
+    },
+    "allocation_mode": {"enum": ["DIRECT", "MANAGEMENT_ALLOCATION"]},
+    "source_amount_functional": {"$ref": "#/$defs/signed_amount"},
+    "eligible_amount_functional": {"$ref": "#/$defs/signed_amount"},
+    "functional_currency": {"type": "string", "pattern": "^[A-Z]{3}$"},
+    "account_id": {"type": "string", "format": "uuid"},
+    "account_category": {"enum": ["EXPENSE", "REVENUE"]},
+    "monetary_class": {"enum": ["MONETARY", "NON_MONETARY"]},
+    "recognition_date": {"type": "string", "format": "date"},
+    "recognized_at": {"type": "string", "format": "date-time"},
+    "period_id": {"type": "string", "format": "uuid"},
+    "source_record_ref": {"type": "string", "minLength": 1, "maxLength": 256},
+    "source_hash": {"$ref": "#/$defs/hash_ref"},
+    "eligibility_policy_hash": {"$ref": "#/$defs/hash_ref"},
+    "pool_state": {"enum": ["OPEN", "ALLOCATED", "REVERSED", "ON_HOLD"]},
+    "source_journal_hash": {"$ref": "#/$defs/hash_ref"},
+    "created_at": {"type": "string", "format": "date-time"}
+  },
+  "$defs": {
+    "hash_ref": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "scoped_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$"},
+    "signed_amount": {"type": "string", "pattern": "^-?[0-9]+\\.[0-9]{4}$"}
+  }
+}

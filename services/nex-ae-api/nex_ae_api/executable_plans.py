@@ -8,6 +8,10 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
 
+from nex_runtime.business_context import (
+    BusinessContextValidationError,
+    validate_business_request_context,
+)
 from nex_runtime.semantic_hashes import (
     canonical_json,
     semantic_sha256_hash_ref,
@@ -488,8 +492,9 @@ def _compile_delegation(
         "https://nex-platform.local/ae/delegations/"
         f"{execution_id}/{agent_plan_version}/{logical_step['step_id']}"
     )
-    return {
-        "schema_version": "1.0",
+    business_context = metadata.get("business_request_context")
+    compiled = {
+        "schema_version": "1.2" if business_context is not None else "1.0",
         "delegation_id": str(uuid5(NAMESPACE_URL, identity)),
         "delegation_revision": agent_plan_version,
         "goal": logical_step["objective"],
@@ -504,6 +509,14 @@ def _compile_delegation(
         "result_contract_ref": metadata["result_contract_ref"],
         "completion_policy": metadata["completion_policy"],
     }
+    if business_context is not None:
+        compiled.update(
+            {
+                "business_request_context": business_context,
+                "business_context_hash": metadata["business_context_hash"],
+            }
+        )
+    return compiled
 
 
 def _compile_binding(
@@ -609,7 +622,7 @@ def _policy_snapshot_ref(context: Mapping[str, Any]) -> str | None:
 
 
 def validate_compiled_delegation(value: object) -> dict[str, Any]:
-    fields = {
+    base_fields = {
         "schema_version",
         "delegation_id",
         "delegation_revision",
@@ -622,10 +635,15 @@ def validate_compiled_delegation(value: object) -> dict[str, Any]:
         "result_contract_ref",
         "completion_policy",
     }
-    if not isinstance(value, Mapping) or set(value) != fields:
+    if not isinstance(value, Mapping):
         raise _invalid("Compiled delegation fields are invalid.")
     record = json.loads(canonical_json(dict(value)))
-    if record["schema_version"] != "1.0":
+    schema_version = record.get("schema_version")
+    business_fields = {"business_request_context", "business_context_hash"}
+    expected_fields = (
+        base_fields | business_fields if schema_version == "1.2" else base_fields
+    )
+    if set(record) != expected_fields or schema_version not in {"1.0", "1.2"}:
         raise _invalid("Compiled delegation schema version is invalid.")
     _required_uuid("delegation_id", record["delegation_id"])
     _bounded_int("delegation_revision", record["delegation_revision"], 1, 99)
@@ -665,6 +683,22 @@ def validate_compiled_delegation(value: object) -> dict[str, Any]:
         or project["entity_id"] != record["project_scope_ref"]
     ):
         raise _invalid("Compiled delegation project lineage is invalid.")
+    if schema_version == "1.2":
+        if (
+            record["work_class"] != "BUSINESS_TRANSACTION"
+            or record["required_agent_type"] != "PA"
+            or record["required_capability"]
+            != "FINANCE.VOUCHER.APPROVE_AND_POST"
+        ):
+            raise _invalid("Compiled business delegation profile is invalid.")
+        try:
+            context = validate_business_request_context(
+                record["business_request_context"]
+            )
+        except BusinessContextValidationError as exc:
+            raise _invalid(exc.detail) from exc
+        if record["business_context_hash"] != context["context_hash"]:
+            raise _invalid("Compiled delegation business context hash is invalid.")
     return record
 
 

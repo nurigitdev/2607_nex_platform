@@ -33,9 +33,26 @@ class SemanticCandidateStageError(Exception):
     detail: str
     directive: str = "BLOCKED"
     retryable: bool = False
+    diagnostic_code: str | None = None
 
     def __str__(self) -> str:
         return self.detail
+
+
+def semantic_candidate_diagnostic_code(
+    detail: str,
+    *,
+    semantic_stage: str,
+) -> str | None:
+    """Return a bounded structural diagnostic without provider-owned values."""
+
+    stage = semantic_stage.upper()
+    if stage not in SEMANTIC_STAGES:
+        return None
+    if re.fullmatch(rf"{stage} [A-Za-z0-9 _]{{1,120}}\.", detail) is None:
+        return None
+    normalized = re.sub(r"[^A-Za-z0-9]+", "_", detail).strip("_").upper()
+    return normalized if len(normalized) <= 127 else None
 
 
 @dataclass(frozen=True)

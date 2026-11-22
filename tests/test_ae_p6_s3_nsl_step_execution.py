@@ -187,6 +187,33 @@ def test_builders_match_frozen_golden_request_and_projection() -> None:
     )
 
 
+def test_request_contract_admits_durable_executable_plan_input_provenance() -> None:
+    context = _example("p6-golden-context-projection-v1.json")
+    request = build_skill_execution_request(
+        tenant_id=TENANT,
+        agent_execution_id=EXECUTION_ID,
+        executable_plan_id=PLAN_ID,
+        executable_step_id=STEP_ID,
+        nsl_execution_id=NSL_ID,
+        business_operation_id=BOI,
+        artifact=_example("p6-golden-verified-artifact-v1.json"),
+        compiled_inputs={"year": 2026},
+        input_provenance={"year": "EXECUTABLE_PLAN"},
+        context_projection=context,
+        context_projection_ref=f"AE:NSL_CONTEXT_PROJECTION:{STEP_ID}",
+        correlation_id="p6-golden-correlation",
+        causation_id="p6-golden-prompt",
+    )
+
+    schema = json.loads(
+        (P6 / "p6-skill-execution-request-v1.schema.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    Draft202012Validator(schema, format_checker=FormatChecker()).validate(request)
+    assert request["input_provenance"] == {"year": "EXECUTABLE_PLAN"}
+
+
 def test_frozen_contract_validators_accept_golden_documents() -> None:
     pairs = (
         (
@@ -639,10 +666,13 @@ def test_active_local_skill_binding_allows_distinct_capability_and_skill_ids(
             },
         )
 
-    saved = _bind(_repository(factory))
+    saved = _bind(
+        _repository(factory), input_provenance={"year": "EXECUTABLE_PLAN"}
+    )
 
     assert saved["binding"]["skill_id"] == artifact["skill_id"]
     assert saved["binding"]["state"] == "REQUEST_BOUND"
+    assert saved["request"]["input_provenance"] == {"year": "EXECUTABLE_PLAN"}
 
     skill_binding["capability_id"] = "FINANCE.OTHER_CAPABILITY"
     with engine.begin() as connection:

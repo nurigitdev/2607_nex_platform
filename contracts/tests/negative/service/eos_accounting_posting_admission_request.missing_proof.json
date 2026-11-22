@@ -1,0 +1,9 @@
+{
+  "schema_version": "eos_accounting_posting_admission_request.v1",
+  "tenant_id": "VO00",
+  "company_id": "44000000-0000-4000-8000-000000000001",
+  "expected_candidate_version": 2,
+  "expected_candidate_revision": 1,
+  "expected_candidate_hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "correlation_id": "correlation-w40-s4-01-admission"
+}

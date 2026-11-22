@@ -19,7 +19,7 @@ from nex_ae_api.nsl_backend_profiles import (
     NSL_BACKEND_PROFILES,
     normalize_nsl_backend_profile,
 )
-from nex_ae_api.runtime_jobs import SqlAlchemyRuntimeJobQueue
+from nex_ae_api.runtime_jobs import RUNTIME_ASSIGNMENT_KINDS, SqlAlchemyRuntimeJobQueue
 from nex_ae_api.step_executors import PLATFORM_EXECUTOR_KINDS
 
 AE_RUNTIME_QUEUE_NAME = "ae-runtime"
@@ -30,6 +30,7 @@ DEFAULT_EXECUTOR_BACKENDS = {
 DISPATCHER_SCHEMA_VERSION = "ae_agent_runtime_dispatcher.v1"
 DISPATCH_ROUND_SCHEMA_VERSION = "ae_agent_runtime_dispatch_round.v1"
 RECONCILIATION_SCHEMA_VERSION = "ae_agent_runtime_reconciliation.v1"
+ASSIGNMENT_BACKLOG_SCHEMA_VERSION = "ae_runtime_assignment_backlog.v1"
 
 DISPATCHER_ID_ENV = "NEX_AE_AGENT_DISPATCHER_ID"
 DISPATCHER_QUEUE_ENV = "NEX_AE_AGENT_DISPATCHER_QUEUE"
@@ -163,6 +164,7 @@ class SqlAlchemyAgentRuntimeDispatcher:
         queue: SqlAlchemyRuntimeJobQueue | None = None,
         id_factory: Callable[[], str] | None = None,
         executor_backends: Mapping[str, str] | None = None,
+        assignment_kinds: Sequence[str] = ("EXECUTABLE_STEP",),
     ) -> None:
         self._session_factory = session_factory
         self.config = config or AgentRuntimeDispatcherConfig()
@@ -180,6 +182,7 @@ class SqlAlchemyAgentRuntimeDispatcher:
         )
         if not set(self._executor_backends).issubset(PLATFORM_EXECUTOR_KINDS):
             raise _invalid("executor_backends contains an unknown platform executor.")
+        self.assignment_kinds = _assignment_kinds(assignment_kinds)
 
     def acquire_leadership(self, *, observed_at: str) -> dict[str, Any] | None:
         now = _timestamp(observed_at, "observed_at")
@@ -340,31 +343,37 @@ class SqlAlchemyAgentRuntimeDispatcher:
                 worker_id=worker,
                 supported_executor_kinds=eligible,
                 supported_backend_profiles=backends,
+                supported_assignment_kinds=self.assignment_kinds,
                 lease_seconds=lease_duration,
                 now=now,
                 queue_name=self.config.queue_name,
                 dispatcher_id=self.config.dispatcher_id,
                 fencing_token=int(leadership["fencing_token"]),
             )
-            if claim is None or claim.executor_kind is None:
+            if claim is None:
                 continue
-            backend_value = (
-                claim.backend_profile
-                if claim.executor_kind == LOCAL_SKILL_EXECUTOR
-                else self._executor_backends.get(claim.executor_kind)
-            )
-            try:
-                backend = normalize_nsl_backend_profile(backend_value)
-            except ValueError as exc:
-                raise _invalid(
-                    "Claimed job lacks its configured worker backend profile."
-                ) from exc
+            backend: str | None = None
+            if claim.assignment_kind == "EXECUTABLE_STEP":
+                if claim.executor_kind is None:
+                    raise _invalid("Step assignment lacks an executor kind.")
+                backend_value = (
+                    claim.backend_profile
+                    if claim.executor_kind == LOCAL_SKILL_EXECUTOR
+                    else self._executor_backends.get(claim.executor_kind)
+                )
+                try:
+                    backend = normalize_nsl_backend_profile(backend_value)
+                except ValueError as exc:
+                    raise _invalid(
+                        "Claimed job lacks its configured worker backend profile."
+                    ) from exc
             assignments.append(
                 AgentRuntimeAssignment(
                     tenant_id=tenant_id,
                     executor_kind=claim.executor_kind,
                     backend_profile=backend,
                     claim=claim,
+                    assignment_kind=claim.assignment_kind,
                 )
             )
             tenant_active[tenant_id] = tenant_active.get(tenant_id, 0) + 1
@@ -402,13 +411,17 @@ class SqlAlchemyAgentRuntimeDispatcher:
                         session.get_bind().dialect.name,
                         filter_backends=backends is not None,
                     )
-                ).bindparams(bindparam("executor_kinds", expanding=True))
+                ).bindparams(
+                    bindparam("executor_kinds", expanding=True),
+                    bindparam("assignment_kinds", expanding=True),
+                )
                 if backends is not None:
                     statement = statement.bindparams(
                         bindparam("backend_profiles", expanding=True)
                     )
                 params = {
                     "executor_kinds": list(executors),
+                    "assignment_kinds": list(self.assignment_kinds),
                     "now": _timestamp(observed_at, "observed_at"),
                     "limit": self.config.tenant_snapshot_limit,
                     **(
@@ -429,6 +442,44 @@ class SqlAlchemyAgentRuntimeDispatcher:
                 )
         except SQLAlchemyError as exc:
             raise _unavailable("runnable tenant discovery failed") from exc
+
+    def assignment_backlog(self, *, observed_at: str) -> dict[str, Any]:
+        """Return bounded assignment-kind counts without job or tenant labels."""
+
+        try:
+            with self._session_factory() as session:
+                statement = text(_ASSIGNMENT_BACKLOG_SQL).bindparams(
+                    bindparam("platform_executor_kinds", expanding=True)
+                )
+                rows = (
+                    session.execute(
+                        statement,
+                        {
+                            "platform_executor_kinds": sorted(PLATFORM_EXECUTOR_KINDS),
+                            "now": _timestamp(observed_at, "observed_at"),
+                        },
+                    )
+                    .mappings()
+                    .all()
+                )
+        except SQLAlchemyError as exc:
+            raise _unavailable("runtime assignment backlog projection failed") from exc
+        counts = {kind: 0 for kind in sorted(RUNTIME_ASSIGNMENT_KINDS)}
+        for row in rows:
+            counts[str(row["assignment_kind"])] = int(row["assignment_count"])
+        unhandled = {
+            kind: count
+            for kind, count in counts.items()
+            if kind not in self.assignment_kinds and count > 0
+        }
+        return {
+            "schema_version": ASSIGNMENT_BACKLOG_SCHEMA_VERSION,
+            "counts": counts,
+            "unhandled_counts": unhandled,
+            "configured_assignment_kinds": list(self.assignment_kinds),
+            "content_included": False,
+            "high_cardinality_labels_included": False,
+        }
 
     def active_claim_counts(self, *, observed_at: str) -> dict[str, Any]:
         try:
@@ -796,10 +847,29 @@ _RUNNABLE_TENANTS_SQL = """
                     THEN job.lease_until ELSE job.run_after END)
                AS oldest_runnable_at
     FROM ae_runtime_job AS job
-    JOIN ae_executable_step AS step
+    LEFT JOIN ae_executable_step AS step
       ON step.tenant_id = job.tenant_id
      AND step.executable_step_id = job.executable_step_id
-    WHERE step.executor_kind IN :executor_kinds
+    LEFT JOIN ae_wait_registration AS wait
+      ON wait.tenant_id = job.tenant_id
+     AND CAST(wait.wait_id AS TEXT) = job.wait_id
+    WHERE (
+        (
+          'EXECUTABLE_STEP' IN :assignment_kinds
+          AND step.executor_kind IN :executor_kinds
+        )
+        OR (
+          'PRODUCT_COORDINATOR' IN :assignment_kinds
+          AND job.job_type = 'RESUME_EXECUTION'
+          AND job.executable_step_id IS NULL
+          AND wait.wait_type = 'PRODUCT_PREPARATION'
+          AND wait.resume_target_kind = 'PRODUCT_COORDINATOR'
+          AND wait.executable_step_id IS NULL
+          AND CAST(wait.agent_execution_id AS TEXT) = job.execution_id
+          AND wait.state = 'RESUME_QUEUED'
+          AND CAST(wait.resume_runtime_job_id AS TEXT) = CAST(job.runtime_job_id AS TEXT)
+        )
+      )
       AND ((job.state = 'QUEUED' AND job.run_after <= :now)
            OR (job.state = 'RUNNING' AND job.lease_until <= :now))
     GROUP BY job.tenant_id
@@ -817,11 +887,43 @@ def _runnable_tenants_sql(dialect_name: str, *, filter_backends: bool) -> str:
         else "json_extract(step.skill_binding_json, '$.backend_profile')"
     )
     return _RUNNABLE_TENANTS_SQL.replace(
-        "WHERE step.executor_kind IN :executor_kinds",
-        "WHERE step.executor_kind IN :executor_kinds "
+        "AND step.executor_kind IN :executor_kinds",
+        "AND step.executor_kind IN :executor_kinds "
         "AND (step.executor_kind <> 'LOCAL_SKILL' "
         f"OR {backend_expression} IN :backend_profiles)",
     )
+
+
+_ASSIGNMENT_BACKLOG_SQL = """
+    SELECT assignment_kind, count(*) AS assignment_count
+    FROM (
+      SELECT CASE
+        WHEN job.job_type = 'RESUME_EXECUTION'
+         AND job.executable_step_id IS NULL
+         AND wait.wait_type = 'PRODUCT_PREPARATION'
+         AND wait.resume_target_kind = 'PRODUCT_COORDINATOR'
+         AND wait.executable_step_id IS NULL
+         AND CAST(wait.agent_execution_id AS TEXT) = job.execution_id
+         AND wait.state = 'RESUME_QUEUED'
+         AND CAST(wait.resume_runtime_job_id AS TEXT) = CAST(job.runtime_job_id AS TEXT)
+          THEN 'PRODUCT_COORDINATOR'
+        WHEN step.executor_kind IN :platform_executor_kinds
+          THEN 'EXECUTABLE_STEP'
+        ELSE NULL
+      END AS assignment_kind
+      FROM ae_runtime_job AS job
+      LEFT JOIN ae_executable_step AS step
+        ON step.tenant_id = job.tenant_id
+       AND step.executable_step_id = job.executable_step_id
+      LEFT JOIN ae_wait_registration AS wait
+        ON wait.tenant_id = job.tenant_id
+       AND CAST(wait.wait_id AS TEXT) = job.wait_id
+      WHERE ((job.state = 'QUEUED' AND job.run_after <= :now)
+             OR (job.state = 'RUNNING' AND job.lease_until <= :now))
+    ) AS classified
+    WHERE assignment_kind IS NOT NULL
+    GROUP BY assignment_kind
+"""
 
 
 _ACTIVE_CLAIMS_SQL = """
@@ -844,6 +946,9 @@ _MALFORMED_SELECT_SQL = """
     LEFT JOIN ae_executable_step AS step
       ON step.tenant_id = job.tenant_id
      AND step.executable_step_id = job.executable_step_id
+    LEFT JOIN ae_wait_registration AS wait
+      ON wait.tenant_id = job.tenant_id
+     AND CAST(wait.wait_id AS TEXT) = job.wait_id
     WHERE ((job.state = 'QUEUED' AND job.run_after <= :now)
            OR (job.state = 'RUNNING' AND job.lease_until <= :now))
       AND (
@@ -851,6 +956,16 @@ _MALFORMED_SELECT_SQL = """
         OR step.executable_step_id IS NULL
         OR step.executor_kind IS NULL
         OR step.executor_kind NOT IN :platform_executor_kinds
+      )
+      AND NOT (
+        job.job_type = 'RESUME_EXECUTION'
+        AND job.executable_step_id IS NULL
+        AND wait.wait_type = 'PRODUCT_PREPARATION'
+        AND wait.resume_target_kind = 'PRODUCT_COORDINATOR'
+        AND wait.executable_step_id IS NULL
+        AND CAST(wait.agent_execution_id AS TEXT) = job.execution_id
+        AND wait.state = 'RESUME_QUEUED'
+        AND CAST(wait.resume_runtime_job_id AS TEXT) = CAST(job.runtime_job_id AS TEXT)
       )
     ORDER BY CASE WHEN job.state = 'RUNNING' THEN 0 ELSE 1 END,
              job.run_after, job.created_at, job.runtime_job_id
@@ -900,6 +1015,20 @@ def _executor_backend_map(values: Mapping[str, str]) -> dict[str, str]:
         _required_text(key, "executor_kind"): _required_text(value, "backend_profile")
         for key, value in values.items()
     }
+
+
+def _assignment_kinds(values: Sequence[str]) -> tuple[str, ...]:
+    normalized = tuple(
+        sorted(
+            {
+                _required_text(value, "assignment_kind").upper()
+                for value in _normalized_values(values, "assignment_kinds")
+            }
+        )
+    )
+    if not set(normalized).issubset(RUNTIME_ASSIGNMENT_KINDS):
+        raise _invalid("assignment_kinds contains an unknown assignment kind.")
+    return normalized
 
 
 def _normalized_values(

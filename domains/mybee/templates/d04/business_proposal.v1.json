@@ -1,0 +1,43 @@
+{
+  "schema_version": "nex.mybee.business-proposal-template.v1",
+  "template_id": "mybee.d04.business-proposal",
+  "template_version": "1.0.0",
+  "revision": 1,
+  "status": "EOS_CONSUMER_ADMITTED",
+  "document_type": "BUSINESS_PROPOSAL",
+  "work_code": "FL0004011",
+  "required_fields": [
+    "proposal_id",
+    "revision",
+    "company_id",
+    "title",
+    "purpose",
+    "business_justification",
+    "scope_type",
+    "project_ids",
+    "requested_amount",
+    "currency",
+    "requester_subject_id",
+    "valid_from"
+  ],
+  "attachment_contract": {
+    "multiple": true,
+    "manifest_hash_required": true,
+    "content_hash_required": true,
+    "object_ref_only": true
+  },
+  "provider_contract": {
+    "approval_operation": "FINANCE.ACCOUNTING_APPROVAL.REQUEST",
+    "approval_purpose": "DOCUMENT_SIGNOFF",
+    "approved_document_operation": "BUSINESS.DOCUMENT_APPROVED.GET",
+    "provider": "nex-eos",
+    "workflow_owner": "nex-wc"
+  },
+  "runtime_boundaries": {
+    "direct_database_access": false,
+    "direct_wc_submission": false,
+    "service_private_imports": false,
+    "approved_document_creation_owned_by_eos": true
+  },
+  "template_digest": "sha256:e6b08cc46b2de0a1bd833b0202e8f6ac954650470d24db0766b7ae5b629d3ecc"
+}

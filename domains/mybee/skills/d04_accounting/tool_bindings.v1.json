@@ -1,0 +1,425 @@
+{
+  "schema_version": "nex.mybee.skill-pack-bindings.v1",
+  "pack_id": "MYBEE.D04.ACCOUNTING",
+  "pack_version": "1.0.0",
+  "domain_code": "D04_ACCOUNTING",
+  "bindings": [
+    {
+      "skill_id": "FINANCE.COST_ALLOCATION.RUN",
+      "skill_version": "1.0.0",
+      "canonical_operation_id": "FINANCE.COST_ALLOCATION.RUN",
+      "provider_operation_id": "FINANCE.COST_ALLOCATION.RUN",
+      "invocation_semantics": "GOVERNED_WRITE",
+      "approval_requirement": "NONE",
+      "inventory_activation_state": "CANDIDATE",
+      "service_scope": "service:call",
+      "oa_action": "finance:allocation:execute",
+      "contract_admission_ref": "contracts/admissions/nex_eos/w70_tool_contract_admission.v1.json#/contracts/0",
+      "contract_typing_state": "FULLY_TYPED",
+      "input_contract_ref": "contracts/schemas/service/nex_eos/cost_allocation_run.v1.schema.json",
+      "output_contract_refs": [
+        "contracts/schemas/service/nex_eos/cost_allocation_batch.v1.schema.json"
+      ],
+      "compile_state": "PENDING_S8_01E",
+      "runtime_selectable": false,
+      "execution_policy": {
+        "idempotency": "REQUIRED",
+        "request_hash": "PAYLOAD_HASH_REQUIRED",
+        "verification": "REQUIRED_BEFORE_ACTIVATION",
+        "unknown_outcome": "RECONCILE_BEFORE_RETRY",
+        "timeout_profile": "PENDING_ACTIVATION_SLICE"
+      },
+      "activation_blockers": [
+        "NSL_SOURCE_AND_COMPILE_REQUIRED",
+        "SIGNED_BUNDLE_AND_TRUST_ADMISSION_REQUIRED",
+        "AE_CAPABILITY_REGISTRY_RELEASE_REQUIRED",
+        "PROTECTED_ACTIVATION_GATE_REQUIRED"
+      ]
+    },
+    {
+      "skill_id": "FINANCE.COST_ALLOCATION.VERIFY",
+      "skill_version": "1.0.0",
+      "canonical_operation_id": "FINANCE.COST_ALLOCATION.VERIFY",
+      "provider_operation_id": "FINANCE.COST_ALLOCATION.VERIFY",
+      "invocation_semantics": "READ",
+      "approval_requirement": "NONE",
+      "inventory_activation_state": "CANDIDATE",
+      "service_scope": "service:call",
+      "oa_action": "finance:allocation:verify",
+      "contract_admission_ref": "contracts/admissions/nex_eos/w70_tool_contract_admission.v1.json#/contracts/1",
+      "contract_typing_state": "FULLY_TYPED",
+      "input_contract_ref": "contracts/admissions/nex_eos/w70_tool_contract_admission.v1.json#/paths/~1internal~1v2~1finance~1cost-allocation-batches~1{batch_id}~1verification/get#parameters",
+      "output_contract_refs": [
+        "contracts/schemas/service/nex_eos/cost_allocation_reconciliation.v1.schema.json"
+      ],
+      "compile_state": "PENDING_S8_01E",
+      "runtime_selectable": false,
+      "execution_policy": {
+        "idempotency": "NOT_APPLICABLE",
+        "request_hash": "QUERY_HASH_REQUIRED",
+        "verification": "RESULT_HASH_REQUIRED",
+        "unknown_outcome": "NOT_APPLICABLE",
+        "timeout_profile": "PENDING_ACTIVATION_SLICE"
+      },
+      "activation_blockers": [
+        "NSL_SOURCE_AND_COMPILE_REQUIRED",
+        "SIGNED_BUNDLE_AND_TRUST_ADMISSION_REQUIRED",
+        "AE_CAPABILITY_REGISTRY_RELEASE_REQUIRED",
+        "PROTECTED_ACTIVATION_GATE_REQUIRED"
+      ]
+    },
+    {
+      "skill_id": "FINANCE.COST_ALLOCATION_PLAN.RELEASE",
+      "skill_version": "1.0.0",
+      "canonical_operation_id": "FINANCE.COST_ALLOCATION_PLAN.RELEASE",
+      "provider_operation_id": "FINANCE.COST_ALLOCATION_PLAN.RELEASE",
+      "invocation_semantics": "GOVERNED_WRITE",
+      "approval_requirement": "BUSINESS_FORMAL",
+      "inventory_activation_state": "CANDIDATE",
+      "service_scope": "service:call",
+      "oa_action": "finance:cost-allocation-plan:approve",
+      "contract_admission_ref": "contracts/admissions/nex_eos/w70_tool_contract_admission.v1.json#/contracts/2",
+      "contract_typing_state": "STATUS_ONLY",
+      "input_contract_ref": "contracts/schemas/service/nex_eos/cost_allocation_plan_release.v1.schema.json",
+      "output_contract_refs": [
+        "contracts/schemas/service/nex_eos/cost_allocation_plan.v1.schema.json"
+      ],
+      "compile_state": "PENDING_S8_01E",
+      "runtime_selectable": false,
+      "execution_policy": {
+        "idempotency": "REQUIRED",
+        "request_hash": "PAYLOAD_HASH_REQUIRED",
+        "verification": "REQUIRED_BEFORE_ACTIVATION",
+        "unknown_outcome": "RECONCILE_BEFORE_RETRY",
+        "timeout_profile": "PENDING_ACTIVATION_SLICE"
+      },
+      "activation_blockers": [
+        "CANONICAL_SUCCESS_RESPONSE_SCHEMA_REQUIRED",
+        "NSL_SOURCE_AND_COMPILE_REQUIRED",
+        "SIGNED_BUNDLE_AND_TRUST_ADMISSION_REQUIRED",
+        "AE_CAPABILITY_REGISTRY_RELEASE_REQUIRED",
+        "PROTECTED_ACTIVATION_GATE_REQUIRED"
+      ]
+    },
+    {
+      "skill_id": "FINANCE.FX_RATE.HISTORY",
+      "skill_version": "1.0.0",
+      "canonical_operation_id": "FINANCE.FX_RATE.HISTORY",
+      "provider_operation_id": "FINANCE.FX_RATE.HISTORY",
+      "invocation_semantics": "READ",
+      "approval_requirement": "NONE",
+      "inventory_activation_state": "CANDIDATE",
+      "service_scope": "service:call",
+      "oa_action": "finance:fx:read",
+      "contract_admission_ref": "contracts/admissions/nex_eos/w70_tool_contract_admission.v1.json#/contracts/3",
+      "contract_typing_state": "STATUS_ONLY",
+      "input_contract_ref": "contracts/admissions/nex_eos/w70_tool_contract_admission.v1.json#/paths/~1internal~1v2~1finance~1fx-rate-snapshots/get#parameters",
+      "output_contract_refs": [],
+      "compile_state": "PENDING_S8_01E",
+      "runtime_selectable": false,
+      "execution_policy": {
+        "idempotency": "NOT_APPLICABLE",
+        "request_hash": "QUERY_HASH_REQUIRED",
+        "verification": "RESULT_HASH_REQUIRED",
+        "unknown_outcome": "NOT_APPLICABLE",
+        "timeout_profile": "PENDING_ACTIVATION_SLICE"
+      },
+      "activation_blockers": [
+        "CANONICAL_SUCCESS_RESPONSE_SCHEMA_REQUIRED",
+        "NSL_SOURCE_AND_COMPILE_REQUIRED",
+        "SIGNED_BUNDLE_AND_TRUST_ADMISSION_REQUIRED",
+        "AE_CAPABILITY_REGISTRY_RELEASE_REQUIRED",
+        "PROTECTED_ACTIVATION_GATE_REQUIRED"
+      ]
+    },
+    {
+      "skill_id": "FINANCE.FX_RATE.IMPORT",
+      "skill_version": "1.0.0",
+      "canonical_operation_id": "FINANCE.FX_RATE.IMPORT",
+      "provider_operation_id": "FINANCE.FX_RATE.IMPORT",
+      "invocation_semantics": "GOVERNED_WRITE",
+      "approval_requirement": "NONE",
+      "inventory_activation_state": "CANDIDATE",
+      "service_scope": "service:call",
+      "oa_action": "finance:fx:publish",
+      "contract_admission_ref": "contracts/admissions/nex_eos/w70_tool_contract_admission.v1.json#/contracts/4",
+      "contract_typing_state": "STATUS_ONLY",
+      "input_contract_ref": "contracts/openapi/nex-eos.openapi.yaml#/components/schemas/FxRateBatchImportCommand",
+      "output_contract_refs": [],
+      "compile_state": "PENDING_S8_01E",
+      "runtime_selectable": false,
+      "execution_policy": {
+        "idempotency": "REQUIRED",
+        "request_hash": "PAYLOAD_HASH_REQUIRED",
+        "verification": "REQUIRED_BEFORE_ACTIVATION",
+        "unknown_outcome": "RECONCILE_BEFORE_RETRY",
+        "timeout_profile": "PENDING_ACTIVATION_SLICE"
+      },
+      "activation_blockers": [
+        "CANONICAL_SUCCESS_RESPONSE_SCHEMA_REQUIRED",
+        "NSL_SOURCE_AND_COMPILE_REQUIRED",
+        "SIGNED_BUNDLE_AND_TRUST_ADMISSION_REQUIRED",
+        "AE_CAPABILITY_REGISTRY_RELEASE_REQUIRED",
+        "PROTECTED_ACTIVATION_GATE_REQUIRED"
+      ]
+    },
+    {
+      "skill_id": "FINANCE.FX_RATE.RESOLVE",
+      "skill_version": "1.0.0",
+      "canonical_operation_id": "FINANCE.FX_RATE.RESOLVE",
+      "provider_operation_id": "FINANCE.FX_RATE.RESOLVE",
+      "invocation_semantics": "READ",
+      "approval_requirement": "NONE",
+      "inventory_activation_state": "CANDIDATE",
+      "service_scope": "service:call",
+      "oa_action": "finance:fx:read",
+      "contract_admission_ref": "contracts/admissions/nex_eos/w70_tool_contract_admission.v1.json#/contracts/5",
+      "contract_typing_state": "STATUS_ONLY",
+      "input_contract_ref": "contracts/admissions/nex_eos/w70_tool_contract_admission.v1.json#/paths/~1internal~1v2~1finance~1fx-rates:resolve/get#parameters",
+      "output_contract_refs": [],
+      "compile_state": "PENDING_S8_01E",
+      "runtime_selectable": false,
+      "execution_policy": {
+        "idempotency": "NOT_APPLICABLE",
+        "request_hash": "QUERY_HASH_REQUIRED",
+        "verification": "RESULT_HASH_REQUIRED",
+        "unknown_outcome": "NOT_APPLICABLE",
+        "timeout_profile": "PENDING_ACTIVATION_SLICE"
+      },
+      "activation_blockers": [
+        "CANONICAL_SUCCESS_RESPONSE_SCHEMA_REQUIRED",
+        "NSL_SOURCE_AND_COMPILE_REQUIRED",
+        "SIGNED_BUNDLE_AND_TRUST_ADMISSION_REQUIRED",
+        "AE_CAPABILITY_REGISTRY_RELEASE_REQUIRED",
+        "PROTECTED_ACTIVATION_GATE_REQUIRED"
+      ]
+    },
+    {
+      "skill_id": "FINANCE.PROJECT_PNL.GET",
+      "skill_version": "1.0.0",
+      "canonical_operation_id": "FINANCE.PROJECT_PNL.GET",
+      "provider_operation_id": "FINANCE.PROJECT_PNL.GET",
+      "invocation_semantics": "READ",
+      "approval_requirement": "NONE",
+      "inventory_activation_state": "CANDIDATE",
+      "service_scope": "service:call",
+      "oa_action": "project:pnl:read",
+      "contract_admission_ref": "contracts/admissions/nex_eos/w70_tool_contract_admission.v1.json#/contracts/6",
+      "contract_typing_state": "FULLY_TYPED",
+      "input_contract_ref": "contracts/admissions/nex_eos/w70_tool_contract_admission.v1.json#/paths/~1internal~1v2~1finance~1projects~1{project_id}~1pnl~1{period_id}/get#parameters",
+      "output_contract_refs": [
+        "contracts/schemas/service/nex_eos/project_pnl_projection.v1.schema.json"
+      ],
+      "compile_state": "PENDING_S8_01E",
+      "runtime_selectable": false,
+      "execution_policy": {
+        "idempotency": "NOT_APPLICABLE",
+        "request_hash": "QUERY_HASH_REQUIRED",
+        "verification": "RESULT_HASH_REQUIRED",
+        "unknown_outcome": "NOT_APPLICABLE",
+        "timeout_profile": "PENDING_ACTIVATION_SLICE"
+      },
+      "activation_blockers": [
+        "NSL_SOURCE_AND_COMPILE_REQUIRED",
+        "SIGNED_BUNDLE_AND_TRUST_ADMISSION_REQUIRED",
+        "AE_CAPABILITY_REGISTRY_RELEASE_REQUIRED",
+        "PROTECTED_ACTIVATION_GATE_REQUIRED"
+      ]
+    },
+    {
+      "skill_id": "FINANCE.VOUCHER.APPROVE_AND_POST",
+      "skill_version": "1.0.0",
+      "canonical_operation_id": "FINANCE.VOUCHER.APPROVE_AND_POST",
+      "provider_operation_id": "FINANCE.VOUCHER.APPROVE_AND_POST",
+      "invocation_semantics": "GOVERNED_WRITE",
+      "approval_requirement": "ACCOUNTING_POSTING",
+      "inventory_activation_state": "CANDIDATE",
+      "service_scope": "service:call",
+      "oa_action": "finance:journal:approve",
+      "contract_admission_ref": "contracts/admissions/nex_eos/w70_tool_contract_admission.v1.json#/contracts/7",
+      "contract_typing_state": "FULLY_TYPED",
+      "input_contract_ref": "contracts/schemas/service/nex_eos/journal_post_command.v1.schema.json",
+      "output_contract_refs": [
+        "contracts/schemas/service/nex_eos/journal_post_result.v1.schema.json"
+      ],
+      "compile_state": "PENDING_S8_01E",
+      "runtime_selectable": false,
+      "execution_policy": {
+        "idempotency": "REQUIRED",
+        "request_hash": "PAYLOAD_HASH_REQUIRED",
+        "verification": "REQUIRED_BEFORE_ACTIVATION",
+        "unknown_outcome": "RECONCILE_BEFORE_RETRY",
+        "timeout_profile": "PENDING_ACTIVATION_SLICE"
+      },
+      "activation_blockers": [
+        "NSL_SOURCE_AND_COMPILE_REQUIRED",
+        "SIGNED_BUNDLE_AND_TRUST_ADMISSION_REQUIRED",
+        "AE_CAPABILITY_REGISTRY_RELEASE_REQUIRED",
+        "PROTECTED_ACTIVATION_GATE_REQUIRED"
+      ]
+    },
+    {
+      "skill_id": "FINANCE.VOUCHER_CANDIDATE.CREATE_V2",
+      "skill_version": "1.0.0",
+      "canonical_operation_id": "FINANCE.VOUCHER_CANDIDATE.CREATE_V2",
+      "provider_operation_id": "FINANCE.VOUCHER_CANDIDATE.CREATE_V2",
+      "invocation_semantics": "GOVERNED_WRITE",
+      "approval_requirement": "NONE",
+      "inventory_activation_state": "CANDIDATE",
+      "service_scope": "service:call",
+      "oa_action": "finance:voucher-candidate:create",
+      "contract_admission_ref": "contracts/admissions/nex_eos/w70_tool_contract_admission.v1.json#/contracts/8",
+      "contract_typing_state": "FULLY_TYPED",
+      "input_contract_ref": "contracts/schemas/service/nex_eos/voucher_candidate_create.v2.schema.json",
+      "output_contract_refs": [
+        "contracts/schemas/service/nex_eos/voucher_candidate_create_result.v2.schema.json"
+      ],
+      "compile_state": "PENDING_S8_01E",
+      "runtime_selectable": false,
+      "execution_policy": {
+        "idempotency": "REQUIRED",
+        "request_hash": "PAYLOAD_HASH_REQUIRED",
+        "verification": "REQUIRED_BEFORE_ACTIVATION",
+        "unknown_outcome": "RECONCILE_BEFORE_RETRY",
+        "timeout_profile": "PENDING_ACTIVATION_SLICE"
+      },
+      "activation_blockers": [
+        "NSL_SOURCE_AND_COMPILE_REQUIRED",
+        "SIGNED_BUNDLE_AND_TRUST_ADMISSION_REQUIRED",
+        "AE_CAPABILITY_REGISTRY_RELEASE_REQUIRED",
+        "PROTECTED_ACTIVATION_GATE_REQUIRED"
+      ]
+    },
+    {
+      "skill_id": "FINANCE.VOUCHER_CANDIDATE.GET_V2",
+      "skill_version": "1.0.0",
+      "canonical_operation_id": "FINANCE.VOUCHER_CANDIDATE.GET_V2",
+      "provider_operation_id": "FINANCE.VOUCHER_CANDIDATE.GET_V2",
+      "invocation_semantics": "READ",
+      "approval_requirement": "NONE",
+      "inventory_activation_state": "DEFERRED",
+      "service_scope": "service:call",
+      "oa_action": "NONE_SERVICE_TRUST_ONLY",
+      "contract_admission_ref": "contracts/admissions/nex_eos/w70_tool_contract_admission.v1.json#/contracts/9",
+      "contract_typing_state": "STATUS_ONLY",
+      "input_contract_ref": "contracts/admissions/nex_eos/w70_tool_contract_admission.v1.json#/paths/~1internal~1v2~1finance~1voucher-candidates~1{candidate_id}/get#parameters",
+      "output_contract_refs": [],
+      "compile_state": "PENDING_S8_01E",
+      "runtime_selectable": false,
+      "execution_policy": {
+        "idempotency": "NOT_APPLICABLE",
+        "request_hash": "QUERY_HASH_REQUIRED",
+        "verification": "RESULT_HASH_REQUIRED",
+        "unknown_outcome": "NOT_APPLICABLE",
+        "timeout_profile": "PENDING_ACTIVATION_SLICE"
+      },
+      "activation_blockers": [
+        "PROJECT_OA_READ_POLICY_REQUIRED",
+        "CANONICAL_SUCCESS_RESPONSE_SCHEMA_REQUIRED",
+        "NSL_SOURCE_AND_COMPILE_REQUIRED",
+        "SIGNED_BUNDLE_AND_TRUST_ADMISSION_REQUIRED",
+        "AE_CAPABILITY_REGISTRY_RELEASE_REQUIRED",
+        "PROTECTED_ACTIVATION_GATE_REQUIRED"
+      ]
+    },
+    {
+      "skill_id": "FINANCE.VOUCHER_CANDIDATE.VALIDATE",
+      "skill_version": "1.0.0",
+      "canonical_operation_id": "FINANCE.VOUCHER_CANDIDATE.VALIDATE",
+      "provider_operation_id": "FINANCE.VOUCHER_CANDIDATE.VALIDATE",
+      "invocation_semantics": "READ",
+      "approval_requirement": "NONE",
+      "inventory_activation_state": "CANDIDATE",
+      "service_scope": "service:call",
+      "oa_action": "NONE_SERVICE_TRUST_ONLY",
+      "contract_admission_ref": "contracts/admissions/nex_eos/w70_tool_contract_admission.v1.json#/contracts/10",
+      "contract_typing_state": "FULLY_TYPED",
+      "input_contract_ref": "contracts/schemas/service/nex_eos/voucher_candidate_validate.v1.schema.json",
+      "output_contract_refs": [
+        "contracts/schemas/service/nex_eos/voucher_candidate_validation.v1.schema.json"
+      ],
+      "compile_state": "PENDING_S8_01E",
+      "runtime_selectable": false,
+      "execution_policy": {
+        "idempotency": "NOT_APPLICABLE",
+        "request_hash": "QUERY_HASH_REQUIRED",
+        "verification": "RESULT_HASH_REQUIRED",
+        "unknown_outcome": "NOT_APPLICABLE",
+        "timeout_profile": "PENDING_ACTIVATION_SLICE"
+      },
+      "activation_blockers": [
+        "NSL_SOURCE_AND_COMPILE_REQUIRED",
+        "SIGNED_BUNDLE_AND_TRUST_ADMISSION_REQUIRED",
+        "AE_CAPABILITY_REGISTRY_RELEASE_REQUIRED",
+        "PROTECTED_ACTIVATION_GATE_REQUIRED"
+      ]
+    },
+    {
+      "skill_id": "FINANCE.VOUCHER_DRAFT.CREATE",
+      "skill_version": "1.0.0",
+      "canonical_operation_id": "FINANCE.VOUCHER_DRAFT.CREATE",
+      "provider_operation_id": "createEosVoucherDraft",
+      "invocation_semantics": "GOVERNED_WRITE",
+      "approval_requirement": "NSL_WRITE",
+      "inventory_activation_state": "ACTIVE_COMPATIBILITY",
+      "service_scope": "service:call",
+      "oa_action": "finance:voucher-draft:create",
+      "contract_admission_ref": "contracts/admissions/nex_eos/w70_tool_contract_admission.v1.json#/contracts/11",
+      "contract_typing_state": "FULLY_TYPED",
+      "input_contract_ref": "contracts/schemas/service/nex_eos/create_voucher_draft_command.v1.schema.json",
+      "output_contract_refs": [
+        "contracts/schemas/service/nex_eos/create_voucher_draft_result.v1.schema.json"
+      ],
+      "compile_state": "PENDING_S8_01E",
+      "runtime_selectable": false,
+      "execution_policy": {
+        "idempotency": "REQUIRED",
+        "request_hash": "PAYLOAD_HASH_REQUIRED",
+        "verification": "REQUIRED_BEFORE_ACTIVATION",
+        "unknown_outcome": "RECONCILE_BEFORE_RETRY",
+        "timeout_profile": "PENDING_ACTIVATION_SLICE"
+      },
+      "activation_blockers": [
+        "NSL_SOURCE_AND_COMPILE_REQUIRED",
+        "SIGNED_BUNDLE_AND_TRUST_ADMISSION_REQUIRED",
+        "AE_CAPABILITY_REGISTRY_RELEASE_REQUIRED",
+        "PROTECTED_ACTIVATION_GATE_REQUIRED"
+      ]
+    },
+    {
+      "skill_id": "FINANCE.VOUCHER_POSTING.ADMIT",
+      "skill_version": "1.0.0",
+      "canonical_operation_id": "FINANCE.VOUCHER_POSTING.ADMIT",
+      "provider_operation_id": "FINANCE.VOUCHER.APPROVE_AND_POST.ADMISSION",
+      "invocation_semantics": "READ",
+      "approval_requirement": "ACCOUNTING_POSTING",
+      "inventory_activation_state": "CANDIDATE",
+      "service_scope": "service:call",
+      "oa_action": "finance:journal:approve",
+      "contract_admission_ref": "contracts/admissions/nex_eos/w70_tool_contract_admission.v1.json#/contracts/12",
+      "contract_typing_state": "FULLY_TYPED",
+      "input_contract_ref": "contracts/schemas/service/nex_eos/accounting_posting_admission_request.v1.schema.json",
+      "output_contract_refs": [
+        "contracts/schemas/service/nex_eos/accounting_posting_admission.v1.schema.json"
+      ],
+      "compile_state": "PENDING_S8_01E",
+      "runtime_selectable": false,
+      "execution_policy": {
+        "idempotency": "NOT_APPLICABLE",
+        "request_hash": "QUERY_HASH_REQUIRED",
+        "verification": "RESULT_HASH_REQUIRED",
+        "unknown_outcome": "NOT_APPLICABLE",
+        "timeout_profile": "PENDING_ACTIVATION_SLICE"
+      },
+      "activation_blockers": [
+        "NSL_SOURCE_AND_COMPILE_REQUIRED",
+        "SIGNED_BUNDLE_AND_TRUST_ADMISSION_REQUIRED",
+        "AE_CAPABILITY_REGISTRY_RELEASE_REQUIRED",
+        "PROTECTED_ACTIVATION_GATE_REQUIRED"
+      ]
+    }
+  ],
+  "release_attestation": {
+    "content_digest": "sha256:d4900b8c98e521994c15671fd0fe368332d98af57adaa6c2d4a6161c266dd636"
+  }
+}

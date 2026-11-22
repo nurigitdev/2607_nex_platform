@@ -177,7 +177,7 @@ class ApprovalPolicyInput:
 class ApprovalPolicySelection:
     tenant_id: str
     approval_domain: str
-    risk_level: str
+    risk_level: str | None
     amount: Decimal
     transaction_type: str
     effective_at: datetime
@@ -267,10 +267,6 @@ class SqlAlchemyEosApprovalPolicyRepository:
                 table.c.effective_until > request["effective_at"],
             ),
             or_(
-                table.c.risk_level.is_(None),
-                table.c.risk_level == request["risk_level"],
-            ),
-            or_(
                 table.c.minimum_amount.is_(None),
                 table.c.minimum_amount <= request["amount"],
             ),
@@ -283,6 +279,15 @@ class SqlAlchemyEosApprovalPolicyRepository:
                 table.c.transaction_type == request["transaction_type"],
             ),
         ]
+        if request["risk_level"] is None:
+            conditions.append(table.c.risk_level.is_(None))
+        else:
+            conditions.append(
+                or_(
+                    table.c.risk_level.is_(None),
+                    table.c.risk_level == request["risk_level"],
+                )
+            )
         if request["project_id"] is None:
             conditions.append(table.c.project_id.is_(None))
         else:
@@ -438,7 +443,9 @@ def _selection_record(value: ApprovalPolicySelection) -> dict[str, Any]:
         "approval_domain": _choice(
             "approval_domain", value.approval_domain, EOS_APPROVAL_DOMAINS
         ),
-        "risk_level": _choice("risk_level", value.risk_level, EOS_APPROVAL_RISK_LEVELS),
+        "risk_level": _optional_choice(
+            "risk_level", value.risk_level, EOS_APPROVAL_RISK_LEVELS
+        ),
         "amount": _money("amount", value.amount),
         "transaction_type": _transaction_type(value.transaction_type),
         "effective_at": _aware_datetime("effective_at", value.effective_at),

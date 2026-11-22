@@ -1,0 +1,60 @@
+{
+  "schema_version": "mybee.w70.golden_a_rollback_receipt.v1",
+  "receipt_id": "mybee-w70-golden-a-last-known-good",
+  "receipt_version": 1,
+  "captured_at": "2026-11-15T00:00:00Z",
+  "valid_until": "2027-02-13T23:59:59Z",
+  "invalidated_by": "CP-M1-GA-RET-02",
+  "allowed_use": [
+    "BOUNDED_ROLLBACK",
+    "HISTORICAL_REPLAY"
+  ],
+  "new_product_selection_allowed": false,
+  "artifacts": [
+    {
+      "path": "deployment/environments/ae-product-capability-registry.v1.json",
+      "sha256": "sha256:cb43b573d2e9284b79b10502a68b9a7f9fed2939b0a88db5c745b4c5396ec126"
+    },
+    {
+      "path": "deployment/environments/ae-product-capability-registry.mybee-m1.v1.json",
+      "sha256": "sha256:6ec6ce1b5d153799fed3dd36b5e213e33f1a2228dda1c407d08f81e4d236dfb1"
+    },
+    {
+      "path": "deployment/environments/finance-golden-a-vo00.v1.json",
+      "sha256": "sha256:eb09eb09b589bbab5f61dc0c82555df2859efad7140566c248648fc20b43442f"
+    },
+    {
+      "path": "deployment/locks/ae-product-nsl-runtime-bundle.v1.json",
+      "sha256": "sha256:f5f7ab97aaa5abc3642a734b153313b5af6c695790c4974a9d3b2ed8f897e27c"
+    },
+    {
+      "path": "deployment/locks/ae-mybee-m1-signed-skill-checkpoint.v1.json",
+      "sha256": "sha256:e05f4d4e06f52facf2f3b47602a68c63133384e72897f2e3ff9f492f03077283"
+    },
+    {
+      "path": "deployment/compose/canonical-platform.override.yaml",
+      "sha256": "sha256:92169076ba81b602106980fd0e6d0deb6d3debcb3616f4def435d3b425361e29"
+    },
+    {
+      "path": "deployment/oci/canonical-platform-ae-runtime.Containerfile",
+      "sha256": "sha256:0fa4adfd62b2a81a8d95fb57c6624cfdbdb3d59ffbf3aaa355d923f4fb608cbc"
+    },
+    {
+      "path": "reports/quality/mybee-w70-s8-01-foundation-gate.json",
+      "sha256": "sha256:c5c16319783d5d11d23ea2b31d2a619f3c125d71523c4e5c6030e843652385ee"
+    },
+    {
+      "path": "scripts/quality/golden_journey_runners.v1.json",
+      "sha256": "sha256:1a1461561c6552234ee4db50e1bf8fa9e67006f1f306b782bfc10f8da512ba82"
+    },
+    {
+      "path": "services/nex-ae-api/nex_ae_api/domain_intent_products.py",
+      "sha256": "sha256:1de8e80b87d46c5800ae23ffde92b3d2d6a52b2d9678581a577ba6d25cfa1157"
+    },
+    {
+      "path": "services/nex-ae-api/nex_ae_api/product_runtime_profile.py",
+      "sha256": "sha256:cddabe7078bb5a15ff53027b79fd389338eefa5dc839f29447b6b82900e8efd8"
+    }
+  ],
+  "receipt_hash": "sha256:f1d41b90ae38eb62250a2fc481440c9d64137d7f64b5620a567a1551aa7be91b"
+}

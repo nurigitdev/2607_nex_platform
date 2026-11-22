@@ -1,12 +1,19 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from pathlib import Path
 from types import SimpleNamespace
 
 import nex_ae_api.semantic_candidate_admission as admission_module
 import pytest
 from nex_ae_api.agent_context import ContextBuildRequest
 from nex_ae_api.domain_intent_activators import DomainIntentActivatorRegistry
+from nex_ae_api.product_domain_intent_activators import (
+    build_active_product_domain_intent_activator_registry,
+)
+from nex_ae_api.project_delegation_planning import (
+    M1_PROJECT_DELEGATION_CAPABILITY_ID,
+)
 from nex_ae_api.semantic_candidate_admission import (
     SemanticCandidateAdmissionError,
     SemanticCandidateAdmissionResult,
@@ -14,9 +21,12 @@ from nex_ae_api.semantic_candidate_admission import (
     attach_semantic_candidate_admission,
 )
 from nex_ae_api.semantic_candidate_evidence import LocalSemanticCandidateStorage
+from nex_runtime import InMemoryServiceLogStore, ServiceLogEmitter
 from nex_runtime.prompts import PromptRegistryStore
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+
+ROOT = Path(__file__).resolve().parents[1]
 
 
 def _app() -> SimpleNamespace:
@@ -29,7 +39,10 @@ def _persistence() -> SimpleNamespace:
         autoflush=False,
         expire_on_commit=False,
     )
-    return SimpleNamespace(api_session_factory=factory)
+    return SimpleNamespace(
+        api_session_factory=factory,
+        service_log_store=InMemoryServiceLogStore(),
+    )
 
 
 def _environment(mode: str, **overrides: str) -> dict[str, str]:
@@ -86,6 +99,131 @@ def test_required_attachment_accepts_durable_private_storage(tmp_path) -> None:
         runtime.service.domain_intent_activator_registry,
         DomainIntentActivatorRegistry,
     )
+    assert isinstance(
+        runtime.service.context_stage.repair_log_emitter,
+        ServiceLogEmitter,
+    )
+
+
+def test_required_attachment_wires_product_activators_from_runtime_authorities(
+    monkeypatch, tmp_path
+) -> None:
+    captured = {}
+    expected = DomainIntentActivatorRegistry()
+
+    def build_registry(
+        environ,
+        *,
+        product_capability_registry,
+        retirement_projection,
+        session_factory,
+    ):
+        captured.update(
+            environ=environ,
+            product_capability_registry=product_capability_registry,
+            retirement_projection=retirement_projection,
+            session_factory=session_factory,
+        )
+        return expected
+
+    monkeypatch.setattr(
+        admission_module,
+        "build_active_product_domain_intent_activator_registry",
+        build_registry,
+    )
+    persistence = _persistence()
+    environ = _environment(
+        "required",
+        NEX_AE_PRIVATE_STORAGE_MODE="FILESYSTEM",
+        NEX_AE_SEMANTIC_CANDIDATE_STORAGE_ROOT=str(tmp_path),
+    )
+
+    runtime = attach_semantic_candidate_admission(
+        _app(),
+        persistence,
+        SimpleNamespace(mode="required", admission=object()),
+        prompt_store=PromptRegistryStore(),
+        environ=environ,
+    )
+
+    assert runtime.service.domain_intent_activator_registry is expected
+    assert captured["environ"] is environ
+    assert captured["session_factory"] is persistence.api_session_factory
+    assert (
+        captured["product_capability_registry"]
+        is runtime.service.product_capability_registry
+    )
+    assert (
+        captured["retirement_projection"]
+        is runtime.service.product_capability_retirements
+    )
+
+
+def test_required_attachment_registers_canonical_project_delegation(
+    tmp_path,
+) -> None:
+    runtime = attach_semantic_candidate_admission(
+        _app(),
+        _persistence(),
+        SimpleNamespace(mode="required", admission=object()),
+        prompt_store=PromptRegistryStore(),
+        environ=_environment(
+            "required",
+            NEX_AE_PRIVATE_STORAGE_MODE="FILESYSTEM",
+            NEX_AE_SEMANTIC_CANDIDATE_STORAGE_ROOT=str(tmp_path),
+            NEX_AE_PRODUCT_CAPABILITY_REGISTRY_PATH=str(
+                ROOT / "deployment/environments/"
+                "ae-product-capability-registry.mybee-m1.v4.json"
+            ),
+            NEX_EOS_BASE_URL="https://eos.nex.test",
+            NEX_OA_BASE_URL="https://oa.nex.test",
+            NEX_AE_TO_EOS_SERVICE_TOKEN="eos-service-token",
+            NEX_AE_TO_OA_SERVICE_TOKEN="oa-service-token",
+        ),
+    )
+
+    registration = runtime.service.domain_intent_activator_registry.resolve(
+        M1_PROJECT_DELEGATION_CAPABILITY_ID,
+        required=True,
+    )
+    assert registration is not None
+    assert registration.capability_id == M1_PROJECT_DELEGATION_CAPABILITY_ID
+
+
+def test_active_product_builder_honors_retirement_before_authority_loading() -> None:
+    capabilities = SimpleNamespace(
+        resolve=lambda *_args, **_kwargs: pytest.fail(
+            "retired capability must not be resolved"
+        )
+    )
+    retirements = SimpleNamespace(is_new_selection_denied=lambda _capability: True)
+
+    registry = build_active_product_domain_intent_activator_registry(
+        {},
+        product_capability_registry=capabilities,
+        retirement_projection=retirements,
+        session_factory=object(),
+    )
+
+    assert registry.resolve(M1_PROJECT_DELEGATION_CAPABILITY_ID) is None
+
+
+def test_active_product_builder_omits_unconfigured_authority() -> None:
+    capabilities = SimpleNamespace(
+        resolve=lambda *_args, **_kwargs: pytest.fail(
+            "unconfigured activator must not resolve capability metadata"
+        )
+    )
+    retirements = SimpleNamespace(is_new_selection_denied=lambda _capability: False)
+
+    registry = build_active_product_domain_intent_activator_registry(
+        {},
+        product_capability_registry=capabilities,
+        retirement_projection=retirements,
+        session_factory=object(),
+    )
+
+    assert registry.resolve(M1_PROJECT_DELEGATION_CAPABILITY_ID) is None
 
 
 @pytest.mark.parametrize(
@@ -392,6 +530,8 @@ def test_request_text_helpers_reject_missing_or_invalid_values(value) -> None:
 
 
 def test_timestamp_normalizes_naive_datetime() -> None:
-    assert admission_module._timestamp(datetime(2026, 10, 17, 3, 0)) == (  # noqa: DTZ001
+    assert admission_module._timestamp(
+        datetime(2026, 10, 17, 3, 0)
+    ) == (  # noqa: DTZ001
         "2026-10-17T03:00:00Z"
     )

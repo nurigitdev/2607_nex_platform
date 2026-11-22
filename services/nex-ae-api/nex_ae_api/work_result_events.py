@@ -14,6 +14,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
 
 from nex_ae_api.runtime_jobs import RuntimeJobError, SqlAlchemyRuntimeJobQueue
+from nex_ae_api.runtime_resume import RuntimeEventMatcher, RuntimeResumeError
 
 EVENT_FIELDS = frozenset(
     {
@@ -83,6 +84,7 @@ class SqlAlchemyWorkResultEventService:
     ) -> None:
         self._session_factory = session_factory
         self._runtime_jobs = runtime_jobs
+        self._resume_matcher = RuntimeEventMatcher(runtime_jobs)
         self._clock = clock or (lambda: datetime.now(UTC))
 
     def ingest(self, event: object) -> dict[str, Any]:
@@ -208,13 +210,15 @@ class SqlAlchemyWorkResultEventService:
                     wait_id=context["wait_id"],
                     event_id=event["event_id"],
                 )
-                job = self._runtime_jobs.enqueue_resume_in_session(
+                match = self._resume_matcher.match_in_session(
                     session,
                     tenant_id=event["tenant_id"],
+                    wait_id=context["wait_id"],
+                    event_id=event["event_id"],
                     runtime_job_id=runtime_job_id,
                     execution_id=context["agent_execution_id"],
                     executable_step_id=context["executable_step_id"],
-                    wait_id=context["wait_id"],
+                    resume_target_kind="EXECUTABLE_STEP",
                     dedup_key=_resume_dedup_key(
                         wait_id=context["wait_id"], event_id=event["event_id"]
                     ),
@@ -229,13 +233,6 @@ class SqlAlchemyWorkResultEventService:
                     },
                     causation_id=event["event_id"],
                 )
-                _mark_matched(
-                    session,
-                    event=event,
-                    wait_id=context["wait_id"],
-                    runtime_job_id=job["runtime_job_id"],
-                    now=now,
-                )
                 session.commit()
                 matched = _load_inbox(
                     session,
@@ -246,10 +243,21 @@ class SqlAlchemyWorkResultEventService:
                     matched,
                     created=created,
                     wait_state="RESUME_QUEUED",
-                    resume_runtime_job_id=job["runtime_job_id"],
+                    resume_runtime_job_id=match["resume_runtime_job_id"],
                 )
         except WorkResultEventError:
             raise
+        except RuntimeResumeError as exc:
+            raise WorkResultEventError(
+                (
+                    "ae.work_result_wait_conflict"
+                    if exc.error_code == "ae.runtime_resume_conflict"
+                    else exc.error_code
+                ),
+                exc.detail,
+                503 if exc.retryable else 409,
+                exc.retryable,
+            ) from exc
         except RuntimeJobError as exc:
             raise WorkResultEventError(
                 exc.error_code, exc.detail, 503 if exc.retryable else 409, exc.retryable

@@ -1,0 +1,38 @@
+{
+  "schema_version": "nex.mybee.tool-contract-admission.v1",
+  "admission_id": "mybee.phase1.w70.eos-tool-contracts",
+  "admission_version": "1.0.0",
+  "revision": 1,
+  "status": "SOURCE_ADMITTED_RUNTIME_UNCHANGED",
+  "inventory": {
+    "path": "domains/mybee/skills/tool_inventory.v1.json",
+    "sha256": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  },
+  "openapi": {
+    "path": "contracts/openapi/nex-eos.openapi.yaml",
+    "sha256": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+  },
+  "contracts": [
+    {
+      "canonical_operation_id": "FINANCE.COST_ALLOCATION.VERIFY",
+      "provider_operation_id": "FINANCE.COST_ALLOCATION.VERIFY",
+      "method": "GET",
+      "path": "/internal/v2/finance/cost-allocation-batches/{batch_id}/verification",
+      "openapi_operation_ref": "#/paths/~1internal~1v2~1finance~1cost-allocation-batches~1{batch_id}~1verification/get",
+      "required_parameters": ["path:batch_id"],
+      "optional_parameters": [],
+      "request_body": null,
+      "success_responses": [
+        {
+          "status": "503",
+          "component_ref": null,
+          "canonical_schema_ref": null,
+          "typing_state": "OPENAPI_STATUS_ONLY"
+        }
+      ]
+    }
+  ],
+  "release_attestation": {
+    "content_digest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+  }
+}

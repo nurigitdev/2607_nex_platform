@@ -1,0 +1,33 @@
+{
+  "schema_version": "mybee.semantic_account_resolution.v1",
+  "skill_id": "FINANCE.ACCOUNT_SEMANTIC_RESOLVE",
+  "tool_id": "FINANCE.ACCOUNT.RESOLVE_SEMANTIC",
+  "operation_kind": "READ",
+  "authority": {
+    "service": "nex-eos",
+    "oa_scope": "finance:account:read",
+    "fresh_authorization": true
+  },
+  "request_fields": [
+    "company_id",
+    "semantic_key",
+    "effective_on",
+    "currency"
+  ],
+  "result_fields": [
+    "account_ref",
+    "account_code",
+    "definition_account_code",
+    "policy_evidence",
+    "evidence_hash"
+  ],
+  "agent_constraints": {
+    "account_code_generation": "FORBIDDEN",
+    "account_uuid_authority": "EOS_ONLY",
+    "ambiguous_resolution": "FAIL_CLOSED"
+  },
+  "runtime_admission": {
+    "state": "CONTRACT_ONLY",
+    "reason": "An admitted NSL artifact digest is required before product runtime activation."
+  }
+}

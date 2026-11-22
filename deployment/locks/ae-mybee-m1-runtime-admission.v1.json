@@ -1,0 +1,96 @@
+{
+  "schema_version": "ae.mybee_m1_runtime_admission.v1",
+  "release_id": "nex-mybee-m1-d04-d12-checkpoint",
+  "release_hash": "sha256:0034adc847aedc5d4fe99a446f7b60dfaef5db218ebbed96ba0f96bf32feecf4",
+  "package_ref": "domains/mybee/skills/m1_checkpoint/mybee-m1-d04-d12.v1.nsp",
+  "package_hash": "sha256:96888a02ee4924b6ac1f46bf7031627afc4d4a53d04bc77e13acd1940ea25348",
+  "signing_key_id": "release:nex-mybee-m1-checkpoint-2026-11",
+  "capability_registry_id": "ae-product-capabilities-mybee-m1",
+  "capability_registry_version": 3,
+  "capability_registry_hash": "sha256:104e60e12282ab9849932487e931d22910a5a75abcd05dcd646e5251c3140cc5",
+  "operation_registry": {
+    "schema_version": "ae.product_operation_adapter_registry.v1",
+    "registrations": [
+      {
+        "capability_id": "FINANCE.VOUCHER.APPROVE_AND_POST",
+        "operation_semantics": "WRITE",
+        "backend_profile": "NSL_V02_IN_PROCESS",
+        "adapter_id": "nex-ae:eos-journal-controlled-write:v1",
+        "operation_ids": [
+          "FINANCE.VOUCHER.APPROVE_AND_POST",
+          "FINANCE.JOURNAL.RECONCILE"
+        ]
+      },
+      {
+        "capability_id": "PROJECT.WORK_CODE_SET.GET",
+        "operation_semantics": "READ",
+        "backend_profile": "NSL_V02_IN_PROCESS",
+        "adapter_id": "nex-ae:eos-project-work-code-read:v1",
+        "operation_ids": [
+          "PROJECT.WORK_CODE_SET.GET"
+        ]
+      }
+    ]
+  },
+  "operation_registry_hash": "sha256:2b63fe468f955c346e8420bd9a3199ff1a58d479e2540fbe893d059d8c55c67f",
+  "skill_catalog": {
+    "schema_version": "ae.verified_product_skill_catalog.v1",
+    "release_id": "nex-mybee-m1-d04-d12-checkpoint",
+    "release_hash": "sha256:0034adc847aedc5d4fe99a446f7b60dfaef5db218ebbed96ba0f96bf32feecf4",
+    "package_hash": "sha256:96888a02ee4924b6ac1f46bf7031627afc4d4a53d04bc77e13acd1940ea25348",
+    "signing_key_id": "release:nex-mybee-m1-checkpoint-2026-11",
+    "admitted_at": "2026-11-15T00:00:00Z",
+    "selections": [
+      {
+        "capability_id": "FINANCE.VOUCHER.APPROVE_AND_POST",
+        "capability_version": "1.0.0",
+        "skill_id": "MYBEE.D04.JOURNAL_POSTING",
+        "skill_version": "1.0.0",
+        "skill_semantic_hash": "sha256:c9bfdb8bc5109b51001f63195752cf91e10fb9430d8ffa6db4001a58361bcf85",
+        "skill_artifact_hash": "sha256:e61023eddfd9b81103f29de97f0d388b1e25af8dab1a296a6d825f58e50d64ca",
+        "release_id": "nex-mybee-m1-d04-d12-checkpoint",
+        "release_hash": "sha256:0034adc847aedc5d4fe99a446f7b60dfaef5db218ebbed96ba0f96bf32feecf4",
+        "operation_adapter": {
+          "capability_id": "FINANCE.VOUCHER.APPROVE_AND_POST",
+          "operation_semantics": "WRITE",
+          "backend_profile": "NSL_V02_IN_PROCESS",
+          "adapter_id": "nex-ae:eos-journal-controlled-write:v1",
+          "operation_ids": [
+            "FINANCE.VOUCHER.APPROVE_AND_POST",
+            "FINANCE.JOURNAL.RECONCILE"
+          ]
+        }
+      },
+      {
+        "capability_id": "PROJECT.WORK_CODE_SET.GET",
+        "capability_version": "1.0.0",
+        "skill_id": "MYBEE.D12.PROJECT_WORK_CODE_CONTEXT",
+        "skill_version": "1.0.0",
+        "skill_semantic_hash": "sha256:a3f4e3d97e646f5e7c8f7957cb1981fbabdc019b379c565c9d7759bfcd8fd13e",
+        "skill_artifact_hash": "sha256:6efd51bcb415f9ddf6cb1f1caaf3a5d248d456cb85931b8b7335ac24e7b0a8c5",
+        "release_id": "nex-mybee-m1-d04-d12-checkpoint",
+        "release_hash": "sha256:0034adc847aedc5d4fe99a446f7b60dfaef5db218ebbed96ba0f96bf32feecf4",
+        "operation_adapter": {
+          "capability_id": "PROJECT.WORK_CODE_SET.GET",
+          "operation_semantics": "READ",
+          "backend_profile": "NSL_V02_IN_PROCESS",
+          "adapter_id": "nex-ae:eos-project-work-code-read:v1",
+          "operation_ids": [
+            "PROJECT.WORK_CODE_SET.GET"
+          ]
+        }
+      }
+    ]
+  },
+  "skill_catalog_hash": "sha256:1c15866db200efb8db4807869f48c49737fe4c18f1d3ef657bed7a456721801d",
+  "backend_profiles": [
+    "NSL_V02_IN_PROCESS"
+  ],
+  "runtime_selectable_capabilities": [
+    "FINANCE.VOUCHER.APPROVE_AND_POST",
+    "PROJECT.WORK_CODE_SET.GET"
+  ],
+  "remote_provider_required": false,
+  "database_migration_required": false,
+  "content_hash": "sha256:3b561a8bd71f2702dd1020c096e0936efd49818200e3a8248dcb842395dd280d"
+}

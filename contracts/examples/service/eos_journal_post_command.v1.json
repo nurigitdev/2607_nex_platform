@@ -1,0 +1,13 @@
+{
+  "schema_version": "eos_journal_post_command.v1",
+  "tenant_id": "VO00",
+  "company_id": "32000000-0000-4000-8000-000000000001",
+  "business_operation_id": "32000000-0000-4000-8000-000000000052",
+  "idempotency_key": "w40-s4-03-atomic-posting",
+  "payload_hash": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "expected_candidate_version": 2,
+  "expected_candidate_revision": 1,
+  "expected_candidate_hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "accounting_approval_evidence_id": "32000000-0000-4000-8000-000000000042",
+  "correlation_id": "correlation-w40-s4-03"
+}

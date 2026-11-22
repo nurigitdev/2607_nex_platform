@@ -13,7 +13,6 @@ import run_canonical_platform_golden_journey as golden
 import run_canonical_platform_installed_acceptance as installed
 import run_canonical_platform_trust_admission as trust
 
-
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -40,6 +39,7 @@ def _targets() -> tuple[SimpleNamespace, ...]:
             "nex-mo",
             "nex-wc",
             "nex-eos",
+            "nex-wa",
         )
     )
 
@@ -82,12 +82,16 @@ def test_s20_installed_acceptance_orchestrates_live_and_restart_hooks(
         "_image_environment_from_installed_runtime_reports",
         lambda *_args: {"NEX_AE_RUNTIME_IMAGE": "example/ae@sha256:ae"},
     )
-    monkeypatch.setattr(installed, "resolve_demo_database_targets", lambda _env: _targets())
+    monkeypatch.setattr(
+        installed,
+        "resolve_current_platform_database_targets",
+        lambda _env: _targets(),
+    )
     monkeypatch.setattr(installed, "inspect_demo_database_targets", lambda *_args, **_kwargs: ())
     monkeypatch.setattr(
         installed,
-        "demo_database_admission_public_projection",
-        lambda _items: {"migration_current_count": 7, "state": "ADMITTED"},
+        "current_platform_database_admission_public_projection",
+        lambda _items: {"migration_current_count": 8, "state": "ADMITTED"},
     )
     monkeypatch.setattr(installed, "_pending_domain_counts", lambda _urls: {"pending": 0})
     monkeypatch.setattr(
@@ -379,11 +383,13 @@ def test_s20_trust_admission_orchestrates_rotation_and_restart(
 def test_s20_canonical_ae_runtime_image_executes_bounded_build(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    bundle = SimpleNamespace(skill_source_directory="skill")
     report = tmp_path / "image.json"
     commands: list[list[str]] = []
-    monkeypatch.setattr(image_build, "load_nsl_runtime_bundle", lambda _path: bundle)
-    monkeypatch.setattr(image_build, "verify_nsl_runtime_bundle", lambda *_a, **_k: {"status": "PASS"})
+    monkeypatch.setattr(
+        image_build,
+        "_wheel_readiness",
+        lambda *_a, **_k: {"status": "PASS", "wheel_filename": "nsl.whl"},
+    )
     monkeypatch.setattr(
         image_build,
         "_build_current_ae_base",
@@ -516,6 +522,31 @@ def test_s20_installed_runtime_helpers_cover_network_queue_and_image_contracts(
     assert installed._wait_for_heartbeats(
         urls, timeout_seconds=0.1, worker_inventory=inventory
     ) == observed
+
+    monkeypatch.setattr(installed, "_heartbeats", lambda *_a, **_k: {})
+    with pytest.raises(
+        installed.CanonicalPlatformInstalledAcceptanceError,
+        match="missing=worker non_idle=none stale=none",
+    ):
+        installed._wait_for_heartbeats(
+            urls, timeout_seconds=0.01, worker_inventory=inventory
+        )
+
+    blocked_log = "\n".join(
+        (
+            "production_container_bootstrap=pass owner=nex-ae-api",
+            'worker | {"status":"BLOCKED","failure_code":'
+            '"ae.agent_runtime_process.unavailable","detail":'
+            '"failed_checks=package_readiness_satisfied"}',
+        )
+    )
+    assert installed._structured_process_failure(blocked_log) == (
+        "ae.agent_runtime_process.unavailable:"
+        "failed_checks=package_readiness_satisfied"
+    )
+    assert installed._structured_process_failure("unstructured") == (
+        "structured_failure_unavailable"
+    )
 
     monkeypatch.setattr(
         installed,
@@ -926,43 +957,102 @@ def test_s20_image_builder_stages_product_runtime_bundle(
     source_root = tmp_path / "source"
     context = tmp_path / "context"
     context.mkdir()
-    skill_root = tmp_path / "skills"
-    (skill_root / "nested").mkdir(parents=True)
-    (skill_root / "nested/skill.ns").write_text("skill", encoding="utf-8")
     wheel = tmp_path / "nsl.whl"
     wheel.write_bytes(b"wheel")
-    manifest = tmp_path / "manifest.json"
-    manifest.write_text("{}", encoding="utf-8")
     files = {
         "deployment/oci/canonical-platform-ae-runtime.Containerfile": "FROM scratch\n",
-        "deployment/environments/finance-golden-a-vo00.v1.json": "{}\n",
-        "deployment/environments/ae-product-capability-registry.v1.json": "{}\n",
         "deployment/locks/nsl-v0.2.1-wheel.json": "{}\n",
         "deployment/locks/python-production.lock": "lock\n",
+        "deployment/locks/ae-mybee-m1-runtime-admission.v4.json": "{}\n",
+        "deployment/locks/ae-mybee-m1-runtime-admission.v3.json": "{}\n",
+        "deployment/locks/ae-mybee-m1-runtime-admission.v2.json": "{}\n",
+        "deployment/locks/ae-mybee-m1-runtime-activation.v4.json": "{}\n",
+        "deployment/locks/ae-mybee-m1-runtime-activation.v3.json": "{}\n",
+        "deployment/locks/ae-mybee-m1-runtime-activation.v2.json": "{}\n",
+        "deployment/locks/ae-mybee-m1-generalized-rollback.v3.json": "{}\n",
+        "deployment/locks/ae-mybee-m1-generalized-rollback.v2.json": "{}\n",
+        "deployment/locks/ae-mybee-m1-generalized-rollback.v1.json": "{}\n",
+        "deployment/locks/ae-mybee-m1-product-coordinator-activation.v3.json": "{}\n",
+        "deployment/locks/ae-mybee-m1-product-coordinator-activation.v2.json": "{}\n",
+        "deployment/locks/ae-mybee-m1-product-coordinator-activation.v1.json": "{}\n",
+        "deployment/locks/ae-mybee-m1-product-coordinator-rollback.v3.json": "{}\n",
+        "deployment/locks/ae-mybee-m1-product-coordinator-rollback.v2.json": "{}\n",
+        "deployment/locks/ae-mybee-m1-product-coordinator-rollback.v1.json": "{}\n",
+        "deployment/locks/ae-mybee-m1-signed-skill-checkpoint.v3.json": "{}\n",
+        "deployment/locks/ae-mybee-m1-signed-skill-checkpoint.v2.json": "{}\n",
+        "deployment/locks/ae-mybee-m1-signed-skill-checkpoint.v1.json": "{}\n",
+        "deployment/environments/ae-product-capability-registry.mybee-m1.v4.json": "{}\n",
+        "deployment/environments/ae-product-capability-registry.mybee-m1.v3.json": "{}\n",
+        "deployment/environments/ae-product-capability-registry.mybee-m1.v1.json": "{}\n",
+        "deployment/environments/ae-product-capability-registry.mybee-m1.v2.json": "{}\n",
+        "deployment/product/config/project-agent-profile-policy.v1.json": "{}\n",
+        "domains/mybee/config/m1_transaction_preparation_registry.v1.json": "{}\n",
+        "domains/mybee/skills/m1_checkpoint/context.json": "{}\n",
+        "domains/mybee/skills/m1_checkpoint/mybee-m1-d04-d12.v3.nsp": "nsp\n",
+        "domains/mybee/skills/m1_checkpoint/mybee-m1-d04-d12.v2.nsp": "nsp\n",
+        "domains/mybee/skills/m1_checkpoint/mybee-m1-d04-d12.v1.nsp": "nsp\n",
+        "domains/mybee/skills/m1_checkpoint/mybee-m1-release-public-key.v3.json": "{}\n",
+        "domains/mybee/skills/m1_checkpoint/mybee-m1-release-public-key.v2.json": "{}\n",
+        "domains/mybee/skills/m1_checkpoint/mybee-m1-release-public-key.v1.json": "{}\n",
+        "domains/mybee/skills/m1_checkpoint/tool_catalog.v1.json": "{}\n",
+        "domains/mybee/skills/d04_accounting/journal_posting.v1_0_2.ns": "skill\n",
+        "domains/mybee/skills/d04_accounting/journal_posting.v1_0_1.ns": "skill\n",
+        "domains/mybee/skills/d04_accounting/journal_posting.v1.ns": "skill\n",
+        "domains/mybee/skills/d04_accounting/manifest.v1.json": "{}\n",
+        "domains/mybee/skills/d04_accounting/tool_bindings.v1.json": "{}\n",
+        "domains/mybee/skills/d12_project/work_code_context.v1.ns": "skill\n",
+        "domains/mybee/skills/d12_project/manifest.v1.json": "{}\n",
+        "domains/mybee/skills/d12_project/tool_bindings.v1.json": "{}\n",
+        "domains/mybee/skills/tool_inventory.v1.json": "{}\n",
+        "contracts/admissions/nex_eos/w70_tool_contract_admission.v1.json": "{}\n",
+        "contracts/openapi/nex-eos.openapi.yaml": "openapi: 3.1.0\n",
+        "contracts/schemas/service/nex_eos/sample.v1.schema.json": "{}\n",
+        "domains/mybee/catalog/work_codes/catalog.v1.json": "{}\n",
+        "domains/mybee/catalog/work_codes/schema.json": "{}\n",
     }
     for relative, content in files.items():
         path = source_root / relative
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(content, encoding="utf-8")
     monkeypatch.setattr(image_build, "ROOT", source_root)
-    bundle = SimpleNamespace(
-        wheel_filename="nsl.whl",
-        skill_files=("nested/skill.ns",),
-        admission_lock="deployment/locks/nsl-v0.2.1-wheel.json",
-    )
-
     image_build._stage_context(
         context,
-        bundle=bundle,
         wheel_path=wheel,
-        skill_root=skill_root,
-        manifest_path=manifest,
+        wheel_filename="nsl.whl",
     )
 
     assert (context / "wheel/nsl.whl").read_bytes() == b"wheel"
-    assert (context / "skill/nested/skill.ns").read_text(encoding="utf-8") == "skill"
-    assert (context / "config/finance-golden-a-vo00.v1.json").is_file()
-    assert (context / "locks/ae-product-nsl-runtime-bundle.v1.json").is_file()
+    assert not (context / "skill").exists()
+    assert sorted(
+        path.relative_to(context / "config").as_posix()
+        for path in (context / "config").rglob("*")
+        if path.is_file()
+    ) == ["project-agent-profile-policy.v1.json"]
+    assert not (context / "locks").exists()
+    assert (
+        context
+        / "repository/deployment/locks/ae-mybee-m1-runtime-activation.v2.json"
+    ).is_file()
+    assert (
+        context
+        / "repository/deployment/locks/ae-mybee-m1-product-coordinator-activation.v1.json"
+    ).is_file()
+    assert (
+        context
+        / "repository/deployment/locks/ae-mybee-m1-product-coordinator-rollback.v1.json"
+    ).is_file()
+    assert (
+        context
+        / "repository/deployment/environments/ae-product-capability-registry.mybee-m1.v1.json"
+    ).is_file()
+    assert (
+        context
+        / "repository/domains/mybee/config/m1_transaction_preparation_registry.v1.json"
+    ).is_file()
+    assert (
+        context
+        / "repository/domains/mybee/skills/m1_checkpoint/mybee-m1-d04-d12.v1.nsp"
+    ).is_file()
 
 
 def test_s20_installed_cleanup_lookup_and_loopback_helpers(

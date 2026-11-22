@@ -1,0 +1,109 @@
+{
+  "schema_version": "nex.mybee.coa-pad-ca01.decision-delta.v1",
+  "decision_id": "COA-CA01-ADR-UNIFIED-CODEBOOK-v1.0",
+  "decision_date": "2026-11-10",
+  "status": "DESIGN_ACCEPTED_IMPLEMENTATION_CONDITIONAL",
+  "authority": {
+    "amends": "NeX_MyBee_COA_PAD_v1.0.md",
+    "amends_sha256": "sha256:308765743c974dba0284775f473b58235ee1a66ce662383777c150427979f7f5",
+    "amendment": "NeX_MyBee_COA_CA01_v1.0.md",
+    "amendment_sha256": "sha256:797c88c37bef0c81325ebe2f65662f8c6b480c9d42845636504019c2496b4635",
+    "source_codebook_candidate": "NeX_MyBee_COA_Codebook_Candidate_v0.1.json",
+    "candidate_sha256": "sha256:904a122075109a1bb9021207075b1b3229f59d977cb0aee84c237de15ceaac04",
+    "accounting_owner_approved": false,
+    "runtime_seed_allowed": false
+  },
+  "source_snapshot": {
+    "repository": "nurigitdev/2607_nex_platform",
+    "ref": "codex/mybee-phase1-implementation",
+    "commit": "2037bb5a08e5936c694a0a6c4a4b2b0662930e48",
+    "refresh_before_implementation": true
+  },
+  "delta": {
+    "superseded_table_proposals": [
+      "eos_shared_coa_release",
+      "eos_shared_coa_account"
+    ],
+    "codebook_entry_table": "eos_coa_entry",
+    "definition_scopes": [
+      "GLOBAL",
+      "TENANT"
+    ],
+    "global_owner_tenant_id": null,
+    "tenant_owner_must_be_real": true,
+    "fake_global_tenant_ids_forbidden": true,
+    "existing_s1_02_tables_preserved": [
+      "eos_account_catalog_release",
+      "eos_company_account_policy",
+      "eos_posting_rule_release",
+      "eos_account"
+    ],
+    "additional_metadata_tables_proposed": [
+      "eos_coa_definition_release",
+      "eos_coa_company_adoption",
+      "eos_coa_account_binding"
+    ],
+    "code_identity_registry_recommended": "eos_coa_code_identity",
+    "account_code_regex": "^[1-9][0-9]{7}$",
+    "standard_leaf_suffix": "001-699",
+    "reserved_leaf_suffix": "700-799",
+    "tenant_leaf_suffix": "800-999",
+    "unchanged_legacy_account_code_format": true,
+    "unchanged_voucher_account_fk": "(tenant_id, account_id) -> eos_account",
+    "addon_migration": "AFTER_CURRENT_HIGHEST_NEW_NUMBER_ONLY",
+    "s1_02_historical_status": "PRESERVED_CLOSED",
+    "m1_dependency": [
+      "COA-01",
+      "COA-02",
+      "COA-03",
+      "COA-04",
+      "COA-05"
+    ]
+  },
+  "decisions": [
+    "COA-CA01-ADR-01",
+    "COA-CA01-ADR-02",
+    "COA-CA01-ADR-03",
+    "COA-CA01-ADR-04",
+    "COA-CA01-ADR-05",
+    "COA-CA01-ADR-06",
+    "COA-CA01-ADR-07",
+    "COA-CA01-ADR-08",
+    "COA-CA01-ADR-09",
+    "COA-CA01-ADR-10",
+    "COA-CA01-ADR-11",
+    "COA-CA01-ADR-12"
+  ],
+  "postgresql_acceptance_gates": [
+    "PG-CA01-01",
+    "PG-CA01-02",
+    "PG-CA01-03",
+    "PG-CA01-04",
+    "PG-CA01-05",
+    "PG-CA01-06",
+    "PG-CA01-07",
+    "PG-CA01-08",
+    "PG-CA01-09",
+    "PG-CA01-10",
+    "PG-CA01-11",
+    "PG-CA01-12",
+    "PG-CA01-13",
+    "PG-CA01-14",
+    "PG-CA01-15",
+    "PG-CA01-16"
+  ],
+  "e2e_acceptance_gates": [
+    "E2E-CA01-01",
+    "E2E-CA01-02",
+    "E2E-CA01-03",
+    "E2E-CA01-04"
+  ],
+  "integration_scope": [
+    "W10 post S1-02",
+    "COA-01..07",
+    "Golden A compatibility",
+    "Phase-1 M1 and M2"
+  ],
+  "test_executed": false,
+  "github_changed": false
+}

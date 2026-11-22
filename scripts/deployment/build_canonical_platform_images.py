@@ -2,9 +2,11 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
+import shutil
 import sys
 from collections.abc import Mapping, Sequence
 from pathlib import Path
@@ -46,6 +48,7 @@ from nex_runtime.deployment_locks import (
 )
 from nex_runtime.deployment_oci import (
     build_current_oci_definitions,
+    inspect_oci_build_context,
     materialize_oci_build_context,
     validate_oci_containerfiles,
 )
@@ -53,6 +56,7 @@ from nex_runtime.deployment_provenance import (
     collect_deployment_release_manifest,
     deployment_release_manifest_projection,
 )
+from nex_runtime.nsl_v02_wheel_lock import normalize_nsl_v02_wheel_lock
 from nex_runtime.process_manifest import (
     BACKGROUND_PROCESS_IDS,
     CURRENT_BACKGROUND_PROCESS_IDS,
@@ -67,6 +71,9 @@ SCHEMA_VERSION = "canonical_platform_oci_release.v1"
 DEFAULT_REPORT = (
     ROOT / "reports" / "deployment" / "canonical-platform-oci-image-build.json"
 )
+AE_NSL_WHEEL_LOCK_PATH = Path("deployment/locks/nsl-v0.2.1-wheel.json")
+AE_NSL_WHEEL_SOURCE_DIRECTORY = Path("reports/deployment/p8-nsl-v0.2.1-wheel")
+AE_NSL_WHEEL_CONTEXT_DIRECTORY = Path("deployment/product/wheel")
 
 
 def run_canonical_platform_image_build(
@@ -112,6 +119,7 @@ def _execute_canonical_platform_image_build(
             "Canonical Platform OCI build requires clean tracked and build-context sources"
         )
     docker_server = image_build._docker_preflight(root)
+    ae_nsl_wheel = _admit_ae_nsl_wheel(root)
     inputs = build_deployment_build_inputs(root, catalog=catalog)
     inputs_digest = deployment_build_inputs_digest(inputs)
     locks_by_id = {item.lock_id: item for item in inputs.locks}
@@ -134,6 +142,13 @@ def _execute_canonical_platform_image_build(
             )
             context_root = temporary_root / definition.artifact_id
             context = materialize_oci_build_context(root, context_root, definition)
+            if definition.artifact_id == "nex-ae-runtime":
+                context = _stage_ae_nsl_wheel(
+                    root,
+                    context_root,
+                    definition,
+                    ae_nsl_wheel,
+                )
             metadata_path = temporary_root / f"{definition.artifact_id}.json"
             log_path = log_directory / f"{definition.artifact_id}.log"
             artifact = artifacts_by_id[definition.artifact_id]
@@ -194,6 +209,7 @@ def _execute_canonical_platform_image_build(
         release_set_digest=release_set_digest,
         records=records,
         package_checks=package_checks,
+        ae_nsl_wheel=ae_nsl_wheel,
     )
     generic_evidence = OciImageBuildEvidence(
         schema_version=OCI_IMAGE_BUILD_EVIDENCE_SCHEMA_VERSION,
@@ -226,6 +242,7 @@ def _execute_canonical_platform_image_build(
         "release_manifest": deployment_release_manifest_projection(release_manifest),
         "build_logs": build_logs,
         "excluded_untracked_count": excluded_untracked_count,
+        "ae_nsl_wheel": ae_nsl_wheel,
         "summary": {
             "artifact_count": len(records),
             "manifest_digest_count": len({item.manifest_digest for item in records}),
@@ -309,6 +326,7 @@ def _validate_canonical_release(
     release_set_digest: str,
     records: Sequence[Any],
     package_checks: Sequence[Mapping[str, Any]],
+    ae_nsl_wheel: Mapping[str, Any],
 ) -> None:
     catalog = build_current_deployment_artifact_catalog()
     manifest = build_current_packaged_runtime_manifest(
@@ -341,6 +359,17 @@ def _validate_canonical_release(
             errors.append(f"canonical command drift: {record.artifact_id}")
         if not _non_root_user(record.runtime_user):
             errors.append(f"canonical privileged runtime: {record.artifact_id}")
+        if (
+            record.artifact_id == "nex-ae-runtime"
+            and record.target != "ae-product-runtime"
+        ):
+            errors.append("canonical AE product runtime target drift")
+    if ae_nsl_wheel.get("status") != "PASS":
+        errors.append("canonical AE NSL wheel is not admitted")
+    if ae_nsl_wheel.get("context_path") != (
+        AE_NSL_WHEEL_CONTEXT_DIRECTORY / str(ae_nsl_wheel.get("wheel_filename"))
+    ).as_posix():
+        errors.append("canonical AE NSL wheel context path drift")
     direct_processes = tuple(
         item
         for item in CURRENT_BACKGROUND_PROCESS_IDS
@@ -356,6 +385,55 @@ def _validate_canonical_release(
             errors.append(f"canonical package check is not isolated: {process_id}")
     if errors:
         raise image_build.PlatformImageBuildError("; ".join(errors))
+
+
+def _admit_ae_nsl_wheel(root: Path) -> dict[str, Any]:
+    lock_path = root / AE_NSL_WHEEL_LOCK_PATH
+    lock = normalize_nsl_v02_wheel_lock(
+        json.loads(lock_path.read_text(encoding="utf-8"))
+    )
+    wheel_filename = str(lock["wheel_filename"])
+    wheel_path = root / AE_NSL_WHEEL_SOURCE_DIRECTORY / wheel_filename
+    wheel_bytes = wheel_path.read_bytes()
+    observed_hash = f"sha256:{hashlib.sha256(wheel_bytes).hexdigest()}"
+    if observed_hash != lock["wheel_sha256"] or len(wheel_bytes) != lock["wheel_size"]:
+        raise image_build.PlatformImageBuildError(
+            "Canonical AE NSL wheel artifact has drifted"
+        )
+    platform_lock = root / "deployment/locks/python-production.lock"
+    platform_hash = f"sha256:{hashlib.sha256(platform_lock.read_bytes()).hexdigest()}"
+    if platform_hash != lock["platform_lock_sha256"]:
+        raise image_build.PlatformImageBuildError(
+            "Canonical AE NSL platform lock has drifted"
+        )
+    return {
+        "status": "PASS",
+        "wheel_filename": wheel_filename,
+        "wheel_sha256": observed_hash,
+        "wheel_size": len(wheel_bytes),
+        "package_version": lock["package_version"],
+        "source_revision": lock["source_revision"],
+        "platform_lock_sha256": platform_hash,
+        "context_path": (
+            AE_NSL_WHEEL_CONTEXT_DIRECTORY / wheel_filename
+        ).as_posix(),
+        "registry_push_performed": False,
+        "secret_included": False,
+    }
+
+
+def _stage_ae_nsl_wheel(
+    root: Path,
+    context_root: Path,
+    definition: Any,
+    admission: Mapping[str, Any],
+) -> Any:
+    wheel_filename = str(admission["wheel_filename"])
+    source = root / AE_NSL_WHEEL_SOURCE_DIRECTORY / wheel_filename
+    target = context_root / AE_NSL_WHEEL_CONTEXT_DIRECTORY / wheel_filename
+    target.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(source, target)
+    return inspect_oci_build_context(context_root, definition)
 
 
 def _non_root_user(value: str) -> bool:

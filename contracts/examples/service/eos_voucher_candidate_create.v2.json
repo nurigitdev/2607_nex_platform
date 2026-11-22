@@ -1,0 +1,53 @@
+{
+  "schema_version": "eos_voucher_candidate_create.v2",
+  "tenant_id": "VO00",
+  "company_id": "31000000-0000-4000-8000-000000000001",
+  "business_operation_id": "31000000-0000-4000-8000-000000000002",
+  "idempotency_key": "VO00/candidate/travel-2026-0001/rev1",
+  "payload_hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "preparer_subject_id": "employee-1001",
+  "project_ref": {
+    "type": "eos.project",
+    "id": "31000000-0000-4000-8000-000000000003",
+    "code": "VO00D260001"
+  },
+  "business_approval": {
+    "envelope_id": "31000000-0000-4000-8000-000000000004",
+    "approved_document_id": "travel-proposal-2026-0001",
+    "document_revision": 1,
+    "approved_document_hash": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "attachment_manifest_hash": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+  },
+  "candidate": {
+    "source_kind": "EXPENSE_CLAIM",
+    "source_record_ref": "mybee.expense:travel-2026-0001",
+    "business_work_code": "FL0004011",
+    "transaction_currency": "KRW",
+    "recognition_date": "2026-11-12",
+    "lines": [
+      {
+        "line_no": 1,
+        "account_ref": {"type": "eos.account", "id": "31000000-0000-4000-8000-000000000005"},
+        "debit_original": "10000.0000",
+        "credit_original": "0.0000",
+        "source_record_line_ref": "expense-line-1",
+        "description": "Travel expense",
+        "evidence_hash": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+      },
+      {
+        "line_no": 2,
+        "account_ref": {"type": "eos.account", "id": "31000000-0000-4000-8000-000000000006"},
+        "debit_original": "0.0000",
+        "credit_original": "10000.0000",
+        "source_record_line_ref": "expense-line-2",
+        "description": "Cash offset",
+        "evidence_hash": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+      }
+    ]
+  },
+  "trace": {
+    "trace_id": "trace-w30-s3-01",
+    "correlation_id": "correlation-w30-s3-01",
+    "causation_id": "causation-w30-s3-01"
+  }
+}
