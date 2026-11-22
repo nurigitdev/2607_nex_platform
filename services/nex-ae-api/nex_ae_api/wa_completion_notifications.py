@@ -8,7 +8,7 @@ from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
-from nex_runtime import resolve_service_endpoint
+from nex_runtime import OperationalEventEmitter, resolve_service_endpoint
 
 from nex_ae_api.service_auth import resolve_ae_outbound_service_token
 from nex_ae_api.wa_source_projections import (
@@ -78,9 +78,11 @@ class AeWaPostCompletionNotifier:
         client: HttpWaEvidenceIntakeClient,
         *,
         agent_results: AgentResultWaProjectionSource,
+        event_emitter: OperationalEventEmitter | None = None,
     ) -> None:
         self._client = client
         self._agent_results = agent_results
+        self._event_emitter = event_emitter
 
     def notify_agent_result(
         self,
@@ -94,14 +96,31 @@ class AeWaPostCompletionNotifier:
                 result_id=result_id,
             )
             if projection is None:
-                return WaNotificationOutcome("NOT_READY", False, "source not found")
-            if not _agent_result_complete(projection):
-                return WaNotificationOutcome("NOT_READY", False, "completion barrier open")
-            return self._admit(_agent_result_payload(projection))
+                outcome = WaNotificationOutcome("NOT_READY", False, "source not found")
+            elif not _agent_result_complete(projection):
+                outcome = WaNotificationOutcome(
+                    "NOT_READY", False, "completion barrier open"
+                )
+            else:
+                outcome = self._admit(_agent_result_payload(projection))
         except WaSourceProjectionError as exc:
-            return WaNotificationOutcome("RETRY_PENDING", exc.retryable, exc.error_code)
+            outcome = WaNotificationOutcome(
+                "RETRY_PENDING", exc.retryable, exc.error_code
+            )
+        except RuntimeError as exc:
+            outcome = WaNotificationOutcome(
+                "RETRY_PENDING", True, _bounded_runtime_error(exc)
+            )
         except Exception as exc:  # noqa: BLE001 - best-effort boundary
-            return WaNotificationOutcome("RETRY_PENDING", True, type(exc).__name__)
+            outcome = WaNotificationOutcome(
+                "RETRY_PENDING", True, type(exc).__name__
+            )
+        self._emit_agent_result_outcome(
+            tenant_id=tenant_id,
+            result_id=result_id,
+            outcome=outcome,
+        )
+        return outcome
 
     def notify_ready_artifact(
         self,
@@ -129,11 +148,36 @@ class AeWaPostCompletionNotifier:
             False,
         )
 
+    def _emit_agent_result_outcome(
+        self,
+        *,
+        tenant_id: str,
+        result_id: str,
+        outcome: WaNotificationOutcome,
+    ) -> None:
+        if self._event_emitter is None:
+            return
+        self._event_emitter.safe_emit(
+            event_type="ae.wa_notification." + outcome.status.lower(),
+            severity=(
+                "INFO" if outcome.status in {"ACCEPTED", "REUSED"} else "WARNING"
+            ),
+            message="AE AgentResult WA notification completed.",
+            subject_ref={"type": "ae.agent_result", "id": result_id},
+            details={
+                "tenant_id": tenant_id,
+                "status": outcome.status,
+                "retryable": outcome.retryable,
+                "detail": outcome.detail,
+            },
+        )
+
 
 def build_ae_wa_post_completion_notifier(
     *,
     agent_results: AgentResultWaProjectionSource,
     environ: Mapping[str, str] | None = None,
+    event_emitter: OperationalEventEmitter | None = None,
 ) -> AeWaPostCompletionNotifier:
     env = {} if environ is None else environ
     endpoint = resolve_service_endpoint("nex-wa", environ=env)
@@ -149,7 +193,21 @@ def build_ae_wa_post_completion_notifier(
             timeout_seconds=float(env.get("NEX_AE_TO_WA_TIMEOUT_SECONDS", "15")),
         ),
         agent_results=agent_results,
+        event_emitter=event_emitter,
     )
+
+
+def _bounded_runtime_error(error: RuntimeError) -> str:
+    detail = str(error).strip()
+    if detail.startswith("WA intake failed with HTTP "):
+        status = detail.removeprefix("WA intake failed with HTTP ")
+        if status.isdigit() and len(status) == 3:
+            return f"WA_INTAKE_HTTP_{status}"
+    if detail == "WA intake is unavailable":
+        return "WA_INTAKE_UNAVAILABLE"
+    if detail == "WA intake returned an invalid acknowledgement":
+        return "WA_INTAKE_ACK_INVALID"
+    return type(error).__name__
 
 
 def _agent_result_complete(value: Mapping[str, Any]) -> bool:

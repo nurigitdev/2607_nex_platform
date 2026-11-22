@@ -11,7 +11,9 @@ from pathlib import Path
 from typing import Any, TextIO
 
 from nex_runtime import (
+    OperationalEventEmitter,
     STOPPED,
+    SqlAlchemyOperationalEventStore,
     SqlAlchemyWorkerHeartbeatStore,
     WorkerHeartbeatEmitter,
     build_engine,
@@ -303,6 +305,10 @@ def build_installed_agent_runtime_process(
                     SqlAlchemyAgentResultRepository(sessions)
                 ),
                 environ=env,
+                event_emitter=OperationalEventEmitter(
+                    service_id=SERVICE_ID,
+                    store=SqlAlchemyOperationalEventStore(sessions),
+                ),
             )
             wc_endpoint = resolve_service_endpoint("nex-wc", environ=env)
             wc_client = HttpWcWorkResultClient(

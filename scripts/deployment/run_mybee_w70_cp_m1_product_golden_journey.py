@@ -1213,6 +1213,15 @@ def _database_projection(
                 ),
                 {"tenant": tenant_id, "interactions": list(interaction_ids)},
             ).one()
+            latest_ae_wa_event = connection.execute(
+                text(
+                    "SELECT event_type, details->>'status', details->>'detail' "
+                    "FROM service_operational_events "
+                    "WHERE service_id='nex-ae-api' "
+                    "AND event_type LIKE 'ae.wa_notification.%' "
+                    "ORDER BY created_at DESC, event_id DESC LIMIT 1"
+                )
+            ).first()
         with engines["nex-wc"].connect() as connection:
             wc_decisions = int(
                 connection.execute(
@@ -1313,6 +1322,7 @@ def _database_projection(
             "wa_job_status_counts": wa_jobs,
             "latest_wa_job": _bounded_wa_diagnostic_row(latest_wa_job),
             "latest_wa_event": _bounded_wa_diagnostic_row(latest_wa_event),
+            "latest_ae_wa_event": _bounded_wa_diagnostic_row(latest_ae_wa_event),
         }
     finally:
         for engine in engines.values():
@@ -1340,6 +1350,8 @@ def _wa_database_progress_summary(database: Mapping[str, Any]) -> str:
             f"jobs={statuses}",
             f"latest_job={_wa_diagnostic_row_summary(database.get('latest_wa_job'))}",
             f"latest_event={_wa_diagnostic_row_summary(database.get('latest_wa_event'))}",
+            "latest_ae_notification="
+            + _wa_diagnostic_row_summary(database.get("latest_ae_wa_event")),
             "assets="
             + str(
                 _bounded_nonnegative_int(

@@ -424,6 +424,11 @@ def test_wa_database_progress_summary_is_bounded_and_reference_only() -> None:
             "wa_job_status_counts": {"FAILED": 2, "SUCCEEDED": 1},
             "latest_wa_job": ["FAILED", 5, "WA_SOURCE_REQUEST_FAILED"],
             "latest_wa_event": ["wa.ingest.failed", "WA_SOURCE_REQUEST_FAILED"],
+            "latest_ae_wa_event": [
+                "ae.wa_notification.retry_pending",
+                "RETRY_PENDING",
+                "WA_INTAKE_HTTP_403",
+            ],
             "wa_work_asset_count": 0,
         }
     )
@@ -431,7 +436,10 @@ def test_wa_database_progress_summary_is_bounded_and_reference_only() -> None:
     assert summary == (
         "jobs=FAILED:2|SUCCEEDED:1,"
         "latest_job=FAILED:5:WA_SOURCE_REQUEST_FAILED,"
-        "latest_event=wa.ingest.failed:WA_SOURCE_REQUEST_FAILED,assets=0"
+        "latest_event=wa.ingest.failed:WA_SOURCE_REQUEST_FAILED,"
+        "latest_ae_notification="
+        "ae.wa_notification.retry_pending:RETRY_PENDING:WA_INTAKE_HTTP_403,"
+        "assets=0"
     )
 
 

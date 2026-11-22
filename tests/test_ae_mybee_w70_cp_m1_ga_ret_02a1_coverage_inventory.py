@@ -25,6 +25,8 @@ ACTIVE_IMPORT_PROMOTIONS = frozenset(
         "services/nex-ae-api/nex_ae_api/product_coordinator_activation.py",
         "services/nex-ae-api/nex_ae_api/product_domain_intent_activators.py",
         "services/nex-ae-api/nex_ae_api/product_planning_proposals.py",
+        "services/nex-ae-api/nex_ae_api/runtime_continuation_sources.py",
+        "services/nex-ae-api/nex_ae_api/work_result_resume.py",
     }
 )
 

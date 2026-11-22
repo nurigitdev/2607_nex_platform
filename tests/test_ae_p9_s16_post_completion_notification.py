@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from urllib.error import HTTPError, URLError
 
+import nex_ae_api.wa_completion_notifications as notifications
 import pytest
 from nex_ae_api.wa_completion_notifications import (
     AeWaPostCompletionNotifier,
@@ -44,6 +45,22 @@ class _ErrorSource:
 
     def get_projection(self, **_kwargs):
         raise WaSourceProjectionError("source.failed", "failed", self.retryable)
+
+
+class _RuntimeErrorClient:
+    def __init__(self, detail: str) -> None:
+        self.detail = detail
+
+    def admit(self, _payload):
+        raise RuntimeError(self.detail)
+
+
+class _EventEmitter:
+    def __init__(self) -> None:
+        self.events: list[dict] = []
+
+    def safe_emit(self, **event):
+        self.events.append(dict(event))
 
 
 def test_agent_notification_waits_for_the_authoritative_completion_barrier() -> None:
@@ -100,6 +117,71 @@ def test_notification_failure_is_retryable_and_source_missing_is_not_ready() -> 
         _Client(), agent_results=_Source(None)
     ).notify_agent_result(tenant_id=TENANT, result_id=RESULT_ID)
     assert missing.status == "NOT_READY"
+
+
+def test_agent_notification_emits_bounded_operational_outcome() -> None:
+    emitter = _EventEmitter()
+    outcome = AeWaPostCompletionNotifier(
+        _Client(fail=True),
+        agent_results=_Source(_aggregate(acknowledged=True)),
+        event_emitter=emitter,
+    ).notify_agent_result(tenant_id=TENANT, result_id=RESULT_ID)
+
+    assert outcome.status == "RETRY_PENDING"
+    assert emitter.events == [
+        {
+            "event_type": "ae.wa_notification.retry_pending",
+            "severity": "WARNING",
+            "message": "AE AgentResult WA notification completed.",
+            "subject_ref": {"type": "ae.agent_result", "id": RESULT_ID},
+            "details": {
+                "tenant_id": TENANT,
+                "status": "RETRY_PENDING",
+                "retryable": True,
+                "detail": "TimeoutError",
+            },
+        }
+    ]
+
+
+def test_agent_notification_emits_accepted_operational_outcome() -> None:
+    emitter = _EventEmitter()
+    outcome = AeWaPostCompletionNotifier(
+        _Client(),
+        agent_results=_Source(_aggregate(acknowledged=True)),
+        event_emitter=emitter,
+    ).notify_agent_result(tenant_id=TENANT, result_id=RESULT_ID)
+
+    assert outcome.status == "ACCEPTED"
+    assert emitter.events[0]["event_type"] == "ae.wa_notification.accepted"
+    assert emitter.events[0]["severity"] == "INFO"
+    assert emitter.events[0]["details"] == {
+        "tenant_id": TENANT,
+        "status": "ACCEPTED",
+        "retryable": False,
+        "detail": None,
+    }
+
+
+@pytest.mark.parametrize(
+    ("detail", "expected"),
+    [
+        ("WA intake failed with HTTP 403", "WA_INTAKE_HTTP_403"),
+        ("WA intake failed with HTTP nope", "RuntimeError"),
+        ("WA intake is unavailable", "WA_INTAKE_UNAVAILABLE"),
+        ("WA intake returned an invalid acknowledgement", "WA_INTAKE_ACK_INVALID"),
+        ("unexpected", "RuntimeError"),
+    ],
+)
+def test_agent_notification_bounds_runtime_transport_errors(detail, expected) -> None:
+    outcome = AeWaPostCompletionNotifier(
+        _RuntimeErrorClient(detail),
+        agent_results=_Source(_aggregate(acknowledged=True)),
+    ).notify_agent_result(tenant_id=TENANT, result_id=RESULT_ID)
+
+    assert outcome == notifications.WaNotificationOutcome(
+        "RETRY_PENDING", True, expected
+    )
 
 
 @pytest.mark.parametrize("retryable", [False, True])
