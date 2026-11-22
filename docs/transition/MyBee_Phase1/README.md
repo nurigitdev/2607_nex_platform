@@ -642,6 +642,14 @@ nine-image release set while keeping every M2 packet explicit.
 `W70 M1 FINAL AS-BUILT FROZEN`; W80 entry is authorized only through
 `W80-CA01` before `S5-01` through `S5-04`.
 
+`W70-M1-PROMOTION-01` promotion policy and acceptance evidence are recorded in
+[`mybee_phase1_w70_m1_promotion_01_branch_to_master_baseline.md`](../../slices/mybee_phase1_w70_m1_promotion_01_branch_to_master_baseline.md).
+The accepted MyBee source branch is a strict descendant of `master`; the
+promotion must use a merge commit, preserve every Slice commit, and produce a
+tree byte-identical to the source tip. Squash and rebase promotion are
+forbidden. After the two-parent merge and remote verification, `master`
+becomes the canonical M1 baseline and the next boundary remains `W80-CA01`.
+
 `CP-M1-E2E-FX-01B.6A.1` implementation evidence is recorded in
 [`mybee_phase1_w70_cp_m1_e2e_fx_01b6a1_refresh_contract_source_resolver.md`](../../slices/mybee_phase1_w70_cp_m1_e2e_fx_01b6a1_refresh_contract_source_resolver.md).
 It closes the canonical protected contract and the mutation-free EOS source
