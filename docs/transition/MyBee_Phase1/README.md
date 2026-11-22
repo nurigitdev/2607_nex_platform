@@ -589,6 +589,27 @@ role, but causality is not yet observable. `.7I` is closed while parent `.7`
 remains blocked on a separate typed Product approval-resume corrective boundary;
 all eight isolated schemas and Compose resources were removed.
 
+The subsequent typed resume, VoucherCandidate validation, Project-scoped
+accounting authorization, SoD, plan materialization, D12, and D04 corrective
+boundaries are recorded in the Slice evidence set from
+[`mybee_phase1_w70_cp_m1_e2e_fx_01b7j_typed_failure_approved_document_reference.md`](../../slices/mybee_phase1_w70_cp_m1_e2e_fx_01b7j_typed_failure_approved_document_reference.md)
+through
+[`mybee_phase1_w70_cp_m1_e2e_fx_01b7p_installed_d04_controlled_skill_initial_diagnostics_contract_alignment.md`](../../slices/mybee_phase1_w70_cp_m1_e2e_fx_01b7p_installed_d04_controlled_skill_initial_diagnostics_contract_alignment.md).
+They preserve generic Product runtime contracts while aligning only the
+source-backed authority, schema, Skill, Tool, and executor mismatches exposed
+by exact-head protected runs.
+
+`CP-M1-E2E-FX-01B.7Q` final closure evidence is recorded in
+[`mybee_phase1_w70_cp_m1_e2e_fx_01b7q_result_finalization_wa_settlement.md`](../../slices/mybee_phase1_w70_cp_m1_e2e_fx_01b7q_result_finalization_wa_settlement.md).
+It restores generic result continuation and IA publication, exposes bounded WA
+notification outcomes, and closes a canonical Traefik route omission that had
+returned HTTP 404 before WA authorization. The exact-head protected journey
+then passed with two non-identical transactions, six approval decisions, two
+immutable Journals, two AgentResults, four successful WA jobs and work assets,
+restart-safe exactly-once evidence, live Qwen3.5-9B generation, actual eight
+PostgreSQL databases, authenticated Playwright, and zero residue. The parent
+`CP-M1-E2E-FX-01B.7` boundary is closed.
+
 `CP-M1-E2E-FX-01B.6A.1` implementation evidence is recorded in
 [`mybee_phase1_w70_cp_m1_e2e_fx_01b6a1_refresh_contract_source_resolver.md`](../../slices/mybee_phase1_w70_cp_m1_e2e_fx_01b6a1_refresh_contract_source_resolver.md).
 It closes the canonical protected contract and the mutation-free EOS source
