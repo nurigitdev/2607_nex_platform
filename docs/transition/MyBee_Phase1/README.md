@@ -30,6 +30,7 @@ MyBee office-work AX Service Phase-1 program.
 23. `NeX_MyBee_CP_M1_E2E_FX_01B_6A_EOS_Allocation_to_PnL_Projection_Activation_Boundary_v1.0.md`
 24. `NeX_MyBee_CP_M1_E2E_FX_01B_6B_Installed_M1_Preparation_and_Deterministic_Plan_Activation_Closure_v1.0.md`
 25. `NeX_MyBee_Post_Wave_UIUX_Compatibility_Performance_Backlog_v1.0.md`
+26. `NeX_MyBee_M1_Final_AsBuilt_Baseline_and_W80_Handoff_v1.0.md`
 
 The Markdown Slice Plan and its Execution Matrix JSON are one planning set.
 The JSON is machine-readable traceability input, not runtime configuration or
@@ -630,6 +631,16 @@ non-root, all 12 background/package checks pass, and the 18-service,
 21-process Compose topology admits the same release digest without rendering
 secrets or database URLs. W70 M1 is closed. The next planned boundary is W80
 entry reconciliation before `S5-01` through `S5-04`.
+
+The final W70 M1 As-Built and W80 handoff is frozen by
+[`NeX_MyBee_M1_Final_AsBuilt_Baseline_and_W80_Handoff_v1.0.md`](NeX_MyBee_M1_Final_AsBuilt_Baseline_and_W80_Handoff_v1.0.md)
+and its machine-readable projection
+[`w70_m1_final_asbuilt_w80_handoff.v1.json`](../../mybee_phase1/closure/w70_m1_final_asbuilt_w80_handoff.v1.json).
+It preserves `M1_CHECKPOINT_ONLY`, all seven accepted M1 checkpoints, 210
+migrations across eight services, the exact-head Full Gate, and the canonical
+nine-image release set while keeping every M2 packet explicit.
+`W70 M1 FINAL AS-BUILT FROZEN`; W80 entry is authorized only through
+`W80-CA01` before `S5-01` through `S5-04`.
 
 `CP-M1-E2E-FX-01B.6A.1` implementation evidence is recorded in
 [`mybee_phase1_w70_cp_m1_e2e_fx_01b6a1_refresh_contract_source_resolver.md`](../../slices/mybee_phase1_w70_cp_m1_e2e_fx_01b6a1_refresh_contract_source_resolver.md).
