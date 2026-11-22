@@ -620,6 +620,17 @@ release obligations for M2. No product runtime source, migration, or provider
 call is added by the closure. The next W70 boundary is `W70-M1-GATE-01`, the
 exact-head Repository Full Gate and release-set reconciliation.
 
+`W70-M1-GATE-01` final evidence is recorded in
+[`mybee_phase1_w70_m1_gate_01_exact_head_full_gate_release_set_reconciliation.md`](../../slices/mybee_phase1_w70_m1_gate_01_exact_head_full_gate_release_set_reconciliation.md).
+The canonical Full Gate passes with `24,031` Python tests, repository
+statement/branch coverage of `96.3353% / 95.3119%`, and product coverage of
+`98.2666% / 96.7614%`. A clean-tree nine-image release set is bound to product
+revision `773769bafa2ac6680d3a775f81902a2e69103909`; all nine images are
+non-root, all 12 background/package checks pass, and the 18-service,
+21-process Compose topology admits the same release digest without rendering
+secrets or database URLs. W70 M1 is closed. The next planned boundary is W80
+entry reconciliation before `S5-01` through `S5-04`.
+
 `CP-M1-E2E-FX-01B.6A.1` implementation evidence is recorded in
 [`mybee_phase1_w70_cp_m1_e2e_fx_01b6a1_refresh_contract_source_resolver.md`](../../slices/mybee_phase1_w70_cp_m1_e2e_fx_01b6a1_refresh_contract_source_resolver.md).
 It closes the canonical protected contract and the mutation-free EOS source
