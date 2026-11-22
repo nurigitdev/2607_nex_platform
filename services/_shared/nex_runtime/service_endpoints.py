@@ -38,7 +38,7 @@ PROVIDER_TIMEOUT_SETTINGS = {
         "NEX_MO_VLLM_TIMEOUT_SECONDS",
         "NEX_MO_GENERATION_MAX_ATTEMPTS",
         "NEX_CX_MO_GENERATION_TIMEOUT_SECONDS",
-        60.0,
+        125.0,
         2,
     ),
 }
@@ -47,7 +47,7 @@ DEFAULT_TIMEOUT_SAFETY_MARGIN_SECONDS = 5.0
 DEFAULT_CX_MO_TIMEOUT_SECONDS = {
     "embedding": 60.0,
     "reranking": 60.0,
-    "generation": 130.0,
+    "generation": 260.0,
 }
 
 

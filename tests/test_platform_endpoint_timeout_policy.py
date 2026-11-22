@@ -17,7 +17,7 @@ def test_summary_and_main(monkeypatch, capsys) -> None:
     passing = smoke.run_platform_endpoint_timeout_policy()
     assert smoke.summary_line(passing) == (
         "platform_endpoint_timeout_policy=pass endpoints=5 "
-        "budgets=60/60/130 aliases=2 next=1317"
+        "budgets=60/60/260 aliases=2 next=1317"
     )
     assert smoke.summary_line({"status": "FAIL", "issues": [1]}) == (
         "platform_endpoint_timeout_policy=fail issues=1"

@@ -16,12 +16,12 @@ def test_repository_cx_mo_provider_path_passes_with_safe_timeout_policy() -> Non
     assert result["findings"]["cx_client_timeout_seconds"] == {
         "embedding": 60.0,
         "reranking": 60.0,
-        "generation": 130.0,
+        "generation": 260.0,
     }
     assert result["findings"]["mo_upstream_timeout_seconds"] == {
         "embedding": 15.0,
         "reranking": 15.0,
-        "generation": 60.0,
+        "generation": 125.0,
     }
     assert result["findings"]["mo_upstream_max_attempts"] == {
         "embedding": 3.0,
@@ -31,7 +31,7 @@ def test_repository_cx_mo_provider_path_passes_with_safe_timeout_policy() -> Non
     assert result["findings"]["minimum_cx_client_timeout_seconds"] == {
         "embedding": 60.0,
         "reranking": 60.0,
-        "generation": 130.0,
+        "generation": 260.0,
     }
     assert result["findings"]["timeout_budget_safe"] is True
     assert result["findings"]["mock_named_live_capability_alias_count"] == 2

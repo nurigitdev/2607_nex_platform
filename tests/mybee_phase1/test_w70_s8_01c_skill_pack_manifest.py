@@ -204,6 +204,7 @@ def test_w70_candidate_packs_preserve_deployed_capabilities_and_limit_nsl_source
     } == {
         "d04_accounting/journal_posting.v1.ns",
         "d04_accounting/journal_posting.v1_0_1.ns",
+        "d04_accounting/journal_posting.v1_0_2.ns",
         "d12_project/work_code_context.v1.ns",
     }
 

@@ -20,7 +20,7 @@ def test_repository_canonical_generation_binding_audit_passes() -> None:
         "runtime_9111_binding": "APPROVED_ENDPOINT_RELOCATION",
     }
     assert audit.summary_line(result) == (
-        "canonical_generation_provider_binding=pass checks=10/10 "
+        "canonical_generation_provider_binding=pass checks=11/11 "
         "model=Qwen3.5-9B port=9111"
     )
 
@@ -77,17 +77,27 @@ def test_audit_rejects_canonical_generation_timeout_budget_drift(
     root = _copy_audit_inputs(tmp_path)
     env_path = root / ".env.example"
     env_path.write_text(
-        env_path.read_text(encoding="utf-8").replace(
+        env_path.read_text(encoding="utf-8")
+        .replace(
             "NEX_MO_VLLM_TIMEOUT_SECONDS=125",
             "NEX_MO_VLLM_TIMEOUT_SECONDS=60",
+        )
+        .replace(
+            "NEX_CX_MO_GENERATION_TIMEOUT_SECONDS=260",
+            "NEX_CX_MO_GENERATION_TIMEOUT_SECONDS=130",
         ),
         encoding="utf-8",
     )
     compose_path = root / "deployment/compose/canonical-platform.override.yaml"
     compose_path.write_text(
-        compose_path.read_text(encoding="utf-8").replace(
+        compose_path.read_text(encoding="utf-8")
+        .replace(
             "${NEX_MO_VLLM_TIMEOUT_SECONDS:-125}",
             "${NEX_MO_VLLM_TIMEOUT_SECONDS:-60}",
+        )
+        .replace(
+            "${NEX_CX_MO_GENERATION_TIMEOUT_SECONDS:-260}",
+            "${NEX_CX_MO_GENERATION_TIMEOUT_SECONDS:-130}",
         ),
         encoding="utf-8",
     )
@@ -97,6 +107,7 @@ def test_audit_rejects_canonical_generation_timeout_budget_drift(
     assert result["status"] == "FAIL"
     assert result["checks"]["environment_defaults_exact"] is False
     assert result["checks"]["compose_generation_defaults_exact"] is False
+    assert result["checks"]["compose_generation_client_budgets_exact"] is False
 
 
 def test_main_writes_report_and_returns_failure(monkeypatch, tmp_path: Path, capsys) -> None:

@@ -172,7 +172,7 @@ def test_generate_candidate_enforces_closed_wire_shape(
     assert headers["X-Request-ID"] == REQUEST_ID
     assert headers["X-Service-ID"] == "nex-ae-api"
     assert TRACE_ID in headers["traceparent"]
-    assert observed["timeout"] == 130.0
+    assert observed["timeout"] == 260.0
     assert result.model_profile == ALIAS
     assert result.model_ref == "Qwen3.5-4B"
     assert result.output_text == '{"intent_label":"ANSWER"}'
@@ -492,26 +492,26 @@ def test_required_mode_readiness_fails_closed(body: object) -> None:
 def test_default_timeout_budget_is_above_mo_retry_budget() -> None:
     budget = resolve_ae_mo_generation_timeout_budget({})
 
-    assert budget.mo_generation_budget_seconds == 125
-    assert budget.minimum_client_timeout_seconds == 130
-    assert budget.client_timeout_seconds == 130
+    assert budget.mo_generation_budget_seconds == 255
+    assert budget.minimum_client_timeout_seconds == 260
+    assert budget.client_timeout_seconds == 260
 
 
 def test_dynamic_default_timeout_grows_with_mo_budget() -> None:
     budget = resolve_ae_mo_generation_timeout_budget(
         {
-            AE_MO_GENERATION_BUDGET_ENV: "218",
+            AE_MO_GENERATION_BUDGET_ENV: "318",
             AE_MO_TIMEOUT_SAFETY_MARGIN_ENV: "7",
         }
     )
 
-    assert budget.minimum_client_timeout_seconds == 225
-    assert budget.client_timeout_seconds == 225
+    assert budget.minimum_client_timeout_seconds == 325
+    assert budget.client_timeout_seconds == 325
 
 
 def test_configured_timeout_below_mo_budget_fails_closed() -> None:
     with pytest.raises(AeMoGenerationConfigurationError) as raised:
-        resolve_ae_mo_generation_timeout_budget({AE_MO_GENERATION_TIMEOUT_ENV: "129"})
+        resolve_ae_mo_generation_timeout_budget({AE_MO_GENERATION_TIMEOUT_ENV: "259"})
 
     assert raised.value.error_code == "AE_MO_GENERATION_TIMEOUT_TOO_SHORT"
 
@@ -540,7 +540,7 @@ def test_default_builder_uses_safe_service_configuration() -> None:
         {
             "NEX_MO_BASE_URL": "https://mo.internal/",
             AE_MO_GENERATION_ALIAS_ENV: "planner-default",
-            AE_MO_GENERATION_TIMEOUT_ENV: "140",
+            AE_MO_GENERATION_TIMEOUT_ENV: "270",
             AE_MO_READINESS_TIMEOUT_ENV: "8",
             "NEX_SERVICE_TOKEN_ROLLOUT_PROFILE": "TEST_MOCK",
         }
@@ -548,7 +548,7 @@ def test_default_builder_uses_safe_service_configuration() -> None:
 
     assert client.base_url == "https://mo.internal"
     assert client.generation_alias == "planner-default"
-    assert client.generation_timeout_seconds == 140
+    assert client.generation_timeout_seconds == 270
     assert client.readiness_timeout_seconds == 8
 
 

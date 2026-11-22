@@ -62,6 +62,9 @@ ENV_EXPECTATIONS = {
     "NEX_MO_VLLM_MODEL_REVISION": EXPECTED_BINDING["model_revision"],
     "NEX_MO_VLLM_DEPLOYMENT_ID": EXPECTED_BINDING["deployment_id"],
     "NEX_MO_VLLM_TIMEOUT_SECONDS": "125",
+    "NEX_CX_MO_GENERATION_TIMEOUT_SECONDS": "260",
+    "NEX_AE_MO_GENERATION_BUDGET_SECONDS": "255",
+    "NEX_AE_MO_GENERATION_TIMEOUT_SECONDS": "260",
     "NEX_MO_GENERATION_MODEL_NAME": EXPECTED_BINDING["model_name"],
     "NEX_MO_GENERATION_MODEL_PRECISION": EXPECTED_BINDING["precision"],
     "NEX_MO_GENERATION_REASONING_MODE": EXPECTED_BINDING["reasoning_mode"],
@@ -102,6 +105,28 @@ COMPOSE_MO_EXPECTATIONS = {
         "${NEX_MO_RUNTIME_GENERATION_PORT:-9111}"
     ),
 }
+COMPOSE_AE_TIMEOUT_EXPECTATIONS = {
+    "NEX_AE_MO_GENERATION_BUDGET_SECONDS": (
+        "${NEX_AE_MO_GENERATION_BUDGET_SECONDS:-255}"
+    ),
+    "NEX_AE_MO_TIMEOUT_SAFETY_MARGIN_SECONDS": (
+        "${NEX_AE_MO_TIMEOUT_SAFETY_MARGIN_SECONDS:-5}"
+    ),
+    "NEX_AE_MO_GENERATION_TIMEOUT_SECONDS": (
+        "${NEX_AE_MO_GENERATION_TIMEOUT_SECONDS:-260}"
+    ),
+}
+COMPOSE_CX_TIMEOUT_EXPECTATIONS = {
+    "NEX_MO_VLLM_TIMEOUT_SECONDS": "${NEX_MO_VLLM_TIMEOUT_SECONDS:-125}",
+    "NEX_MO_GENERATION_MAX_ATTEMPTS": "${NEX_MO_GENERATION_MAX_ATTEMPTS:-2}",
+    "NEX_MO_RETRY_AFTER_MAX_SECONDS": "${NEX_MO_RETRY_AFTER_MAX_SECONDS:-5}",
+    "NEX_CX_MO_TIMEOUT_SAFETY_MARGIN_SECONDS": (
+        "${NEX_CX_MO_TIMEOUT_SAFETY_MARGIN_SECONDS:-5}"
+    ),
+    "NEX_CX_MO_GENERATION_TIMEOUT_SECONDS": (
+        "${NEX_CX_MO_GENERATION_TIMEOUT_SECONDS:-260}"
+    ),
+}
 COMPOSE_RELOCATION_PATH = (
     "/app/services/nex-cx/nex_cx/data/answer_support_provider_relocation.v1.json"
 )
@@ -135,12 +160,21 @@ def audit_canonical_generation_provider_binding(
         issues,
     )
     mo_environment = _service_environment(compose, "nex-mo")
+    ae_environment = _service_environment(compose, "nex-ae-api")
     cx_environment = _service_environment(compose, "nex-cx")
     checks["compose_generation_defaults_exact"] = all(
         mo_environment.get(key) == value
         for key, value in COMPOSE_MO_EXPECTATIONS.items()
     )
     _record(checks, issues, "compose_generation_defaults_exact")
+    checks["compose_generation_client_budgets_exact"] = all(
+        ae_environment.get(key) == value
+        for key, value in COMPOSE_AE_TIMEOUT_EXPECTATIONS.items()
+    ) and all(
+        cx_environment.get(key) == value
+        for key, value in COMPOSE_CX_TIMEOUT_EXPECTATIONS.items()
+    )
+    _record(checks, issues, "compose_generation_client_budgets_exact")
     checks["compose_relocation_admitted"] = (
         cx_environment.get("NEX_CX_ANSWER_SUPPORT_PROVIDER_RELOCATION_PATH")
         == COMPOSE_RELOCATION_PATH
