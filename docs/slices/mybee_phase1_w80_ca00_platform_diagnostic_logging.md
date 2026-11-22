@@ -59,4 +59,51 @@ of that pre-existing source/test ownership scope remains separate from this
 boundary.
 
 The Slice does not require a remote provider and does not claim a new protected
-live journey. The next product boundary remains `W80-CA01`.
+live journey for source admission. A post-implementation protected journey was
+executed separately as recorded below. The next product boundary remains
+`W80-CA01`.
+
+## Protected Live Evidence
+
+An exact-head installed journey was executed on 2026-11-22 from commit
+`95fd485717ed673e7b574a7da7b184c5dc90c7fa`. The canonical nine-image set and
+the AE product runtime image were rebuilt from that revision before execution.
+The journey used the actual eight development PostgreSQL databases, OpenBao,
+RustFS, Playwright, and the canonical Qwen3.5-9B generation provider revision
+`hf:c202236235762e1c871ad0ccb60c8ee5ba337b9a`.
+
+```text
+protected installed journey     = PASS
+actual PostgreSQL               = PASS
+actual remote generation        = PASS
+authenticated Playwright        = PASS
+post-restart recovery           = PASS
+isolated DB cleanup             = PASS (8/8, zero residue)
+diagnostic session              = mybee-w70-m1-20261122T072820Z-79496748
+manifest files                  = 25
+manifest SHA-256                = 7f5012c04ea6608dc02e50f2681f3644
+                                  231340a815881a1bbf8851803bd8949b
+diagnostic events               = 5,878
+HTTP exchanges                  = 5,836
+semantic candidates             = 12
+compiled executable plans       = 2
+runtime step start/completion   = 10 / 10
+raw prompt present              = PASS
+AgentPlan present               = PASS
+ExecutablePlan present          = PASS
+secret redaction paths          = 10,166 across 4,718 events
+known API key/password exposure = 0
+Bearer/Authorization exposure   = 0
+container residue               = 0
+```
+
+The first operator attempt used a plain `postgresql://` SQLAlchemy URL and was
+rejected before Compose/provider execution because the environment does not
+install `psycopg2`. Its eight isolated schemas were removed with zero residue.
+The admitted retry used the canonical `postgresql+psycopg://` driver form and
+passed. This was an execution-configuration correction, not a product-code
+change.
+
+The raw evidence set remains under the ignored `reports/` boundary with mode
+`0700` on the session directory and `0600` on evidence files. Raw prompt, plan,
+and API content must not be committed to Git.

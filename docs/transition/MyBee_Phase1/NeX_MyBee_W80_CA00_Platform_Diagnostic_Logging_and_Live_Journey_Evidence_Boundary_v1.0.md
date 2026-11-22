@@ -124,8 +124,21 @@ W80-CA00 requires focused proof of:
 9. manifest, file-mode, Compose logging, and pre-teardown collection behavior;
 10. no migration, public API, or business-authority change.
 
-No remote provider is required for this boundary. A later protected journey
-must run with LIVE evidence enabled when W80 functionality reaches live E2E.
+No remote provider is required for source admission of this boundary. The
+post-implementation protected journey was run with LIVE evidence enabled from
+exact commit `95fd485717ed673e7b574a7da7b184c5dc90c7fa`. Actual PostgreSQL,
+OpenBao, RustFS, Qwen3.5-9B generation, authenticated Playwright, restart
+recovery, and zero-residue cleanup all passed.
+
+The protected session produced 25 manifest files and 5,878 diagnostic events,
+including 5,836 HTTP exchanges, 12 admitted semantic candidates, two compiled
+ExecutablePlans, and ten completed runtime steps. Presence checks passed for
+raw prompt, AgentPlan, and ExecutablePlan. Recursive redaction recorded 10,166
+secret paths across 4,718 events; direct scans found no admitted API key,
+database password, Bearer token, or Authorization value. The protected
+manifest digest is
+`7f5012c04ea6608dc02e50f2681f3644231340a815881a1bbf8851803bd8949b`.
+Raw evidence remains ignored under `reports/` and is not part of this baseline.
 
 The authoritative AE Slice Gate completed `6,917` tests with `53` protected
 smokes skipped and retained statement/branch coverage at `96.45%`/`94.67%`.
