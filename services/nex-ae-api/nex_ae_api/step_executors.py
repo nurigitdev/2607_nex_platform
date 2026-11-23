@@ -784,41 +784,32 @@ def _delegated_result_outcome(
             result_payload["business_summary"] = summary
             if summary["result_type"] == VOUCHER_DRAFT_RESULT_TYPE:
                 business_operation_id = summary["summary"]["business_operation_id"]
-        operation_refs = {
+        business_object_refs = {
             str(item["entity_id"])
             for item in business_result["business_object_refs"]
             if item.get("entity_type") == "BUSINESS_OBJECT"
-            and str(item.get("entity_id") or "").startswith(
-                "EOS:BUSINESS_OPERATION:"
-            )
         }
-        if len(operation_refs) > 1:
-            raise _invalid(
-                "Delegated WorkResult contains conflicting business operations."
-            )
-        if operation_refs:
-            projected_operation_id = next(iter(operation_refs)).removeprefix(
-                "EOS:BUSINESS_OPERATION:"
-            )
-            if not projected_operation_id:
+        external_refs.update(business_object_refs)
+        operation_refs = {
+            item
+            for item in business_object_refs
+            if item.startswith("EOS:BUSINESS_OPERATION:")
+        }
+        if business_operation_id is not None:
+            if not operation_refs:
                 raise _invalid(
-                    "Delegated WorkResult business operation reference is invalid."
+                    "Delegated WorkResult voucher summary lacks business operation lineage."
                 )
-            if (
-                business_operation_id is not None
-                and projected_operation_id != business_operation_id
-            ):
+            primary_operation_ref = (
+                f"EOS:BUSINESS_OPERATION:{business_operation_id}"
+            )
+            if primary_operation_ref not in operation_refs:
                 raise _invalid(
                     "Delegated WorkResult business operation lineage is inconsistent."
                 )
-            business_operation_id = projected_operation_id
-        if (
-            summary is not None
-            and summary["result_type"] == VOUCHER_DRAFT_RESULT_TYPE
-            and not operation_refs
-        ):
-            raise _invalid(
-                "Delegated WorkResult voucher summary lacks business operation lineage."
+        elif summary is None and len(operation_refs) == 1:
+            business_operation_id = next(iter(operation_refs)).removeprefix(
+                "EOS:BUSINESS_OPERATION:"
             )
     return P5ExecutorOutcome(
         state=status,

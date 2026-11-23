@@ -179,9 +179,16 @@ def build_plan_agent_result(
     external_refs = _union_result_refs(results.values(), "external_refs")
     business_refs = sorted(
         {
-            f"EOS:BUSINESS_OPERATION:{item['business_operation_id']}"
-            for item in results.values()
-            if item.get("business_operation_id") is not None
+            *(
+                item
+                for item in external_refs
+                if item.startswith("EOS:BUSINESS_OPERATION:")
+            ),
+            *(
+                f"EOS:BUSINESS_OPERATION:{item['business_operation_id']}"
+                for item in results.values()
+                if item.get("business_operation_id") is not None
+            ),
         }
     )
     evidence_refs = sorted(

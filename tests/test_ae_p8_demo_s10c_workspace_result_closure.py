@@ -310,6 +310,43 @@ def test_plan_result_exposes_business_operation_as_reference() -> None:
     ]
 
 
+def test_plan_result_promotes_multiple_external_business_operation_refs() -> None:
+    plan = _compiled()
+    results = _step_results(plan=plan)
+    terminal = plan["steps"][1]
+    refs = (
+        "EOS:BUSINESS_OPERATION:aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+        "EOS:BUSINESS_OPERATION:ffffffff-eeee-4ddd-8ccc-bbbbbbbbbbbb",
+    )
+    results[1] = build_step_result(
+        step_result_id=results[1]["step_result_id"],
+        execution_id=EXECUTION_ID,
+        executable_plan_id=plan["executable_plan_id"],
+        executable_step_id=terminal["executable_step_id"],
+        compiled_step_key=terminal["compiled_step_key"],
+        logical_step_ref=terminal["logical_step_ref"],
+        attempt_no=1,
+        status="SUCCEEDED",
+        result_contract_ref=terminal["output_contract_ref"],
+        result_payload={"outcome": "ALLOCATED_AND_VERIFIED"},
+        external_refs=refs,
+        started_at=NOW,
+        completed_at=NOW,
+    )
+    verification = verify_plan_completion(executable_plan=plan, step_results=results)
+
+    result = build_plan_agent_result(
+        execution=_execution(),
+        executable_plan=plan,
+        step_results=results,
+        verification=verification,
+        result_id="ffffffff-ffff-4fff-8fff-ffffffffffff",
+        created_at=NOW,
+    )
+
+    assert result["business_refs"] == sorted(refs)
+
+
 def test_interaction_result_route_is_browser_owner_scoped(monkeypatch, store) -> None:
     SqlAlchemyInstalledIaResultCloser(store).close_ready(now="2026-10-26T09:30:00Z")
     projection = SqlAlchemyInteractionAgentResultSource(store).get_owner_result(

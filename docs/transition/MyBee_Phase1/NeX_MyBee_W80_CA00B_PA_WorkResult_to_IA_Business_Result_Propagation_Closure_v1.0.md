@@ -33,9 +33,14 @@ new table, or alternate result pipeline.
 5. Raw prompt, plan, arbitrary structured result, attachment content, and
    private evidence are forbidden from the projection.
 6. AE validates projection integrity and the existing business-summary domain
-   contract before creating the delegated StepResult.
+   contract before creating the delegated StepResult. A voucher summary keeps
+   its explicit primary operation identity, while a generic product result may
+   carry multiple authoritative business-operation lineage references.
 7. Existing IA plan finalization remains the only AgentResult assembly path.
-8. Legacy WorkResult events without the projection remain processable.
+8. IA finalization promotes every admitted EOS business-operation lineage
+   reference into `business_refs`; it does not invent a primary operation for a
+   multi-operation result.
+9. Legacy WorkResult events without the projection remain processable.
 
 ## 3. Runtime Flow
 
@@ -56,8 +61,9 @@ PA AgentResult
 - WC constructs the projection only from an accepted `AGENT_RESULT` WorkResult.
 - `source_agent_result_hash` binds the projection to PA result authority.
 - `projection_hash` detects outbox, transport, and inbox payload drift.
-- AE revalidates the business summary and rejects conflicting business
-  operation references.
+- AE revalidates the business summary, requires the primary voucher operation
+  to be present when a voucher summary declares one, and preserves additional
+  product lineage without collapsing it to a single operation.
 - Existing service-token, tenant, WorkItem, Claim, Assignment, wait, event, and
   replay checks remain unchanged.
 
@@ -74,7 +80,8 @@ StepResult, AgentResult, and ResultDelivery stores are reused.
 1. canonical projection build/validation and tamper rejection;
 2. WC event projection with no arbitrary PA structured-result leakage;
 3. AE event admission, replay compatibility, and lineage mismatch rejection;
-4. delegated StepResult restoration of summary and business operation identity;
+4. delegated StepResult restoration of summary, optional primary operation,
+   and complete multi-operation product lineage;
 5. existing IA plan finalization producing the owner-safe summary;
 6. focused AE/WC regression and coverage gates;
 7. actual PostgreSQL protected smoke;
@@ -96,12 +103,15 @@ PUBLIC BUSINESS API CHANGE       = NONE
 
 ## 8. Implementation Evidence
 
-- focused regression: `112 passed`, with only the separately executed protected
-  PostgreSQL case skipped;
+- focused regression before the exact-head replay: `112 passed`, with only the
+  separately executed protected PostgreSQL case skipped;
+- exact failing-shape regression after the first live replay: `41 passed`,
+  covering a `FINANCE.PROJECT_ALLOCATION` summary with two EOS business
+  operations and final AgentResult promotion of both references;
 - actual `nex_ae_test` and `nex_wc_test` PostgreSQL smoke: `28/28` checks,
   one accepted WorkResult, and one durable resume RuntimeJob;
-- AE Slice Gate: `6,923 passed`, `53` explicit protected skips, statement
-  `96.44%`, branch `94.66%`;
+- AE Slice Gate after the multi-operation correction: `6,925 passed`, `53`
+  explicit protected skips, statement `96.45%`, branch `94.68%`;
 - WC Slice Gate: `748 passed`, `27` explicit protected skips, statement
   `97.48%`, branch `94.81%`;
 - shared-runtime contract tests: `15 passed`, new projection module statement
@@ -111,5 +121,13 @@ PUBLIC BUSINESS API CHANGE       = NONE
 - schema, example, negative-example, OpenAPI, transition, and product-dependency
   audits passed in all applicable gates.
 
-The remaining acceptance item is an exact-head installed M1 live journey with
-the canonical OCI release set and retained Playwright screen evidence.
+The first exact-head installed replay proved PA finalization, WC projection,
+durable AE inbox admission, and resume-job creation, then failed closed at IA
+resume because the consumer incorrectly treated two valid EOS operation
+lineages as conflicting. It completed zero-residue cleanup. The implementation
+now preserves multi-operation lineage and retains a primary operation only when
+the typed summary identifies one.
+
+The remaining acceptance item is the corrected exact-head installed M1 live
+journey with the canonical OCI release set and retained Playwright screen
+evidence.

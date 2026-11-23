@@ -10,14 +10,19 @@
 
 ## Verification
 
-- focused regression: `112 passed`;
+- focused regression: initial `112 passed`; exact failing-shape correction
+  `41 passed`;
 - actual AE/WC PostgreSQL smoke: `28/28` checks, one WorkResult and one resume
   RuntimeJob;
-- AE Slice Gate: `6,923 passed`, statement `96.44%`, branch `94.66%`;
+- AE Slice Gate after the exact-head correction: `6,925 passed`, statement
+  `96.45%`, branch `94.68%`;
 - WC Slice Gate: `748 passed`, statement `97.48%`, branch `94.81%`;
 - shared-runtime projection tests: `15 passed`, module coverage `100%/100%`;
 - shared-runtime Slice Gate: `2,166 passed`, statement `87.12%`, branch
   `84.24%`.
 
-Exact-head installed live journey replay remains pending after the implementation
-commit and OCI rebuild.
+The first exact-head replay proved the PA -> WC -> AE projection transport and
+failed closed when IA resume incorrectly required a single EOS operation from a
+valid multi-operation allocation result. The corrected contract preserves all
+operation lineage and leaves primary identity unset unless a typed summary
+declares it. Corrected exact-head OCI/live replay remains pending.
