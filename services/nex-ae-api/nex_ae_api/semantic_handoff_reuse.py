@@ -77,6 +77,14 @@ class SemanticContextSource(Protocol):
         self, *, tenant_id: str, execution_id: str
     ) -> dict[str, Any] | None: ...
 
+    def get_latest_for_execution_at_or_before(
+        self,
+        *,
+        tenant_id: str,
+        execution_id: str,
+        built_at: str,
+    ) -> dict[str, Any] | None: ...
+
 
 class SemanticStageEvidenceSource(SemanticEvidenceSource, Protocol):
     def get_for_stage(
@@ -229,6 +237,7 @@ class ResolvedSemanticHandoff:
     context_evidence: Mapping[str, Any] | None
     intent_candidate: Mapping[str, Any] | None
     context_candidate: Mapping[str, Any] | None
+    parent_context: Mapping[str, Any] | None = None
 
 
 class SemanticHandoffAuthoritySource:
@@ -238,10 +247,12 @@ class SemanticHandoffAuthoritySource:
         work_intents: WorkIntentSource,
         evidence: SemanticEvidenceSource,
         candidate_storage: SemanticCandidateStorage,
+        contexts: SemanticContextSource | None = None,
     ) -> None:
         self._work_intents = work_intents
         self._evidence = evidence
         self._candidate_storage = candidate_storage
+        self._contexts = contexts
 
     @classmethod
     def from_sqlalchemy(
@@ -250,11 +261,13 @@ class SemanticHandoffAuthoritySource:
         work_intents: SqlAlchemyWorkIntentRepository,
         evidence: SqlAlchemySemanticCandidateEvidenceRepository,
         candidate_storage: SemanticCandidateStorage,
+        contexts: SqlAlchemyAgentContextRepository | None = None,
     ) -> SemanticHandoffAuthoritySource:
         return cls(
             work_intents=work_intents,
             evidence=evidence,
             candidate_storage=candidate_storage,
+            contexts=contexts,
         )
 
     def resolve(self, handoff: Mapping[str, Any]) -> ResolvedSemanticHandoff:
@@ -277,6 +290,15 @@ class SemanticHandoffAuthoritySource:
             tenant_id=tenant_id,
             candidate_id=projection["context_candidate_id"],
         )
+        parent_context = (
+            None
+            if self._contexts is None
+            else self._contexts.get_latest_for_execution_at_or_before(
+                tenant_id=tenant_id,
+                execution_id=projection["parent_execution_id"],
+                built_at=projection["created_at"],
+            )
+        )
         return ResolvedSemanticHandoff(
             work_intent=work_intent,
             latest_work_intent=latest,
@@ -292,6 +314,7 @@ class SemanticHandoffAuthoritySource:
                 tenant_id=tenant_id,
                 owner_subject_id=owner_subject_id,
             ),
+            parent_context=parent_context,
         )
 
     def _load_candidate(
@@ -554,7 +577,15 @@ def _security_reasons(
         ):
             reasons.add("CAPABILITY_MISMATCH")
         intent_project = work_intent.get("project_ref")
-        if (
+        if intent_project is None:
+            reasons.update(
+                _late_bound_project_scope_reasons(
+                    projection,
+                    project_scope=project_scope,
+                    parent_context=resolved.parent_context,
+                )
+            )
+        elif (
             not isinstance(intent_project, Mapping)
             or intent_project.get("resource_id") != project_scope
         ):
@@ -588,6 +619,60 @@ def _security_reasons(
         ):
             reasons.add("HASH_MISMATCH")
     return tuple(sorted(reasons))
+
+
+def _late_bound_project_scope_reasons(
+    projection: Mapping[str, Any],
+    *,
+    project_scope: object,
+    parent_context: Mapping[str, Any] | None,
+) -> tuple[str, ...]:
+    if not isinstance(parent_context, Mapping):
+        return ("SCOPE_MISMATCH",)
+    expected_hash = semantic_sha256_hash_ref(
+        {key: value for key, value in parent_context.items() if key != "context_hash"}
+    )
+    if parent_context.get("context_hash") != expected_hash:
+        return ("HASH_MISMATCH",)
+    identity = parent_context.get("identity")
+    work_intent_ref = parent_context.get("work_intent_ref")
+    interaction = parent_context.get("interaction")
+    if (
+        parent_context.get("execution_id") != projection["parent_execution_id"]
+        or not isinstance(identity, Mapping)
+        or identity.get("tenant_id") != projection["tenant_id"]
+        or identity.get("principal_id") != projection["owner_subject_id"]
+        or identity.get("agent_type") != projection["parent_agent_type"]
+        or not isinstance(work_intent_ref, Mapping)
+        or work_intent_ref.get("id") != projection["parent_work_intent_id"]
+        or work_intent_ref.get("version") != projection["parent_intent_revision"]
+        or work_intent_ref.get("hash") != projection["parent_work_intent_hash"]
+    ):
+        return ("HASH_MISMATCH",)
+    if (
+        projection.get("source_interaction_id") is not None
+        and (
+            not isinstance(interaction, Mapping)
+            or interaction.get("interaction_id")
+            != projection["source_interaction_id"]
+        )
+    ):
+        return ("SCOPE_MISMATCH",)
+    if parent_context.get("conflicts"):
+        return ("SCOPE_MISMATCH",)
+    resolved_entities = parent_context.get("resolved_entities")
+    if not isinstance(resolved_entities, list):
+        return ("SCOPE_MISMATCH",)
+    matching_projects = [
+        item
+        for item in resolved_entities
+        if isinstance(item, Mapping)
+        and isinstance(item.get("resource_ref"), Mapping)
+        and item["resource_ref"].get("system") == "nex-eos"
+        and item["resource_ref"].get("resource_type") == "PROJECT"
+        and item["resource_ref"].get("resource_id") == project_scope
+    ]
+    return () if matching_projects else ("SCOPE_MISMATCH",)
 
 
 def _decision(

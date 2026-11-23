@@ -9,7 +9,10 @@ from uuid import NAMESPACE_URL, uuid5
 
 from nex_runtime.semantic_hashes import canonical_json, semantic_sha256_hash_ref
 
-from nex_ae_api.agent_context import TrustedContextResolution
+from nex_ae_api.agent_context import (
+    SqlAlchemyAgentContextRepository,
+    TrustedContextResolution,
+)
 from nex_ae_api.agent_execution import (
     AgentExecutionAdmissionService,
     AgentExecutionError,
@@ -374,6 +377,7 @@ def build_installed_claim_handoff_admission(
                 work_intents=semantic_service.work_intents,
                 evidence=semantic_service.evidence,
                 candidate_storage=semantic_service.candidate_storage,
+                contexts=SqlAlchemyAgentContextRepository(session_factory),
             ),
             reuse_evaluator=SemanticHandoffReuseEvaluator(
                 build_default_semantic_reuse_policy_registry()

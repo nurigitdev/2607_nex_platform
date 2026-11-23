@@ -425,6 +425,44 @@ class SqlAlchemyAgentContextRepository:
                 True,
             ) from exc
 
+    def get_latest_for_execution_at_or_before(
+        self,
+        *,
+        tenant_id: str,
+        execution_id: str,
+        built_at: str,
+    ) -> dict[str, Any] | None:
+        tenant_id = _required_text("tenant_id", tenant_id, maximum=128)
+        execution_id = _required_uuid("execution_id", execution_id)
+        built_at = _required_datetime("built_at", built_at)
+        try:
+            with self._session_factory() as session:
+                row = session.execute(
+                    text(
+                        "SELECT context_json FROM ae_agent_context "
+                        "WHERE tenant_id = :tenant_id "
+                        "AND agent_execution_id = :execution_id "
+                        "AND built_at <= :built_at "
+                        "ORDER BY context_generation DESC LIMIT 1"
+                    ),
+                    {
+                        "tenant_id": tenant_id,
+                        "execution_id": execution_id,
+                        "built_at": built_at,
+                    },
+                ).mappings().first()
+                return (
+                    None
+                    if row is None
+                    else _validate_agent_context(_json_value(row["context_json"]))
+                )
+        except SQLAlchemyError as exc:
+            raise AgentContextError(
+                "ae.agent_context_store_unavailable",
+                "AE AgentContext store is unavailable.",
+                True,
+            ) from exc
+
 
 def _validate_agent_context(value: Mapping[str, Any]) -> dict[str, Any]:
     try:
