@@ -44,14 +44,48 @@ export async function evaluateUxAcceptanceV2Page(
       for (let left = 0; left < elements.length; left += 1) {
         for (let right = left + 1; right < elements.length; right += 1) {
           if (elements[left].contains(elements[right]) || elements[right].contains(elements[left])) continue;
-          const a = elements[left].getBoundingClientRect();
-          const b = elements[right].getBoundingClientRect();
+          const a = visibleRectangle(elements[left]);
+          const b = visibleRectangle(elements[right]);
           const overlapWidth = Math.min(a.right, b.right) - Math.max(a.left, b.left);
           const overlapHeight = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top);
           if (overlapWidth > 1 && overlapHeight > 1) count += 1;
         }
       }
       return count;
+    }
+
+    function visibleRectangle(element) {
+      const rectangle = mutableRectangle(element.getBoundingClientRect());
+      for (let ancestor = element.parentElement; ancestor; ancestor = ancestor.parentElement) {
+        const style = getComputedStyle(ancestor);
+        const ancestorRectangle = ancestor.getBoundingClientRect();
+        if (clipsAxis(style.overflowX)) {
+          rectangle.left = Math.max(rectangle.left, ancestorRectangle.left);
+          rectangle.right = Math.min(rectangle.right, ancestorRectangle.right);
+        }
+        if (clipsAxis(style.overflowY)) {
+          rectangle.top = Math.max(rectangle.top, ancestorRectangle.top);
+          rectangle.bottom = Math.min(rectangle.bottom, ancestorRectangle.bottom);
+        }
+      }
+      rectangle.left = Math.max(rectangle.left, 0);
+      rectangle.top = Math.max(rectangle.top, 0);
+      rectangle.right = Math.min(rectangle.right, innerWidth);
+      rectangle.bottom = Math.min(rectangle.bottom, innerHeight);
+      return rectangle;
+    }
+
+    function mutableRectangle(rectangle) {
+      return {
+        left: rectangle.left,
+        right: rectangle.right,
+        top: rectangle.top,
+        bottom: rectangle.bottom,
+      };
+    }
+
+    function clipsAxis(overflow) {
+      return ["auto", "clip", "hidden", "scroll"].includes(overflow);
     }
   }, { profile, viewport, requestUrls });
 }

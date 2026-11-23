@@ -41,7 +41,26 @@ OA_TENANT_MEMBERSHIP_SNAPSHOT_SCHEMA_VERSION = "oa_tenant_membership_snapshot.v1
 OA_MEMBERSHIP_AUTHORITY_WRITE_SCOPE = "identity:lifecycle:write"
 OA_MEMBERSHIP_STATUSES = ("ACTIVE", "DISABLED")
 DEFAULT_MEMBERSHIP_ROLES = ("employee",)
-DEFAULT_MEMBERSHIP_SCOPES = (DEFAULT_USER_SCOPE,)
+DEFAULT_EMPLOYEE_PRODUCT_SCOPES = (
+    "finance:document:read",
+    "finance:journal:request-approval",
+    "finance:report:read",
+    "finance:voucher-candidate:create",
+    "finance:voucher-draft:create",
+    "finance:voucher-draft:read",
+    "project:application:create",
+    "project:application:read",
+    "project:application:submit",
+    "project:pnl:read",
+    "project:project:read",
+    "project:work-assignment:perform",
+    "project:work-assignment:read",
+    "project:work-code:read",
+)
+DEFAULT_MEMBERSHIP_SCOPES = (
+    DEFAULT_USER_SCOPE,
+    *DEFAULT_EMPLOYEE_PRODUCT_SCOPES,
+)
 OA_MEMBERSHIP_CAPABILITIES = {
     "stable_tenant_membership": True,
     "oa_session_issuance": True,
@@ -152,11 +171,6 @@ class InMemoryOaTenantMembershipRegistry:
         if record is None:
             raise _membership_not_found(tenant, subject)
         _require_authority_revision(record, expected_revision=expected_revision)
-        if record["roles"] != roles or record["scopes"] != scopes:
-            record["roles"] = roles
-            record["scopes"] = scopes
-            record["revision"] = int(record["revision"]) + 1
-            record["updated_at"] = _utc_now()
         subject_snapshot = _get_subject_snapshot(
             self.subject_registry,
             tenant_id=tenant,
@@ -164,6 +178,11 @@ class InMemoryOaTenantMembershipRegistry:
         )
         if subject_snapshot is None:
             raise _membership_unavailable()
+        if record["roles"] != roles or record["scopes"] != scopes:
+            record["roles"] = roles
+            record["scopes"] = scopes
+            record["revision"] = int(record["revision"]) + 1
+            record["updated_at"] = _utc_now()
         return build_membership_snapshot(
             membership=record,
             subject_snapshot=subject_snapshot,

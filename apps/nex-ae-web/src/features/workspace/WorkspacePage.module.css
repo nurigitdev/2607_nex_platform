@@ -32,20 +32,23 @@
   border-radius: var(--nex-radius-md);
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(280px, var(--nex-context-panel-width));
-  min-height: min(720px, calc(100vh - 180px));
+  height: clamp(560px, calc(100dvh - 180px), 760px);
+  min-height: 0;
   overflow: hidden;
 }
 
 .mainColumn {
   display: grid;
   grid-template-rows: minmax(0, 1fr) auto;
+  min-height: 0;
   min-width: 0;
 }
 
 .conversation {
-  min-height: 360px;
+  min-height: 0;
   overflow-y: auto;
   padding: var(--nex-space-8);
+  scrollbar-gutter: stable;
 }
 
 .emptyWorkspace {
@@ -146,6 +149,7 @@
 .contextPanel {
   border-left: 1px solid var(--nex-border-default);
   min-width: 0;
+  overflow-y: auto;
   padding: var(--nex-space-4);
 }
 
@@ -166,7 +170,7 @@
 
 @media (max-width: 560px) {
   .pageHeader { align-items: start; gap: var(--nex-space-3); }
-  .layout { min-height: 0; }
+  .layout { height: auto; min-height: 0; }
   .conversation { min-height: 300px; padding: var(--nex-space-4); }
   .emptyWorkspace { margin-top: var(--nex-space-6); }
   .composerToolbar { align-items: stretch; flex-direction: column; }

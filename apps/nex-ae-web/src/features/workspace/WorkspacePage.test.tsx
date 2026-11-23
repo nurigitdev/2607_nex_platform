@@ -130,6 +130,7 @@ describe("WorkspacePage", () => {
     );
 
     expect(screen.getByRole("heading", { name: "전표 등록 결과" })).toBeInTheDocument();
+    expect(screen.getByText("전표 등록과 검증이 완료되었습니다.")).toBeInTheDocument();
     expect(screen.getByText("V-2026-001")).toBeInTheDocument();
     expect(screen.getByText("12,500 KRW")).toBeInTheDocument();
     expect(screen.getByText("TRAVEL / CASH")).toBeInTheDocument();
@@ -191,14 +192,16 @@ describe("WorkspacePage", () => {
   it("uses a generic safe card when no typed business projection is admitted", () => {
     render(
       <WorkspacePage
-        result={{ status: "PARTIAL", artifactCount: 1, warnings: ["일부 결과를 확인해 주세요."] }}
+        result={{ status: "PARTIAL", artifactCount: 1, warnings: ["INTERNAL_PARTIAL_REPLAY_ID=private"] }}
       />,
     );
 
     expect(screen.getByRole("heading", { name: "요청 처리 결과" })).toBeInTheDocument();
-    expect(screen.getByText("안전하게 공개할 수 있는 결과 요약만 표시합니다.")).toBeInTheDocument();
+    expect(screen.getByText("요청 처리가 끝났습니다. 표시 가능한 업무 요약을 확인해 주세요.")).toBeInTheDocument();
+    expect(screen.getByText("업무 결과 요약이 준비되지 않았습니다.")).toBeInTheDocument();
     expect(screen.getByText("생성된 결과물 1건")).toBeInTheDocument();
-    expect(screen.getByText("일부 결과를 확인해 주세요.")).toBeInTheDocument();
+    expect(screen.getByText("일부 처리 결과를 추가로 확인해 주세요.")).toBeInTheDocument();
+    expect(document.body.textContent).not.toContain("INTERNAL_PARTIAL_REPLAY_ID");
   });
 
   it("shows only observed progress steps and secondary technical failure detail", () => {
@@ -234,5 +237,7 @@ describe("WorkspacePage", () => {
     expect(css).toContain("grid-template-columns: minmax(0, 1fr)");
     expect(css).toContain("@media (max-width: 560px)");
     expect(css).toContain("flex-direction: column");
+    expect(css).toContain("height: clamp(560px, calc(100dvh - 180px), 760px)");
+    expect(css).toContain("scrollbar-gutter: stable");
   });
 });

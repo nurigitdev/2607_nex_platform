@@ -27,6 +27,7 @@
 .eyebrow { color: var(--nex-text-secondary); font: var(--nex-text-caption); margin: 0; }
 
 .summary { display: grid; gap: var(--nex-space-4); }
+.description { color: var(--nex-text-secondary); margin: 0; }
 .voucherIdentity {
   background: var(--nex-bg-subtle);
   border-left: 3px solid var(--nex-accent);

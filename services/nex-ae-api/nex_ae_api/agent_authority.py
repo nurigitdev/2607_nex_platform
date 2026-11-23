@@ -16,14 +16,29 @@ AGENT_AUTHORITY_SYNC_MODE_ENV = "NEX_AE_AGENT_AUTHORITY_SYNC_MODE"
 AGENT_AUTHORITY_SYNC_MODES = frozenset({"disabled", "required"})
 DEFAULT_AGENT_AUTHORITY_TIMEOUT_SECONDS = 10.0
 
-_AGENT_AUTHORITY_SCOPES = {
-    "IA": ("work:claim", "work:delegate"),
-    "CA": ("work:claim", "work:delegate", "work:result:submit"),
-    "PA": ("work:claim", "work:delegate", "work:result:submit"),
-    "EA": ("work:claim", "work:delegate", "work:result:submit"),
-}
-
 HttpRequester = Callable[..., httpx.Response]
+
+
+@dataclass(frozen=True)
+class AgentAuthorityProfile:
+    agent_type: str
+    roles: tuple[str, ...]
+    scopes: tuple[str, ...]
+
+
+AGENT_AUTHORITY_PROFILES = {
+    agent_type: AgentAuthorityProfile(
+        agent_type=agent_type,
+        roles=("nex-agent", f"nex-agent-{agent_type.lower()}"),
+        scopes=scopes,
+    )
+    for agent_type, scopes in {
+        "IA": ("work:claim", "work:delegate"),
+        "CA": ("work:claim", "work:delegate", "work:result:submit"),
+        "PA": ("work:claim", "work:delegate", "work:result:submit"),
+        "EA": ("work:claim", "work:delegate", "work:result:submit"),
+    }.items()
+}
 
 
 @dataclass(frozen=True)
@@ -145,7 +160,7 @@ class HttpOaAgentAuthoritySynchronizer:
                 "tenant_display_name": tenant_id,
                 "subject_display_name": f"NeX {agent_type} Agent",
                 "roles": _authority_roles(agent_type),
-                "scopes": list(_AGENT_AUTHORITY_SCOPES[agent_type]),
+                "scopes": list(_authority_profile(agent_type).scopes),
                 "membership_metadata": {
                     "source": "nex-ae-agent-identity",
                     "agent_type": agent_type,
@@ -192,7 +207,7 @@ class HttpOaAgentAuthoritySynchronizer:
             json={
                 "expected_revision": expected_revision,
                 "roles": _authority_roles(agent_type),
-                "scopes": list(_AGENT_AUTHORITY_SCOPES[agent_type]),
+                "scopes": list(_authority_profile(agent_type).scopes),
             },
         )
         return _response_object(response, operation="authority")
@@ -314,7 +329,11 @@ def _membership_record(
 
 
 def _authority_roles(agent_type: str) -> list[str]:
-    return ["nex-agent", f"nex-agent-{agent_type.lower()}"]
+    return list(_authority_profile(agent_type).roles)
+
+
+def _authority_profile(agent_type: str) -> AgentAuthorityProfile:
+    return AGENT_AUTHORITY_PROFILES[agent_type]
 
 
 def _authority_profile_matches(record: Mapping[str, Any], *, agent_type: str) -> bool:
@@ -326,7 +345,7 @@ def _authority_profile_matches(record: Mapping[str, Any], *, agent_type: str) ->
         and set(roles) == set(_authority_roles(agent_type))
         and isinstance(scopes, list)
         and all(isinstance(item, str) for item in scopes)
-        and set(scopes) == set(_AGENT_AUTHORITY_SCOPES[agent_type])
+        and set(scopes) == set(_authority_profile(agent_type).scopes)
     )
 
 
@@ -366,13 +385,13 @@ def _receipt(
         "agent_type": agent_type,
         "status": status,
         "changed": changed,
-        "scopes": list(_AGENT_AUTHORITY_SCOPES[agent_type]),
+        "scopes": list(_authority_profile(agent_type).scopes),
     }
 
 
 def _agent_type(value: object) -> str:
     normalized = str(value or "").strip().upper()
-    if normalized not in _AGENT_AUTHORITY_SCOPES:
+    if normalized not in AGENT_AUTHORITY_PROFILES:
         raise _invalid("Agent authority type was invalid.")
     return normalized
 
@@ -400,6 +419,8 @@ def _invalid(detail: str) -> AgentAuthoritySyncError:
 
 __all__ = [
     "AGENT_AUTHORITY_SYNC_MODE_ENV",
+    "AGENT_AUTHORITY_PROFILES",
+    "AgentAuthorityProfile",
     "AgentAuthoritySyncError",
     "AgentAuthoritySynchronizer",
     "HttpOaAgentAuthoritySynchronizer",
