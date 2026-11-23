@@ -6,6 +6,11 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any, Literal, Protocol
 
+from nex_ae_api.business_result_summary import (
+    BusinessResultSummaryError,
+    VOUCHER_DRAFT_RESULT_TYPE,
+    admit_business_result_summary,
+)
 from nex_ae_api.chat_application import ChatApplicationService
 from nex_ae_api.delegated_work import DelegatedWorkError, delegation_dispatch
 from nex_ae_api.executable_plans import WC_DELEGATE_WORK_EXECUTOR_KIND
@@ -745,22 +750,84 @@ def _delegated_result_outcome(
         if status == "SUCCEEDED"
         else f"wc-work-result://{event['technical_outcome'].lower()}"
     )
+    result_payload: dict[str, Any] = {
+        "work_item_ref": event["work_item_id"],
+        "work_result_ref": event["result_id"],
+        "work_result_event_ref": event["event_id"],
+        "technical_outcome": event["technical_outcome"],
+        "business_outcome": event["business_outcome"],
+    }
+    external_refs = {
+        f"WC:WORK_ITEM:{event['work_item_id']}",
+        f"WC:WORK_RESULT:{event['result_id']}",
+    }
+    business_operation_id = None
+    business_result = event.get("business_result")
+    if isinstance(business_result, Mapping):
+        result_payload["source_agent_result_hash"] = business_result[
+            "source_agent_result_hash"
+        ]
+        result_payload["business_result_projection_hash"] = business_result[
+            "projection_hash"
+        ]
+        external_refs.update(business_result["external_refs"])
+        summary_value = business_result.get("business_summary")
+        try:
+            summary = (
+                None
+                if summary_value is None
+                else admit_business_result_summary(summary_value, strict=True)
+            )
+        except BusinessResultSummaryError as exc:
+            raise _invalid("Delegated WorkResult business summary is invalid.") from exc
+        if summary is not None:
+            result_payload["business_summary"] = summary
+            if summary["result_type"] == VOUCHER_DRAFT_RESULT_TYPE:
+                business_operation_id = summary["summary"]["business_operation_id"]
+        operation_refs = {
+            str(item["entity_id"])
+            for item in business_result["business_object_refs"]
+            if item.get("entity_type") == "BUSINESS_OBJECT"
+            and str(item.get("entity_id") or "").startswith(
+                "EOS:BUSINESS_OPERATION:"
+            )
+        }
+        if len(operation_refs) > 1:
+            raise _invalid(
+                "Delegated WorkResult contains conflicting business operations."
+            )
+        if operation_refs:
+            projected_operation_id = next(iter(operation_refs)).removeprefix(
+                "EOS:BUSINESS_OPERATION:"
+            )
+            if not projected_operation_id:
+                raise _invalid(
+                    "Delegated WorkResult business operation reference is invalid."
+                )
+            if (
+                business_operation_id is not None
+                and projected_operation_id != business_operation_id
+            ):
+                raise _invalid(
+                    "Delegated WorkResult business operation lineage is inconsistent."
+                )
+            business_operation_id = projected_operation_id
+        if (
+            summary is not None
+            and summary["result_type"] == VOUCHER_DRAFT_RESULT_TYPE
+            and not operation_refs
+        ):
+            raise _invalid(
+                "Delegated WorkResult voucher summary lacks business operation lineage."
+            )
     return P5ExecutorOutcome(
         state=status,
         result_contract_ref=event["result_schema_ref"],
-        result_payload={
-            "work_item_ref": event["work_item_id"],
-            "work_result_ref": event["result_id"],
-            "work_result_event_ref": event["event_id"],
-            "technical_outcome": event["technical_outcome"],
-            "business_outcome": event["business_outcome"],
-        },
-        external_refs=(
-            f"WC:WORK_ITEM:{event['work_item_id']}",
-            f"WC:WORK_RESULT:{event['result_id']}",
-        ),
+        result_payload=result_payload,
+        external_refs=tuple(sorted(external_refs)),
         evidence_refs=(f"WC:WORK_RESULT_EVENT:{event['event_id']}",),
         error_ref=error_ref,
+        business_operation_id=business_operation_id,
     )
 
 

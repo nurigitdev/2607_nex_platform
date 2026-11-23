@@ -24,11 +24,13 @@ for path in (
 import run_p5_s5_postgres_smoke as p5_s5
 import run_p7_s5_postgres_smoke as p7_s5
 from nex_ae_api.agent_identity import SqlAlchemyAgentIdentityRegistry
+from nex_ae_api.business_result_summary import build_voucher_draft_summary
 from nex_ae_api.runtime_jobs import SqlAlchemyRuntimeJobQueue
 from nex_ae_api.work_result_events import (
     SqlAlchemyWorkResultEventService,
 )
 from nex_runtime import load_env_file, redact_database_url
+from nex_runtime.semantic_hashes import semantic_sha256_hash_ref
 from nex_wc.coordination import (
     RoutingPolicy,
     SqlAlchemyCoordinationRepository,
@@ -157,6 +159,7 @@ def _verify_work_result_resume(fixture: Mapping[str, object]) -> dict[str, objec
     child_execution_id = str(uuid4())
     trigger_id = str(uuid4())
     result_id = f"result-{uuid4()}"
+    business_operation_id = str(uuid4())
     candidate = {
         "schema_version": "2.1",
         "tenant_id": tenant_id,
@@ -237,15 +240,41 @@ def _verify_work_result_resume(fixture: Mapping[str, object]) -> dict[str, objec
         "result_id": result_id,
         "work_item_id": work_item_id,
         "revision_no": 1,
-        "result_type": "PROJECT_MARGIN_ANALYSIS",
-        "summary": "Reference-only S6 smoke result.",
-        "payload": {"agent_result_ref": f"AE:AGENT_RESULT:{result_id}"},
+        "result_type": "AGENT_RESULT",
+        "summary": None,
+        "payload": {
+            "agent_result_ref": f"AE:AGENT_RESULT:{result_id}",
+            "agent_result_hash": semantic_sha256_hash_ref(
+                {"tenant_id": tenant_id, "result_id": result_id}
+            ),
+            "structured_result": {
+                "external_refs": [
+                    f"EOS:BUSINESS_OPERATION:{business_operation_id}"
+                ],
+                "business_summary": build_voucher_draft_summary(
+                    commit_state="COMMITTED",
+                    verification_status="VERIFIED",
+                    approval_state="APPROVED",
+                    business_operation_id=business_operation_id,
+                    voucher_number="P7-S6-SMOKE",
+                    amount="100.00",
+                    currency="KRW",
+                    account_codes=("6100", "2100"),
+                    project_code=project_id,
+                ),
+            },
+        },
         "schema_ref": RESULT_CONTRACT,
         "technical_outcome": "SUCCEEDED",
         "business_outcome": "VERIFIED",
         "artifact_refs": [],
         "evidence_refs": [],
-        "business_object_refs": [],
+        "business_object_refs": [
+            {
+                "entity_type": "BUSINESS_OBJECT",
+                "entity_id": f"EOS:BUSINESS_OPERATION:{business_operation_id}",
+            }
+        ],
         "source_execution_ref": child_execution_id,
         "claim_ref": claimed["claim"]["claim_id"],
         "claim_generation": claimed["claim"]["claim_generation"],
@@ -340,6 +369,14 @@ def _verify_work_result_resume(fixture: Mapping[str, object]) -> dict[str, objec
         "exactly_one_resume": resume_count == 1,
         "duplicate_event_idempotent": duplicate["created"] is False
         and duplicate["resume_runtime_job_id"] == admitted["resume_runtime_job_id"],
+        "business_result_projection_persisted": (
+            loaded_event["event_payload"]["business_result"]["business_summary"]
+            ["summary"]["business_operation_id"]
+            == business_operation_id
+            and loaded_event["event_payload"]["business_result"][
+                "projection_hash"
+            ].startswith("sha256:")
+        ),
     }
     _cleanup_s6(
         ae_factory=ae_factory,

@@ -10,6 +10,10 @@ from typing import Any, Protocol
 from uuid import UUID, uuid4
 
 from nex_runtime.semantic_hashes import semantic_sha256_hash_ref
+from nex_runtime.work_result_business_projection import (
+    WorkResultBusinessProjectionError,
+    build_work_result_business_projection,
+)
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
@@ -703,6 +707,7 @@ def validate_work_result(value: object) -> dict[str, Any]:
         json.dumps(result.get("payload"), sort_keys=True)
     except (TypeError, ValueError) as exc:
         raise _invalid("payload must be JSON serializable.") from exc
+    _business_result_projection(result)
     return result
 
 
@@ -906,7 +911,44 @@ def _result_event(
         "causation_id": result["result_id"],
         "occurred_at": now,
     }
+    business_result = _business_result_projection(result)
+    if business_result is not None:
+        event["business_result"] = business_result
     return event
+
+
+def _business_result_projection(
+    result: Mapping[str, Any],
+) -> dict[str, Any] | None:
+    if result.get("result_type") != "AGENT_RESULT":
+        return None
+    payload = result.get("payload")
+    if not isinstance(payload, Mapping):
+        return None
+    structured = payload.get("structured_result")
+    if not isinstance(structured, Mapping):
+        return None
+    business_summary = structured.get("business_summary")
+    business_object_refs = result.get("business_object_refs") or []
+    external_refs = structured.get("external_refs") or []
+    if business_summary is None and not business_object_refs and not external_refs:
+        return None
+    try:
+        return build_work_result_business_projection(
+            source_agent_result_hash=payload.get("agent_result_hash"),
+            business_object_refs=[
+                {
+                    "entity_type": item.get("entity_type"),
+                    "entity_id": item.get("entity_id"),
+                }
+                for item in business_object_refs
+                if isinstance(item, Mapping)
+            ],
+            external_refs=external_refs,
+            business_summary=business_summary,
+        )
+    except WorkResultBusinessProjectionError as exc:
+        raise _invalid("WorkResult business projection is invalid.") from exc
 
 
 def _acceptance(record: Mapping[str, Any], *, created: bool) -> dict[str, Any]:

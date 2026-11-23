@@ -9,6 +9,10 @@ from typing import Any
 from uuid import NAMESPACE_URL, UUID, uuid5
 
 from nex_runtime.semantic_hashes import semantic_sha256_hash_ref
+from nex_runtime.work_result_business_projection import (
+    WorkResultBusinessProjectionError,
+    validate_work_result_business_projection,
+)
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
@@ -38,6 +42,7 @@ EVENT_FIELDS = frozenset(
         "correlation_id",
         "causation_id",
         "occurred_at",
+        "business_result",
     }
 )
 REQUIRED_EVENT_FIELDS = frozenset(
@@ -323,6 +328,13 @@ def validate_work_result_event(value: object) -> dict[str, Any]:
     )
     if event.get("causation_id") is not None:
         event["causation_id"] = _required("causation_id", event["causation_id"], 128)
+    if event.get("business_result") is not None:
+        try:
+            event["business_result"] = validate_work_result_business_projection(
+                event["business_result"]
+            )
+        except WorkResultBusinessProjectionError as exc:
+            raise _invalid("WorkResult business projection is invalid.") from exc
     event["occurred_at"] = _timestamp("occurred_at", event["occurred_at"])
     return event
 
