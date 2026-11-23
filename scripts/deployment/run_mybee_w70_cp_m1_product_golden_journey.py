@@ -60,6 +60,10 @@ DEFAULT_REPORT = ROOT / "reports/deployment/mybee-w70-cp-m1-product-golden-journ
 DEFAULT_BROWSER_REPORT = (
     ROOT / "reports/deployment/mybee-w70-cp-m1-product-browser-evidence.json"
 )
+DEFAULT_BROWSER_RECOVERY_REPORT = (
+    ROOT
+    / "reports/deployment/mybee-w70-cp-m1-product-browser-recovery-evidence.json"
+)
 DEFAULT_BROWSER_PROGRESS_REPORT = (
     ROOT / "reports/deployment/mybee-w70-cp-m1-product-browser-progress.json"
 )
@@ -405,6 +409,10 @@ def execute_m1_product_golden_journey(
             accounting_approver_password=accounting_approver_password,
             recovery_interaction_id=str(live_state["interaction_id"]),
         )
+        installed._write_report(
+            DEFAULT_BROWSER_RECOVERY_REPORT,
+            _public_browser_evidence(recovered),
+        )
         runtime = recovered.get("runtime")
         projection = (
             runtime.get("result_projection") if isinstance(runtime, Mapping) else None
@@ -430,7 +438,8 @@ def execute_m1_product_golden_journey(
         if not all(checks.values()):
             failed = sorted(name for name, passed in checks.items() if not passed)
             raise M1ProductGoldenJourneyError(
-                f"M1 product restart invariants failed: {','.join(failed)}"
+                f"M1 product restart invariants failed: {','.join(failed)} "
+                f"browser={_browser_failure_summary(recovered)}"
             )
         return {
             "status": "PASS",

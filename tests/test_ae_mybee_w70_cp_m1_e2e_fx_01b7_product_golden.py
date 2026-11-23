@@ -664,6 +664,16 @@ def test_product_browser_failure_summary_is_bounded_and_body_free() -> None:
     assert "must-not-be-projected" not in summary
 
 
+def test_product_recovery_evidence_has_a_separate_authoritative_path() -> None:
+    assert acceptance.DEFAULT_BROWSER_RECOVERY_REPORT.name == (
+        "mybee-w70-cp-m1-product-browser-recovery-evidence.json"
+    )
+    assert (
+        acceptance.DEFAULT_BROWSER_RECOVERY_REPORT
+        != acceptance.DEFAULT_BROWSER_REPORT
+    )
+
+
 def test_product_semantic_runtime_failure_keeps_only_exception_type() -> None:
     logs = (
         "nex-ae-api | Unexpected semantic candidate admission failure; "
