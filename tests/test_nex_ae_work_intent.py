@@ -140,6 +140,9 @@ def test_work_intent_repository_is_immutable_idempotent_and_revisioned() -> None
     assert repository.get(
         tenant_id=TENANT, work_intent_id=WORK_INTENT_ID
     ) == first
+    assert repository.get_latest_for_execution(
+        tenant_id=TENANT, execution_id=EXECUTION_ID
+    ) == first
 
     revision = _intent(
         work_intent_id=REVISION_ID,
@@ -149,6 +152,9 @@ def test_work_intent_repository_is_immutable_idempotent_and_revisioned() -> None
     saved_revision = repository.save(
         tenant_id=TENANT, work_intent=revision, created_at=NOW
     )
+    assert repository.get_latest_for_execution(
+        tenant_id=TENANT, execution_id=EXECUTION_ID
+    ) == saved_revision
     assert saved_revision["intent_revision"] == 2
     assert saved_revision["supersedes_work_intent_id"] == WORK_INTENT_ID
     assert repository.get(

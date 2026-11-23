@@ -8,15 +8,15 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID, uuid4
 
+from nex_runtime.semantic_handoff import (
+    SemanticHandoffError,
+    validate_semantic_handoff_projection,
+)
 from nex_runtime.semantic_hashes import (
     canonical_json,
     semantic_sha256_hash_ref,
     validate_hash_ref,
     validate_sha256_digest,
-)
-from nex_runtime.semantic_handoff import (
-    SemanticHandoffError,
-    validate_semantic_handoff_projection,
 )
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
@@ -477,6 +477,21 @@ class SqlAlchemyWorkIntentRepository:
                 True,
             ) from exc
 
+    def get_latest_for_execution(
+        self, *, tenant_id: str, execution_id: str
+    ) -> dict[str, Any] | None:
+        tenant_id = _require_text("tenant_id", tenant_id, maximum=200)
+        _require_uuid("execution_id", execution_id)
+        try:
+            with self._session_factory() as session:
+                return _load_latest_work_intent(session, tenant_id, execution_id)
+        except SQLAlchemyError as exc:
+            raise WorkIntentError(
+                "ae.work_intent_store_unavailable",
+                "AE WorkIntent store is unavailable.",
+                True,
+            ) from exc
+
 
 def _build_provenance(
     *,
@@ -818,6 +833,24 @@ def _load_work_intent_by_revision(
             "execution_id": execution_id,
             "revision": revision,
         },
+    ).mappings().first()
+    return None if row is None else _json_value(row["intent_json"])
+
+
+def _load_latest_work_intent(
+    session: Session, tenant_id: str, execution_id: str
+) -> dict[str, Any] | None:
+    row = session.execute(
+        text(
+            """
+            SELECT intent_json FROM ae_work_intent
+            WHERE tenant_id = :tenant_id
+              AND agent_execution_id = :execution_id
+            ORDER BY intent_revision DESC
+            LIMIT 1
+            """
+        ),
+        {"tenant_id": tenant_id, "execution_id": execution_id},
     ).mappings().first()
     return None if row is None else _json_value(row["intent_json"])
 
