@@ -64,9 +64,9 @@ CONTROL_PROBES = (
         "GAP",
     ),
     ControlProbe(
-        "provider_aware_service_readiness",
-        "services/nex-mo/nex_mo/main.py",
-        "readiness_checks=(PROVIDER_READINESS.check,)",
+        "capability_scoped_provider_admission",
+        "services/nex-mo/nex_mo/provider_readiness_api.py",
+        'capability: Literal["embedding", "reranking", "generation"]',
         "IMPLEMENTED",
     ),
 )

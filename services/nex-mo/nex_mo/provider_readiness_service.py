@@ -37,14 +37,24 @@ class ProviderReadinessService:
     ) -> None:
         self._environ = environ
         self._required_capabilities = required_capabilities
-        self._store = store or InMemoryProviderReadinessStore()
+        self._stores = {
+            required_capabilities: store or InMemoryProviderReadinessStore()
+        }
         self._requester = requester
         self._now = now or (lambda: datetime.now(UTC))
         self._latency_clock = latency_clock
-        self._configuration_identity: tuple[Any, ...] | None = None
+        self._configuration_identities: dict[
+            tuple[str, ...], tuple[Any, ...]
+        ] = {}
         self._lock = Lock()
 
-    def check(self, *, force_refresh: bool = False) -> dict[str, Any]:
+    def check(
+        self,
+        *,
+        capability: str | None = None,
+        force_refresh: bool = False,
+    ) -> dict[str, Any]:
+        required_capabilities = self._required_capabilities
         try:
             observed_at = self._now()
             _iso_timestamp(observed_at)
@@ -55,17 +65,24 @@ class ProviderReadinessService:
             )
         try:
             with self._lock:
+                required_capabilities = self._selected_capabilities(capability)
                 env = dict(os.environ if self._environ is None else self._environ)
                 ttl_seconds = provider_readiness_ttl_seconds(env)
                 plan = build_provider_readiness_probe_plan(
                     env,
-                    required_capabilities=self._required_capabilities,
+                    required_capabilities=required_capabilities,
                 )
                 identity = _private_plan_identity(plan)
-                if identity != self._configuration_identity:
-                    self._store.clear()
-                    self._configuration_identity = identity
-                snapshot = self._store.resolve(
+                store = self._stores.setdefault(
+                    required_capabilities,
+                    InMemoryProviderReadinessStore(),
+                )
+                if identity != self._configuration_identities.get(
+                    required_capabilities
+                ):
+                    store.clear()
+                    self._configuration_identities[required_capabilities] = identity
+                snapshot = store.resolve(
                     lambda: evaluate_provider_readiness_plan(
                         plan,
                         checked_at=_iso_timestamp(observed_at),
@@ -79,14 +96,22 @@ class ProviderReadinessService:
         except Exception:  # noqa: BLE001 - readiness must fail closed
             return failed_provider_readiness_check(
                 checked_at=observed_at,
-                required_capabilities=self._required_capabilities,
+                required_capabilities=required_capabilities,
             )
         return project_provider_readiness_check(snapshot)
 
     def clear(self) -> None:
         with self._lock:
-            self._store.clear()
-            self._configuration_identity = None
+            for store in self._stores.values():
+                store.clear()
+            self._configuration_identities.clear()
+
+    def _selected_capabilities(self, capability: str | None) -> tuple[str, ...]:
+        if capability is None:
+            return self._required_capabilities
+        if capability not in self._required_capabilities:
+            raise ValueError("unsupported provider capability")
+        return (capability,)
 
 
 def project_provider_readiness_check(

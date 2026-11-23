@@ -394,6 +394,14 @@ paths:
         - Provider Readiness
       security:
         - serviceBearer: []
+      parameters:
+        - name: capability
+          in: query
+          required: false
+          description: Limit active readiness probing to one provider capability.
+          schema:
+            type: string
+            enum: [embedding, reranking, generation]
       responses:
         "200":
           description: Privacy-safe provider route health and aggregate readiness snapshot.
@@ -1802,8 +1810,9 @@ components:
             - STALE
         required_capabilities:
           type: array
-          minItems: 3
+          minItems: 1
           maxItems: 3
+          uniqueItems: true
           items:
             type: string
             enum:
@@ -1820,7 +1829,8 @@ components:
           properties:
             required_count:
               type: integer
-              const: 3
+              minimum: 1
+              maximum: 3
             route_count:
               type: integer
               minimum: 0

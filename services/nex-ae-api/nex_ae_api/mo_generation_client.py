@@ -268,7 +268,7 @@ class HttpAeMoGenerationClient:
         selected_trace_id = _trace_id(trace_id)
         response = self._request_json(
             "GET",
-            "/api/v1/provider-route-health",
+            "/api/v1/provider-route-health?capability=generation",
             request_id=selected_request_id,
             trace_id=selected_trace_id,
             timeout_seconds=self.readiness_timeout_seconds,

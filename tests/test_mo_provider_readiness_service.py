@@ -77,6 +77,43 @@ def test_live_service_uses_cache_and_force_refresh() -> None:
     assert len(calls) == 6
 
 
+def test_capability_scoped_checks_probe_and_cache_independently() -> None:
+    calls: list[str] = []
+
+    def requester(method: str, url: str, **kwargs: object) -> httpx.Response:
+        calls.append(url)
+        return passing_requester(method, url, **kwargs)
+
+    service = ProviderReadinessService(
+        environ=live_env(), requester=requester, now=lambda: NOW
+    )
+
+    generation = service.check(capability="generation")
+    cached_generation = service.check(capability="generation")
+    embedding = service.check(capability="embedding")
+
+    assert generation["required_capabilities"] == ["generation"]
+    assert generation["summary"]["route_count"] == 1
+    assert generation["routes"][0]["provider_capability"] == "generation"
+    assert cached_generation["checked_at"] == generation["checked_at"]
+    assert embedding["required_capabilities"] == ["embedding"]
+    assert calls == [
+        "http://dgx.local:9111/v1/models",
+        "http://dgx.local:9112/v1/embeddings",
+    ]
+
+
+def test_unsupported_capability_fails_closed_without_network_access() -> None:
+    check = ProviderReadinessService(
+        environ=live_env(),
+        requester=lambda *args, **kwargs: pytest.fail("network access is forbidden"),
+        now=lambda: NOW,
+    ).check(capability="unknown")
+
+    assert check["ok"] is False
+    assert check["error_code"] == "PROVIDER_READINESS_EVALUATION_FAILED"
+
+
 def test_environment_change_invalidates_cached_snapshot() -> None:
     env = live_env()
     calls: list[str] = []

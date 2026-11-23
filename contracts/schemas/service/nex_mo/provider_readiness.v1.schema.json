@@ -63,20 +63,17 @@
     },
     "required_capabilities": {
       "type": "array",
-      "minItems": 3,
+      "minItems": 1,
       "maxItems": 3,
-      "prefixItems": [
-        {
-          "const": "embedding"
-        },
-        {
-          "const": "reranking"
-        },
-        {
-          "const": "generation"
-        }
-      ],
-      "items": false
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "enum": [
+          "embedding",
+          "reranking",
+          "generation"
+        ]
+      }
     },
     "summary": {
       "$ref": "#/$defs/readinessSummary"
@@ -114,7 +111,9 @@
       ],
       "properties": {
         "required_count": {
-          "const": 3
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 3
         },
         "route_count": {
           "type": "integer",

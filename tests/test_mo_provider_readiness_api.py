@@ -63,6 +63,39 @@ def test_route_health_api_returns_schema_valid_mock_snapshot(
     assert payload["summary"]["route_count"] == 3
 
 
+@pytest.mark.parametrize("capability", ["embedding", "reranking", "generation"])
+def test_route_health_api_supports_capability_scoped_snapshot(
+    monkeypatch: pytest.MonkeyPatch,
+    capability: str,
+) -> None:
+    monkeypatch.setenv("NEX_MO_PROVIDER_MODE", "mock")
+    PROVIDER_READINESS.clear()
+
+    response = TestClient(app).get(
+        "/api/v1/provider-route-health",
+        params={"capability": capability},
+        headers=auth_headers(),
+    )
+    payload = response.json()
+    Draft202012Validator(json.loads(SCHEMA_PATH.read_text())).validate(payload)
+
+    assert response.status_code == 200
+    assert payload["required_capabilities"] == [capability]
+    assert payload["summary"]["required_count"] == 1
+    assert payload["summary"]["route_count"] == 1
+    assert payload["routes"][0]["provider_capability"] == capability
+
+
+def test_route_health_api_rejects_unknown_capability_before_service_call() -> None:
+    response = TestClient(app).get(
+        "/api/v1/provider-route-health",
+        params={"capability": "unknown"},
+        headers=auth_headers(),
+    )
+
+    assert response.status_code == 422
+
+
 def test_route_health_api_returns_degraded_live_snapshot_with_http_200() -> None:
     service = ProviderReadinessService(
         environ={
@@ -124,6 +157,18 @@ def test_openapi_documents_authenticated_route_health_schema() -> None:
 
     assert operation["operationId"] == "getMoProviderRouteHealth"
     assert operation["security"] == [{"serviceBearer": []}]
+    assert operation["parameters"] == [
+        {
+            "name": "capability",
+            "in": "query",
+            "required": False,
+            "description": "Limit active readiness probing to one provider capability.",
+            "schema": {
+                "type": "string",
+                "enum": ["embedding", "reranking", "generation"],
+            },
+        }
+    ]
     assert operation["responses"]["200"]["content"]["application/json"][
         "schema"
     ] == {"$ref": "#/components/schemas/ProviderReadiness"}

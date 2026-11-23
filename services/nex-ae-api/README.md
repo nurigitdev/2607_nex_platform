@@ -61,8 +61,10 @@ P6.5 semantic generation boundary:
 
 - `nex_ae_api.mo_generation_client.HttpAeMoGenerationClient` is the thin
   AE-to-MO port for semantic candidate generation. It calls only
-  `POST /api/v1/generations` and `GET /api/v1/provider-route-health`; AE never
-  receives a provider endpoint, model path, or provider API key.
+  `POST /api/v1/generations` and
+  `GET /api/v1/provider-route-health?capability=generation`; AE never receives
+  a provider endpoint, model path, or provider API key. Generation readiness
+  does not probe embedding or reranking providers.
 - The client fixes structured output, disabled reasoning, zero temperature,
   non-streaming execution, correlation headers, OA service-token audience
   `nex-mo`, and bounded stage limits. S1 does not wire this port into the

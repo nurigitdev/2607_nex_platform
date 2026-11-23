@@ -453,7 +453,9 @@ def test_required_mode_readiness_requires_live_matching_active_preflight() -> No
     )
 
     assert observed["method"] == "GET"
-    assert observed["url"] == "http://mo.test/api/v1/provider-route-health"
+    assert observed["url"] == (
+        "http://mo.test/api/v1/provider-route-health?capability=generation"
+    )
     assert observed["json"] is None
     assert observed["timeout"] == 7.0
     assert readiness.provider_mode == "live"

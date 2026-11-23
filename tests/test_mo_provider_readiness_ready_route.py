@@ -100,7 +100,7 @@ def test_services_without_additional_checks_preserve_database_only_behavior(
     assert [check["name"] for check in response.json()["checks"]] == ["database"]
 
 
-def test_mo_main_wires_provider_readiness_after_database(
+def test_mo_main_ready_is_database_scoped_and_network_free(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("NEX_MO_PROVIDER_MODE", "mock")
@@ -110,19 +110,20 @@ def test_mo_main_wires_provider_readiness_after_database(
         lambda database_env, *, environ=None: database_check(),
     )
     PROVIDER_READINESS.clear()
+    monkeypatch.setattr(
+        PROVIDER_READINESS,
+        "check",
+        lambda **kwargs: pytest.fail("provider probe is forbidden on /ready"),
+    )
 
     response = TestClient(app).get("/ready")
 
     assert response.status_code == 200
-    assert [check["name"] for check in response.json()["checks"]] == [
-        "database",
-        "provider_routes",
-    ]
+    assert [check["name"] for check in response.json()["checks"]] == ["database"]
     assert app.state.provider_readiness_service is PROVIDER_READINESS
-    assert response.json()["checks"][1]["summary"]["status_counts"]["READY"] == 3
 
 
-def test_mo_ready_requires_both_database_and_provider(
+def test_mo_ready_remains_fail_closed_for_database(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("NEX_MO_PROVIDER_MODE", "mock")
@@ -137,7 +138,6 @@ def test_mo_ready_requires_both_database_and_provider(
 
     assert response.status_code == 503
     assert response.json()["checks"][0]["ok"] is False
-    assert response.json()["checks"][1]["ok"] is True
 
 
 def test_ready_route_runner_summary_and_main_paths(monkeypatch, capsys) -> None:
@@ -145,7 +145,7 @@ def test_ready_route_runner_summary_and_main_paths(monkeypatch, capsys) -> None:
     assert "provider_ready_route=pass" in runner.summary_line(passing)
     monkeypatch.setattr(runner, "run_mo_provider_ready_route", lambda: passing)
     assert runner.main(["--summary"]) == 0
-    assert "checks=2" in capsys.readouterr().out
+    assert "checks=1" in capsys.readouterr().out
     assert runner.main([]) == 0
     assert '"status": "PASS"' in capsys.readouterr().out
 

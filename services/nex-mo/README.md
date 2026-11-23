@@ -132,6 +132,13 @@ Current endpoints:
 - `POST /api/v1/provider-alias-bindings/activate`
 - `POST /api/v1/provider-alias-bindings/rollback`
 
+`GET /ready` is a shallow service/database readiness boundary and does not
+contact remote model providers. Active provider admission uses the protected
+`GET /api/v1/provider-route-health` endpoint. The optional `capability` query
+selects exactly one of `embedding`, `reranking`, or `generation`; omitting it
+preserves the all-provider operations view. Capability combinations are cached
+independently so one workload does not refresh unrelated providers.
+
 Model catalog and alias lifecycle operations require the NeX-MO service bearer
 claim. Catalog metadata and append-only alias history are persisted in
 `mo_model_catalog` and `mo_alias_bindings`; provider endpoints, API keys, model

@@ -92,9 +92,9 @@ TOKEN_CHECKS = (
         "class InMemoryProviderReadinessStore",
     ),
     (
-        "provider_ready_composition",
-        "services/nex-mo/nex_mo/main.py",
-        "readiness_checks=(PROVIDER_READINESS.check,)",
+        "provider_readiness_supersession",
+        "docs/transition/MyBee_Phase1/NeX_MyBee_W80_CA00D_MO_Capability_Scoped_Readiness_and_Healthcheck_Boundary_v1.0.md",
+        "S113 ALL-PROVIDER /ready POLICY = SUPERSEDED",
     ),
     (
         "authenticated_route_health",
@@ -151,7 +151,7 @@ COMPONENT_TOKENS = {
     "active_probe_evaluation": ("active_preflight",),
     "bounded_cache_and_composition": (
         "ttl_cache",
-        "provider_ready_composition",
+        "provider_readiness_supersession",
     ),
     "authenticated_api_contract": (
         "authenticated_route_health",

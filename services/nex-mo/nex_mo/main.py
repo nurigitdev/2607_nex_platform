@@ -39,7 +39,6 @@ SERVICE_TOKEN_ADMISSION = build_service_token_admission_runtime(
 )
 app = build_service_app(
     SERVICE_SPEC,
-    readiness_checks=(PROVIDER_READINESS.check,),
     service_token_admission=SERVICE_TOKEN_ADMISSION,
 )
 app.state.provider_readiness_service = PROVIDER_READINESS

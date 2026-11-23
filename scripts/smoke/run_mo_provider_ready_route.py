@@ -16,7 +16,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "services" / "_shared"))
 sys.path.insert(0, str(ROOT / "services" / "nex-mo"))
 
-from nex_mo.main import PROVIDER_READINESS, app  # noqa: E402
+from nex_mo.main import app  # noqa: E402
 
 
 def run_mo_provider_ready_route() -> dict[str, Any]:
@@ -35,21 +35,19 @@ def run_mo_provider_ready_route() -> dict[str, Any]:
             return_value=database_check,
         ),
     ):
-        PROVIDER_READINESS.clear()
         response = TestClient(app).get("/ready")
     payload = response.json()
     serialized = json.dumps(payload, sort_keys=True)
     checks = {
         "ready_route_returns_200": response.status_code == 200,
-        "database_and_provider_composed": [
+        "database_scoped_readiness": [
             item["name"] for item in payload["checks"]
         ]
-        == ["database", "provider_routes"],
+        == ["database"],
         "aggregate_ready": payload["readiness_status"] == "READY",
-        "three_provider_routes_ready": payload["checks"][1]["summary"][
-            "status_counts"
-        ]["READY"]
-        == 3,
+        "provider_probe_absent": all(
+            item["name"] != "provider_routes" for item in payload["checks"]
+        ),
         "private_fields_omitted": all(
             field not in serialized
             for field in ("provider_endpoint", "provider_api_key", "model_path")
@@ -65,10 +63,7 @@ def run_mo_provider_ready_route() -> dict[str, Any]:
         "checks": checks,
         "summary": {
             "readiness_check_count": len(payload.get("checks", [])),
-            "ready_provider_route_count": payload.get("checks", [{}, {}])[1]
-            .get("summary", {})
-            .get("status_counts", {})
-            .get("READY", 0),
+            "ready_provider_route_count": 0,
         },
         "issues": [],
         "next_slice": "1129",

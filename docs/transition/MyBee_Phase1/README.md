@@ -35,6 +35,7 @@ MyBee office-work AX Service Phase-1 program.
 28. `NeX_MyBee_W80_CA00A_Playwright_Screen_Evidence_Integrity_and_Retention_Boundary_v1.0.md`
 29. `NeX_MyBee_W80_CA00B_PA_WorkResult_to_IA_Business_Result_Propagation_Closure_v1.0.md`
 30. `NeX_MyBee_W80_CA00C_Operational_Usability_and_Live_Journey_Experience_Hardening_v1.0.md`
+31. `NeX_MyBee_W80_CA00D_MO_Capability_Scoped_Readiness_and_Healthcheck_Boundary_v1.0.md`
 
 The Markdown Slice Plan and its Execution Matrix JSON are one planning set.
 The JSON is machine-readable traceability input, not runtime configuration or
@@ -66,6 +67,14 @@ presentation mapper, and a least-privilege default employee product profile.
 IA, PA, human Project authority, and AE/WC/WA/OA service-principal grants remain
 separate. Approval, administration, and service scopes are never defaulted to
 employees or Agents, and no existing membership is silently rewritten.
+
+W80-CA00D separates shallow NeX-MO process/database readiness from active
+remote-provider admission. Protected provider health can be requested for one
+capability while the no-query operations view remains compatible with the
+three-provider aggregate. AE generation planning requests generation health
+only, and capability-specific caches prevent unrelated embedding and reranking
+traffic during generation-only journeys. No provider contract, model binding,
+database schema, or business API is changed.
 
 The W30-CA01 pair is the source-backed post-W20 delta. It takes precedence
 only for W30 entry ordering, current migration-number reservations, the
