@@ -738,6 +738,11 @@ class DeterministicCandidateAdmissionService:
                                 request_id=request.request_id,
                                 trace_id=request.trace_id,
                                 planning_mode=self.mode,
+                                **_plan_profile_context(
+                                    plan_stage=self.plan_stage,
+                                    request=request,
+                                    planning_purpose="PRODUCT_PREPARATION",
+                                ),
                             ),
                             now=now,
                         )
@@ -823,6 +828,15 @@ class DeterministicCandidateAdmissionService:
                 trace_id=request.trace_id,
                 planning_mode=self.mode,
                 agent_plan_id=ids.plan,
+                **_plan_profile_context(
+                    plan_stage=self.plan_stage,
+                    request=request,
+                    planning_purpose=_planning_purpose(
+                        request=request,
+                        work_intent=work_intent,
+                        plan_stage=self.plan_stage,
+                    ),
+                ),
             ),
             now=now,
         )
@@ -1166,6 +1180,41 @@ class _AdmissionIds:
 
     def _id(self, identity: str) -> str:
         return str(uuid5(NAMESPACE_URL, f"nex:p65:{self.execution_id}:{identity}"))
+
+
+def _planning_purpose(
+    *,
+    request: SemanticCandidateAdmissionRequest,
+    work_intent: Mapping[str, Any],
+    plan_stage: Any,
+) -> str:
+    if request.planning_source_type == "CLAIMED_WORKITEM":
+        return "CLAIMED_WORK_EXECUTION"
+    capability_id = str(work_intent.get("intent_label") or "")
+    exact_profile = getattr(plan_stage, "has_exact_profile", None)
+    if callable(exact_profile) and exact_profile(
+        capability_id=capability_id,
+        planning_source_type=request.planning_source_type,
+        agent_type=request.agent_type,
+        planning_purpose="DELEGATION",
+    ):
+        return "DELEGATION"
+    return "INTERACTION_RESPONSE"
+
+
+def _plan_profile_context(
+    *,
+    plan_stage: Any,
+    request: SemanticCandidateAdmissionRequest,
+    planning_purpose: str,
+) -> dict[str, str]:
+    if not callable(getattr(plan_stage, "has_exact_profile", None)):
+        return {}
+    return {
+        "planning_source_type": request.planning_source_type,
+        "agent_type": request.agent_type,
+        "planning_purpose": planning_purpose,
+    }
 
 
 def _semantic_reuse_inputs(

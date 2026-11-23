@@ -11,6 +11,7 @@ import nex_ae_api.project_delegation_planning as delegation_module
 import pytest
 from nex_ae_api.plan_candidate_generation import bind_plan_candidate
 from nex_ae_api.plan_candidate_profiles import (
+    PLAN_PROFILE_COMPATIBILITY_CAPABILITY_ID,
     PlanCandidateProfileError,
     PlanCandidateProfileRegistration,
     PlanCandidateProfileRegistry,
@@ -510,18 +511,37 @@ def test_ia_resolved_project_entity_admits_delegate_work_scope():
 def test_plan_profile_registry_is_ordered_hashed_and_rejects_duplicates():
     registration = PlanCandidateProfileRegistration(
         capability_id=M1_PROJECT_DELEGATION_CAPABILITY_ID,
+        planning_source_type="IA_PROMPT",
+        agent_type="IA",
+        planning_purpose="DELEGATION",
         profile_version="mybee-m1-project-delegation.v1",
         prompt_binding_key="ae.plan_builder.project_delegation.v1",
         source_identity="registry://mybee-m1",
     )
     registry = PlanCandidateProfileRegistry((registration,))
-    assert registry.resolve(M1_PROJECT_DELEGATION_CAPABILITY_ID) == registration
+    assert (
+        registry.resolve(
+            M1_PROJECT_DELEGATION_CAPABILITY_ID,
+            planning_source_type="IA_PROMPT",
+            agent_type="IA",
+            planning_purpose="DELEGATION",
+        )
+        == registration
+    )
     assert registry.to_projection()["registry_hash"].startswith("sha256:")
     with pytest.raises(PlanCandidateProfileError) as duplicate:
         PlanCandidateProfileRegistry((registration, replace(registration)))
     assert duplicate.value.error_code == "PLAN_PROFILE_DUPLICATE"
     with pytest.raises(PlanCandidateProfileError) as invalid:
-        PlanCandidateProfileRegistration("", "v1", "binding", "source")
+        PlanCandidateProfileRegistration(
+            capability_id="",
+            planning_source_type="IA_PROMPT",
+            agent_type="IA",
+            planning_purpose="DELEGATION",
+            profile_version="v1",
+            prompt_binding_key="binding",
+            source_identity="source",
+        )
     assert invalid.value.error_code == "PLAN_PROFILE_INVALID"
 
 
@@ -530,6 +550,9 @@ def test_profile_aware_plan_service_selects_registered_binding(monkeypatch):
 
     registration = PlanCandidateProfileRegistration(
         capability_id=M1_PROJECT_DELEGATION_CAPABILITY_ID,
+        planning_source_type="IA_PROMPT",
+        agent_type="IA",
+        planning_purpose="DELEGATION",
         profile_version="v1",
         prompt_binding_key="ae.plan_builder.project_delegation.v1",
         source_identity="registry://mybee-m1",
@@ -540,19 +563,45 @@ def test_profile_aware_plan_service_selects_registered_binding(monkeypatch):
         "generate_and_bind",
         lambda self, **_kwargs: self.prompt_binding_key,
     )
+    compatibility = PlanCandidateProfileRegistration(
+        capability_id=PLAN_PROFILE_COMPATIBILITY_CAPABILITY_ID,
+        planning_source_type="IA_PROMPT",
+        agent_type="IA",
+        planning_purpose="INTERACTION_RESPONSE",
+        profile_version="v1",
+        prompt_binding_key="ae.plan_builder.default",
+        source_identity="registry://compatibility",
+        compatibility=True,
+    )
     wrapped = ProfileAwarePlanCandidateService(
-        service, PlanCandidateProfileRegistry((registration,))
+        service, PlanCandidateProfileRegistry((registration, compatibility))
     )
     assert (
         wrapped.generate_and_bind(
-            work_intent={"intent_label": M1_PROJECT_DELEGATION_CAPABILITY_ID}
+            work_intent={"intent_label": M1_PROJECT_DELEGATION_CAPABILITY_ID},
+            planning_source_type="IA_PROMPT",
+            agent_type="IA",
+            planning_purpose="DELEGATION",
         )
         == "ae.plan_builder.project_delegation.v1"
     )
     assert (
-        wrapped.generate_and_bind(work_intent={"intent_label": "AE.CHAT.COMPATIBILITY"})
+        wrapped.generate_and_bind(
+            work_intent={"intent_label": "AE.CHAT.COMPATIBILITY"},
+            planning_source_type="IA_PROMPT",
+            agent_type="IA",
+            planning_purpose="INTERACTION_RESPONSE",
+        )
         == "ae.plan_builder.default"
     )
+    with pytest.raises(PlanCandidateProfileError) as wrong_scope:
+        wrapped.generate_and_bind(
+            work_intent={"intent_label": M1_PROJECT_DELEGATION_CAPABILITY_ID},
+            planning_source_type="CLAIMED_WORKITEM",
+            agent_type="PA",
+            planning_purpose="DELEGATION",
+        )
+    assert wrong_scope.value.error_code == "PLAN_PROFILE_NOT_REGISTERED"
 
 
 def test_m1_plan_profile_registry_requires_admitted_capability():
@@ -570,8 +619,26 @@ def test_m1_plan_profile_registry_requires_admitted_capability():
 
     empty = build_m1_plan_candidate_profile_registry(_Registry(False))
     admitted = build_m1_plan_candidate_profile_registry(_Registry(True))
-    assert empty.registrations == ()
-    assert admitted.registrations[0].source_identity == "registry://mybee-m1/d04"
+    assert len(empty.registrations) == 4
+    assert all(item.compatibility for item in empty.registrations)
+    assert len(admitted.registrations) == 6
+    delegation = admitted.resolve(
+        M1_PROJECT_DELEGATION_CAPABILITY_ID,
+        planning_source_type="IA_PROMPT",
+        agent_type="IA",
+        planning_purpose="DELEGATION",
+        allow_compatibility=False,
+    )
+    preparation = admitted.resolve(
+        M1_PROJECT_DELEGATION_CAPABILITY_ID,
+        planning_source_type="CLAIMED_WORKITEM",
+        agent_type="PA",
+        planning_purpose="PRODUCT_PREPARATION",
+        allow_compatibility=False,
+    )
+    assert delegation is not None and preparation is not None
+    assert delegation.source_identity == preparation.source_identity
+    assert delegation.source_identity == "registry://mybee-m1/d04"
 
 
 def test_http_project_sources_use_service_tokens_and_validate_shapes(monkeypatch):
