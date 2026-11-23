@@ -595,7 +595,7 @@ def test_claimed_target_reuses_parent_intent_and_rebuilds_target_context() -> No
                 estimated_used_tokens=128,
             )
 
-    service.executions.record = {
+    target_execution = {
         "version": 1,
         "state": "QUEUED",
         "phase": "INTAKE",
@@ -610,6 +610,7 @@ def test_claimed_target_reuses_parent_intent_and_rebuilds_target_context() -> No
         "requester_ref": "user-a",
         "received_at": NOW,
     }
+    service.executions.record = dict(target_execution)
     request = replace(
         _request(),
         planning_source_type="CLAIMED_WORKITEM",
@@ -644,6 +645,45 @@ def test_claimed_target_reuses_parent_intent_and_rebuilds_target_context() -> No
     assert target_context["authority_ref"] == "WC:CLAIM:authoritative"
     assert target_context.get("interaction") is None
     assert target_context["source"]["source_ref"] == source["source_ref"]
+
+    client.calls.clear()
+    replay = service.admit_and_compile(request)
+    assert replay.executable_plan_id == result.executable_plan_id
+    assert replay.executable_plan_hash == result.executable_plan_hash
+    assert [stage.resumed for stage in replay.stages] == [True, True, True]
+    assert client.calls == []
+
+    augment_service, augment_client, *_ = _components()
+    augment_service.executions.record = dict(target_execution)
+    augment_decision = {
+        **decision,
+        "decision": "REUSE_INTENT_AUGMENT_CONTEXT",
+    }
+    augment_decision.pop("decision_hash")
+    augment_decision["decision_hash"] = semantic_sha256_hash_ref(augment_decision)
+    augmented = augment_service.admit_and_compile(
+        replace(request, semantic_reuse_decision=augment_decision)
+    )
+    assert augmented.status == "COMPILED"
+    assert augment_client.calls == ["CONTEXT", "PLAN"]
+
+    fallback_service, fallback_client, *_ = _components()
+    fallback_service.executions.record = dict(target_execution)
+    fallback_decision = {**decision, "decision": "FULL_SEMANTIC_REPLAN"}
+    fallback_decision.pop("decision_hash")
+    fallback_decision["decision_hash"] = semantic_sha256_hash_ref(fallback_decision)
+    fallback = fallback_service.admit_and_compile(
+        replace(
+            request,
+            semantic_reuse_decision=fallback_decision,
+            reused_intent_evidence=None,
+            reused_intent_candidate=None,
+            reused_context_evidence=None,
+            reused_context_candidate=None,
+        )
+    )
+    assert fallback.status == "COMPILED"
+    assert fallback_client.calls == ["INTENT", "CONTEXT", "PLAN"]
 
 
 def test_semantic_reuse_request_guards_reject_unbound_or_blocked_inputs() -> None:

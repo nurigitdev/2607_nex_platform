@@ -118,7 +118,7 @@ class BackgroundAgentPlanningService:
         reuse = self._semantic_reuse(
             planning_source=planning_source,
             target_agent_type=str(execution["agent_type"]),
-            evaluated_at=_utc_now(),
+            evaluated_at=str(execution["received_at"]),
         )
         reused = (
             reuse

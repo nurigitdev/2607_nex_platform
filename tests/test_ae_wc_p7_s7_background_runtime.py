@@ -238,6 +238,7 @@ def test_background_planning_evaluates_v3_handoff_before_target_admission() -> N
         def evaluate(self, **values):
             assert values["resolved"] is resolved
             assert values["target_agent_type"] == "PA"
+            assert values["evaluated_at"] == NOW
             return {
                 "decision": "REUSE_INTENT_REBUILD_CONTEXT",
                 "decision_hash": "sha256:" + "2" * 64,
@@ -263,6 +264,17 @@ def test_background_planning_evaluates_v3_handoff_before_target_admission() -> N
     )
     assert request.reused_intent_candidate == resolved.intent_candidate
     assert request.reused_context_candidate == resolved.context_candidate
+
+    service.plan_claimed_execution(
+        tenant_id=TENANT,
+        execution_id=EXECUTION_ID,
+        runtime_policy_ref={"rule_id": "x"},
+    )
+    assert len(admission.requests) == 2
+    assert (
+        admission.requests[0].semantic_reuse_decision
+        == admission.requests[1].semantic_reuse_decision
+    )
 
 
 def test_background_planning_v3_reuse_fails_closed_and_supports_full_replan() -> None:
