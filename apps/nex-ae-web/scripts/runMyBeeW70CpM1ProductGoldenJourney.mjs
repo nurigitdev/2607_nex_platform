@@ -496,11 +496,16 @@ export async function runMyBeeM1ProductPostRestartRecovery({
   const captures = screenCapture(environ[ENV.screenshotDir], "recovery");
   let browser;
   let context;
+  let page;
+  let stage = "browser_launch";
+  const responses = [];
   try {
     const playwright = await importPlaywright();
     browser = await launchBrowser(playwright, environ);
     context = await browser.newContext(contextOptions());
-    const page = await configuredPage(context);
+    page = await configuredPage(context);
+    observeResponses(page, responses);
+    stage = "recovery_login";
     await page.goto(environ[ENV.webUrl], {
       waitUntil: "domcontentloaded",
       timeout: actionTimeout
@@ -511,18 +516,25 @@ export async function runMyBeeM1ProductPostRestartRecovery({
       password: environ[ENV.requesterPassword],
       timeout: actionTimeout
     });
+    await captures.capture(page, "requester-workspace", {
+      expectedState: "REQUESTER_WORKSPACE_READY",
+      assertion: "workspace-heading-visible-after-restart"
+    });
+    stage = "recovery_result_api";
     const interactionId = environ[ENV.recoveryInteractionId];
     const projection = await waitForResult(
       page,
       interactionId,
       resultTimeout
     );
+    stage = "recovery_navigation";
     const recoveryUrl = new URL("/workspace", environ[ENV.webUrl]);
     recoveryUrl.searchParams.set("interaction_id", interactionId);
     await page.goto(recoveryUrl.toString(), {
       waitUntil: "domcontentloaded",
       timeout: actionTimeout
     });
+    stage = "recovery_result_render";
     await waitForRenderedResult(page, null, actionTimeout);
     await captures.capture(page, "recovered-result", {
       expectedState: "RESULT_RECOVERED",
@@ -550,7 +562,21 @@ export async function runMyBeeM1ProductPostRestartRecovery({
     assertRedacted(evidence, environ);
     return evidence;
   } catch (error) {
-    const evidence = failure(safeFailureCode(error), { recovery_mode: true });
+    if (page) {
+      try {
+        await captures.capture(page, `${stage}-failure`, {
+          expectedState: "FAILURE_DIAGNOSTIC",
+          assertion: "recovery-failure-surface-captured"
+        });
+      } catch {
+        // Preserve the bounded recovery failure if screenshot capture also fails.
+      }
+    }
+    const evidence = failure(safeFailureCode(error), {
+      recovery_mode: true,
+      stage,
+      recent_api_responses: responses.slice(-8)
+    });
     evidence.screen_capture = captures.evidence();
     assertRedacted(evidence, environ);
     return evidence;

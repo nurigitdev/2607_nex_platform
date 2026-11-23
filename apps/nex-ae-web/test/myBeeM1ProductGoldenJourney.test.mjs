@@ -147,6 +147,24 @@ test("M1 product journey preserves only bounded semantic failure stages", () => 
   );
 });
 
+test("M1 recovery runner preserves named restart stages and failure screen evidence", () => {
+  const source = readFileSync(
+    new URL("../scripts/runMyBeeW70CpM1ProductGoldenJourney.mjs", import.meta.url),
+    "utf8"
+  );
+
+  for (const stage of [
+    "recovery_login",
+    "recovery_result_api",
+    "recovery_navigation",
+    "recovery_result_render"
+  ]) {
+    assert.match(source, new RegExp(`stage = \\\"${stage}\\\"`));
+  }
+  assert.match(source, /recovery-failure-surface-captured/);
+  assert.match(source, /recent_api_responses: responses\.slice\(-8\)/);
+});
+
 test("M1 product journey binds to the authenticated React accessibility contract", () => {
   assert.deepEqual(myBeeM1ProductJourneyUiContract(), {
     loginHeading: "사번 로그인",
