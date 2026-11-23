@@ -366,7 +366,7 @@ export async function runMyBeeM1ProductGoldenJourney({
       await waitForRenderedResult(requester, prompts[index], actionTimeout);
       await captures.capture(requester, `transaction-${index + 1}-result`, {
         expectedState: "RESULT_RENDERED",
-        assertion: "request-and-voucher-result-visible",
+        assertion: "request-and-project-allocation-result-visible",
         interactionId,
         transactionIndex: index + 1
       });
@@ -526,7 +526,7 @@ export async function runMyBeeM1ProductPostRestartRecovery({
     await waitForRenderedResult(page, null, actionTimeout);
     await captures.capture(page, "recovered-result", {
       expectedState: "RESULT_RECOVERED",
-      assertion: "authoritative-voucher-result-visible-after-restart",
+      assertion: "authoritative-project-allocation-result-visible-after-restart",
       interactionId
     });
     const checks = {
@@ -751,10 +751,11 @@ async function waitForRenderedResult(page, prompt, timeout) {
     await page.getByText(prompt, { exact: true }).waitFor({ timeout });
   }
   const result = page.locator('[data-ux-region="primary-result"]');
-  await result.getByRole("heading", { name: "전표 등록 결과", exact: true }).waitFor({
+  await result.getByRole("heading", { name: "프로젝트 배부 결과", exact: true }).waitFor({
     timeout
   });
   await result.getByText("완료", { exact: true }).waitFor({ timeout });
+  await result.getByText(/개 프로젝트 반영 완료/, { exact: false }).waitFor({ timeout });
 }
 
 async function login(page, { tenantId, employeeId, password, timeout }) {

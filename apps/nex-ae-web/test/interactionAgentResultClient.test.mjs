@@ -134,3 +134,73 @@ test("unknown business types stay generic and malformed known types fail closed"
     error => error.status === "BUSINESS_RESULT_SUMMARY_INVALID"
   );
 });
+
+test("projects an ordered project-allocation result without exposing raw financial values", () => {
+  const summary = projectBusinessResultSummary(projectAllocationSummary());
+
+  assert.equal(summary.resultType, "FINANCE.PROJECT_ALLOCATION");
+  assert.equal(summary.outcome, "ALLOCATED_AND_VERIFIED");
+  assert.deepEqual(
+    summary.projectProjections.map(item => item.projectCode),
+    ["VO00D260001", "VO00D260002"]
+  );
+  assert.equal(summary.projectProjections[0].reconciliationStatus, "VERIFIED");
+  assert.equal(JSON.stringify(summary).includes("posted_allocated_cost"), false);
+  assert.equal(Object.isFrozen(summary), true);
+  assert.equal(Object.isFrozen(summary.projectProjections), true);
+});
+
+test("project-allocation projection rejects unordered, tampered, and extended payloads", () => {
+  const unordered = projectAllocationSummary();
+  unordered.summary.project_projections.reverse();
+  assert.throws(
+    () => projectBusinessResultSummary(unordered),
+    error => error.status === "BUSINESS_RESULT_SUMMARY_INVALID"
+  );
+
+  const tampered = projectAllocationSummary();
+  tampered.summary.pnl_refresh_hash = "sha256:not-a-hash";
+  assert.throws(
+    () => projectBusinessResultSummary(tampered),
+    error => error.status === "BUSINESS_RESULT_SUMMARY_INVALID"
+  );
+
+  const extended = projectAllocationSummary();
+  extended.summary.project_projections[0].posted_allocated_cost = "100.00";
+  assert.throws(
+    () => projectBusinessResultSummary(extended),
+    error => error.status === "BUSINESS_RESULT_SUMMARY_INVALID"
+  );
+});
+
+function projectAllocationSummary() {
+  return {
+    result_type: "FINANCE.PROJECT_ALLOCATION",
+    summary_schema_version: "ae_business_result_summary.v1",
+    summary: {
+      outcome: "ALLOCATED_AND_VERIFIED",
+      journal_ref: "eos.posted_journal:journal-1",
+      source_pool_ref: "eos.cost-source-pool:pool-1",
+      source_pool_hash: `sha256:${"a".repeat(64)}`,
+      allocation_batch_ref: "eos.cost-allocation-batch:batch-1",
+      allocation_reconciliation_hash: `sha256:${"b".repeat(64)}`,
+      pnl_refresh_hash: `sha256:${"c".repeat(64)}`,
+      project_projections: [
+        projectProjection("VO00D260001", "projection-1", "d"),
+        projectProjection("VO00D260002", "projection-2", "e")
+      ]
+    }
+  };
+}
+
+function projectProjection(projectCode, projectionId, hashCharacter) {
+  return {
+    project_code: projectCode,
+    projection_id: projectionId,
+    projection_version: 1,
+    projection_hash: `sha256:${hashCharacter.repeat(64)}`,
+    reconciliation_status: "VERIFIED",
+    freshness_status: "CURRENT",
+    data_classification: "CONFIDENTIAL_FINANCIAL"
+  };
+}

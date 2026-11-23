@@ -129,6 +129,9 @@ export function projectInteractionAgentResult(
 
 export function projectBusinessResultSummary(value) {
   if (!value || typeof value !== "object") return null;
+  if (value.result_type === "FINANCE.PROJECT_ALLOCATION") {
+    return projectProjectAllocationSummary(value);
+  }
   if (value.result_type !== "FINANCE.VOUCHER_DRAFT") return null;
   if (
     value.summary_schema_version !== "ae_business_result_summary.v1" ||
@@ -181,6 +184,111 @@ export function projectBusinessResultSummary(value) {
     accountCodes: Object.freeze(accountCodes),
     projectCode,
     businessObjectLink: null
+  });
+}
+
+function projectProjectAllocationSummary(value) {
+  if (
+    !hasExactKeys(value, ["result_type", "summary_schema_version", "summary"]) ||
+    value.summary_schema_version !== "ae_business_result_summary.v1" ||
+    !value.summary ||
+    typeof value.summary !== "object"
+  ) {
+    throw invalidBusinessSummary();
+  }
+  const summary = value.summary;
+  if (!hasExactKeys(summary, [
+    "outcome",
+    "journal_ref",
+    "source_pool_ref",
+    "source_pool_hash",
+    "allocation_batch_ref",
+    "allocation_reconciliation_hash",
+    "pnl_refresh_hash",
+    "project_projections"
+  ]) || summary.outcome !== "ALLOCATED_AND_VERIFIED") {
+    throw invalidBusinessSummary();
+  }
+  const journalRef = requiredBoundedText(summary.journal_ref, 256);
+  const sourcePoolRef = requiredBoundedText(summary.source_pool_ref, 256);
+  const sourcePoolHash = hashRef(summary.source_pool_hash);
+  const allocationBatchRef = requiredBoundedText(summary.allocation_batch_ref, 256);
+  const allocationReconciliationHash = hashRef(
+    summary.allocation_reconciliation_hash
+  );
+  const pnlRefreshHash = hashRef(summary.pnl_refresh_hash);
+  const projectProjections = Array.isArray(summary.project_projections)
+    ? summary.project_projections.map(projectProjectProjection)
+    : [];
+  const projectCodes = projectProjections.map(item => item.projectCode);
+  if (
+    !journalRef ||
+    !sourcePoolRef ||
+    !sourcePoolHash ||
+    !allocationBatchRef ||
+    !allocationReconciliationHash ||
+    !pnlRefreshHash ||
+    projectProjections.length === 0 ||
+    projectCodes.some((code, index) => index > 0 && code <= projectCodes[index - 1])
+  ) {
+    throw invalidBusinessSummary();
+  }
+  return Object.freeze({
+    resultType: "FINANCE.PROJECT_ALLOCATION",
+    schemaVersion: "ae_business_result_summary.v1",
+    outcome: "ALLOCATED_AND_VERIFIED",
+    journalRef,
+    sourcePoolRef,
+    sourcePoolHash,
+    allocationBatchRef,
+    allocationReconciliationHash,
+    pnlRefreshHash,
+    projectProjections: Object.freeze(projectProjections)
+  });
+}
+
+function projectProjectProjection(value) {
+  if (!value || typeof value !== "object" || !hasExactKeys(value, [
+    "project_code",
+    "projection_id",
+    "projection_version",
+    "projection_hash",
+    "reconciliation_status",
+    "freshness_status",
+    "data_classification"
+  ])) {
+    throw invalidBusinessSummary();
+  }
+  const projectCode = requiredBoundedText(value.project_code, 128);
+  const projectionId = requiredBoundedText(value.projection_id, 64);
+  const projectionVersion = value.projection_version;
+  const projectionHash = hashRef(value.projection_hash);
+  const reconciliationStatus = requiredBoundedText(
+    value.reconciliation_status,
+    32
+  );
+  const freshnessStatus = requiredBoundedText(value.freshness_status, 32);
+  const dataClassification = requiredBoundedText(value.data_classification, 64);
+  if (
+    !projectCode ||
+    !projectionId ||
+    !Number.isInteger(projectionVersion) ||
+    projectionVersion < 1 ||
+    !projectionHash ||
+    !reconciliationStatus ||
+    !freshnessStatus ||
+    !dataClassification
+  ) {
+    throw invalidBusinessSummary();
+  }
+  return Object.freeze({
+    projectCode,
+    projectionId,
+    projectionVersion,
+    projectionHash,
+    reconciliationStatus,
+    freshnessStatus,
+    dataClassification
   });
 }
 
@@ -253,6 +361,19 @@ function decimalText(value) {
   return normalized && /^(?:0|[1-9][0-9]*)(?:\.[0-9]{2})$/.test(normalized)
     ? normalized
     : null;
+}
+
+function hashRef(value) {
+  const normalized = requiredBoundedText(value, 71);
+  return normalized && /^sha256:[a-fA-F0-9]{64}$/.test(normalized)
+    ? normalized.toLowerCase()
+    : null;
+}
+
+function hasExactKeys(value, expected) {
+  const keys = Object.keys(value).sort();
+  return keys.length === expected.length &&
+    keys.every((key, index) => key === [...expected].sort()[index]);
 }
 
 function invalidBusinessSummary() {

@@ -33,7 +33,7 @@ test("M1 screen evidence is private, hash-bound, and semantically described", as
       viewportSize: () => ({ width: 1440, height: 1000 })
     }, "transaction-1-result", {
       expectedState: "RESULT_RENDERED",
-      assertion: "request-and-voucher-result-visible",
+      assertion: "request-and-project-allocation-result-visible",
       interactionId: "interaction-001",
       transactionIndex: 1
     });
@@ -43,7 +43,10 @@ test("M1 screen evidence is private, hash-bound, and semantically described", as
     assert.equal(manifest.schema_version, MYBEE_M1_SCREEN_EVIDENCE_SCHEMA_VERSION);
     assert.equal(manifest.capture_count, 1);
     assert.equal(manifest.captures[0].expected_state, "RESULT_RENDERED");
-    assert.equal(manifest.captures[0].assertion, "request-and-voucher-result-visible");
+    assert.equal(
+      manifest.captures[0].assertion,
+      "request-and-project-allocation-result-visible"
+    );
     assert.equal(manifest.captures[0].interaction_id, "interaction-001");
     assert.equal(manifest.captures[0].size_bytes, 26);
     assert.match(manifest.captures[0].sha256, /^sha256:[a-f0-9]{64}$/);

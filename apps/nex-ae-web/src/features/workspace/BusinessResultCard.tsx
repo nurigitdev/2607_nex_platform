@@ -1,4 +1,4 @@
-import { CheckCircle2, ReceiptText, TriangleAlert } from "lucide-react";
+import { ChartNoAxesCombined, CheckCircle2, ReceiptText, TriangleAlert } from "lucide-react";
 
 import { Card, StatusPill } from "../../design-system/components";
 import styles from "./BusinessResultCard.module.css";
@@ -18,9 +18,36 @@ export interface VoucherBusinessSummary {
   readonly businessObjectLink: null;
 }
 
+export interface ProjectAllocationProjection {
+  readonly projectCode: string;
+  readonly projectionId: string;
+  readonly projectionVersion: number;
+  readonly projectionHash: string;
+  readonly reconciliationStatus: string;
+  readonly freshnessStatus: string;
+  readonly dataClassification: string;
+}
+
+export interface ProjectAllocationBusinessSummary {
+  readonly resultType: "FINANCE.PROJECT_ALLOCATION";
+  readonly schemaVersion: "ae_business_result_summary.v1";
+  readonly outcome: "ALLOCATED_AND_VERIFIED";
+  readonly journalRef: string;
+  readonly sourcePoolRef: string;
+  readonly sourcePoolHash: string;
+  readonly allocationBatchRef: string;
+  readonly allocationReconciliationHash: string;
+  readonly pnlRefreshHash: string;
+  readonly projectProjections: readonly ProjectAllocationProjection[];
+}
+
+export type BusinessSummary =
+  | VoucherBusinessSummary
+  | ProjectAllocationBusinessSummary;
+
 export interface WorkspaceResultProjection {
   readonly status: string;
-  readonly businessSummary?: VoucherBusinessSummary | null;
+  readonly businessSummary?: BusinessSummary | null;
   readonly artifactCount?: number;
   readonly warnings?: readonly string[];
 }
@@ -37,7 +64,7 @@ export function BusinessResultCard({ result }: { readonly result: WorkspaceResul
           <div>
             <p className={styles.eyebrow}>업무 처리 결과</p>
             <h2 id="business-result-title">
-              {summary ? "전표 등록 결과" : "요청 처리 결과"}
+              {businessResultTitle(summary)}
             </h2>
           </div>
         </div>
@@ -46,7 +73,11 @@ export function BusinessResultCard({ result }: { readonly result: WorkspaceResul
         </StatusPill>
       </header>
 
-      {summary ? <VoucherSummary summary={summary} /> : (
+      {summary?.resultType === "FINANCE.VOUCHER_DRAFT" ? (
+        <VoucherSummary summary={summary} />
+      ) : summary?.resultType === "FINANCE.PROJECT_ALLOCATION" ? (
+        <ProjectAllocationSummary summary={summary} />
+      ) : (
         <p className={styles.genericMessage}>
           안전하게 공개할 수 있는 결과 요약만 표시합니다.
         </p>
@@ -61,6 +92,30 @@ export function BusinessResultCard({ result }: { readonly result: WorkspaceResul
         </ul>
       ) : null}
     </Card>
+  );
+}
+
+function ProjectAllocationSummary({
+  summary,
+}: {
+  readonly summary: ProjectAllocationBusinessSummary;
+}) {
+  return (
+    <div className={styles.summary}>
+      <div className={styles.allocationIdentity}>
+        <ChartNoAxesCombined aria-hidden="true" size={20} />
+        <span>배부 결과</span>
+        <strong>{summary.projectProjections.length}개 프로젝트 반영 완료</strong>
+      </div>
+      <ul className={styles.projectList} aria-label="프로젝트 배부 반영 상태">
+        {summary.projectProjections.map(project => (
+          <li className={styles.projectItem} key={project.projectCode}>
+            <strong>{project.projectCode}</strong>
+            <span>{projectionStateLabel(project)}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
 
@@ -97,6 +152,22 @@ function resultStatusLabel(status: string): string {
     BLOCKED: "확인 필요",
     CANCELLED: "취소됨",
   }[status] ?? "처리 결과";
+}
+
+function businessResultTitle(summary: BusinessSummary | null): string {
+  if (summary?.resultType === "FINANCE.VOUCHER_DRAFT") return "전표 등록 결과";
+  if (summary?.resultType === "FINANCE.PROJECT_ALLOCATION") return "프로젝트 배부 결과";
+  return "요청 처리 결과";
+}
+
+function projectionStateLabel(project: ProjectAllocationProjection): string {
+  const reconciliation = project.reconciliationStatus === "VERIFIED"
+    ? "검증 완료"
+    : "검증 확인 필요";
+  const freshness = project.freshnessStatus === "CURRENT"
+    ? "최신"
+    : "갱신 확인 필요";
+  return `${reconciliation} · ${freshness}`;
 }
 
 function approvalLabel(state: VoucherBusinessSummary["approvalState"]): string {

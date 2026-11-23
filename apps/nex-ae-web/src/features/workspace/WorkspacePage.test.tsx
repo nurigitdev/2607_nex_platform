@@ -138,6 +138,56 @@ describe("WorkspacePage", () => {
     expect(screen.queryByText("operation-private-1")).not.toBeInTheDocument();
   });
 
+  it("renders a project allocation result without authority refs or hashes", () => {
+    render(
+      <WorkspacePage
+        result={{
+          status: "SUCCEEDED",
+          businessSummary: {
+            resultType: "FINANCE.PROJECT_ALLOCATION",
+            schemaVersion: "ae_business_result_summary.v1",
+            outcome: "ALLOCATED_AND_VERIFIED",
+            journalRef: "eos.posted_journal:private-journal",
+            sourcePoolRef: "eos.cost-source-pool:private-pool",
+            sourcePoolHash: `sha256:${"a".repeat(64)}`,
+            allocationBatchRef: "eos.cost-allocation-batch:private-batch",
+            allocationReconciliationHash: `sha256:${"b".repeat(64)}`,
+            pnlRefreshHash: `sha256:${"c".repeat(64)}`,
+            projectProjections: [
+              {
+                projectCode: "VO00D260001",
+                projectionId: "private-projection-1",
+                projectionVersion: 1,
+                projectionHash: `sha256:${"d".repeat(64)}`,
+                reconciliationStatus: "VERIFIED",
+                freshnessStatus: "CURRENT",
+                dataClassification: "CONFIDENTIAL_FINANCIAL",
+              },
+              {
+                projectCode: "VO00D260002",
+                projectionId: "private-projection-2",
+                projectionVersion: 1,
+                projectionHash: `sha256:${"e".repeat(64)}`,
+                reconciliationStatus: "VERIFIED",
+                freshnessStatus: "CURRENT",
+                dataClassification: "CONFIDENTIAL_FINANCIAL",
+              },
+            ],
+          },
+        }}
+      />,
+    );
+
+    expect(screen.getByRole("heading", { name: "프로젝트 배부 결과" })).toBeInTheDocument();
+    expect(screen.getByText("2개 프로젝트 반영 완료")).toBeInTheDocument();
+    expect(screen.getByText("VO00D260001")).toBeInTheDocument();
+    expect(screen.getByText("VO00D260002")).toBeInTheDocument();
+    expect(screen.getAllByText("검증 완료 · 최신")).toHaveLength(2);
+    expect(screen.queryByText("private-journal")).not.toBeInTheDocument();
+    expect(screen.queryByText("private-projection-1")).not.toBeInTheDocument();
+    expect(document.body.textContent).not.toContain("sha256:");
+  });
+
   it("uses a generic safe card when no typed business projection is admitted", () => {
     render(
       <WorkspacePage
