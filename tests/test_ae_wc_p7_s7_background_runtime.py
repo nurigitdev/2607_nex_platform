@@ -14,6 +14,7 @@ from nex_ae_api.background_planning import (
 )
 from nex_ae_api.intent_policy import resolve_validated_intent_candidate
 from nex_ae_api.semantic_candidate_admission import SemanticCandidateAdmissionError
+from nex_ae_api.semantic_handoff_reuse import ResolvedSemanticHandoff
 from nex_ae_api.work_intent import (
     WorkIntentError,
     build_work_intent_from_claimed_work,
@@ -201,6 +202,143 @@ def test_background_planning_routes_claimed_agents_through_existing_admission(
     )
     assert resolved.project_ref["resource_id"] == PROJECT_ID
     assert resolved.authority_ref == f"WC:WORK_ITEM:{WORK_ITEM_ID}"
+
+
+def test_background_planning_evaluates_v3_handoff_before_target_admission() -> None:
+    handoff = {
+        "handoff_hash": "sha256:" + "1" * 64,
+        "parent_execution_id": "99999999-9999-4999-8999-999999999999",
+    }
+    source = {
+        **_planning_source(),
+        "schema_version": "p7.claimed_work_planning_source.v3",
+        "delegation_identity": {
+            "delegation_id": "88888888-8888-4888-8888-888888888888",
+            "delegation_revision": 1,
+            "requester_ref": "employee-100",
+            "parent_agent_execution_id": handoff["parent_execution_id"],
+        },
+        "semantic_handoff": handoff,
+    }
+    resolved = ResolvedSemanticHandoff(
+        work_intent={"work_intent_id": "parent"},
+        latest_work_intent={"work_intent_id": "parent"},
+        intent_evidence={"semantic_stage": "INTENT"},
+        context_evidence={"semantic_stage": "CONTEXT"},
+        intent_candidate={"confidence": 0.94},
+        context_candidate={"confidence": 0.91},
+    )
+
+    class Authority:
+        def resolve(self, value):
+            assert value == handoff
+            return resolved
+
+    class Evaluator:
+        def evaluate(self, **values):
+            assert values["resolved"] is resolved
+            assert values["target_agent_type"] == "PA"
+            return {
+                "decision": "REUSE_INTENT_REBUILD_CONTEXT",
+                "decision_hash": "sha256:" + "2" * 64,
+            }
+
+    admission = _SemanticAdmission()
+    service = BackgroundAgentPlanningService(
+        semantic_admission=admission,
+        executions=_Executions(source=source),
+        semantic_handoffs=Authority(),
+        reuse_evaluator=Evaluator(),
+    )
+
+    service.plan_claimed_execution(
+        tenant_id=TENANT,
+        execution_id=EXECUTION_ID,
+        runtime_policy_ref={"rule_id": "x"},
+    )
+
+    request = admission.requests[0]
+    assert request.semantic_reuse_decision["decision"] == (
+        "REUSE_INTENT_REBUILD_CONTEXT"
+    )
+    assert request.reused_intent_candidate == resolved.intent_candidate
+    assert request.reused_context_candidate == resolved.context_candidate
+
+
+def test_background_planning_v3_reuse_fails_closed_and_supports_full_replan() -> None:
+    handoff = {
+        "handoff_hash": "sha256:" + "1" * 64,
+        "parent_execution_id": "99999999-9999-4999-8999-999999999999",
+    }
+    source = {
+        **_planning_source(),
+        "schema_version": "p7.claimed_work_planning_source.v3",
+        "delegation_identity": {
+            "delegation_id": "88888888-8888-4888-8888-888888888888",
+            "delegation_revision": 1,
+            "requester_ref": "employee-100",
+            "parent_agent_execution_id": handoff["parent_execution_id"],
+        },
+        "semantic_handoff": handoff,
+    }
+    with pytest.raises(BackgroundPlanningError) as unavailable:
+        BackgroundAgentPlanningService(
+            semantic_admission=_SemanticAdmission(),
+            executions=_Executions(source=source),
+        ).plan_claimed_execution(
+            tenant_id=TENANT,
+            execution_id=EXECUTION_ID,
+            runtime_policy_ref={"rule_id": "x"},
+        )
+    assert unavailable.value.error_code == "ae.semantic_handoff_runtime_unavailable"
+    assert unavailable.value.retryable is True
+
+    resolved = ResolvedSemanticHandoff(None, None, None, None, None, None)
+
+    class Authority:
+        def resolve(self, _value):
+            return resolved
+
+    class Evaluator:
+        def __init__(self, decision):
+            self.decision = decision
+
+        def evaluate(self, **_values):
+            return {"decision": self.decision}
+
+    for decision in (
+        "DENY_AUTHORITY_CHANGE",
+        "DENY_CONFLICT",
+        "RETURN_FOR_CLARIFICATION",
+    ):
+        with pytest.raises(BackgroundPlanningError) as denied:
+            BackgroundAgentPlanningService(
+                semantic_admission=_SemanticAdmission(),
+                executions=_Executions(source=source),
+                semantic_handoffs=Authority(),
+                reuse_evaluator=Evaluator(decision),
+            ).plan_claimed_execution(
+                tenant_id=TENANT,
+                execution_id=EXECUTION_ID,
+                runtime_policy_ref={"rule_id": "x"},
+            )
+        assert decision.lower() in denied.value.error_code
+
+    admission = _SemanticAdmission()
+    BackgroundAgentPlanningService(
+        semantic_admission=admission,
+        executions=_Executions(source=source),
+        semantic_handoffs=Authority(),
+        reuse_evaluator=Evaluator("FULL_SEMANTIC_REPLAN"),
+    ).plan_claimed_execution(
+        tenant_id=TENANT,
+        execution_id=EXECUTION_ID,
+        runtime_policy_ref={"rule_id": "x"},
+    )
+    request = admission.requests[0]
+    assert request.semantic_reuse_decision == {"decision": "FULL_SEMANTIC_REPLAN"}
+    assert request.reused_intent_evidence is None
+    assert request.reused_context_candidate is None
 
 
 def test_background_planning_exposes_admitted_business_context_to_provider() -> None:

@@ -23,6 +23,12 @@ from nex_ae_api.semantic_candidate_admission import (
     SemanticCandidateAdmissionRequest,
     SemanticCandidateAdmissionResult,
 )
+from nex_ae_api.semantic_handoff_reuse import (
+    SemanticHandoffAuthoritySource,
+    SemanticHandoffReuseError,
+    SemanticHandoffReuseEvaluator,
+    build_default_semantic_reuse_policy_registry,
+)
 
 
 @dataclass(frozen=True)
@@ -48,6 +54,12 @@ _BACKGROUND_RUNTIME_POLICY = {
 class BackgroundAgentPlanningService:
     semantic_admission: DeterministicCandidateAdmissionService = field(repr=False)
     executions: SqlAlchemyAgentExecutionRepository = field(repr=False)
+    semantic_handoffs: SemanticHandoffAuthoritySource | None = field(
+        default=None, repr=False
+    )
+    reuse_evaluator: SemanticHandoffReuseEvaluator | None = field(
+        default=None, repr=False
+    )
 
     def plan_claimed_execution(
         self,
@@ -103,6 +115,17 @@ class BackgroundAgentPlanningService:
             for item in planning_source[field_name]
         ][:32]
         trusted_mode, retrieval_enabled = _trusted_execution_profile(planning_source)
+        reuse = self._semantic_reuse(
+            planning_source=planning_source,
+            target_agent_type=str(execution["agent_type"]),
+            evaluated_at=_utc_now(),
+        )
+        reused = (
+            reuse
+            if reuse is not None
+            and reuse["decision"]["decision"] != "FULL_SEMANTIC_REPLAN"
+            else None
+        )
         try:
             return self.semantic_admission.admit_and_compile(
                 SemanticCandidateAdmissionRequest(
@@ -136,12 +159,72 @@ class BackgroundAgentPlanningService:
                     project_id=str(execution["project_id"]),
                     source_ref=str(execution["work_item_ref"]),
                     planning_source=planning_source,
+                    semantic_reuse_decision=(
+                        None if reuse is None else reuse["decision"]
+                    ),
+                    reused_intent_evidence=(
+                        None if reused is None else reused["resolved"].intent_evidence
+                    ),
+                    reused_intent_candidate=(
+                        None if reused is None else reused["resolved"].intent_candidate
+                    ),
+                    reused_context_evidence=(
+                        None if reused is None else reused["resolved"].context_evidence
+                    ),
+                    reused_context_candidate=(
+                        None if reused is None else reused["resolved"].context_candidate
+                    ),
                 )
             )
         except SemanticCandidateAdmissionError as exc:
             raise BackgroundPlanningError(
                 exc.error_code, exc.detail, exc.retryable
             ) from exc
+
+    def _semantic_reuse(
+        self,
+        *,
+        planning_source: Mapping[str, Any],
+        target_agent_type: str,
+        evaluated_at: str,
+    ) -> dict[str, Any] | None:
+        if planning_source.get("schema_version") != (
+            "p7.claimed_work_planning_source.v3"
+        ):
+            return None
+        if self.semantic_handoffs is None or self.reuse_evaluator is None:
+            raise BackgroundPlanningError(
+                "ae.semantic_handoff_runtime_unavailable",
+                "Semantic handoff runtime is unavailable for claimed work v3.",
+                True,
+            )
+        try:
+            handoff = planning_source["semantic_handoff"]
+            resolved = self.semantic_handoffs.resolve(handoff)
+            decision = self.reuse_evaluator.evaluate(
+                handoff=handoff,
+                planning_source=planning_source,
+                target_agent_type=target_agent_type,
+                resolved=resolved,
+                evaluated_at=evaluated_at,
+            )
+        except (KeyError, SemanticHandoffReuseError) as exc:
+            raise BackgroundPlanningError(
+                "ae.semantic_handoff_resolution_failed",
+                "Semantic handoff authority could not be resolved.",
+                False,
+            ) from exc
+        if decision["decision"] in {
+            "DENY_AUTHORITY_CHANGE",
+            "DENY_CONFLICT",
+            "RETURN_FOR_CLARIFICATION",
+        }:
+            raise BackgroundPlanningError(
+                f"ae.semantic_reuse_{str(decision['decision']).lower()}",
+                "Semantic handoff decision does not permit target planning.",
+                False,
+            )
+        return {"decision": decision, "resolved": resolved}
 
     def mark_product_waiting(
         self, *, tenant_id: str, execution_id: str, updated_at: str
@@ -287,6 +370,14 @@ def build_installed_claim_handoff_admission(
         planning=BackgroundAgentPlanningService(
             semantic_admission=semantic_service,
             executions=executions,
+            semantic_handoffs=SemanticHandoffAuthoritySource.from_sqlalchemy(
+                work_intents=semantic_service.work_intents,
+                evidence=semantic_service.evidence,
+                candidate_storage=semantic_service.candidate_storage,
+            ),
+            reuse_evaluator=SemanticHandoffReuseEvaluator(
+                build_default_semantic_reuse_policy_registry()
+            ),
         ),
         scheduler=SqlAlchemyMultiStepEngine(session_factory, jobs),
     )

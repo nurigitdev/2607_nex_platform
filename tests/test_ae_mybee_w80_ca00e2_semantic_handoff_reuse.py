@@ -16,6 +16,8 @@ from nex_ae_api.semantic_handoff_reuse import (
     SemanticHandoffReuseEvaluator,
     SemanticReusePolicy,
     SemanticReusePolicyRegistry,
+    build_default_semantic_reuse_policy_registry,
+    validate_semantic_reuse_decision,
 )
 from nex_runtime.semantic_handoff import build_semantic_handoff_projection
 from nex_runtime.semantic_hashes import semantic_sha256_hash_ref
@@ -442,6 +444,41 @@ def test_policy_registry_and_input_validation_fail_closed():
     source["project_ref"] = None
     with pytest.raises(SemanticHandoffReuseError, match="project_ref"):
         _evaluate(handoff=handoff, planning_source=source, resolved=resolved)
+
+
+def test_default_reuse_policy_registry_is_role_and_work_class_complete():
+    registry = build_default_semantic_reuse_policy_registry()
+
+    for agent_type in ("CA", "PA", "EA"):
+        for work_class in ("QUERY", "ANALYSIS", "DOCUMENT", "BUSINESS_TRANSACTION"):
+            policy = registry.resolve(
+                target_agent_type=agent_type, work_class=work_class
+            )
+            assert policy is not None
+            assert policy.maximum_age_seconds == 86_400
+    assert registry.resolve(target_agent_type="IA", work_class="QUERY") is None
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    (
+        lambda value: {**value, "schema_version": "bad"},
+        lambda value: {**value, "decision": "UNKNOWN"},
+        lambda value: {**value, "reason_codes": ["UNKNOWN"]},
+        lambda value: {**value, "target_agent_type": "UNKNOWN"},
+        lambda value: {**value, "handoff_hash": "bad"},
+        lambda value: {**value, "policy_ref": ""},
+        lambda value: {**value, "evaluated_at": "bad"},
+        lambda value: {**value, "decision_hash": "sha256:" + "f" * 64},
+    ),
+)
+def test_semantic_reuse_decision_validation_rejects_drift(mutation):
+    decision = mutation(_evaluate())
+    with pytest.raises(SemanticHandoffReuseError):
+        validate_semantic_reuse_decision(decision)
+
+    with pytest.raises(SemanticHandoffReuseError, match="must be an object"):
+        validate_semantic_reuse_decision(None)
 
 
 def test_reuse_evaluator_rejects_missing_inputs_and_invalid_internal_decisions():

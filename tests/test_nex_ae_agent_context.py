@@ -262,6 +262,26 @@ def test_builder_uses_trusted_resolver_and_builds_contract_valid_private_context
     assert "private prompt" not in json.dumps(context, ensure_ascii=False)
 
 
+def test_repository_resolves_latest_context_by_execution_and_fails_closed() -> None:
+    factory = _factory()
+    repository = SqlAlchemyAgentContextRepository(factory)
+    context = _context()
+    assert repository.get_latest_for_execution(
+        tenant_id=TENANT, execution_id=EXECUTION_ID
+    ) is None
+    repository.save(tenant_id=TENANT, agent_context=context)
+    assert repository.get_latest_for_execution(
+        tenant_id=TENANT, execution_id=EXECUTION_ID
+    ) == context
+
+    unavailable = SqlAlchemyAgentContextRepository(_factory(with_schema=False))
+    with pytest.raises(AgentContextError) as raised:
+        unavailable.get_latest_for_execution(
+            tenant_id=TENANT, execution_id=EXECUTION_ID
+        )
+    assert raised.value.retryable is True
+
+
 def test_builder_keeps_interactive_and_background_source_profiles_disjoint() -> None:
     with pytest.raises(AgentContextError, match="IA_PROMPT"):
         _context(source_type="CLAIMED_WORKITEM", source_ref="work-item")

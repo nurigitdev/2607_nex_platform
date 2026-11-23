@@ -28,6 +28,7 @@ from nex_ae_api.mybee_m1_skill_runtime import (
     build_mybee_m1_verified_skill_catalog,
 )
 from nex_ae_api.runtime_composition import RuntimeExecutorProfile
+from nex_ae_api.semantic_handoff_reuse import SemanticHandoffProjectionSource
 from nex_ae_api.service_auth import resolve_ae_outbound_service_token
 from nex_ae_api.step_executors import (
     DelegateWorkExecutorDependencies,
@@ -74,7 +75,12 @@ def _build_verified_product_release_profile(
         local_skill_handler=installed.initial,
         local_skill_continuation_handler=installed.resume,
         delegate_work_dependencies=DelegateWorkExecutorDependencies(
-            runtime_repository=SqlAlchemyDelegationRuntimeRepository(sessions),
+            runtime_repository=SqlAlchemyDelegationRuntimeRepository(
+                sessions,
+                semantic_handoffs=SemanticHandoffProjectionSource.from_sqlalchemy(
+                    session_factory=sessions
+                ),
+            ),
             wait_repository=SqlAlchemyWaitRegistrationRepository(sessions),
             work_item_client=HttpWcWorkItemClient(
                 base_url=str(environ.get("NEX_WC_BASE_URL") or wc_endpoint.base_url),

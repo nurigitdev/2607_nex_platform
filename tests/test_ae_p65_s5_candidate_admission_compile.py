@@ -28,6 +28,8 @@ from nex_ae_api.semantic_candidate_admission import (
 from nex_ae_api.semantic_candidate_evidence import (
     InMemorySemanticCandidateStorage,
     SqlAlchemySemanticCandidateEvidenceRepository,
+    build_semantic_candidate_evidence,
+    build_semantic_candidate_payload,
 )
 from nex_ae_api.semantic_candidates import (
     SemanticCalibrationPolicy,
@@ -35,6 +37,7 @@ from nex_ae_api.semantic_candidates import (
 )
 from nex_runtime import DiagnosticEvidencePolicy, DiagnosticEvidenceRecorder
 from nex_runtime.prompts import PromptRegistryStore
+from nex_runtime.semantic_handoff import build_semantic_handoff_projection
 from nex_runtime.semantic_hashes import canonical_json, semantic_sha256_hash_ref
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
@@ -405,6 +408,379 @@ def test_required_pipeline_compiles_and_replays_without_provider_calls() -> None
     assert client.calls == []
     assert validations.save_calls == 1
     assert admission.calls == 2
+
+
+def test_claimed_target_reuses_parent_intent_and_rebuilds_target_context() -> None:
+    service, client, _, intents, contexts, *_ = _components()
+    parent_execution_id = "70000000-0000-4000-8000-000000000656"
+    parent_intent_id = "71000000-0000-4000-8000-000000000656"
+    intent_candidate_id = "72000000-0000-4000-8000-000000000656"
+    context_candidate_id = "73000000-0000-4000-8000-000000000656"
+    project_id = "project-p65-reuse"
+    intent_candidate = {
+        "schema_version": "p65.intent_candidate.v1",
+        "intent_label": "analyze_project_budget",
+        "suggested_execution_mode": "GROUNDED_ANSWER",
+        "entity_selectors": [],
+        "parameter_candidates": [],
+        "clarification": {"required": False, "reasons": [], "questions": []},
+        "confidence": 0.94,
+    }
+    context_candidate = {
+        "schema_version": "p65.context_candidate_set.v1",
+        "entity_candidates": [],
+        "retrieval_hints": [],
+        "resource_selectors": [],
+        "parameter_candidates": [],
+        "confidence": 0.91,
+    }
+
+    def evidence(stage, candidate_id, candidate):
+        payload = build_semantic_candidate_payload(
+            candidate_id=candidate_id, candidate=candidate
+        )
+        return build_semantic_candidate_evidence(
+            tenant_id="tenant-a",
+            owner_subject_id="user-a",
+            candidate_id=candidate_id,
+            execution_id=parent_execution_id,
+            semantic_stage=stage,
+            candidate_revision=1,
+            candidate_payload=payload,
+            provider_output_sha256="1" * 64,
+            input_context_hash="sha256:" + "2" * 64,
+            prompt_provenance={
+                "prompt_binding_id": "74000000-0000-4000-8000-000000000656",
+                "prompt_binding_key": f"ae.{stage.lower()}.default",
+                "prompt_template_version_id": (
+                    "75000000-0000-4000-8000-000000000656"
+                ),
+                "prompt_template_version": "v1",
+                "prompt_content_sha256": "3" * 64,
+                "rendered_prompt_hash": "4" * 64,
+            },
+            model_provenance={
+                "model_profile": "general-llm-default",
+                "model_ref": "model-revision-a",
+                "deployment_id": "deployment-a",
+                "mo_generation_id": f"generation-{stage.lower()}",
+            },
+            request_id=f"reuse-{stage.lower()}",
+            trace_id=TRACE_ID,
+            admission_policy_ref=f"semantic-admission://{stage.lower()}/v1",
+            directive="CONTINUE",
+            failure_code=None,
+            created_at=NOW,
+        )
+
+    intent_evidence = evidence("INTENT", intent_candidate_id, intent_candidate)
+    context_evidence = evidence("CONTEXT", context_candidate_id, context_candidate)
+    parent_intent = {
+        "schema_version": "1.1",
+        "work_intent_id": parent_intent_id,
+        "intent_revision": 1,
+        "supersedes_work_intent_id": None,
+        "execution_id": parent_execution_id,
+        "source": {
+            "source_type": "PROMPT",
+            "source_ref": f"AE:INTERACTION:{INTERACTION_ID}",
+            "actor_ref": "OA:SUBJECT:user-a",
+            "received_at": NOW,
+        },
+        "execution_mode": "INTERACTIVE",
+        "compatibility_execution_mode": "GROUNDED_ANSWER",
+        "project_ref": {
+            "system": "nex-eos",
+            "resource_type": "PROJECT",
+            "resource_id": project_id,
+        },
+        "intent_label": "analyze_project_budget",
+        "goal": "Analyze the admitted Project budget.",
+        "work_class": "ANALYSIS",
+        "required_capability_hints": ["analyze_project_budget"],
+        "entity_selectors": [],
+        "parameter_candidates": [],
+        "constraints": [],
+        "completion_criteria": [],
+        "clarification": {"status": "NOT_REQUIRED", "reasons": [], "questions": []},
+        "confidence": {
+            "overall": 0.94,
+            "intent": 0.94,
+            "entities": None,
+            "parameters": None,
+        },
+        "provenance": {"schema_version": "test.v1"},
+    }
+    parent_intent["intent_hash"] = semantic_sha256_hash_ref(parent_intent)
+    parent_context = {
+        "schema_version": "1.1",
+        "context_id": "76000000-0000-4000-8000-000000000656",
+        "context_generation": 1,
+        "execution_id": parent_execution_id,
+        "work_intent_ref": {
+            "id": parent_intent_id,
+            "version": 1,
+            "hash": parent_intent["intent_hash"],
+        },
+        "identity": {
+            "tenant_id": "tenant-a",
+            "principal_id": "user-a",
+            "agent_id": "77000000-0000-4000-8000-000000000656",
+            "agent_type": "IA",
+        },
+        "interaction": {
+            "workspace_id": WORKSPACE_ID,
+            "conversation_id": CONVERSATION_ID,
+            "interaction_id": INTERACTION_ID,
+        },
+    }
+    parent_context["context_hash"] = semantic_sha256_hash_ref(parent_context)
+    handoff = build_semantic_handoff_projection(
+        work_intent=parent_intent,
+        agent_context=parent_context,
+        intent_evidence=intent_evidence,
+        context_evidence=context_evidence,
+        created_at=NOW,
+    )
+    source = {
+        "schema_version": "p7.claimed_work_planning_source.v3",
+        "source_type": "CLAIMED_WORKITEM",
+        "source_ref": "work-item-p65-reuse",
+        "goal": "Analyze the admitted Project budget.",
+        "work_class": "ANALYSIS",
+        "required_capability": "analyze_project_budget",
+        "project_ref": {"entity_type": "PROJECT", "entity_id": project_id},
+        "artifact_refs": [],
+        "evidence_refs": [],
+        "completion_policy": "OWNER_SUBMITS",
+        "result_contract_ref": "urn:nex:result:analysis:1",
+        "delegation_identity": {
+            "delegation_id": "78000000-0000-4000-8000-000000000656",
+            "delegation_revision": 1,
+            "requester_ref": "user-a",
+            "parent_agent_execution_id": parent_execution_id,
+        },
+        "semantic_handoff": handoff,
+    }
+    decision = {
+        "schema_version": "ae.semantic_reuse_decision.v1",
+        "handoff_hash": handoff["handoff_hash"],
+        "parent_execution_id": parent_execution_id,
+        "target_agent_type": "PA",
+        "delegated_capability": "analyze_project_budget",
+        "project_scope_ref": project_id,
+        "policy_ref": "semantic-reuse://claimed-work/pa/analysis/v1",
+        "decision": "REUSE_INTENT_REBUILD_CONTEXT",
+        "reason_codes": [],
+        "evaluated_at": NOW,
+    }
+    decision["decision_hash"] = semantic_sha256_hash_ref(decision)
+
+    class BackgroundResolver:
+        def resolve(self, request):
+            return TrustedContextResolution(
+                project_ref={
+                    "system": "nex-eos",
+                    "resource_type": "PROJECT",
+                    "resource_id": project_id,
+                },
+                authority_ref="WC:CLAIM:authoritative",
+                resolved_entities=(),
+                retrieval_refs=(),
+                evidence_refs=(),
+                conflicts=(),
+                degradations=(),
+                context_manifest=(),
+                budget_tokens=4096,
+                estimated_used_tokens=128,
+            )
+
+    service.executions.record = {
+        "version": 1,
+        "state": "QUEUED",
+        "phase": "INTAKE",
+        "tenant_id": "tenant-a",
+        "agent_execution_id": EXECUTION_ID,
+        "agent_id": AGENT_ID,
+        "agent_type": "PA",
+        "project_id": project_id,
+        "source_type": "CLAIMED_WORKITEM",
+        "source_ref": source["source_ref"],
+        "work_item_ref": source["source_ref"],
+        "requester_ref": "user-a",
+        "received_at": NOW,
+    }
+    request = replace(
+        _request(),
+        planning_source_type="CLAIMED_WORKITEM",
+        existing_execution_id=EXECUTION_ID,
+        agent_type="PA",
+        project_id=project_id,
+        source_ref=source["source_ref"],
+        planning_source=source,
+        context_resolver=BackgroundResolver(),
+        semantic_reuse_decision=decision,
+        reused_intent_evidence=intent_evidence,
+        reused_intent_candidate=intent_candidate,
+        reused_context_evidence=context_evidence,
+        reused_context_candidate=context_candidate,
+    )
+
+    result = service.admit_and_compile(request)
+
+    assert result.status == "COMPILED"
+    assert client.calls == ["PLAN"]
+    target_intent = next(iter(intents.records.values()))
+    target_context = next(iter(contexts.records.values()))
+    assert target_intent["execution_id"] == EXECUTION_ID
+    assert target_intent["source"]["source_type"] == "CLAIMED_WORKITEM"
+    assert target_context["execution_id"] == EXECUTION_ID
+    assert target_context["identity"] == {
+        "tenant_id": "tenant-a",
+        "principal_id": "user-a",
+        "agent_id": AGENT_ID,
+        "agent_type": "PA",
+    }
+    assert target_context["authority_ref"] == "WC:CLAIM:authoritative"
+    assert target_context.get("interaction") is None
+    assert target_context["source"]["source_ref"] == source["source_ref"]
+
+
+def test_semantic_reuse_request_guards_reject_unbound_or_blocked_inputs() -> None:
+    with pytest.raises(admission_module.SemanticCandidateAdmissionError) as missing:
+        admission_module._semantic_reuse_inputs(
+            replace(_request(), reused_intent_candidate={})
+        )
+    assert missing.value.error_code == "SEMANTIC_REUSE_DECISION_MISSING"
+
+    handoff_hash = "sha256:" + "1" * 64
+    source = {
+        "required_capability": "CAPABILITY.TEST",
+        "semantic_handoff": {"handoff_hash": handoff_hash},
+    }
+
+    def decision(value):
+        record = {
+            "schema_version": "ae.semantic_reuse_decision.v1",
+            "handoff_hash": handoff_hash,
+            "parent_execution_id": (
+                "70000000-0000-4000-8000-000000000656"
+            ),
+            "target_agent_type": "PA",
+            "delegated_capability": "CAPABILITY.TEST",
+            "project_scope_ref": "project-test",
+            "policy_ref": "semantic-reuse://test/v1",
+            "decision": value,
+            "reason_codes": [],
+            "evaluated_at": NOW,
+        }
+        record["decision_hash"] = semantic_sha256_hash_ref(record)
+        return record
+
+    full = replace(
+        _request(),
+        agent_type="PA",
+        project_id="project-test",
+        planning_source=source,
+        semantic_reuse_decision=decision("FULL_SEMANTIC_REPLAN"),
+    )
+    assert admission_module._semantic_reuse_inputs(full) is None
+    with pytest.raises(admission_module.SemanticCandidateAdmissionError) as conflict:
+        admission_module._semantic_reuse_inputs(
+            replace(full, reused_intent_candidate={})
+        )
+    assert conflict.value.error_code == "SEMANTIC_REUSE_INPUT_CONFLICT"
+
+    blocked = replace(
+        full,
+        semantic_reuse_decision=decision("RETURN_FOR_CLARIFICATION"),
+    )
+    with pytest.raises(admission_module.SemanticCandidateAdmissionError) as denied:
+        admission_module._semantic_reuse_inputs(blocked)
+    assert denied.value.error_code == "SEMANTIC_REUSE_DECISION_BLOCKED"
+
+    tampered = dict(decision("REUSE_INTENT_REBUILD_CONTEXT"))
+    tampered["decision_hash"] = "sha256:" + "f" * 64
+    with pytest.raises(admission_module.SemanticCandidateAdmissionError) as invalid:
+        admission_module._semantic_reuse_inputs(
+            replace(full, semantic_reuse_decision=tampered)
+        )
+    assert invalid.value.error_code == "SEMANTIC_REUSE_DECISION_INVALID"
+
+
+def test_semantic_reuse_request_guards_reject_scope_missing_and_evidence_drift(
+    monkeypatch,
+) -> None:
+    handoff_hash = "sha256:" + "1" * 64
+    parent_execution_id = "70000000-0000-4000-8000-000000000656"
+    source = {
+        "required_capability": "CAPABILITY.TEST",
+        "semantic_handoff": {"handoff_hash": handoff_hash},
+    }
+    decision = {
+        "schema_version": "ae.semantic_reuse_decision.v1",
+        "handoff_hash": handoff_hash,
+        "parent_execution_id": parent_execution_id,
+        "target_agent_type": "PA",
+        "delegated_capability": "CAPABILITY.TEST",
+        "project_scope_ref": "project-test",
+        "policy_ref": "semantic-reuse://test/v1",
+        "decision": "REUSE_INTENT_REBUILD_CONTEXT",
+        "reason_codes": [],
+        "evaluated_at": NOW,
+    }
+    decision["decision_hash"] = semantic_sha256_hash_ref(decision)
+    base = replace(
+        _request(),
+        agent_type="PA",
+        project_id="project-test",
+        planning_source=source,
+        semantic_reuse_decision=decision,
+    )
+    with pytest.raises(admission_module.SemanticCandidateAdmissionError) as scope:
+        admission_module._semantic_reuse_inputs(
+            replace(base, project_id="other-project")
+        )
+    assert scope.value.error_code == "SEMANTIC_REUSE_SCOPE_CONFLICT"
+
+    with pytest.raises(admission_module.SemanticCandidateAdmissionError) as missing:
+        admission_module._semantic_reuse_inputs(base)
+    assert missing.value.error_code == "SEMANTIC_REUSE_INPUT_MISSING"
+
+    complete = replace(
+        base,
+        reused_intent_evidence={},
+        reused_intent_candidate={},
+        reused_context_evidence={},
+        reused_context_candidate={},
+    )
+    monkeypatch.setattr(
+        admission_module,
+        "validate_semantic_candidate_evidence",
+        lambda _value: (_ for _ in ()).throw(
+            admission_module.SemanticCandidateEvidenceError("invalid", "invalid")
+        ),
+    )
+    with pytest.raises(admission_module.SemanticCandidateAdmissionError) as invalid:
+        admission_module._semantic_reuse_inputs(complete)
+    assert invalid.value.error_code == "SEMANTIC_REUSE_EVIDENCE_INVALID"
+
+    monkeypatch.setattr(
+        admission_module,
+        "validate_semantic_candidate_evidence",
+        lambda _value: {
+            "semantic_stage": "INTENT",
+            "tenant_id": "different-tenant",
+            "owner_subject_id": "user-a",
+            "execution_id": parent_execution_id,
+            "validation_outcome": "ADMITTED",
+            "directive": "CONTINUE",
+            "candidate_hash": semantic_sha256_hash_ref({}),
+        },
+    )
+    with pytest.raises(admission_module.SemanticCandidateAdmissionError) as conflict:
+        admission_module._semantic_reuse_inputs(complete)
+    assert conflict.value.error_code == "SEMANTIC_REUSE_EVIDENCE_CONFLICT"
 
 
 def test_live_diagnostic_evidence_captures_raw_prompt_and_compiled_plan(

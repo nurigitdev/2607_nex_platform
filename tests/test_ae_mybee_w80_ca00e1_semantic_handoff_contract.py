@@ -1,17 +1,19 @@
 from __future__ import annotations
 
+import nex_ae_api.semantic_handoff_reuse as reuse_module
 import pytest
-
+from nex_ae_api.agent_execution import _validate_claimed_planning_source
+from nex_ae_api.semantic_handoff_reuse import (
+    SemanticHandoffProjectionSource,
+    SemanticHandoffReuseError,
+)
+from nex_ae_api.work_intent import WorkIntentError, build_work_intent_from_claimed_work
 from nex_runtime.semantic_handoff import (
     SemanticHandoffError,
     build_semantic_handoff_projection,
     validate_semantic_handoff_projection,
 )
 from nex_runtime.semantic_hashes import semantic_sha256_hash_ref
-
-from nex_ae_api.agent_execution import _validate_claimed_planning_source
-from nex_ae_api.work_intent import WorkIntentError, build_work_intent_from_claimed_work
-
 
 TENANT = "VO00"
 OWNER = "employee-1001"
@@ -135,6 +137,94 @@ def test_semantic_handoff_builds_hash_bound_parent_lineage():
     assert handoff["context_candidate_id"] == CONTEXT_CANDIDATE_ID
     assert handoff["source_interaction_id"] == INTERACTION_ID
     assert validate_semantic_handoff_projection(handoff) == handoff
+
+
+def test_semantic_handoff_projection_source_reuses_authoritative_records():
+    work_intent, context, intent_evidence, context_evidence = _parent_records()
+
+    class WorkIntents:
+        def get_latest_for_execution(self, **_kwargs):
+            return work_intent
+
+    class Contexts:
+        def get_latest_for_execution(self, **_kwargs):
+            return context
+
+    class Evidence:
+        def get_for_stage(self, *, semantic_stage, **_kwargs):
+            return {
+                "INTENT": intent_evidence,
+                "CONTEXT": context_evidence,
+            }[semantic_stage]
+
+    source = SemanticHandoffProjectionSource(
+        work_intents=WorkIntents(), contexts=Contexts(), evidence=Evidence()
+    )
+    records = source.resolve(tenant_id=TENANT, execution_id=EXECUTION_ID)
+
+    assert records is not None
+    assert source.project(records, created_at=NOW) == _handoff()
+
+
+def test_semantic_handoff_projection_source_rejects_partial_lineage():
+    work_intent, _, _, _ = _parent_records()
+
+    class WorkIntents:
+        def get_latest_for_execution(self, **_kwargs):
+            return work_intent
+
+    class Missing:
+        def get_latest_for_execution(self, **_kwargs):
+            return None
+
+        def get_for_stage(self, **_kwargs):
+            return None
+
+    source = SemanticHandoffProjectionSource(
+        work_intents=WorkIntents(), contexts=Missing(), evidence=Missing()
+    )
+
+    with pytest.raises(SemanticHandoffReuseError, match="incomplete"):
+        source.resolve(tenant_id=TENANT, execution_id=EXECUTION_ID)
+
+
+def test_semantic_handoff_projection_source_supports_empty_and_sqlalchemy_factory(
+    monkeypatch,
+):
+    class Missing:
+        def get_latest_for_execution(self, **_kwargs):
+            return None
+
+        def get_for_stage(self, **_kwargs):
+            return None
+
+    source = SemanticHandoffProjectionSource(
+        work_intents=Missing(), contexts=Missing(), evidence=Missing()
+    )
+    assert source.resolve(tenant_id=TENANT, execution_id=EXECUTION_ID) is None
+
+    sentinel = object()
+    work_intents = object()
+    contexts = object()
+    evidence = object()
+    monkeypatch.setattr(
+        reuse_module, "SqlAlchemyWorkIntentRepository", lambda value: work_intents
+    )
+    monkeypatch.setattr(
+        reuse_module, "SqlAlchemyAgentContextRepository", lambda value: contexts
+    )
+    monkeypatch.setattr(
+        reuse_module,
+        "SqlAlchemySemanticCandidateEvidenceRepository",
+        lambda value: evidence,
+    )
+
+    built = SemanticHandoffProjectionSource.from_sqlalchemy(
+        session_factory=sentinel
+    )
+    assert built._work_intents is work_intents
+    assert built._contexts is contexts
+    assert built._evidence is evidence
 
 
 @pytest.mark.parametrize(

@@ -395,6 +395,54 @@ def test_s5_executor_persists_wait_before_idempotent_wc_creation():
         mismatch.execute(context_record)
 
 
+def test_s5_dispatch_promotes_semantic_source_to_v13(monkeypatch) -> None:
+    _, context, snapshot, plan = _delegate_plan()
+    validation = validate_agent_plan(
+        agent_plan=plan,
+        work_intent=_intent(),
+        agent_context=context,
+        capability_snapshot=snapshot,
+        validation_result_id=VALIDATION_ID,
+        validated_at=NOW,
+    )
+    ids = iter((STEP_ID, EXECUTABLE_PLAN_ID))
+    compiled = compile_executable_plan(
+        agent_plan=plan,
+        validation_result=validation,
+        agent_context=context,
+        capability_snapshot=snapshot,
+        compiled_at=NOW,
+        id_factory=lambda: next(ids),
+    )
+    handoff = {"handoff_hash": "sha256:" + "a" * 64}
+    monkeypatch.setattr(
+        delegated_work_module.SemanticHandoffProjectionSource,
+        "project",
+        staticmethod(lambda records, *, created_at: handoff),
+    )
+    runtime = {**_runtime(compiled), "semantic_handoff_source": {}}
+
+    dispatch = delegation_dispatch(runtime, created_at=NOW)
+
+    spec = dispatch["work_item_request"]["delegation_spec"]
+    assert spec["schema_version"] == "1.3"
+    assert spec["semantic_handoff"] == handoff
+
+    with pytest.raises(DelegatedWorkError, match="source lineage"):
+        delegation_dispatch(
+            {**_runtime(compiled), "semantic_handoff_source": "invalid"},
+            created_at=NOW,
+        )
+
+    monkeypatch.setattr(
+        delegated_work_module.SemanticHandoffProjectionSource,
+        "project",
+        staticmethod(lambda records, *, created_at: (_ for _ in ()).throw(KeyError())),
+    )
+    with pytest.raises(DelegatedWorkError, match="source lineage"):
+        delegation_dispatch(runtime, created_at=NOW)
+
+
 def test_s5_wait_repository_is_restart_safe_and_conflict_detecting():
     engine = create_engine("sqlite+pysqlite://", future=True)
     with engine.begin() as connection:
@@ -535,6 +583,76 @@ def test_s5_runtime_repository_requires_exact_active_compiled_lineage():
     assert loaded["requester_ref"] == "principal-s5"
     assert loaded["causation_id"] is None
     assert loaded["delegation"]["required_agent_type"] == "PA"
+
+    class EmptySemanticSource:
+        def __init__(self):
+            self.calls = []
+
+        def resolve(self, **values):
+            self.calls.append(values)
+
+    semantic_source = EmptySemanticSource()
+    loaded_with_source = SqlAlchemyDelegationRuntimeRepository(
+        factory, semantic_handoffs=semantic_source
+    ).load(
+        tenant_id=TENANT,
+        agent_execution_id=EXECUTION_ID,
+        executable_plan_id=EXECUTABLE_PLAN_ID,
+        executable_step_id=STEP_ID,
+    )
+    assert "semantic_handoff_source" not in loaded_with_source
+    assert semantic_source.calls == [
+        {"tenant_id": TENANT, "execution_id": EXECUTION_ID}
+    ]
+    semantic_source.resolve = lambda **_values: {"work_intent": {}}
+    loaded_with_projection = SqlAlchemyDelegationRuntimeRepository(
+        factory, semantic_handoffs=semantic_source
+    ).load(
+        tenant_id=TENANT,
+        agent_execution_id=EXECUTION_ID,
+        executable_plan_id=EXECUTABLE_PLAN_ID,
+        executable_step_id=STEP_ID,
+    )
+    assert loaded_with_projection["semantic_handoff_source"] == {
+        "work_intent": {}
+    }
+
+    class FailingSemanticSource:
+        def __init__(self, error):
+            self.error = error
+
+        def resolve(self, **_values):
+            raise self.error
+
+    with pytest.raises(DelegatedWorkError) as invalid_source:
+        SqlAlchemyDelegationRuntimeRepository(
+            factory,
+            semantic_handoffs=FailingSemanticSource(
+                delegated_work_module.SemanticHandoffReuseError("invalid")
+            ),
+        ).load(
+            tenant_id=TENANT,
+            agent_execution_id=EXECUTION_ID,
+            executable_plan_id=EXECUTABLE_PLAN_ID,
+            executable_step_id=STEP_ID,
+        )
+    assert invalid_source.value.error_code == "ae.semantic_handoff_source_invalid"
+
+    with pytest.raises(DelegatedWorkError) as unavailable_source:
+        SqlAlchemyDelegationRuntimeRepository(
+            factory,
+            semantic_handoffs=FailingSemanticSource(
+                delegated_work_module.WorkIntentError(
+                    "ae.work_intent_store_unavailable", "offline", True
+                )
+            ),
+        ).load(
+            tenant_id=TENANT,
+            agent_execution_id=EXECUTION_ID,
+            executable_plan_id=EXECUTABLE_PLAN_ID,
+            executable_step_id=STEP_ID,
+        )
+    assert unavailable_source.value.retryable is True
 
     mismatched = copy.deepcopy(compiled)
     mismatched["execution_id"] = "99999999-9999-4999-8999-999999999995"

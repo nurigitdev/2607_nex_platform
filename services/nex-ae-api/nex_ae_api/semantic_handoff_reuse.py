@@ -5,9 +5,13 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any, Protocol
 
-from nex_runtime.semantic_handoff import validate_semantic_handoff_projection
+from nex_runtime.semantic_handoff import (
+    build_semantic_handoff_projection,
+    validate_semantic_handoff_projection,
+)
 from nex_runtime.semantic_hashes import canonical_json, semantic_sha256_hash_ref
 
+from nex_ae_api.agent_context import SqlAlchemyAgentContextRepository
 from nex_ae_api.context_candidate_generation import (
     ContextCandidateStageError,
     parse_context_candidate_set,
@@ -68,6 +72,23 @@ class SemanticEvidenceSource(Protocol):
     def get(self, *, tenant_id: str, candidate_id: str) -> dict[str, Any] | None: ...
 
 
+class SemanticContextSource(Protocol):
+    def get_latest_for_execution(
+        self, *, tenant_id: str, execution_id: str
+    ) -> dict[str, Any] | None: ...
+
+
+class SemanticStageEvidenceSource(SemanticEvidenceSource, Protocol):
+    def get_for_stage(
+        self,
+        *,
+        tenant_id: str,
+        execution_id: str,
+        semantic_stage: str,
+        candidate_revision: int = 1,
+    ) -> dict[str, Any] | None: ...
+
+
 @dataclass(frozen=True)
 class SemanticReusePolicy:
     policy_ref: str
@@ -113,6 +134,91 @@ class SemanticReusePolicyRegistry:
         self, *, target_agent_type: str, work_class: str
     ) -> SemanticReusePolicy | None:
         return self._policies.get((target_agent_type, work_class))
+
+
+def build_default_semantic_reuse_policy_registry() -> SemanticReusePolicyRegistry:
+    policies = []
+    for agent_type in ("CA", "PA", "EA"):
+        for work_class in ("QUERY", "ANALYSIS", "DOCUMENT", "BUSINESS_TRANSACTION"):
+            policies.append(
+                SemanticReusePolicy(
+                    policy_ref=(
+                        "semantic-reuse://claimed-work/"
+                        f"{agent_type.lower()}/{work_class.lower()}/v1"
+                    ),
+                    target_agent_type=agent_type,
+                    work_class=work_class,
+                    minimum_intent_confidence=0.8,
+                    minimum_context_confidence=0.75,
+                    maximum_age_seconds=86_400,
+                )
+            )
+    return SemanticReusePolicyRegistry(policies)
+
+
+class SemanticHandoffProjectionSource:
+    def __init__(
+        self,
+        *,
+        work_intents: WorkIntentSource,
+        contexts: SemanticContextSource,
+        evidence: SemanticStageEvidenceSource,
+    ) -> None:
+        self._work_intents = work_intents
+        self._contexts = contexts
+        self._evidence = evidence
+
+    @classmethod
+    def from_sqlalchemy(
+        cls, *, session_factory: Any
+    ) -> SemanticHandoffProjectionSource:
+        return cls(
+            work_intents=SqlAlchemyWorkIntentRepository(session_factory),
+            contexts=SqlAlchemyAgentContextRepository(session_factory),
+            evidence=SqlAlchemySemanticCandidateEvidenceRepository(session_factory),
+        )
+
+    def resolve(
+        self, *, tenant_id: str, execution_id: str
+    ) -> dict[str, Mapping[str, Any]] | None:
+        records: dict[str, Mapping[str, Any] | None] = {
+            "work_intent": self._work_intents.get_latest_for_execution(
+                tenant_id=tenant_id, execution_id=execution_id
+            ),
+            "agent_context": self._contexts.get_latest_for_execution(
+                tenant_id=tenant_id, execution_id=execution_id
+            ),
+            "intent_evidence": self._evidence.get_for_stage(
+                tenant_id=tenant_id,
+                execution_id=execution_id,
+                semantic_stage="INTENT",
+            ),
+            "context_evidence": self._evidence.get_for_stage(
+                tenant_id=tenant_id,
+                execution_id=execution_id,
+                semantic_stage="CONTEXT",
+            ),
+        }
+        present = {name for name, value in records.items() if value is not None}
+        if not present:
+            return None
+        if len(present) != len(records):
+            raise SemanticHandoffReuseError(
+                "Semantic handoff source lineage is incomplete."
+            )
+        return {name: value for name, value in records.items() if value is not None}
+
+    @staticmethod
+    def project(
+        records: Mapping[str, Mapping[str, Any]], *, created_at: str
+    ) -> dict[str, Any]:
+        return build_semantic_handoff_projection(
+            work_intent=records["work_intent"],
+            agent_context=records["agent_context"],
+            intent_evidence=records["intent_evidence"],
+            context_evidence=records["context_evidence"],
+            created_at=created_at,
+        )
 
 
 @dataclass(frozen=True)
@@ -512,6 +618,63 @@ def _decision(
         "evaluated_at": _datetime(evaluated_at).isoformat().replace("+00:00", "Z"),
     }
     record["decision_hash"] = semantic_sha256_hash_ref(record)
+    return validate_semantic_reuse_decision(record)
+
+
+def validate_semantic_reuse_decision(value: Mapping[str, Any]) -> dict[str, Any]:
+    try:
+        record = dict(value)
+    except (TypeError, ValueError) as exc:
+        raise SemanticHandoffReuseError(
+            "Semantic reuse decision must be an object."
+        ) from exc
+    fields = {
+        "schema_version",
+        "handoff_hash",
+        "parent_execution_id",
+        "target_agent_type",
+        "delegated_capability",
+        "project_scope_ref",
+        "policy_ref",
+        "decision",
+        "reason_codes",
+        "evaluated_at",
+        "decision_hash",
+    }
+    if set(record) != fields or (
+        record.get("schema_version") != SEMANTIC_REUSE_DECISION_SCHEMA_VERSION
+    ):
+        raise SemanticHandoffReuseError("Semantic reuse decision fields are invalid.")
+    if record.get("decision") not in REUSE_DECISIONS:
+        raise SemanticHandoffReuseError("Semantic reuse decision is invalid.")
+    reasons = record.get("reason_codes")
+    if (
+        not isinstance(reasons, list)
+        or reasons != sorted(set(reasons))
+        or any(reason not in REUSE_REASON_CODES for reason in reasons)
+    ):
+        raise SemanticHandoffReuseError("Semantic reuse reason codes are invalid.")
+    if record.get("target_agent_type") not in {"IA", "CA", "PA", "EA"}:
+        raise SemanticHandoffReuseError("Semantic reuse target Agent type is invalid.")
+    for field in ("handoff_hash", "decision_hash"):
+        value = record.get(field)
+        if (
+            not isinstance(value, str)
+            or not value.startswith("sha256:")
+            or len(value) != 71
+        ):
+            raise SemanticHandoffReuseError(f"Semantic reuse {field} is invalid.")
+    for field in ("parent_execution_id", "delegated_capability", "project_scope_ref"):
+        _text(field, record.get(field))
+    policy_ref = record.get("policy_ref")
+    if policy_ref is not None:
+        _text("policy_ref", policy_ref)
+    _datetime(record.get("evaluated_at"))
+    expected = semantic_sha256_hash_ref(
+        {key: item for key, item in record.items() if key != "decision_hash"}
+    )
+    if record["decision_hash"] != expected:
+        raise SemanticHandoffReuseError("Semantic reuse decision hash is invalid.")
     return record
 
 

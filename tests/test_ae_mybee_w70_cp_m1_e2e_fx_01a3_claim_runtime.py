@@ -357,11 +357,16 @@ def test_installed_claim_handoff_builder_is_fail_closed(
 
 
 def test_installed_claim_handoff_builder_uses_existing_runtime_components() -> None:
+    semantic_service = SimpleNamespace(
+        work_intents=object(),
+        evidence=object(),
+        candidate_storage=object(),
+    )
     built = build_installed_claim_handoff_admission(
         agent_runtime=SimpleNamespace(
             mode="required", admission=_Admission(), jobs=object()
         ),
-        semantic_runtime=SimpleNamespace(mode="required", service=object()),
+        semantic_runtime=SimpleNamespace(mode="required", service=semantic_service),
         session_factory=object(),
     )
     assert isinstance(built, InstalledClaimHandoffAdmission)

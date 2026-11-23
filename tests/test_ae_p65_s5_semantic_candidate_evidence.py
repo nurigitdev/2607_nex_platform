@@ -3,8 +3,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import pytest
 import nex_ae_api.semantic_candidate_evidence as evidence_module
+import pytest
 from jsonschema import Draft202012Validator, FormatChecker
 from nex_ae_api.semantic_candidate_evidence import (
     InMemorySemanticCandidateStorage,
@@ -22,7 +22,6 @@ from nex_ae_api.semantic_candidate_evidence import (
 from nex_runtime.object_storage import ObjectStorageError
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
-
 
 ROOT = Path(__file__).resolve().parents[1]
 CANDIDATE_ID = "10000000-0000-4000-8000-000000000655"
@@ -176,6 +175,38 @@ def test_repository_is_insert_or_verify_and_restart_safe() -> None:
     with pytest.raises(SemanticCandidateEvidenceError) as raised:
         repository.save(changed)
     assert raised.value.error_code == "ae.semantic_candidate_immutable_conflict"
+
+
+def test_repository_resolves_stage_evidence_and_rejects_invalid_lookup() -> None:
+    repository = SqlAlchemySemanticCandidateEvidenceRepository(_factory())
+    evidence = _evidence()
+    repository.save(evidence)
+
+    assert repository.get_for_stage(
+        tenant_id="tenant-a",
+        execution_id=EXECUTION_ID,
+        semantic_stage="INTENT",
+    ) == evidence
+    assert repository.get_for_stage(
+        tenant_id="tenant-a",
+        execution_id=EXECUTION_ID,
+        semantic_stage="CONTEXT",
+    ) is None
+    with pytest.raises(SemanticCandidateEvidenceError):
+        repository.get_for_stage(
+            tenant_id="tenant-a",
+            execution_id=EXECUTION_ID,
+            semantic_stage="UNKNOWN",
+        )
+
+    empty = sessionmaker(bind=create_engine("sqlite+pysqlite://", future=True))
+    with pytest.raises(SemanticCandidateEvidenceError) as unavailable:
+        SqlAlchemySemanticCandidateEvidenceRepository(empty).get_for_stage(
+            tenant_id="tenant-a",
+            execution_id=EXECUTION_ID,
+            semantic_stage="INTENT",
+        )
+    assert unavailable.value.retryable is True
 
 
 def test_stage_revision_conflict_and_store_unavailable_fail_closed() -> None:

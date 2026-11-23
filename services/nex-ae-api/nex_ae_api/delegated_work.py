@@ -13,10 +13,17 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
 
+from nex_ae_api.agent_context import AgentContextError
 from nex_ae_api.executable_plans import (
     ExecutablePlanError,
     validate_compiled_delegation,
 )
+from nex_ae_api.semantic_candidate_evidence import SemanticCandidateEvidenceError
+from nex_ae_api.semantic_handoff_reuse import (
+    SemanticHandoffProjectionSource,
+    SemanticHandoffReuseError,
+)
+from nex_ae_api.work_intent import WorkIntentError
 
 _WAIT_TYPES = frozenset({"WORK_RESULT", "NSL_APPROVAL"})
 
@@ -36,8 +43,14 @@ class WcWorkItemClient(Protocol):
 
 
 class SqlAlchemyDelegationRuntimeRepository:
-    def __init__(self, session_factory: sessionmaker[Session]) -> None:
+    def __init__(
+        self,
+        session_factory: sessionmaker[Session],
+        *,
+        semantic_handoffs: SemanticHandoffProjectionSource | None = None,
+    ) -> None:
         self._session_factory = session_factory
+        self._semantic_handoffs = semantic_handoffs
 
     def load(
         self,
@@ -99,7 +112,7 @@ class SqlAlchemyDelegationRuntimeRepository:
                         "Delegated work requires active execution authority."
                     )
                 requester_ref = row["requester_ref"] or row["principal_id"]
-                return {
+                runtime = {
                     "tenant_id": params["tenant_id"],
                     "agent_execution_id": params["execution_id"],
                     "executable_plan_id": params["plan_id"],
@@ -117,8 +130,27 @@ class SqlAlchemyDelegationRuntimeRepository:
                     ),
                     "delegation": validate_compiled_delegation(step.get("delegation")),
                 }
+                if self._semantic_handoffs is not None:
+                    semantic_source = self._semantic_handoffs.resolve(
+                        tenant_id=params["tenant_id"],
+                        execution_id=params["execution_id"],
+                    )
+                    if semantic_source is not None:
+                        runtime["semantic_handoff_source"] = semantic_source
+                return runtime
         except DelegatedWorkError:
             raise
+        except SemanticHandoffReuseError as exc:
+            raise DelegatedWorkError(
+                "ae.semantic_handoff_source_invalid",
+                str(exc),
+            ) from exc
+        except (WorkIntentError, AgentContextError, SemanticCandidateEvidenceError) as exc:
+            raise DelegatedWorkError(
+                str(exc.error_code),
+                str(exc.detail),
+                bool(exc.retryable),
+            ) from exc
         except ExecutablePlanError as exc:
             raise _invalid(exc.detail) from exc
         except SQLAlchemyError as exc:
@@ -301,6 +333,18 @@ def delegation_dispatch(
         ),
         "causation_id": step_id,
     }
+    semantic_source = runtime.get("semantic_handoff_source")
+    if semantic_source is not None:
+        if not isinstance(semantic_source, Mapping):
+            raise _invalid("Semantic handoff source lineage is invalid.")
+        try:
+            spec["semantic_handoff"] = SemanticHandoffProjectionSource.project(
+                semantic_source,
+                created_at=_required("created_at", created_at, 64),
+            )
+        except (KeyError, SemanticHandoffReuseError, ValueError) as exc:
+            raise _invalid("Semantic handoff source lineage is invalid.") from exc
+        spec["schema_version"] = "1.3"
     wait_id = deterministic_wait_id(
         tenant_id=tenant_id,
         agent_execution_id=execution_id,

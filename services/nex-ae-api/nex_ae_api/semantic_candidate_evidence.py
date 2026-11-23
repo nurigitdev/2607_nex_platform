@@ -12,7 +12,11 @@ from pathlib import Path
 from typing import Any, Protocol
 from uuid import UUID
 
-from nex_runtime.object_storage import ObjectStorageError, S3ObjectStore, build_owner_object_key
+from nex_runtime.object_storage import (
+    ObjectStorageError,
+    S3ObjectStore,
+    build_owner_object_key,
+)
 from nex_runtime.semantic_hashes import (
     canonical_json,
     semantic_sha256_hash_ref,
@@ -28,7 +32,6 @@ from nex_ae_api.private_object_store import (
     ae_private_storage_mode,
     build_ae_private_object_store,
 )
-
 
 SEMANTIC_CANDIDATE_SCHEMA_VERSION = "p65.semantic_candidate_evidence.v1"
 SEMANTIC_CANDIDATE_STORAGE_ENV = "NEX_AE_SEMANTIC_CANDIDATE_STORAGE_ROOT"
@@ -585,6 +588,35 @@ class SqlAlchemySemanticCandidateEvidenceRepository:
         try:
             with self._session_factory() as session:
                 return _load_evidence(session, tenant_id, candidate_id)
+        except SQLAlchemyError as exc:
+            raise SemanticCandidateEvidenceError(
+                "ae.semantic_candidate_store_unavailable",
+                "AE semantic candidate evidence store is unavailable.",
+                True,
+            ) from exc
+
+    def get_for_stage(
+        self,
+        *,
+        tenant_id: str,
+        execution_id: str,
+        semantic_stage: str,
+        candidate_revision: int = 1,
+    ) -> dict[str, Any] | None:
+        tenant_id = _required_text("tenant_id", tenant_id, 128)
+        execution_id = _uuid_text("execution_id", execution_id)
+        if semantic_stage not in SEMANTIC_STAGES:
+            raise _invalid("Semantic candidate stage is invalid.")
+        _bounded_int("candidate_revision", candidate_revision, 1, 99)
+        try:
+            with self._session_factory() as session:
+                return _load_stage_evidence(
+                    session,
+                    tenant_id,
+                    execution_id,
+                    semantic_stage,
+                    candidate_revision,
+                )
         except SQLAlchemyError as exc:
             raise SemanticCandidateEvidenceError(
                 "ae.semantic_candidate_store_unavailable",

@@ -76,12 +76,14 @@ from nex_ae_api.product_planning_proposals import (
 from nex_ae_api.product_planning_runtime import ProductPlanningRuntimeError
 from nex_ae_api.semantic_candidate_evidence import (
     InMemorySemanticCandidateStorage,
+    SemanticCandidateEvidenceError,
     SemanticCandidateStorage,
     SqlAlchemySemanticCandidateEvidenceRepository,
     build_default_semantic_candidate_storage,
     build_semantic_candidate_evidence,
     build_semantic_candidate_payload,
     candidate_payload_metadata_from_evidence,
+    validate_semantic_candidate_evidence,
 )
 from nex_ae_api.semantic_candidate_failures import (
     project_semantic_candidate_failure,
@@ -89,6 +91,10 @@ from nex_ae_api.semantic_candidate_failures import (
 from nex_ae_api.semantic_candidates import (
     SemanticCalibrationRegistry,
     SemanticCandidateStageError,
+)
+from nex_ae_api.semantic_handoff_reuse import (
+    SemanticHandoffReuseError,
+    validate_semantic_reuse_decision,
 )
 from nex_ae_api.work_intent import (
     SqlAlchemyWorkIntentRepository,
@@ -150,6 +156,21 @@ class SemanticCandidateAdmissionRequest:
     project_id: str | None = None
     source_ref: str | None = None
     planning_source: Mapping[str, Any] | None = field(default=None, repr=False)
+    semantic_reuse_decision: Mapping[str, Any] | None = field(
+        default=None, repr=False
+    )
+    reused_intent_evidence: Mapping[str, Any] | None = field(
+        default=None, repr=False
+    )
+    reused_intent_candidate: Mapping[str, Any] | None = field(
+        default=None, repr=False
+    )
+    reused_context_evidence: Mapping[str, Any] | None = field(
+        default=None, repr=False
+    )
+    reused_context_candidate: Mapping[str, Any] | None = field(
+        default=None, repr=False
+    )
 
 
 @dataclass(frozen=True)
@@ -391,6 +412,7 @@ class DeterministicCandidateAdmissionService:
                 "planning_source_type": request.planning_source_type,
                 "planning_source": request.planning_source,
                 "capability_snapshot": request.capability_snapshot,
+                "semantic_reuse_decision": request.semantic_reuse_decision,
             },
         )
         if self.mode == "disabled":
@@ -445,33 +467,39 @@ class DeterministicCandidateAdmissionService:
         now = _timestamp(self.clock())
         ids = _AdmissionIds(execution_id)
         stages: list[SemanticStageProjection] = []
-
-        intent_evidence, intent_candidate, intent_result, resumed = self._stage(
-            request=request,
-            execution_id=execution_id,
-            semantic_stage="INTENT",
-            candidate_id=ids.candidate("INTENT"),
-            invoke=lambda: self.intent_stage.generate_and_resolve(
-                user_prompt=request.user_prompt,
+        reuse = _semantic_reuse_inputs(request)
+        if reuse is not None:
+            intent_evidence = reuse["intent_evidence"]
+            intent_candidate = reuse["intent_candidate"]
+            intent_result = None
+            resumed = True
+        else:
+            intent_evidence, intent_candidate, intent_result, resumed = self._stage(
+                request=request,
                 execution_id=execution_id,
-                source_ref=source_ref,
-                actor_ref=f"OA:SUBJECT:{request.owner_subject_id}",
-                received_at=str(execution["received_at"]),
-                request_id=request.request_id,
-                trace_id=request.trace_id,
-                planning_mode=self.mode,
-                retrieval_enabled=request.retrieval_enabled,
-                authorized_resource_context_available=(
-                    request.authorized_resource_context_available
+                semantic_stage="INTENT",
+                candidate_id=ids.candidate("INTENT"),
+                invoke=lambda: self.intent_stage.generate_and_resolve(
+                    user_prompt=request.user_prompt,
+                    execution_id=execution_id,
+                    source_ref=source_ref,
+                    actor_ref=f"OA:SUBJECT:{request.owner_subject_id}",
+                    received_at=str(execution["received_at"]),
+                    request_id=request.request_id,
+                    trace_id=request.trace_id,
+                    planning_mode=self.mode,
+                    retrieval_enabled=request.retrieval_enabled,
+                    authorized_resource_context_available=(
+                        request.authorized_resource_context_available
+                    ),
+                    trusted_execution_mode=request.trusted_execution_mode,
+                    work_intent_id=ids.work_intent,
+                    materialize_work_intent=(
+                        request.planning_source_type != "CLAIMED_WORKITEM"
+                    ),
                 ),
-                trusted_execution_mode=request.trusted_execution_mode,
-                work_intent_id=ids.work_intent,
-                materialize_work_intent=(
-                    request.planning_source_type != "CLAIMED_WORKITEM"
-                ),
-            ),
-            now=now,
-        )
+                now=now,
+            )
         stages.append(_stage_projection(intent_evidence, resumed=resumed))
         if intent_evidence["directive"] != "CONTINUE":
             return _stopped(self.mode, execution_id, stages)
@@ -575,34 +603,42 @@ class DeterministicCandidateAdmissionService:
             },
         )
 
-        context_evidence, context_candidate, context_result, resumed = self._stage(
-            request=request,
-            execution_id=execution_id,
-            semantic_stage="CONTEXT",
-            candidate_id=ids.candidate("CONTEXT"),
-            invoke=lambda: self.context_stage.generate_and_resolve(
-                work_intent=work_intent,
-                base_context=request.base_context,
-                tenant_id=request.tenant_id,
-                principal_id=request.owner_subject_id,
-                agent_id=str(execution["agent_id"]),
+        if reuse is not None and reuse["decision"]["decision"] == (
+            "REUSE_INTENT_REBUILD_CONTEXT"
+        ):
+            context_evidence = reuse["context_evidence"]
+            context_candidate = reuse["context_candidate"]
+            context_result = None
+            resumed = True
+        else:
+            context_evidence, context_candidate, context_result, resumed = self._stage(
+                request=request,
                 execution_id=execution_id,
-                workspace_id=request.workspace_id,
-                conversation_id=request.conversation_id,
-                interaction_id=request.interaction_id,
-                agent_type=request.agent_type,
-                source_type=request.planning_source_type,
-                source_ref=request.source_ref,
-                runtime_policy_ref=request.runtime_policy_ref,
-                resolver=context_resolver,
-                request_id=request.request_id,
-                trace_id=request.trace_id,
-                planning_mode=self.mode,
-                context_id=ids.context,
-                built_at=now,
-            ),
-            now=now,
-        )
+                semantic_stage="CONTEXT",
+                candidate_id=ids.candidate("CONTEXT"),
+                invoke=lambda: self.context_stage.generate_and_resolve(
+                    work_intent=work_intent,
+                    base_context=request.base_context,
+                    tenant_id=request.tenant_id,
+                    principal_id=request.owner_subject_id,
+                    agent_id=str(execution["agent_id"]),
+                    execution_id=execution_id,
+                    workspace_id=request.workspace_id,
+                    conversation_id=request.conversation_id,
+                    interaction_id=request.interaction_id,
+                    agent_type=request.agent_type,
+                    source_type=request.planning_source_type,
+                    source_ref=request.source_ref,
+                    runtime_policy_ref=request.runtime_policy_ref,
+                    resolver=context_resolver,
+                    request_id=request.request_id,
+                    trace_id=request.trace_id,
+                    planning_mode=self.mode,
+                    context_id=ids.context,
+                    built_at=now,
+                ),
+                now=now,
+            )
         stages.append(_stage_projection(context_evidence, resumed=resumed))
         if context_evidence["directive"] != "CONTINUE":
             return _stopped(
@@ -1130,6 +1166,113 @@ class _AdmissionIds:
 
     def _id(self, identity: str) -> str:
         return str(uuid5(NAMESPACE_URL, f"nex:p65:{self.execution_id}:{identity}"))
+
+
+def _semantic_reuse_inputs(
+    request: SemanticCandidateAdmissionRequest,
+) -> dict[str, Any] | None:
+    values = (
+        request.reused_intent_evidence,
+        request.reused_intent_candidate,
+        request.reused_context_evidence,
+        request.reused_context_candidate,
+    )
+    if request.semantic_reuse_decision is None:
+        if any(value is not None for value in values):
+            raise _error(
+                409,
+                "SEMANTIC_REUSE_DECISION_MISSING",
+                "Reused semantic evidence requires an admitted reuse decision.",
+            )
+        return None
+    try:
+        decision = validate_semantic_reuse_decision(
+            request.semantic_reuse_decision
+        )
+    except SemanticHandoffReuseError as exc:
+        raise _error(
+            409,
+            "SEMANTIC_REUSE_DECISION_INVALID",
+            "Semantic reuse decision is invalid.",
+        ) from exc
+    if decision["decision"] == "FULL_SEMANTIC_REPLAN":
+        if any(value is not None for value in values):
+            raise _error(
+                409,
+                "SEMANTIC_REUSE_INPUT_CONFLICT",
+                "Full semantic replan cannot receive reused stage payloads.",
+            )
+        return None
+    if decision["decision"] not in {
+        "REUSE_INTENT_REBUILD_CONTEXT",
+        "REUSE_INTENT_AUGMENT_CONTEXT",
+    }:
+        raise _error(
+            409,
+            "SEMANTIC_REUSE_DECISION_BLOCKED",
+            "Semantic reuse decision does not permit target planning.",
+        )
+    source = request.planning_source
+    handoff = source.get("semantic_handoff") if isinstance(source, Mapping) else None
+    expected = {
+        "target_agent_type": request.agent_type,
+        "delegated_capability": (
+            source.get("required_capability") if isinstance(source, Mapping) else None
+        ),
+        "project_scope_ref": request.project_id,
+        "handoff_hash": (
+            handoff.get("handoff_hash") if isinstance(handoff, Mapping) else None
+        ),
+    }
+    if any(decision.get(field) != value for field, value in expected.items()):
+        raise _error(
+            409,
+            "SEMANTIC_REUSE_SCOPE_CONFLICT",
+            "Semantic reuse decision does not match target planning authority.",
+        )
+    records: dict[str, Any] = {"decision": decision}
+    for stage, evidence_value, candidate_value in (
+        ("INTENT", request.reused_intent_evidence, request.reused_intent_candidate),
+        (
+            "CONTEXT",
+            request.reused_context_evidence,
+            request.reused_context_candidate,
+        ),
+    ):
+        if not isinstance(evidence_value, Mapping) or not isinstance(
+            candidate_value, Mapping
+        ):
+            raise _error(
+                409,
+                "SEMANTIC_REUSE_INPUT_MISSING",
+                "Semantic reuse requires admitted INTENT and CONTEXT evidence.",
+            )
+        try:
+            evidence = validate_semantic_candidate_evidence(evidence_value)
+        except SemanticCandidateEvidenceError as exc:
+            raise _error(
+                409,
+                "SEMANTIC_REUSE_EVIDENCE_INVALID",
+                "Reused semantic evidence is invalid.",
+            ) from exc
+        if (
+            evidence["semantic_stage"] != stage
+            or evidence["tenant_id"] != request.tenant_id
+            or evidence["owner_subject_id"] != request.owner_subject_id
+            or evidence["execution_id"] != decision["parent_execution_id"]
+            or evidence["validation_outcome"] != "ADMITTED"
+            or evidence["directive"] != "CONTINUE"
+            or evidence["candidate_hash"]
+            != semantic_sha256_hash_ref(dict(candidate_value))
+        ):
+            raise _error(
+                409,
+                "SEMANTIC_REUSE_EVIDENCE_CONFLICT",
+                "Reused semantic evidence does not match its target handoff.",
+            )
+        records[f"{stage.lower()}_evidence"] = evidence
+        records[f"{stage.lower()}_candidate"] = dict(candidate_value)
+    return records
 
 
 def _stage_projection(
