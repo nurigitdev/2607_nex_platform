@@ -103,10 +103,32 @@ export function LoginPage() {
 
 function routeFromState(state: unknown) {
   if (state && typeof state === "object" && "from" in state) {
-    const from = state.from as { pathname?: unknown };
-    if (typeof from?.pathname === "string" && from.pathname.startsWith("/")) return from.pathname;
+    const from = state.from as { pathname?: unknown; search?: unknown };
+    if (
+      typeof from?.pathname === "string" &&
+      from.pathname.startsWith("/") &&
+      !from.pathname.startsWith("//")
+    ) {
+      return `${from.pathname}${workspaceRecoverySearch(from.pathname, from.search)}`;
+    }
   }
   return "/workspace";
+}
+
+function workspaceRecoverySearch(pathname: string, value: unknown) {
+  if (pathname !== "/workspace" || typeof value !== "string" || !value) return "";
+  const params = new URLSearchParams(value);
+  const interactionIds = params.getAll("interaction_id");
+  const onlyRecoveryParameter = [...params.keys()].every(key => key === "interaction_id");
+  const interactionId = interactionIds[0]?.trim() ?? "";
+  if (
+    !onlyRecoveryParameter ||
+    interactionIds.length !== 1 ||
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(interactionId)
+  ) {
+    return "";
+  }
+  return `?interaction_id=${encodeURIComponent(interactionId)}`;
 }
 
 function loginErrorMessage(status: string) {

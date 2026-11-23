@@ -18,9 +18,11 @@ const memberSession: SessionState = {
 };
 
 function sessionClient({
+  currentSession,
   loginResult = memberSession,
   loginError,
 }: {
+  readonly currentSession?: SessionState;
   readonly loginResult?: SessionState;
   readonly loginError?: Error & { status?: string };
 } = {}) {
@@ -36,7 +38,7 @@ function sessionClient({
     return loginResult;
   });
   const client: SessionClientPort = {
-    getCurrentSession: vi.fn(async () => anonymous),
+    getCurrentSession: vi.fn(async () => currentSession ?? anonymous),
     login,
     logout: vi.fn(async () => loggedOut),
   };
@@ -124,6 +126,33 @@ describe("modern application foundation", () => {
       requested_scopes: ["workspace:use"],
       ttl_seconds: 3600,
     });
+  });
+
+  it("preserves one admitted interaction recovery target across session bootstrap", async () => {
+    const interactionId = "c2fa1352-147b-4fc7-8ce4-9c6496bd554b";
+    const { client } = sessionClient({ currentSession: memberSession });
+    window.history.pushState({}, "", `/workspace?interaction_id=${interactionId}`);
+
+    render(<App sessionClient={client} />);
+
+    expect(await screen.findByRole("heading", { name: "작업 공간" })).toBeTruthy();
+    expect(window.location.pathname).toBe("/workspace");
+    expect(window.location.search).toBe(`?interaction_id=${interactionId}`);
+  });
+
+  it("drops malformed or mixed recovery parameters during session bootstrap", async () => {
+    const { client } = sessionClient({ currentSession: memberSession });
+    window.history.pushState(
+      {},
+      "",
+      "/workspace?interaction_id=not-an-interaction&redirect=https%3A%2F%2Fexample.invalid",
+    );
+
+    render(<App sessionClient={client} />);
+
+    expect(await screen.findByRole("heading", { name: "작업 공간" })).toBeTruthy();
+    expect(window.location.pathname).toBe("/workspace");
+    expect(window.location.search).toBe("");
   });
 
   it("validates fields without submitting credential material", async () => {
