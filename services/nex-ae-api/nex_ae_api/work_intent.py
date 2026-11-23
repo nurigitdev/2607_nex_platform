@@ -14,6 +14,10 @@ from nex_runtime.semantic_hashes import (
     validate_hash_ref,
     validate_sha256_digest,
 )
+from nex_runtime.semantic_handoff import (
+    SemanticHandoffError,
+    validate_semantic_handoff_projection,
+)
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
@@ -306,7 +310,7 @@ def build_work_intent_from_claimed_work(
     result: dict[str, Any] = {
         "schema_version": (
             BUSINESS_WORK_INTENT_SCHEMA_VERSION
-            if source["schema_version"] == "p7.claimed_work_planning_source.v2"
+            if _claimed_source_has_business_context(source)
             else WORK_INTENT_SCHEMA_VERSION
         ),
         "work_intent_id": work_intent_id,
@@ -357,7 +361,7 @@ def build_work_intent_from_claimed_work(
         },
         "provenance": provenance,
     }
-    if source["schema_version"] == "p7.claimed_work_planning_source.v2":
+    if _claimed_source_has_business_context(source):
         result.update(
             {
                 "constraints": [
@@ -609,21 +613,31 @@ def _claimed_planning_source(value: Mapping[str, Any]) -> dict[str, Any]:
         "business_request_context",
         "business_context_hash",
     }
+    v3_fields = base_fields | {"delegation_identity", "semantic_handoff"}
+    v3_business_fields = v3_fields | {
+        "business_request_context",
+        "business_context_hash",
+    }
     if not isinstance(value, Mapping):
         raise _invalid("Claimed planning source fields are invalid.")
     result = dict(value)
     schema_version = result.get("schema_version")
-    expected_fields = (
-        v2_fields
-        if schema_version == "p7.claimed_work_planning_source.v2"
-        else base_fields
-    )
+    expected_fields = base_fields
+    if schema_version == "p7.claimed_work_planning_source.v2":
+        expected_fields = v2_fields
+    elif schema_version == "p7.claimed_work_planning_source.v3":
+        expected_fields = (
+            v3_business_fields
+            if "business_request_context" in result
+            else v3_fields
+        )
     if (
         set(result) != expected_fields
         or schema_version
         not in {
             "p7.claimed_work_planning_source.v1",
             "p7.claimed_work_planning_source.v2",
+            "p7.claimed_work_planning_source.v3",
         }
         or result.get("source_type") != "CLAIMED_WORKITEM"
     ):
@@ -650,7 +664,7 @@ def _claimed_planning_source(value: Mapping[str, Any]) -> dict[str, Any]:
         and result.get("required_capability") == BUSINESS_TRANSACTION_INTENT_LABEL
     ):
         raise _invalid("M1 claimed work requires business planning source v2.")
-    if schema_version == "p7.claimed_work_planning_source.v2":
+    if _claimed_source_has_business_context(result):
         if (
             result.get("work_class") != "BUSINESS_TRANSACTION"
             or result.get("required_capability")
@@ -674,7 +688,51 @@ def _claimed_planning_source(value: Mapping[str, Any]) -> dict[str, Any]:
         }:
             raise _invalid("Claimed planning delegation identity is invalid.")
         result["business_request_context"] = context
+    if schema_version == "p7.claimed_work_planning_source.v3":
+        identity = result.get("delegation_identity")
+        if not isinstance(identity, Mapping) or set(identity) != {
+            "delegation_id",
+            "delegation_revision",
+            "requester_ref",
+            "parent_agent_execution_id",
+        }:
+            raise _invalid("Claimed planning delegation identity is invalid.")
+        for field in (
+            "delegation_id",
+            "requester_ref",
+            "parent_agent_execution_id",
+        ):
+            _require_text(
+                f"delegation_identity.{field}", identity.get(field), maximum=200
+            )
+        revision = identity.get("delegation_revision")
+        if (
+            isinstance(revision, bool)
+            or not isinstance(revision, int)
+            or revision < 1
+        ):
+            raise _invalid("Claimed planning delegation revision is invalid.")
+        try:
+            handoff = validate_semantic_handoff_projection(
+                result.get("semantic_handoff")
+            )
+        except SemanticHandoffError as exc:
+            raise _invalid(str(exc)) from exc
+        if (
+            handoff["parent_execution_id"]
+            != identity["parent_agent_execution_id"]
+            or handoff["owner_subject_id"] != identity["requester_ref"]
+        ):
+            raise _invalid("Claimed planning semantic handoff lineage is invalid.")
+        result["delegation_identity"] = dict(identity)
+        result["semantic_handoff"] = handoff
     return result
+
+
+def _claimed_source_has_business_context(value: Mapping[str, Any]) -> bool:
+    return (
+        "business_request_context" in value or "business_context_hash" in value
+    )
 
 
 def _validate_revision(revision: object, supersedes: object) -> None:

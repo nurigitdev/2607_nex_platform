@@ -13,6 +13,10 @@ from nex_runtime.business_context import (
     BusinessContextValidationError,
     validate_business_request_context,
 )
+from nex_runtime.semantic_handoff import (
+    SemanticHandoffError,
+    validate_semantic_handoff_projection,
+)
 from nex_runtime.semantic_hashes import semantic_sha256_hash_ref
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
@@ -88,8 +92,12 @@ NESTED_DELEGATION_FIELDS = frozenset(
 BUSINESS_DELEGATION_FIELDS = frozenset(
     {"business_request_context", "business_context_hash"}
 )
+SEMANTIC_HANDOFF_FIELDS = frozenset({"semantic_handoff"})
 DELEGATION_FIELDS = (
-    BASE_DELEGATION_FIELDS | NESTED_DELEGATION_FIELDS | BUSINESS_DELEGATION_FIELDS
+    BASE_DELEGATION_FIELDS
+    | NESTED_DELEGATION_FIELDS
+    | BUSINESS_DELEGATION_FIELDS
+    | SEMANTIC_HANDOFF_FIELDS
 )
 REQUIRED_DELEGATION_FIELDS = BASE_DELEGATION_FIELDS - {"causation_id"}
 
@@ -562,11 +570,20 @@ def validate_delegation_spec(value: object) -> dict[str, Any]:
     schema_version = spec["schema_version"]
     nested_fields = NESTED_DELEGATION_FIELDS & set(spec)
     if schema_version == "1.0":
-        if nested_fields or BUSINESS_DELEGATION_FIELDS & set(spec):
+        if (
+            nested_fields
+            or BUSINESS_DELEGATION_FIELDS & set(spec)
+            or SEMANTIC_HANDOFF_FIELDS & set(spec)
+        ):
             raise _invalid("DelegationSpec 1.0 contains unsupported lineage fields")
     elif schema_version == "1.1":
-        if BUSINESS_DELEGATION_FIELDS & set(spec):
-            raise _invalid("DelegationSpec 1.1 cannot contain business context")
+        if (
+            BUSINESS_DELEGATION_FIELDS & set(spec)
+            or SEMANTIC_HANDOFF_FIELDS & set(spec)
+        ):
+            raise _invalid(
+                "DelegationSpec 1.1 cannot contain business or semantic context"
+            )
         missing_nested = NESTED_DELEGATION_FIELDS - set(spec)
         if missing_nested:
             raise _invalid(
@@ -580,8 +597,20 @@ def validate_delegation_spec(value: object) -> dict[str, Any]:
             )
         if nested_fields and nested_fields != NESTED_DELEGATION_FIELDS:
             raise _invalid("DelegationSpec nested lineage fields must be complete")
+        if SEMANTIC_HANDOFF_FIELDS & set(spec):
+            raise _invalid("DelegationSpec 1.2 cannot contain semantic handoff")
+    elif schema_version == "1.3":
+        if SEMANTIC_HANDOFF_FIELDS - set(spec):
+            raise _invalid("DelegationSpec 1.3 requires semantic handoff")
+        if nested_fields and nested_fields != NESTED_DELEGATION_FIELDS:
+            raise _invalid("DelegationSpec nested lineage fields must be complete")
+        business_fields = BUSINESS_DELEGATION_FIELDS & set(spec)
+        if business_fields and business_fields != BUSINESS_DELEGATION_FIELDS:
+            raise _invalid("DelegationSpec business context fields must be complete")
     else:
-        raise _invalid("DelegationSpec schema_version must be 1.0, 1.1, or 1.2")
+        raise _invalid(
+            "DelegationSpec schema_version must be 1.0, 1.1, 1.2, or 1.3"
+        )
     for name, maximum in (
         ("delegation_id", 128),
         ("tenant_id", 128),
@@ -615,7 +644,9 @@ def validate_delegation_spec(value: object) -> dict[str, Any]:
     causation_id = spec.get("causation_id")
     if causation_id is not None:
         _required_text("causation_id", causation_id, 128)
-    if schema_version == "1.2":
+    if schema_version in {"1.2", "1.3"} and (
+        BUSINESS_DELEGATION_FIELDS <= set(spec)
+    ):
         if (
             spec["work_class"] != "BUSINESS_TRANSACTION"
             or spec["required_agent_type"] != "PA"
@@ -632,6 +663,18 @@ def validate_delegation_spec(value: object) -> dict[str, Any]:
         if spec["business_context_hash"] != context["context_hash"]:
             raise _invalid("DelegationSpec business context hash is invalid")
         spec["business_request_context"] = context
+    if schema_version == "1.3":
+        try:
+            handoff = validate_semantic_handoff_projection(spec["semantic_handoff"])
+        except SemanticHandoffError as exc:
+            raise _invalid(str(exc)) from exc
+        if (
+            handoff["tenant_id"] != spec["tenant_id"]
+            or handoff["parent_execution_id"]
+            != spec["parent_agent_execution_id"]
+        ):
+            raise _invalid("DelegationSpec semantic handoff lineage is invalid")
+        spec["semantic_handoff"] = handoff
     if schema_version == "1.1" or nested_fields:
         spec["parent_work_item_id"] = _uuid(
             "parent_work_item_id", spec["parent_work_item_id"]

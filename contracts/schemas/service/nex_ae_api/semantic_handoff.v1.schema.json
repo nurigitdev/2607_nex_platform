@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_ae_api/semantic_handoff.v1.schema.json",
+  "title": "AE Cross-Agent Semantic Handoff v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "tenant_id",
+    "owner_subject_id",
+    "parent_execution_id",
+    "parent_agent_type",
+    "parent_work_intent_id",
+    "parent_work_intent_hash",
+    "parent_intent_revision",
+    "intent_candidate_id",
+    "intent_candidate_hash",
+    "intent_evidence_hash",
+    "context_candidate_id",
+    "context_candidate_hash",
+    "context_evidence_hash",
+    "source_type",
+    "source_ref",
+    "source_interaction_id",
+    "source_revision",
+    "created_at",
+    "handoff_hash"
+  ],
+  "properties": {
+    "schema_version": {"const": "ae.semantic_handoff.v1"},
+    "tenant_id": {"type": "string", "minLength": 1, "maxLength": 128},
+    "owner_subject_id": {"type": "string", "minLength": 1, "maxLength": 200},
+    "parent_execution_id": {"$ref": "#/$defs/uuid"},
+    "parent_agent_type": {"enum": ["IA", "CA", "PA", "EA"]},
+    "parent_work_intent_id": {"$ref": "#/$defs/uuid"},
+    "parent_work_intent_hash": {"$ref": "#/$defs/hashRef"},
+    "parent_intent_revision": {"type": "integer", "minimum": 1},
+    "intent_candidate_id": {"$ref": "#/$defs/uuid"},
+    "intent_candidate_hash": {"$ref": "#/$defs/hashRef"},
+    "intent_evidence_hash": {"$ref": "#/$defs/hashRef"},
+    "context_candidate_id": {"$ref": "#/$defs/uuid"},
+    "context_candidate_hash": {"$ref": "#/$defs/hashRef"},
+    "context_evidence_hash": {"$ref": "#/$defs/hashRef"},
+    "source_type": {"enum": ["PROMPT", "CLAIMED_WORKITEM"]},
+    "source_ref": {"type": "string", "minLength": 1, "maxLength": 200},
+    "source_interaction_id": {
+      "oneOf": [{"$ref": "#/$defs/uuid"}, {"type": "null"}]
+    },
+    "source_revision": {"type": "integer", "minimum": 1},
+    "created_at": {"type": "string", "format": "date-time"},
+    "handoff_hash": {"$ref": "#/$defs/hashRef"}
+  },
+  "$defs": {
+    "uuid": {"type": "string", "format": "uuid"},
+    "hashRef": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    }
+  }
+}

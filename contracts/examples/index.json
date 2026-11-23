@@ -21,6 +21,16 @@
       "schema": "schemas/service/nex_wc/claimed_work_planning_source.v2.schema.json"
     },
     {
+      "name": "wc_delegation_spec_semantic_handoff_v1_3",
+      "path": "examples/service/wc_delegation_spec.semantic_handoff.v1_3.json",
+      "schema": "schemas/service/nex_wc/delegation_spec.v1_3.schema.json"
+    },
+    {
+      "name": "wc_claimed_work_planning_source_semantic_handoff_v3",
+      "path": "examples/service/wc_claimed_work_planning_source.semantic_handoff.v3.json",
+      "schema": "schemas/service/nex_wc/claimed_work_planning_source.v3.schema.json"
+    },
+    {
       "name": "platform_dependency_readiness_ready",
       "path": "examples/common/platform_dependency_readiness.ready.json",
       "schema": "schemas/common/platform_dependency_readiness.v1.schema.json"

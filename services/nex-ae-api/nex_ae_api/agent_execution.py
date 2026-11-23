@@ -12,6 +12,10 @@ from nex_runtime.business_context import (
     BusinessContextValidationError,
     validate_business_request_context,
 )
+from nex_runtime.semantic_handoff import (
+    SemanticHandoffError,
+    validate_semantic_handoff_projection,
+)
 from nex_runtime.semantic_hashes import semantic_sha256_hash_ref
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
@@ -884,6 +888,12 @@ _PLANNING_SOURCE_V1_FIELDS = frozenset(
 _PLANNING_SOURCE_V2_FIELDS = _PLANNING_SOURCE_V1_FIELDS | frozenset(
     {"delegation_identity", "business_request_context", "business_context_hash"}
 )
+_PLANNING_SOURCE_V3_FIELDS = _PLANNING_SOURCE_V1_FIELDS | frozenset(
+    {"delegation_identity", "semantic_handoff"}
+)
+_PLANNING_SOURCE_V3_BUSINESS_FIELDS = _PLANNING_SOURCE_V3_FIELDS | frozenset(
+    {"business_request_context", "business_context_hash"}
+)
 
 
 def _validate_claimed_planning_source(value: object) -> dict[str, Any]:
@@ -891,17 +901,22 @@ def _validate_claimed_planning_source(value: object) -> dict[str, Any]:
         raise _invalid("Claimed planning source fields are invalid.")
     normalized = dict(value)
     schema_version = normalized.get("schema_version")
-    expected_fields = (
-        _PLANNING_SOURCE_V2_FIELDS
-        if schema_version == "p7.claimed_work_planning_source.v2"
-        else _PLANNING_SOURCE_V1_FIELDS
-    )
+    expected_fields = _PLANNING_SOURCE_V1_FIELDS
+    if schema_version == "p7.claimed_work_planning_source.v2":
+        expected_fields = _PLANNING_SOURCE_V2_FIELDS
+    elif schema_version == "p7.claimed_work_planning_source.v3":
+        expected_fields = (
+            _PLANNING_SOURCE_V3_BUSINESS_FIELDS
+            if "business_request_context" in normalized
+            else _PLANNING_SOURCE_V3_FIELDS
+        )
     if (
         set(normalized) != expected_fields
         or schema_version
         not in {
             "p7.claimed_work_planning_source.v1",
             "p7.claimed_work_planning_source.v2",
+            "p7.claimed_work_planning_source.v3",
         }
         or normalized.get("source_type") != "CLAIMED_WORKITEM"
     ):
@@ -940,7 +955,11 @@ def _validate_claimed_planning_source(value: object) -> dict[str, Any]:
                 or not isinstance(item.get("entity_id"), str)
             ):
                 raise _invalid(f"Claimed planning source {field} is invalid.")
-    if schema_version == "p7.claimed_work_planning_source.v2":
+    has_business_context = (
+        "business_request_context" in normalized
+        or "business_context_hash" in normalized
+    )
+    if has_business_context:
         if (
             normalized["work_class"] != "BUSINESS_TRANSACTION"
             or normalized["required_capability"]
@@ -974,6 +993,38 @@ def _validate_claimed_planning_source(value: object) -> dict[str, Any]:
             raise _invalid("Claimed planning business context hash is invalid.")
         normalized["delegation_identity"] = dict(identity)
         normalized["business_request_context"] = context
+    if schema_version == "p7.claimed_work_planning_source.v3":
+        identity = normalized.get("delegation_identity")
+        if not isinstance(identity, Mapping) or set(identity) != {
+            "delegation_id",
+            "delegation_revision",
+            "requester_ref",
+            "parent_agent_execution_id",
+        }:
+            raise _invalid("Claimed planning delegation identity is invalid.")
+        for field in (
+            "delegation_id",
+            "requester_ref",
+            "parent_agent_execution_id",
+        ):
+            _required_text(f"delegation_identity.{field}", identity.get(field))
+        revision = identity.get("delegation_revision")
+        if isinstance(revision, bool) or not isinstance(revision, int) or revision < 1:
+            raise _invalid("Claimed planning delegation revision is invalid.")
+        try:
+            handoff = validate_semantic_handoff_projection(
+                normalized.get("semantic_handoff")
+            )
+        except SemanticHandoffError as exc:
+            raise _invalid(str(exc)) from exc
+        if (
+            handoff["parent_execution_id"]
+            != identity["parent_agent_execution_id"]
+            or handoff["owner_subject_id"] != identity["requester_ref"]
+        ):
+            raise _invalid("Claimed planning semantic handoff lineage is invalid.")
+        normalized["delegation_identity"] = dict(identity)
+        normalized["semantic_handoff"] = handoff
     return normalized
 
 

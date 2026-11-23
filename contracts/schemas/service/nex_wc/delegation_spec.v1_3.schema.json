@@ -1,0 +1,125 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nex-platform.local/schemas/service/nex_wc/delegation_spec.v1_3.schema.json",
+  "title": "WC Semantic-Handoff DelegationSpec v1.3",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "delegation_id",
+    "tenant_id",
+    "parent_agent_execution_id",
+    "parent_executable_plan_id",
+    "parent_executable_step_id",
+    "delegation_revision",
+    "goal",
+    "work_class",
+    "required_agent_type",
+    "required_capability",
+    "project_ref",
+    "project_scope_ref",
+    "result_contract_ref",
+    "completion_policy",
+    "correlation_id",
+    "semantic_handoff"
+  ],
+  "properties": {
+    "schema_version": {"const": "1.3"},
+    "delegation_id": {"$ref": "#/$defs/scopedId"},
+    "tenant_id": {"$ref": "#/$defs/scopedId"},
+    "parent_agent_execution_id": {"$ref": "#/$defs/scopedId"},
+    "parent_executable_plan_id": {"$ref": "#/$defs/scopedId"},
+    "parent_executable_step_id": {"$ref": "#/$defs/scopedId"},
+    "delegation_revision": {"type": "integer", "minimum": 1},
+    "goal": {"type": "string", "minLength": 1, "maxLength": 4000},
+    "work_class": {
+      "enum": [
+        "QUERY",
+        "ANALYSIS",
+        "DOCUMENT",
+        "BUSINESS_TRANSACTION",
+        "COORDINATION",
+        "EXPERT_REVIEW",
+        "REPORTING",
+        "OPERATIONAL"
+      ]
+    },
+    "required_agent_type": {"enum": ["CA", "PA", "EA"]},
+    "required_capability": {"type": "string", "minLength": 1, "maxLength": 160},
+    "project_ref": {"$ref": "#/$defs/projectRef"},
+    "project_scope_ref": {"type": "string", "minLength": 1, "maxLength": 160},
+    "result_contract_ref": {"type": "string", "minLength": 1, "maxLength": 512},
+    "completion_policy": {
+      "enum": [
+        "OWNER_SUBMITS",
+        "ALL_ASSIGNEES_SUBMIT",
+        "ANY_ASSIGNEE_SUBMITS",
+        "ALL_REQUIRED_CHILDREN",
+        "MANUAL"
+      ]
+    },
+    "correlation_id": {"$ref": "#/$defs/scopedId"},
+    "causation_id": {"type": ["string", "null"], "maxLength": 128},
+    "business_request_context": {
+      "$ref": "https://nex-platform.local/schemas/service/nex_ae_api/business_request_context.v1.schema.json"
+    },
+    "business_context_hash": {"$ref": "#/$defs/hashRef"},
+    "semantic_handoff": {
+      "$ref": "https://nex-platform.local/schemas/service/nex_ae_api/semantic_handoff.v1.schema.json"
+    },
+    "parent_work_item_id": {"$ref": "#/$defs/uuid"},
+    "parent_claim_ref": {"$ref": "#/$defs/uuid"},
+    "parent_claim_generation": {"type": "integer", "minimum": 1},
+    "delegating_agent_ref": {"$ref": "#/$defs/agentRef"}
+  },
+  "dependentRequired": {
+    "business_request_context": ["business_context_hash"],
+    "business_context_hash": ["business_request_context"],
+    "parent_work_item_id": ["parent_claim_ref", "parent_claim_generation", "delegating_agent_ref"],
+    "parent_claim_ref": ["parent_work_item_id", "parent_claim_generation", "delegating_agent_ref"],
+    "parent_claim_generation": ["parent_work_item_id", "parent_claim_ref", "delegating_agent_ref"],
+    "delegating_agent_ref": ["parent_work_item_id", "parent_claim_ref", "parent_claim_generation"]
+  },
+  "allOf": [
+    {
+      "if": {"required": ["business_request_context"]},
+      "then": {
+        "properties": {
+          "work_class": {"const": "BUSINESS_TRANSACTION"},
+          "required_agent_type": {"const": "PA"},
+          "required_capability": {"const": "FINANCE.VOUCHER.APPROVE_AND_POST"}
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "scopedId": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$"
+    },
+    "uuid": {"type": "string", "format": "uuid"},
+    "hashRef": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "projectRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["entity_type", "entity_id"],
+      "properties": {
+        "entity_type": {"const": "PROJECT"},
+        "entity_id": {"type": "string", "minLength": 1, "maxLength": 160},
+        "version": {"type": ["string", "integer", "null"]}
+      }
+    },
+    "agentRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["agent_id", "agent_type"],
+      "properties": {
+        "agent_id": {"$ref": "#/$defs/uuid"},
+        "agent_type": {"enum": ["CA", "PA", "EA"]}
+      }
+    }
+  }
+}

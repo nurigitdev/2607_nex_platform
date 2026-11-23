@@ -36,6 +36,7 @@ MyBee office-work AX Service Phase-1 program.
 29. `NeX_MyBee_W80_CA00B_PA_WorkResult_to_IA_Business_Result_Propagation_Closure_v1.0.md`
 30. `NeX_MyBee_W80_CA00C_Operational_Usability_and_Live_Journey_Experience_Hardening_v1.0.md`
 31. `NeX_MyBee_W80_CA00D_MO_Capability_Scoped_Readiness_and_Healthcheck_Boundary_v1.0.md`
+32. `NeX_MyBee_W80_CA00E_Cross_Agent_Semantic_Handoff_Evidence_Reuse_and_Role_Scoped_Replanning_Boundary_v1.0.md`
 
 The Markdown Slice Plan and its Execution Matrix JSON are one planning set.
 The JSON is machine-readable traceability input, not runtime configuration or
@@ -75,6 +76,15 @@ three-provider aggregate. AE generation planning requests generation health
 only, and capability-specific caches prevent unrelated embedding and reranking
 traffic during generation-only journeys. No provider contract, model binding,
 database schema, or business API is changed.
+
+W80-CA00E defines the general semantic handoff between IA and a claimed PA,
+CA, or EA. It preserves compatible parent WorkIntent and semantic evidence,
+always rebuilds target-Agent authority context, separates delegation planning
+from claimed-work execution planning, and retains a safe full-pipeline fallback.
+Evidence reuse is policy- and hash-governed; authority changes and scope or hash
+conflicts fail closed and cannot be repaired by a provider call. The amendment
+does not optimize only the M1 scenario and introduces no fixture-specific
+runtime branch.
 
 The W30-CA01 pair is the source-backed post-W20 delta. It takes precedence
 only for W30 entry ordering, current migration-number reservations, the

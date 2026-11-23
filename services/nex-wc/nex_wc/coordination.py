@@ -1703,7 +1703,7 @@ def _planning_source(
         "completion_policy": work_item["completion_policy"],
         "result_contract_ref": delegation_spec["result_contract_ref"],
     }
-    if delegation_spec.get("schema_version") == "1.2":
+    if delegation_spec.get("schema_version") in {"1.2", "1.3"}:
         source.update(
             {
                 "schema_version": "p7.claimed_work_planning_source.v2",
@@ -1715,12 +1715,23 @@ def _planning_source(
                         "parent_agent_execution_id"
                     ],
                 },
-                "business_request_context": delegation_spec[
-                    "business_request_context"
-                ],
-                "business_context_hash": delegation_spec["business_context_hash"],
             }
         )
+        if delegation_spec.get("schema_version") == "1.3":
+            source["schema_version"] = "p7.claimed_work_planning_source.v3"
+        if "business_request_context" in delegation_spec:
+            source.update(
+                {
+                    "business_request_context": delegation_spec[
+                        "business_request_context"
+                    ],
+                    "business_context_hash": delegation_spec[
+                        "business_context_hash"
+                    ],
+                }
+            )
+        if delegation_spec.get("schema_version") == "1.3":
+            source["semantic_handoff"] = delegation_spec["semantic_handoff"]
     return source
 
 
