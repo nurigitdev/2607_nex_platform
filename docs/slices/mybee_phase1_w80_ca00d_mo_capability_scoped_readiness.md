@@ -29,3 +29,25 @@ scope.
 - protected live provider probes were not required because this Slice changes
   capability selection and healthcheck composition, not provider behavior or
   model revisions.
+
+## Post-Closure Installed Live Confirmation
+
+The exact-head `28df627d` release set was rebuilt and the protected two-request
+M1 journey was rerun against actual eight-service PostgreSQL, OpenBao, RustFS,
+Qwen3.5-9B, and authenticated Playwright. The journey, restart recovery, 17
+screen captures, and eight-schema zero-residue cleanup all passed.
+
+The admitted NeX-MO traffic contained 12 generation requests, 12
+`capability=generation` readiness requests, and zero embedding or reranking
+requests. Compared with the immediately preceding accepted diagnostic session:
+
+- `/ready` checks changed from `database + provider_routes` to `database`;
+- `/ready` mean latency changed from `70.5 ms` to `20.7 ms`;
+- `/ready` p95 changed from `524.8 ms` to `24.2 ms`;
+- cumulative `/ready` time changed from `12.47 s` to `3.53 s`;
+- the complete diagnostic span changed from `628.46 s` to `604.76 s`.
+
+The final span is observational rather than a controlled provider benchmark.
+Generation latency also varied between runs, so only the shallow `/ready`
+reduction and absence of unrelated provider calls are attributed directly to
+W80-CA00D.

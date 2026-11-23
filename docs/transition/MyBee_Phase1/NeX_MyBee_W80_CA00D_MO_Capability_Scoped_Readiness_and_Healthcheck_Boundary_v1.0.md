@@ -116,3 +116,67 @@ The protected live-provider matrix was not required for closure. No provider
 request contract, model binding, or revision changed; the Full Gate instead
 proved compatibility of the capability selector, shallow readiness boundary,
 aggregate operations route, and historical closure chain.
+
+## 9. Post-Closure Installed Live Confirmation
+
+An exact-head installed replay was subsequently executed to measure the
+operational effect rather than to reopen source admission:
+
+- source revision: `28df627d40f783028d11f9eef547753346b1edab`;
+- release set: `9/9` exact-head OCI images plus exact-head AE product runtime;
+- provider: Qwen3.5-9B revision
+  `hf:c202236235762e1c871ad0ccb60c8ee5ba337b9a` on deployment
+  `dgx-qwen3-5-9b-9111`;
+- infrastructure: actual eight-service PostgreSQL, OpenBao, RustFS, Docker
+  Compose, and authenticated Playwright;
+- result: two Agent executions, six approval decisions, two immutable
+  journals, two allocation batches, four allocation lines, four P&L
+  projections, and two acknowledged result deliveries;
+- restart recovery: result hash and business references remained stable;
+- evidence: 44 diagnostic files, raw prompt, AgentPlan, ExecutablePlan, 15
+  journey captures, two recovery captures, and no admitted secret value;
+- cleanup: eight isolated schemas dropped with `zero_residue=true`.
+
+The first attempt failed before provider contact when OpenBao `/sys/init`
+returned a transient transport error. Its eight isolated schemas were removed
+with zero residue. A clean replay passed without changing source or runtime
+configuration.
+
+### 9.1 NeX-MO Traffic Proof
+
+The previous accepted diagnostic session exposed aggregate route health and
+remote provider composition through shallow readiness:
+
+```text
+provider route capabilities = embedding, reranking, generation
+/ready checks               = database, provider_routes
+```
+
+The W80-CA00D replay proved:
+
+```text
+generation requests                  = 12
+generation-scoped readiness requests = 12
+embedding requests                   = 0
+reranking requests                   = 0
+/ready checks                        = database
+```
+
+### 9.2 Observed Latency
+
+| Signal | Before W80-CA00D | After W80-CA00D |
+|---|---:|---:|
+| `/ready` mean | `70.5 ms` | `20.7 ms` |
+| `/ready` p95 | `524.8 ms` | `24.2 ms` |
+| cumulative `/ready` time | `12.47 s` | `3.53 s` |
+| full diagnostic span | `628.46 s` | `604.76 s` |
+
+The two-request browser journey took `557.08 s` from the ready requester flow
+through the second rendered result. Individual request-to-admission intervals
+were `130.32 s` and `133.67 s`; full request-to-result intervals were
+`276.02 s` and `281.06 s`.
+
+Only the shallow readiness reduction and provider-call isolation are causal
+W80-CA00D evidence. Qwen3.5-9B generation latency changed between sessions and
+the end-to-end difference must therefore remain an observational measurement,
+not a controlled performance claim.
