@@ -1,6 +1,6 @@
 # NeX MyBee W80-CA00B PA WorkResult to IA Business Result Propagation Closure v1.0
 
-**Status:** CONTROLLED AMENDMENT / IMPLEMENTED / LIVE ACCEPTANCE PENDING
+**Status:** CLOSED / EXACT-HEAD LIVE ACCEPTED
 
 **Predecessor:** W80-CA00A
 
@@ -53,7 +53,7 @@ PA AgentResult
   -> delegated StepResult
   -> existing IA plan finalization
   -> owner-scoped WorkspaceResult projection
-  -> voucher result card
+  -> typed voucher or Project-allocation result card
 ```
 
 ## 4. Integrity and Authorization
@@ -85,8 +85,8 @@ StepResult, AgentResult, and ResultDelivery stores are reused.
 5. existing IA plan finalization producing the owner-safe summary;
 6. focused AE/WC regression and coverage gates;
 7. actual PostgreSQL protected smoke;
-8. exact-head installed M1 journey showing both voucher result cards and the
-   recovered result after restart;
+8. exact-head installed M1 journey showing both Project-allocation result cards
+   and the recovered result after restart;
 9. W80-CA00A screen manifest integrity and zero-residue cleanup.
 
 ## 7. Decision
@@ -128,6 +128,41 @@ lineages as conflicting. It completed zero-residue cleanup. The implementation
 now preserves multi-operation lineage and retains a primary operation only when
 the typed summary identifies one.
 
-The remaining acceptance item is the corrected exact-head installed M1 live
-journey with the canonical OCI release set and retained Playwright screen
-evidence.
+## 9. Exact-Head Live Closure
+
+- accepted source revision: `102390b5`;
+- canonical release set: `9/9` OCI images, `9/9` non-root checks, `12`
+  packaged background-process checks, registry push disabled;
+- product runtime: NSL `0.2.1`, generalized M1 release, historical scenario
+  dependency absent;
+- actual infrastructure: Docker Compose, OpenBao, RustFS, OA, AG, AE, CX, MO,
+  WC, EOS, WA, and all installed product workers;
+- actual PostgreSQL: eight isolated service databases, `210` migrations, all
+  cleanup receipts passing with zero residue;
+- actual provider: `Qwen3.5-9B` through deployment
+  `dgx-qwen3-5-9b-9111`, immutable revision
+  `hf:c202236235762e1c871ad0ccb60c8ee5ba337b9a`;
+- business journey: two non-identical requests, six approval decisions, two
+  immutable journals, two allocation batches, four allocation lines, four P&L
+  projections, two AgentResults, and two acknowledged result deliveries;
+- browser evidence: `15` main captures plus `2` restart captures, including the
+  restored Project-allocation result with two user-facing Project codes;
+- restart invariants: result hash stable, business references stable, and both
+  journals, allocation batches, and AgentResults retained;
+- diagnostic evidence: raw prompt, AgentPlan, and ExecutablePlan retained in
+  the protected DEBUG bundle while configured secrets remained forbidden.
+
+The live sequence found two product defects before closure. The first treated a
+valid multi-operation Project-allocation result as if it required one primary
+EOS operation. The second dropped the admitted `interaction_id` while the
+authentication-first shell restored an existing session. Both were corrected
+in generic product paths. No M1 value, tenant dictionary, fixed Project count,
+or scenario fixture was introduced.
+
+```text
+LIVE ACCEPTANCE                 = PASS
+AUTHORITATIVE RESTART RECOVERY = PASS
+SCREEN EVIDENCE                = PASS
+ZERO RESIDUE                   = PASS
+W80-CA00B                      = CLOSED
+```
