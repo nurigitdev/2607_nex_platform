@@ -109,6 +109,7 @@ from .source_adapters import (
 )
 from .work_assets import (
     WORK_ASSET_BINDING_ROLES,
+    WORK_ASSET_RETENTION_CLASSES,
     WORK_ASSET_STATUSES,
     WORK_ASSET_TYPES,
     SqlAlchemyWorkAssetRepository,
@@ -119,6 +120,7 @@ from .work_assets import (
     WorkAssetRecord,
     build_work_asset,
     deterministic_work_asset_id,
+    work_asset_retention_class,
 )
 from .work_evidence import (
     WORK_EVIDENCE_ACTOR_TYPES,
@@ -162,6 +164,7 @@ __all__ = (
     "WA_SOURCE_ENVELOPE_SCHEMA",
     "WORKER_TYPE",
     "WORK_ASSET_BINDING_ROLES",
+    "WORK_ASSET_RETENTION_CLASSES",
     "WORK_ASSET_STATUSES",
     "WORK_ASSET_TYPES",
     "WORK_EVIDENCE_ACTOR_TYPES",
@@ -228,6 +231,7 @@ __all__ = (
     "build_work_evidence",
     "create_wa_app",
     "deterministic_work_asset_id",
+    "work_asset_retention_class",
     "deterministic_work_evidence_id",
     "inspect_wa_evidence_job",
     "load_wa_settings",

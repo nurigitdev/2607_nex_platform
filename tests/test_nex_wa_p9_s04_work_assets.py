@@ -11,6 +11,7 @@ from nex_wa import (
     WorkAssetInput,
     build_work_asset,
     deterministic_work_asset_id,
+    work_asset_retention_class,
 )
 from sqlalchemy import create_engine, event, text
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
@@ -135,6 +136,14 @@ def test_agent_and_human_asset_identity_are_type_specific_and_deterministic() ->
     assert deterministic_work_asset_id(agent) == deterministic_work_asset_id(agent)
     assert deterministic_work_asset_id(agent) != deterministic_work_asset_id(human)
     assert deterministic_work_asset_id(human) == deterministic_work_asset_id(human)
+    assert work_asset_retention_class(agent.asset_type) == "EXECUTION_EVIDENCE"
+    assert work_asset_retention_class(human.asset_type) == "USER_CURATED_ARTIFACT"
+
+
+def test_unknown_asset_type_has_no_implicit_retention_class() -> None:
+    with pytest.raises(WorkAssetError) as error:
+        work_asset_retention_class("POSTED_JOURNAL")
+    assert error.value.error_code == "WA_ASSET_INVALID"
 
 
 def test_asset_hash_is_binding_order_independent_and_excludes_runtime_fields() -> None:

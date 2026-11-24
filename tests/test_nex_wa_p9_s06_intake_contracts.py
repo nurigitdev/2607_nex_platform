@@ -135,7 +135,18 @@ def test_semantic_replay_conflict_is_typed(
 
 @pytest.mark.parametrize(
     "field",
-    ["prompt", "document_body", "artifact_bytes", "credentials", "token", "salary"],
+    [
+        "prompt",
+        "document_body",
+        "artifact_bytes",
+        "credentials",
+        "token",
+        "salary",
+        "voucher_candidate",
+        "posted_journal",
+        "journal_lines",
+        "accounting_payload",
+    ],
 )
 def test_raw_or_sensitive_payload_fields_are_rejected(field: str) -> None:
     with pytest.raises(WaIntakeContractError) as caught:

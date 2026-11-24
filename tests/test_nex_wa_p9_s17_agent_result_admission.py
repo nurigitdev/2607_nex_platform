@@ -148,6 +148,19 @@ def test_ia_post_ack_creates_one_primary_project_neutral_asset() -> None:
     assert asset.bindings[0].binding_role == "PRIMARY"
     assert evidence.classification == asset.classification == "CONFIDENTIAL"
     assert UUID(asset.bindings[0].work_evidence_id)
+    serialized = json.dumps(
+        {"evidence": evidence.__dict__, "asset": asset.__dict__},
+        default=str,
+        sort_keys=True,
+    )
+    for forbidden in (
+        "voucher_candidate",
+        "posted_journal",
+        "journal_header",
+        "journal_lines",
+        "allocation_batch",
+    ):
+        assert forbidden not in serialized.lower()
 
 
 @pytest.mark.parametrize("agent_type", ["CA", "PA", "EA"])

@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session, sessionmaker
 WORK_ASSET_TABLE = "wa_work_asset"
 WORK_ASSET_EVIDENCE_TABLE = "wa_work_asset_evidence"
 WORK_ASSET_TYPES = ("AGENT_EXECUTION_RESULT", "HUMAN_OWNED_ARTIFACT")
+WORK_ASSET_RETENTION_CLASSES = ("EXECUTION_EVIDENCE", "USER_CURATED_ARTIFACT")
 WORK_ASSET_STATUSES = ("ACTIVE", "SUPERSEDED", "INVALIDATED")
 WORK_ASSET_BINDING_ROLES = ("PRIMARY", "SUPPORTING")
 ACTOR_TYPES = ("HUMAN", "AGENT")
@@ -90,7 +91,8 @@ class WorkAssetRecord:
 def deterministic_work_asset_id(candidate: WorkAssetInput) -> str:
     tenant_id = _required_string(candidate.tenant_id, "tenant_id")
     asset_type = _choice(candidate.asset_type, "asset_type", WORK_ASSET_TYPES)
-    if asset_type == "AGENT_EXECUTION_RESULT":
+    retention_class = work_asset_retention_class(asset_type)
+    if retention_class == "EXECUTION_EVIDENCE":
         identity = {
             "tenant_id": tenant_id,
             "agent_execution_id": _required_string(
@@ -115,6 +117,13 @@ def deterministic_work_asset_id(candidate: WorkAssetInput) -> str:
             f"nex-wa-work-asset-v1:{asset_type}:" + canonical_json(identity),
         )
     )
+
+
+def work_asset_retention_class(asset_type: str) -> str:
+    normalized = _choice(asset_type, "asset_type", WORK_ASSET_TYPES)
+    if normalized == "AGENT_EXECUTION_RESULT":
+        return "EXECUTION_EVIDENCE"
+    return "USER_CURATED_ARTIFACT"
 
 
 def build_work_asset(
