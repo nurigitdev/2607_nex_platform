@@ -128,6 +128,61 @@ def test_result_verify_closes_to_owner_workspace_once_and_replays(store) -> None
     assert execution == ("SUCCEEDED", "FINALIZE")
 
 
+def test_workspace_result_commit_precedes_best_effort_wa_notification(store) -> None:
+    aggregate = SqlAlchemyP5PlanFinalizationService(store).finalize(
+        tenant_id=TENANT,
+        execution_id=EXECUTION_ID,
+        created_at=NOW,
+    )
+    observations = []
+
+    class FailingWaNotifier:
+        def notify_agent_result(self, *, tenant_id: str, result_id: str):
+            with store() as session:
+                delivery = session.execute(
+                    text("SELECT state FROM ae_result_delivery")
+                ).scalar_one()
+                execution = session.execute(
+                    text("SELECT state, phase FROM ae_agent_execution")
+                ).one()
+                activity_count = session.execute(
+                    text("SELECT count(*) FROM ae_workspace_activities")
+                ).scalar_one()
+            observations.append(
+                (tenant_id, result_id, delivery, execution, activity_count)
+            )
+            raise RuntimeError("WA unavailable after Workspace commit")
+
+    published = SqlAlchemyWorkspaceResultPublisher(
+        store,
+        completion_notifier=FailingWaNotifier(),
+    ).publish(
+        tenant_id=TENANT,
+        delivery_id=aggregate.delivery["delivery_id"],
+        now="2026-10-26T09:00:00Z",
+    )
+
+    assert published["created"] is True
+    assert observations == [
+        (
+            TENANT,
+            aggregate.result["result_id"],
+            "ACKNOWLEDGED",
+            ("SUCCEEDED", "FINALIZE"),
+            1,
+        )
+    ]
+    source = SqlAlchemyInteractionAgentResultSource(store)
+    visible = source.get_owner_result(
+        tenant_id=TENANT,
+        owner_user_id=OWNER,
+        interaction_id=INTERACTION_ID,
+    )
+    assert visible is not None
+    assert visible["terminal"] is True
+    assert visible["result"]["delivery"]["state"] == "ACKNOWLEDGED"
+
+
 def test_restart_closer_resumes_result_publish_and_owner_read_model(store) -> None:
     SqlAlchemyP5PlanFinalizationService(store).finalize(
         tenant_id=TENANT,

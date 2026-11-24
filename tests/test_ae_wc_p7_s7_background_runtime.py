@@ -840,6 +840,35 @@ def test_wc_ack_is_the_background_child_success_barrier() -> None:
     assert client.status_calls == client.submit_calls == 1
 
 
+def test_wc_result_ack_precedes_best_effort_wa_notification() -> None:
+    sessions = _publisher_sessions()
+    observations = []
+
+    class FailingWaNotifier:
+        def notify_agent_result(self, *, tenant_id: str, result_id: str):
+            with sessions() as session:
+                delivery = session.execute(
+                    text("SELECT state FROM ae_result_delivery")
+                ).scalar_one()
+                execution = session.execute(
+                    text("SELECT state, phase FROM ae_agent_execution")
+                ).one()
+            observations.append((tenant_id, result_id, delivery, execution))
+            raise RuntimeError("WA unavailable after WC ACK")
+
+    published = SqlAlchemyWcWorkResultPublisher(
+        sessions,
+        _WcClient(),
+        completion_notifier=FailingWaNotifier(),
+    ).publish(tenant_id=TENANT, delivery_id=DELIVERY_ID, now=NOW)
+
+    assert published["delivery_state"] == "ACKNOWLEDGED"
+    assert published["execution_state"] == "SUCCEEDED"
+    assert observations == [
+        (TENANT, RESULT_ID, "ACKNOWLEDGED", ("SUCCEEDED", "FINALIZE"))
+    ]
+
+
 def test_background_planning_and_publication_fail_closed_on_lineage_drift() -> None:
     drifted = _planning_source()
     drifted["source_ref"] = "different-work-item"
