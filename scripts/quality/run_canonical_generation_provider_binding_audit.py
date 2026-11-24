@@ -23,6 +23,7 @@ from nex_cx.retrieval_answer_support_controlled_activation import (  # noqa: E40
     load_controlled_activation_bundle,
 )
 from nex_cx.retrieval_answer_support_provider_relocation import (  # noqa: E402
+    AnswerSupportProviderRelocationError,
     load_provider_relocation,
 )
 from nex_mo.provider_catalog import build_model_profile_catalog  # noqa: E402
@@ -32,6 +33,7 @@ from nex_mo.remote_provider import (  # noqa: E402
 from nex_runtime.canonical_generation_binding import (  # noqa: E402
     CANONICAL_GENERATION_BINDING,
 )
+from nex_runtime.semantic_hashes import semantic_sha256_hash_ref  # noqa: E402
 from run_protected_dgx_live_profile import (  # noqa: E402
     protected_dgx_vllm_profile_defaults,
 )
@@ -41,19 +43,27 @@ SCHEMA_VERSION = "canonical_generation_provider_binding_audit.v1"
 SLICE = "GB2-CA00-S20S"
 DEFAULT_REPORT = ROOT / "reports/quality/gb2-ca00-s20s-generation-binding.json"
 EXPECTED_BINDING = {
-    "profile_name": "qwen3_5_9b_bf16",
+    "profile_name": "qwen3_8_flash_next_fp4",
     "alias": "general-llm-default",
-    "model_name": "Qwen3.5-9B",
-    "model_revision": "hf:c202236235762e1c871ad0ccb60c8ee5ba337b9a",
-    "deployment_id": "dgx-qwen3-5-9b-9111",
+    "model_name": "Qwen3.8-Flash-Next",
+    "model_revision": "hf:fc694b54fb0174e0913e6adf86691ef85a4ead47",
+    "deployment_id": "dgx-qwen3-8-flash-next-9111",
     "provider_port": 9111,
     "precision": "BF16",
     "reasoning_mode": "disabled",
 }
+HISTORICAL_ANSWER_SUPPORT_BINDING = {
+    "provider_alias": "general-llm-default",
+    "model_revision": "hf:c202236235762e1c871ad0ccb60c8ee5ba337b9a",
+    "deployment_id": "dgx-qwen3-5-9b-9111",
+}
 ENV_EXPECTATIONS = {
     "NEX_MO_GENERATION_PROFILE": EXPECTED_BINDING["profile_name"],
     "NEX_MO_GENERATION_MODEL_PATH": (
-        "/data/nex-platform/models/qwen3.5-9b-bf16"
+        "/data/nex-platform/models/qwen3.8-flash-next-fp4"
+    ),
+    "NEX_MO_GENERATION_QWEN38_FLASH_NEXT_MODEL_PATH": (
+        "/data/nex-platform/models/qwen3.8-flash-next-fp4"
     ),
     "NEX_MO_GENERATION_QWEN35_9B_MODEL_PATH": (
         "/data/nex-platform/models/qwen3.5-9b-bf16"
@@ -75,25 +85,25 @@ ENV_EXPECTATIONS = {
     ),
 }
 COMPOSE_MO_EXPECTATIONS = {
-    "NEX_MO_VLLM_MODEL": "${NEX_MO_VLLM_MODEL:-Qwen3.5-9B}",
+    "NEX_MO_VLLM_MODEL": "${NEX_MO_VLLM_MODEL:-Qwen3.8-Flash-Next}",
     "NEX_MO_VLLM_MODEL_REVISION": (
         "${NEX_MO_VLLM_MODEL_REVISION:-"
-        "hf:c202236235762e1c871ad0ccb60c8ee5ba337b9a}"
+        "hf:fc694b54fb0174e0913e6adf86691ef85a4ead47}"
     ),
     "NEX_MO_VLLM_DEPLOYMENT_ID": (
-        "${NEX_MO_VLLM_DEPLOYMENT_ID:-dgx-qwen3-5-9b-9111}"
+        "${NEX_MO_VLLM_DEPLOYMENT_ID:-dgx-qwen3-8-flash-next-9111}"
     ),
     "NEX_MO_VLLM_TIMEOUT_SECONDS": (
         "${NEX_MO_VLLM_TIMEOUT_SECONDS:-125}"
     ),
     "NEX_MO_LIVE_EXPECTED_GENERATION_MODELS": (
-        "${NEX_MO_LIVE_EXPECTED_GENERATION_MODELS:-Qwen3.5-9B}"
+        "${NEX_MO_LIVE_EXPECTED_GENERATION_MODELS:-Qwen3.8-Flash-Next}"
     ),
     "NEX_MO_GENERATION_PROFILE": (
-        "${NEX_MO_GENERATION_PROFILE:-qwen3_5_9b_bf16}"
+        "${NEX_MO_GENERATION_PROFILE:-qwen3_8_flash_next_fp4}"
     ),
     "NEX_MO_GENERATION_MODEL_NAME": (
-        "${NEX_MO_GENERATION_MODEL_NAME:-Qwen3.5-9B}"
+        "${NEX_MO_GENERATION_MODEL_NAME:-Qwen3.8-Flash-Next}"
     ),
     "NEX_MO_GENERATION_MODEL_PRECISION": (
         "${NEX_MO_GENERATION_MODEL_PRECISION:-BF16}"
@@ -148,12 +158,15 @@ def audit_canonical_generation_provider_binding(
         env_values.get(key) == value for key, value in ENV_EXPECTATIONS.items()
     )
     _record(checks, issues, "environment_defaults_exact")
-    checks["four_b_is_not_environment_default"] = (
+    checks["legacy_models_are_not_environment_default"] = (
         env_values.get("NEX_MO_GENERATION_PROFILE") != "qwen3_5_4b_bf16"
+        and env_values.get("NEX_MO_GENERATION_PROFILE") != "qwen3_5_9b_bf16"
         and env_values.get("NEX_MO_GENERATION_MODEL_PATH")
         != "/data/nex-platform/models/qwen3.5-4b-bf16"
+        and env_values.get("NEX_MO_GENERATION_MODEL_PATH")
+        != "/data/nex-platform/models/qwen3.5-9b-bf16"
     )
-    _record(checks, issues, "four_b_is_not_environment_default")
+    _record(checks, issues, "legacy_models_are_not_environment_default")
 
     compose = _read_compose(
         root / "deployment/compose/canonical-platform.override.yaml",
@@ -191,6 +204,12 @@ def audit_canonical_generation_provider_binding(
         profile
         for profile in profiles
         if profile.provider_capability == "generation"
+        and profile.profile_name == "qwen3_5_9b_bf16"
+    ]
+    retired = [
+        profile
+        for profile in profiles
+        if profile.provider_capability == "generation"
         and profile.profile_name == "qwen3_5_4b_bf16"
     ]
     checks["catalog_primary_exact"] = len(selected) == 1 and all(
@@ -203,13 +222,15 @@ def audit_canonical_generation_provider_binding(
         )
     )
     _record(checks, issues, "catalog_primary_exact")
-    checks["four_b_rollback_explicit"] = (
+    checks["nine_b_rollback_explicit"] = (
         len(rollback) == 1
         and rollback[0].selected is False
         and rollback[0].candidate_role == "rollback"
         and rollback[0].alias == "general-llm-rollback"
     )
-    _record(checks, issues, "four_b_rollback_explicit")
+    _record(checks, issues, "nine_b_rollback_explicit")
+    checks["four_b_retired_from_active_catalog"] = not retired
+    _record(checks, issues, "four_b_retired_from_active_catalog")
 
     execution = build_remote_generation_execution_config({})
     checks["remote_execution_binding_exact"] = all(
@@ -238,25 +259,43 @@ def audit_canonical_generation_provider_binding(
 
     try:
         activation = load_controlled_activation_bundle(DEFAULT_ACTIVATION_BUNDLE_PATH)
-        relocation = load_provider_relocation(
+        relocation_path = (
             root
-            / "services/nex-cx/nex_cx/data/answer_support_provider_relocation.v1.json",
-            activation_bundle=activation,
+            / "services/nex-cx/nex_cx/data/answer_support_provider_relocation.v1.json"
         )
-        target = relocation["target_provider_binding"]
-        checks["calibration_relocation_exact"] = all(
+        relocation = json.loads(relocation_path.read_text(encoding="utf-8"))
+        supplied_hash = relocation.get("amendment_hash")
+        unsigned = {
+            key: value for key, value in relocation.items() if key != "amendment_hash"
+        }
+        target = relocation.get("target_provider_binding") or {}
+        relocation_rejected = False
+        try:
+            load_provider_relocation(
+                relocation_path,
+                activation_bundle=activation,
+            )
+        except AnswerSupportProviderRelocationError:
+            relocation_rejected = True
+        checks["answer_support_calibration_remains_historical"] = all(
             (
-                target["provider_alias"] == EXPECTED_BINDING["alias"],
-                target["model_revision"] == EXPECTED_BINDING["model_revision"],
-                target["deployment_id"] == EXPECTED_BINDING["deployment_id"],
+                target["provider_alias"]
+                == HISTORICAL_ANSWER_SUPPORT_BINDING["provider_alias"],
+                target["model_revision"]
+                == HISTORICAL_ANSWER_SUPPORT_BINDING["model_revision"],
+                target["deployment_id"]
+                == HISTORICAL_ANSWER_SUPPORT_BINDING["deployment_id"],
+                target["model_revision"] != EXPECTED_BINDING["model_revision"],
                 relocation["model_artifact_changed"] is False,
                 relocation["request_profile_changed"] is False,
+                semantic_sha256_hash_ref(unsigned) == supplied_hash,
+                relocation_rejected,
             )
         )
-    except (OSError, TypeError, ValueError) as exc:
+    except (KeyError, OSError, TypeError, ValueError) as exc:
         issues.append(f"calibration_relocation_invalid:{exc.__class__.__name__}")
-        checks["calibration_relocation_exact"] = False
-    _record(checks, issues, "calibration_relocation_exact")
+        checks["answer_support_calibration_remains_historical"] = False
+    _record(checks, issues, "answer_support_calibration_remains_historical")
 
     return {
         "schema_version": SCHEMA_VERSION,
@@ -266,9 +305,10 @@ def audit_canonical_generation_provider_binding(
         "checks": checks,
         "issues": sorted(set(issues)),
         "compatibility_policy": {
-            "qwen3_5_4b": "EXPLICIT_ROLLBACK_OR_LEGACY_ONLY",
-            "calibrated_9116_binding": "IMMUTABLE_HISTORICAL_SOURCE",
-            "runtime_9111_binding": "APPROVED_ENDPOINT_RELOCATION",
+            "qwen3_8_flash_next": "CANONICAL_GENERAL_GENERATION",
+            "qwen3_5_9b": "EXPLICIT_ROLLBACK_AND_HISTORICAL_CALIBRATION",
+            "qwen3_5_4b": "LEGACY_ONLY",
+            "answer_support_new_revision": "DEFERRED_RECALIBRATION_FAIL_CLOSED",
         },
         "recorded_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
         "secret_included": False,

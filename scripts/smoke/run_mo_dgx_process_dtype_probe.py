@@ -39,7 +39,7 @@ REMOTE_PROBE = r'''import json
 import os
 
 expected = {
-    9111: "Qwen3.5-9B",
+    9111: "Qwen3.8-Flash-Next",
     9112: "Qwen3-Embedding-4B",
     9113: "Qwen3-Reranker-4B",
 }

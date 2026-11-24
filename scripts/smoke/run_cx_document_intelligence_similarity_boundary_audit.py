@@ -97,7 +97,7 @@ EVIDENCE_TOKENS = (
     EvidenceToken(
         "generation_model",
         "services/_shared/nex_runtime/canonical_generation_binding.py",
-        'model_name="Qwen3.5-9B"',
+        'model_name="Qwen3.8-Flash-Next"',
     ),
     EvidenceToken(
         "embedding_model",
@@ -325,7 +325,7 @@ def _boundary_decision() -> dict[str, Any]:
         "summary_source": "latest_ready_extracted_markdown",
         "summary_hard_limit_chars": 1000,
         "summary_storage_policy": "private_durable_payload_reference",
-        "summary_generation_model": "Qwen3.5-9B",
+        "summary_generation_model": "Qwen3.8-Flash-Next",
         "summary_embedding_model": "Qwen3-Embedding-4B",
         "summary_embedding_dimension": 2560,
         "similarity_backend": "owner_scoped_fresh_postgresql_pgvector",

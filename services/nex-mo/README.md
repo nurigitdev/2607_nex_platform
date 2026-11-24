@@ -9,9 +9,10 @@ Model profile defaults:
 - Model root: `NEX_MO_MODEL_ROOT` or `/data/nex-platform/models`
 - Embedding: `qwen3_embedding_4b_bf16` at `qwen3-embedding-4b-bf16`
 - Reranker: `qwen3_reranker_4b_bf16` at `qwen3-reranker-4b-bf16`
-- Generation primary: `qwen3_5_9b_bf16` at `qwen3.5-9b-bf16`
-- Generation rollback: `qwen3_5_4b_bf16` at `qwen3.5-4b-bf16`; this profile
-  is never selected by default.
+- Generation primary: `qwen3_8_flash_next_fp4` at `qwen3.8-flash-next-fp4`
+- Generation rollback: `qwen3_5_9b_bf16` at `qwen3.5-9b-bf16`
+- Historical generation baseline: Qwen3.5-4B remains in immutable evidence,
+  not in the active provider catalog.
 - Generation candidate: `qwen3_6_27b_nvfp4` at `qwen3.6-27b-nvfp4`
 - Generation planned candidate: `k_ai_generation_candidate` for a domestic
   K-AI model evaluation

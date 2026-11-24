@@ -60,8 +60,8 @@ def test_model_profile_catalog_uses_qwen_defaults() -> None:
     assert [profile.profile_name for profile in profiles] == [
         "qwen3_embedding_4b_bf16",
         "qwen3_reranker_4b_bf16",
+        "qwen3_8_flash_next_fp4",
         "qwen3_5_9b_bf16",
-        "qwen3_5_4b_bf16",
         "qwen3_6_27b_nvfp4",
         "k_ai_generation_candidate",
     ]
@@ -70,7 +70,7 @@ def test_model_profile_catalog_uses_qwen_defaults() -> None:
     assert profiles[1].model_name == "Qwen3-Reranker-4B"
     assert profiles[1].precision == "BF16"
     assert profiles[2].runtime_engine == "vllm"
-    assert profiles[2].model_name == "Qwen3.5-9B"
+    assert profiles[2].model_name == "Qwen3.8-Flash-Next"
     assert profiles[2].precision == "BF16"
     assert profiles[2].selected is True
     assert profiles[3].candidate_role == "rollback"
@@ -104,9 +104,9 @@ def test_model_profile_catalog_accepts_env_overrides() -> None:
     assert profiles[0].model_path == "/override/embed"
     assert profiles[0].runtime_engine == "remote_http"
     assert profiles[1].model_path == "/models/qwen3-reranker-4b-bf16"
-    assert profiles[2].model_path == "/models/qwen3.5-9b-bf16"
+    assert profiles[2].model_path == "/models/qwen3.8-flash-next-fp4"
     assert profiles[2].selected is False
-    assert profiles[3].model_path == "/models/qwen3.5-4b-bf16"
+    assert profiles[3].model_path == "/models/qwen3.5-9b-bf16"
     assert profiles[3].selected is False
     assert profiles[4].model_path == "/override/generation-selected"
     assert profiles[4].selected is True
@@ -273,8 +273,8 @@ def test_provider_profiles_endpoint_lists_generation_candidates() -> None:
     payload = response.json()
     assert payload["meta"]["count"] == 4
     assert [item["profile_name"] for item in payload["data"]] == [
+        "qwen3_8_flash_next_fp4",
         "qwen3_5_9b_bf16",
-        "qwen3_5_4b_bf16",
         "qwen3_6_27b_nvfp4",
         "k_ai_generation_candidate",
     ]

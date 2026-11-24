@@ -16,11 +16,11 @@ class CanonicalGenerationBinding:
 
 
 CANONICAL_GENERATION_BINDING = CanonicalGenerationBinding(
-    profile_name="qwen3_5_9b_bf16",
+    profile_name="qwen3_8_flash_next_fp4",
     alias="general-llm-default",
-    model_name="Qwen3.5-9B",
-    model_revision="hf:c202236235762e1c871ad0ccb60c8ee5ba337b9a",
-    deployment_id="dgx-qwen3-5-9b-9111",
+    model_name="Qwen3.8-Flash-Next",
+    model_revision="hf:fc694b54fb0174e0913e6adf86691ef85a4ead47",
+    deployment_id="dgx-qwen3-8-flash-next-9111",
     provider_port=9111,
     precision="BF16",
     reasoning_mode="disabled",

@@ -3,9 +3,11 @@ from __future__ import annotations
 from copy import deepcopy
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
+import nex_cx.retrieval_answer_support_provider_relocation as relocation_module
 from nex_cx.retrieval_answer_support_controlled_activation import (
     load_controlled_activation_bundle,
 )
@@ -34,8 +36,16 @@ RELOCATION_PATH = (
 )
 
 
-def test_relocation_preserves_calibration_and_admits_canonical_deployment() -> None:
+def test_historical_relocation_preserves_calibration_and_admits_its_canonical_deployment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     activation = load_controlled_activation_bundle(ACTIVATION_PATH)
+    historical = _historical_canonical_binding()
+    monkeypatch.setattr(
+        relocation_module,
+        "CANONICAL_GENERATION_BINDING",
+        historical,
+    )
     relocation = load_provider_relocation(
         RELOCATION_PATH,
         activation_bundle=activation,
@@ -44,7 +54,7 @@ def test_relocation_preserves_calibration_and_admits_canonical_deployment() -> N
     target = relocation["target_provider_binding"]
 
     assert source["deployment_id"] == "dgx-qwen3-5-9b-9116"
-    assert target["deployment_id"] == CANONICAL_GENERATION_BINDING.deployment_id
+    assert target["deployment_id"] == historical.deployment_id
     assert target["model_revision"] == source["model_revision"]
     assert target["request_profile_id"] == source["request_profile_id"]
     assert target["score_semantics_id"] == source["score_semantics_id"]
@@ -55,8 +65,15 @@ def test_relocation_preserves_calibration_and_admits_canonical_deployment() -> N
     assert resolve_runtime_provider_binding({}, activation_bundle=activation) is None
 
 
-def test_relocation_fails_closed_for_tamper_and_semantic_change() -> None:
+def test_relocation_fails_closed_for_tamper_and_semantic_change(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     activation = load_controlled_activation_bundle(ACTIVATION_PATH)
+    monkeypatch.setattr(
+        relocation_module,
+        "CANONICAL_GENERATION_BINDING",
+        _historical_canonical_binding(),
+    )
     relocation = load_provider_relocation(
         RELOCATION_PATH,
         activation_bundle=activation,
@@ -74,8 +91,15 @@ def test_relocation_fails_closed_for_tamper_and_semantic_change() -> None:
         validate_provider_relocation(semantic_change, activation_bundle=activation)
 
 
-def test_runtime_binding_override_only_allows_deployment_relocation() -> None:
+def test_runtime_binding_override_only_allows_deployment_relocation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     activation = load_controlled_activation_bundle(ACTIVATION_PATH)
+    monkeypatch.setattr(
+        relocation_module,
+        "CANONICAL_GENERATION_BINDING",
+        _historical_canonical_binding(),
+    )
     calibrated = activation["readiness_manifest"]["candidate_profile"][
         "provider_binding"
     ]
@@ -93,6 +117,24 @@ def test_runtime_binding_override_only_allows_deployment_relocation() -> None:
         _runtime_provider_binding(calibrated, {"deployment_id": "replacement"})
     with pytest.raises(ValueError, match="deployment_id"):
         _runtime_provider_binding(calibrated, dict(target, deployment_id=""))
+
+
+def test_historical_relocation_is_rejected_by_current_canonical_binding() -> None:
+    activation = load_controlled_activation_bundle(ACTIVATION_PATH)
+
+    with pytest.raises(
+        AnswerSupportProviderRelocationError,
+        match="not the canonical generation binding",
+    ):
+        load_provider_relocation(
+            RELOCATION_PATH,
+            activation_bundle=activation,
+        )
+
+    assert CANONICAL_GENERATION_BINDING.model_revision != (
+        activation["readiness_manifest"]["candidate_profile"]["provider_binding"]
+        ["model_revision"]
+    )
 
 
 @pytest.mark.parametrize(
@@ -184,3 +226,13 @@ def _activation_and_relocation() -> tuple[dict, dict]:
 def _rehash(relocation: dict) -> None:
     relocation.pop("amendment_hash", None)
     relocation["amendment_hash"] = semantic_sha256_hash_ref(relocation)
+
+
+def _historical_canonical_binding() -> SimpleNamespace:
+    relocation = json.loads(RELOCATION_PATH.read_text(encoding="utf-8"))
+    target = relocation["target_provider_binding"]
+    return SimpleNamespace(
+        alias=target["provider_alias"],
+        deployment_id=target["deployment_id"],
+        model_revision=target["model_revision"],
+    )

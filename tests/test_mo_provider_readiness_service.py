@@ -38,7 +38,7 @@ def passing_requester(
         return httpx.Response(200, json={"data": [{"embedding": [0.1]}]})
     if url.endswith("/v1/rerank"):
         return httpx.Response(200, json={"results": [{"score": 0.9}]})
-    return httpx.Response(200, json={"data": [{"id": "Qwen3.5-9B"}]})
+    return httpx.Response(200, json={"data": [{"id": "Qwen3.8-Flash-Next"}]})
 
 
 def test_mock_service_check_is_ready_and_network_free() -> None:

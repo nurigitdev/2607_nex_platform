@@ -29,9 +29,9 @@ EVIDENCE_PROBES = (
         'model_name="Qwen3-Reranker-4B"',
     ),
     EvidenceProbe(
-        "generation_bf16_catalog",
+        "generation_bf16_binding",
         "services/_shared/nex_runtime/canonical_generation_binding.py",
-        'model_name="Qwen3.5-9B"',
+        'model_name="Qwen3.8-Flash-Next"',
     ),
     EvidenceProbe(
         "dtype_operator_rule",

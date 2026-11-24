@@ -28,7 +28,7 @@ def test_repository_catalog_drift_is_classified() -> None:
     assert result["current_defaults"]["selected_profiles"] == {
         "embedding": "Qwen3-Embedding-4B",
         "reranking": "Qwen3-Reranker-4B",
-        "generation": "Qwen3.5-9B",
+            "generation": "Qwen3.8-Flash-Next",
     }
     assert [item["priority"] for item in result["ordered_remediation"]] == ["P1", "P2"]
 

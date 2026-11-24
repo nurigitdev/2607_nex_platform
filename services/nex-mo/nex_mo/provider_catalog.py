@@ -18,19 +18,19 @@ GENERATION_PROFILE_CANDIDATES: tuple[dict[str, str], ...] = (
         "profile_name": CANONICAL_GENERATION_BINDING.profile_name,
         "alias": CANONICAL_GENERATION_BINDING.alias,
         "model_name": CANONICAL_GENERATION_BINDING.model_name,
-        "model_path_suffix": "qwen3.5-9b-bf16",
+        "model_path_suffix": "qwen3.8-flash-next-fp4",
         "precision": CANONICAL_GENERATION_BINDING.precision,
         "candidate_role": "primary",
         "selection_reason": "Calibrated canonical DGX-Spark generation target.",
     },
     {
-        "profile_name": "qwen3_5_4b_bf16",
+        "profile_name": "qwen3_5_9b_bf16",
         "alias": "general-llm-rollback",
-        "model_name": "Qwen3.5-4B",
-        "model_path_suffix": "qwen3.5-4b-bf16",
+        "model_name": "Qwen3.5-9B",
+        "model_path_suffix": "qwen3.5-9b-bf16",
         "precision": "BF16",
         "candidate_role": "rollback",
-        "selection_reason": "Retained rollback candidate; not selected by default.",
+        "selection_reason": "Verified previous primary retained for rollback.",
     },
     {
         "profile_name": "qwen3_6_27b_nvfp4",
@@ -217,8 +217,8 @@ def generation_model_path(
     selected: bool,
 ) -> str:
     profile_specific_env = {
+        "qwen3_8_flash_next_fp4": "NEX_MO_GENERATION_QWEN38_FLASH_NEXT_MODEL_PATH",
         "qwen3_5_9b_bf16": "NEX_MO_GENERATION_QWEN35_9B_MODEL_PATH",
-        "qwen3_5_4b_bf16": "NEX_MO_GENERATION_QWEN35_4B_MODEL_PATH",
         "qwen3_6_27b_nvfp4": "NEX_MO_GENERATION_QWEN36_27B_MODEL_PATH",
         "k_ai_generation_candidate": "NEX_MO_GENERATION_KAI_MODEL_PATH",
     }[profile_name]

@@ -70,7 +70,7 @@ MODEL_PROFILE = "general-llm-default"
 MODEL_REF_ENV = "NEX_MO_VLLM_MODEL"
 MODEL_REVISION_ENV = "NEX_MO_VLLM_MODEL_REVISION"
 MODEL_DEPLOYMENT_ENV = "NEX_MO_VLLM_DEPLOYMENT_ID"
-DEFAULT_MODEL_REF = "Qwen3.5-9B"
+DEFAULT_MODEL_REF = "Qwen3.8-Flash-Next"
 GOLDEN_JOURNEY_EVIDENCE_CONTRACT = {
     "platform_integrated": True,
     "runtime_transition_fixture": False,

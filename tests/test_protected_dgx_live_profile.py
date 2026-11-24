@@ -99,7 +99,7 @@ def test_protected_dgx_live_profile_passes_and_redacts_live_values() -> None:
             )
         return httpx.Response(
             200,
-            json={"data": [{"id": "Qwen3.5-9B"}]},
+            json={"data": [{"id": "Qwen3.8-Flash-Next"}]},
         )
 
     evidence = protected_live.run_protected_dgx_live_profile(

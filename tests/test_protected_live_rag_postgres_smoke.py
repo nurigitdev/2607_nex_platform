@@ -30,12 +30,12 @@ def _live_env(database_url: str = "postgresql://user:secret@localhost/db") -> di
             "http://dgx.local:9111/v1/chat/completions"
         ),
         "NEX_MO_VLLM_API_KEY": "live-generation-secret",
-        "NEX_MO_VLLM_MODEL": "Qwen3.5-9B",
+        "NEX_MO_VLLM_MODEL": "Qwen3.8-Flash-Next",
         "NEX_MO_VLLM_MODEL_REVISION": (
-            "hf:c202236235762e1c871ad0ccb60c8ee5ba337b9a"
+            "hf:fc694b54fb0174e0913e6adf86691ef85a4ead47"
         ),
-        "NEX_MO_VLLM_DEPLOYMENT_ID": "dgx-qwen3-5-9b-9111",
-        "NEX_MO_LIVE_EXPECTED_GENERATION_MODELS": "Qwen3.5-9B",
+        "NEX_MO_VLLM_DEPLOYMENT_ID": "dgx-qwen3-8-flash-next-9111",
+        "NEX_MO_LIVE_EXPECTED_GENERATION_MODELS": "Qwen3.8-Flash-Next",
         "NEX_MO_PROVIDER_MODE": "live",
         "NEX_MO_REMOTE_EMBEDDING_REQUEST_SHAPE": "openai_embeddings",
         "NEX_MO_REMOTE_RERANKER_REQUEST_SHAPE": "rerank",
@@ -79,7 +79,7 @@ def _fake_remote_request(
                     "usage": {"prompt_tokens": 8, "total_tokens": 8},
                 },
             )
-        assert payload["model"] == "Qwen3.5-9B"
+        assert payload["model"] == "Qwen3.8-Flash-Next"
         assert payload["messages"][0]["role"] == "system"
         assert "untrusted data" in payload["messages"][0]["content"]
         assert payload["messages"][1]["role"] == "user"

@@ -117,10 +117,13 @@ def test_configuration_reports_missing_models_shapes_and_generation_url() -> Non
     }
     assert any("CHAT_COMPLETIONS" in item["field"] for item in issues)
 
-    current = _live_env(NEX_MO_VLLM_MODEL="Qwen3.5-9B")
+    current = _live_env(NEX_MO_VLLM_MODEL="Qwen3.8-Flash-Next")
     current_issues = smoke.configuration_issues(
         current,
-        expected_models={**smoke.EXPECTED_MODELS, "generation": "Qwen3.5-9B"},
+        expected_models={
+            **smoke.EXPECTED_MODELS,
+            "generation": "Qwen3.8-Flash-Next",
+        },
     )
     assert not any(
         item.get("field") == "NEX_MO_VLLM_MODEL" for item in current_issues
@@ -217,7 +220,7 @@ def test_generation_payload_headers_and_provider_observation() -> None:
     }
     observation = smoke._provider_observation(telemetry)
     assert observation["embedding"]["success_count"] == 1
-    assert observation["generation"]["model"] == "Qwen3.5-9B"
+    assert observation["generation"]["model"] == "Qwen3.8-Flash-Next"
     assert smoke._provider_observation({})["reranking"] == {
         "model": None,
         "success_count": 0,

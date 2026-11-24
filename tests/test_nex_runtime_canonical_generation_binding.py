@@ -12,9 +12,9 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def test_canonical_generation_binding_owns_active_defaults() -> None:
     binding = CANONICAL_GENERATION_BINDING
-    assert binding.model_name == "Qwen3.5-9B"
-    assert binding.model_revision == "hf:c202236235762e1c871ad0ccb60c8ee5ba337b9a"
-    assert binding.deployment_id == "dgx-qwen3-5-9b-9111"
+    assert binding.model_name == "Qwen3.8-Flash-Next"
+    assert binding.model_revision == "hf:fc694b54fb0174e0913e6adf86691ef85a4ead47"
+    assert binding.deployment_id == "dgx-qwen3-8-flash-next-9111"
     assert binding.provider_port == 9111
     assert binding.precision == "BF16"
     assert binding.reasoning_mode == "disabled"
@@ -27,7 +27,7 @@ def test_canonical_generation_binding_owns_active_defaults() -> None:
     rollback = next(
         profile
         for profile in build_model_profile_catalog({})
-        if profile.profile_name == "qwen3_5_4b_bf16"
+        if profile.profile_name == "qwen3_5_9b_bf16"
     )
     assert selected.model_name == binding.model_name
     assert selected.profile_name == binding.profile_name

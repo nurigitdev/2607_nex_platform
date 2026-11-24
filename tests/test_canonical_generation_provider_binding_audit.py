@@ -12,16 +12,17 @@ def test_repository_canonical_generation_binding_audit_passes() -> None:
 
     assert result["status"] == "PASS"
     assert all(result["checks"].values())
-    assert result["canonical_binding"]["model_name"] == "Qwen3.5-9B"
+    assert result["canonical_binding"]["model_name"] == "Qwen3.8-Flash-Next"
     assert result["canonical_binding"]["provider_port"] == 9111
     assert result["compatibility_policy"] == {
-        "qwen3_5_4b": "EXPLICIT_ROLLBACK_OR_LEGACY_ONLY",
-        "calibrated_9116_binding": "IMMUTABLE_HISTORICAL_SOURCE",
-        "runtime_9111_binding": "APPROVED_ENDPOINT_RELOCATION",
+        "qwen3_8_flash_next": "CANONICAL_GENERAL_GENERATION",
+        "qwen3_5_9b": "EXPLICIT_ROLLBACK_AND_HISTORICAL_CALIBRATION",
+        "qwen3_5_4b": "LEGACY_ONLY",
+        "answer_support_new_revision": "DEFERRED_RECALIBRATION_FAIL_CLOSED",
     }
     assert audit.summary_line(result) == (
-        "canonical_generation_provider_binding=pass checks=11/11 "
-        "model=Qwen3.5-9B port=9111"
+        "canonical_generation_provider_binding=pass checks=12/12 "
+        "model=Qwen3.8-Flash-Next port=9111"
     )
 
 
@@ -30,7 +31,7 @@ def test_audit_rejects_environment_default_regression(tmp_path: Path) -> None:
     env_path = root / ".env.example"
     env_path.write_text(
         env_path.read_text(encoding="utf-8").replace(
-            "NEX_MO_GENERATION_PROFILE=qwen3_5_9b_bf16",
+            "NEX_MO_GENERATION_PROFILE=qwen3_8_flash_next_fp4",
             "NEX_MO_GENERATION_PROFILE=qwen3_5_4b_bf16",
         ),
         encoding="utf-8",
@@ -40,7 +41,7 @@ def test_audit_rejects_environment_default_regression(tmp_path: Path) -> None:
 
     assert result["status"] == "FAIL"
     assert result["checks"]["environment_defaults_exact"] is False
-    assert result["checks"]["four_b_is_not_environment_default"] is False
+    assert result["checks"]["legacy_models_are_not_environment_default"] is False
 
 
 def test_audit_rejects_compose_or_relocation_drift(tmp_path: Path) -> None:
@@ -48,7 +49,7 @@ def test_audit_rejects_compose_or_relocation_drift(tmp_path: Path) -> None:
     compose_path = root / "deployment/compose/canonical-platform.override.yaml"
     compose_path.write_text(
         compose_path.read_text(encoding="utf-8").replace(
-            "${NEX_MO_VLLM_MODEL:-Qwen3.5-9B}",
+            "${NEX_MO_VLLM_MODEL:-Qwen3.8-Flash-Next}",
             "${NEX_MO_VLLM_MODEL:-Qwen3.5-4B}",
         ),
         encoding="utf-8",
@@ -65,10 +66,10 @@ def test_audit_rejects_compose_or_relocation_drift(tmp_path: Path) -> None:
 
     assert result["status"] == "FAIL"
     assert result["checks"]["compose_generation_defaults_exact"] is False
-    assert result["checks"]["calibration_relocation_exact"] is False
-    assert "calibration_relocation_invalid:AnswerSupportProviderRelocationError" in (
-        result["issues"]
-    )
+    assert result["checks"]["answer_support_calibration_remains_historical"] is False
+    assert "check_failed:answer_support_calibration_remains_historical" in result[
+        "issues"
+    ]
 
 
 def test_audit_rejects_canonical_generation_timeout_budget_drift(
@@ -151,7 +152,7 @@ def test_audit_io_helpers_fail_closed(tmp_path: Path) -> None:
         {"services": {"nex-mo": {"environment": []}}}, "nex-mo"
     ) == {}
     assert audit.summary_line({"status": "FAIL", "checks": []}).endswith(
-        "checks=0/0 model=Qwen3.5-9B port=9111"
+        "checks=0/0 model=Qwen3.8-Flash-Next port=9111"
     )
 
 
