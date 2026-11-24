@@ -37,6 +37,7 @@ MyBee office-work AX Service Phase-1 program.
 30. `NeX_MyBee_W80_CA00C_Operational_Usability_and_Live_Journey_Experience_Hardening_v1.0.md`
 31. `NeX_MyBee_W80_CA00D_MO_Capability_Scoped_Readiness_and_Healthcheck_Boundary_v1.0.md`
 32. `NeX_MyBee_W80_CA00E_Cross_Agent_Semantic_Handoff_Evidence_Reuse_and_Role_Scoped_Replanning_Boundary_v1.0.md`
+33. `NeX_MyBee_W80_CA00F_Sequential_Approval_Result_Publication_WA_Evidence_and_Allocation_Responsibility_Boundary_v1.0.md`
 
 The Markdown Slice Plan and its Execution Matrix JSON are one planning set.
 The JSON is machine-readable traceability input, not runtime configuration or
@@ -85,6 +86,15 @@ Evidence reuse is policy- and hash-governed; authority changes and scope or hash
 conflicts fail closed and cannot be repaired by a provider call. The amendment
 does not optimize only the M1 scenario and introduces no fixture-specific
 runtime branch.
+
+W80-CA00F separates the post-handoff accounting responsibilities that the M1
+acceptance journey intentionally combined. It preserves immutable multi-stage
+approval routing while requiring business approval before accounting-stage
+activation, fixes IA Workspace publication as the requester-visible result
+barrier, distinguishes mandatory WA execution evidence from optional rendered
+assets, and retires automatic allocation/P&L execution from Journal completion.
+Journal and accounting allocation are verified by separate protected live
+journeys, with no fixture-specific product branch or planned database migration.
 
 The W30-CA01 pair is the source-backed post-W20 delta. It takes precedence
 only for W30 entry ordering, current migration-number reservations, the
