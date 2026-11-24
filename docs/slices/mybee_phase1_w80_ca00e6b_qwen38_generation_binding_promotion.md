@@ -94,6 +94,46 @@ dependency audit         = PASS, 7/7 edges
 The existing non-blocking Starlette/httpx and Python SQLite datetime
 deprecation warnings remain unchanged.
 
+## Exact-Head Protected Installed Acceptance
+
+The exact-head installed journey was executed from commit
+`19e0b59364bf73c75c6d5b3bd6676842705ef3b6` with release-set digest
+`sha256:ce0394ac78df97f5891b4414845bf6f64beb82eb827ba5e77c39f2adc0756132`.
+
+The first execution overlapped another DGX workload. Its first two accepted
+generation requests took `90.115` and `82.919` seconds, so the browser reached
+the existing 180-second semantic-submit budget before PLAN generation. The
+failure path dropped all eight isolated PostgreSQL schemas and reported zero
+residue. No timeout or product contract was changed from this observation.
+
+The same exact-head journey was then repeated while the DGX was idle:
+
+```text
+installed journey                 = PASS
+actual PostgreSQL / OpenBao       = PASS / PASS
+actual RustFS / remote generation = PASS / PASS
+authenticated Playwright          = PASS
+restart recovery                  = PASS
+zero residue                      = PASS
+generation requests               = 8
+INTENT / CONTEXT / PLAN           = 2 / 2 / 4
+embedding / reranking requests    = 0 / 0
+generation latency min / mean     = 6.348 / 8.540 seconds
+generation latency p95 / max      = 11.187 / 11.187 seconds
+```
+
+All eight responses identified the admitted immutable revision and completed
+with `STOP` without an application error. The journey produced two distinct
+posted Journals, two AllocationBatches, two AgentResults, six approval
+decisions, and 17 retained screen-evidence files. After the installed service
+restart, the authoritative result, business references, and result hash were
+recovered without duplicate domain rows or pending queues.
+
+The idle result leaves substantial margin under the existing 180-second
+semantic-submit budget. This Slice therefore keeps that budget unchanged and
+records co-resident DGX load as an operational latency signal rather than
+masking it with a larger acceptance timeout.
+
 ## Scope
 
 This Slice adds no database migration and no public API field. Registry push
