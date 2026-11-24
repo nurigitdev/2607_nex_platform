@@ -13,6 +13,10 @@ from nex_runtime.business_context import (
 )
 from nex_runtime.semantic_hashes import semantic_sha256_hash_ref
 
+from nex_ae_api.accounting_allocation_authority import (
+    validate_accounting_allocation_authority_checkpoint,
+    validate_accounting_allocation_work_intent,
+)
 from nex_ae_api.allocation_plan_resolution_runtime import (
     InstalledApprovedAllocationPlanResolution,
 )
@@ -36,6 +40,59 @@ class M1AllocationPlanCompositionError(RuntimeError):
     pass
 
 
+def resolve_accounting_allocation_plan_authority(
+    runtime: InstalledApprovedAllocationPlanResolution,
+    *,
+    work_intent: Mapping[str, Any],
+    allocation_authority_checkpoint: Mapping[str, Any],
+    source_pool: Mapping[str, Any],
+    correlation_id: str,
+    existing_checkpoint: Mapping[str, Any] | None = None,
+) -> Mapping[str, Any]:
+    """Resolve allocation authority without relying on D04 preparation state."""
+
+    try:
+        intent = validate_accounting_allocation_work_intent(work_intent)
+        authority = validate_accounting_allocation_authority_checkpoint(
+            allocation_authority_checkpoint
+        )
+    except Exception as exc:
+        raise _invalid("Independent allocation authority is invalid.") from exc
+    if (
+        authority["tenant_id"] != intent["tenant_id"]
+        or authority["company_id"] != intent["company_id"]
+        or authority["subject_id"] != intent["subject_id"]
+        or authority["execution_id"] != intent["execution_id"]
+        or authority["work_intent_id"] != intent["work_intent_id"]
+        or authority["work_intent_hash"] != intent["intent_hash"]
+        or authority["replay_identity"] != intent["replay_identity"]
+    ):
+        raise _invalid("Independent allocation WorkIntent lineage differs.")
+    resolver = getattr(runtime, "resolve_and_bind_by_project_codes", None)
+    if not callable(resolver):
+        raise _invalid("Code-based EOS Project authority resolver is unavailable.")
+    source_kind = source_pool.get("source_kind")
+    effective_on = source_pool.get("recognition_date")
+    if not isinstance(source_kind, str) or not isinstance(effective_on, str):
+        raise _invalid("SourcePool allocation selector is unavailable.")
+    if source_kind != intent["source_kind"]:
+        raise _invalid("SourcePool source kind differs from the WorkIntent.")
+    return resolver(
+        tenant_id=intent["tenant_id"],
+        company_id=intent["company_id"],
+        source_kind=source_kind,
+        effective_on=effective_on,
+        projects=intent["projects"],
+        correlation_id=correlation_id,
+        source_pool=source_pool,
+        lineage=AllocationAuthorityLineage(
+            business_context_hash=intent["intent_hash"],
+            allocation_authority_hash=authority["authority_hash"],
+        ),
+        existing_checkpoint=existing_checkpoint,
+    )
+
+
 def resolve_m1_allocation_plan_authority(
     runtime: InstalledApprovedAllocationPlanResolution,
     *,
@@ -45,6 +102,7 @@ def resolve_m1_allocation_plan_authority(
     correlation_id: str,
     existing_checkpoint: Mapping[str, Any] | None = None,
 ) -> Mapping[str, Any]:
+    """Historical D04 preparation adapter retained for exact replay only."""
     context = _work_intent_context(work_intent)
     preparation = _preparation(
         preparation_checkpoint, context_hash=context["context_hash"]

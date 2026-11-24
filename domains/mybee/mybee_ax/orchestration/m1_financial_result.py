@@ -14,6 +14,9 @@ from ..integrations.nex_project_pnl_refresh_client import NexProjectPnlRefreshCl
 from .m1_transaction_preparation import M1PreparationRegistration
 
 M1_FINANCIAL_RESULT_SCHEMA = "mybee.m1-financial-result.v1"
+ACCOUNTING_ALLOCATION_FINANCIAL_RESULT_SCHEMA = (
+    "mybee.accounting-allocation-financial-result.v1"
+)
 
 
 class M1FinancialResultError(RuntimeError):
@@ -30,7 +33,7 @@ class M1FinancialResultIntegrator:
         refresh_client: NexProjectPnlRefreshClient,
         pnl_client: NexProjectPnlClient,
         authority_resolver: Callable[..., Mapping[str, Any]],
-        registration: M1PreparationRegistration,
+        registration: M1PreparationRegistration | None = None,
     ) -> None:
         self._allocation = allocation_client
         self._refresh = refresh_client
@@ -47,28 +50,54 @@ class M1FinancialResultIntegrator:
         correlation_id: str,
         journal_id: str,
         work_intent: Mapping[str, Any],
-        preparation_checkpoint: Mapping[str, Any],
+        allocation_authority_checkpoint: Mapping[str, Any] | None = None,
+        preparation_checkpoint: Mapping[str, Any] | None = None,
+        source_record_line_ref: str | None = None,
+        source_kind: str | None = None,
         existing_authority_checkpoint: Mapping[str, Any] | None = None,
     ) -> Mapping[str, Any]:
+        independent = allocation_authority_checkpoint is not None
+        if independent:
+            if not source_record_line_ref or not source_kind:
+                raise M1FinancialResultError(
+                    "Independent allocation source selector is unavailable."
+                )
+            source_line_ref = source_record_line_ref
+            selected_source_kind = source_kind
+        else:
+            if self._registration is None or preparation_checkpoint is None:
+                raise M1FinancialResultError(
+                    "Historical D04 allocation lineage is unavailable."
+                )
+            source_line_ref = self._registration.allocation_source_record_line_ref
+            selected_source_kind = self._registration.allocation_source_kind
         source_pool = self._allocation.admit_source_pool(
             tenant_id=tenant_id,
             company_id=company_id,
             journal_id=journal_id,
             subject_id=subject_id,
             correlation_id=correlation_id,
-            source_record_line_ref=(
-                self._registration.allocation_source_record_line_ref
+            source_record_line_ref=source_line_ref,
+            source_kind=selected_source_kind,
+            allocation_mode=(
+                "MANAGEMENT_ALLOCATION"
+                if independent
+                else self._registration.allocation_mode
             ),
-            source_kind=self._registration.allocation_source_kind,
-            allocation_mode=self._registration.allocation_mode,
         )
-        authority = self._resolve_authority(
-            work_intent=work_intent,
-            preparation_checkpoint=preparation_checkpoint,
-            source_pool=source_pool,
-            correlation_id=correlation_id,
-            existing_checkpoint=existing_authority_checkpoint,
-        )
+        resolver_values: dict[str, Any] = {
+            "work_intent": work_intent,
+            "source_pool": source_pool,
+            "correlation_id": correlation_id,
+            "existing_checkpoint": existing_authority_checkpoint,
+        }
+        if independent:
+            resolver_values["allocation_authority_checkpoint"] = (
+                allocation_authority_checkpoint
+            )
+        else:
+            resolver_values["preparation_checkpoint"] = preparation_checkpoint
+        authority = self._resolve_authority(**resolver_values)
         batch, verification = self._allocation.run_verified(
             tenant_id=tenant_id,
             company_id=company_id,
@@ -82,15 +111,15 @@ class M1FinancialResultIntegrator:
             batch_id=str(batch["batch_id"]),
             correlation_id=correlation_id,
         )
-        if (
-            refresh.get("period_id") != batch.get("period_id")
-            or refresh.get("allocation_reconciliation_hash")
-            != batch.get("reconciliation_hash")
-        ):
+        if refresh.get("period_id") != batch.get("period_id") or refresh.get(
+            "allocation_reconciliation_hash"
+        ) != batch.get("reconciliation_hash"):
             raise M1FinancialResultError(
                 "P&L refresh differs from the verified allocation authority."
             )
-        projects = _authorized_projects(preparation_checkpoint)
+        projects = _authorized_projects(
+            authority if independent else preparation_checkpoint
+        )
         refresh_projects = {
             str(item["project_code"]): dict(item)
             for item in refresh.get("projections", ())
@@ -114,11 +143,9 @@ class M1FinancialResultIntegrator:
                 correlation_id=correlation_id,
                 projection_version=int(refreshed["projection_version"]),
             )
-            if (
-                projection.get("projection_id") != refreshed.get("projection_id")
-                or projection.get("projection_hash")
-                != refreshed.get("projection_hash")
-            ):
+            if projection.get("projection_id") != refreshed.get(
+                "projection_id"
+            ) or projection.get("projection_hash") != refreshed.get("projection_hash"):
                 raise M1FinancialResultError(
                     "Authorized P&L projection differs from the refresh receipt."
                 )
@@ -137,7 +164,11 @@ class M1FinancialResultIntegrator:
                 }
             )
         semantics = {
-            "schema_version": M1_FINANCIAL_RESULT_SCHEMA,
+            "schema_version": (
+                ACCOUNTING_ALLOCATION_FINANCIAL_RESULT_SCHEMA
+                if independent
+                else M1_FINANCIAL_RESULT_SCHEMA
+            ),
             "stage": "ALLOCATION_AND_PNL_VERIFIED",
             "tenant_id": tenant_id,
             "company_id": company_id,
@@ -163,19 +194,27 @@ class M1FinancialResultIntegrator:
 
 
 def _authorized_projects(
-    preparation_checkpoint: Mapping[str, Any],
+    checkpoint: Mapping[str, Any] | None,
 ) -> dict[str, str]:
-    authority = preparation_checkpoint.get("authority")
+    if not isinstance(checkpoint, Mapping):
+        raise M1FinancialResultError("Project authority is unavailable.")
+    if (
+        checkpoint.get("schema_version")
+        == "mybee.approved_allocation_plan_authority.v2"
+    ):
+        authority = checkpoint.get("allocation_plan")
+    else:
+        authority = checkpoint.get("authority")
     refs = authority.get("project_refs") if isinstance(authority, Mapping) else None
     if not isinstance(refs, (list, tuple)) or not refs:
-        raise M1FinancialResultError("Preparation Project authority is unavailable.")
+        raise M1FinancialResultError("Allocation Project authority is unavailable.")
     projects: dict[str, str] = {}
     for item in refs:
         if not isinstance(item, Mapping):
-            raise M1FinancialResultError("Preparation Project authority is invalid.")
+            raise M1FinancialResultError("Allocation Project authority is invalid.")
         code = str(item.get("project_code") or "")
         project_id = str(item.get("project_id") or "")
         if not code or not project_id or code in projects:
-            raise M1FinancialResultError("Preparation Project authority is invalid.")
+            raise M1FinancialResultError("Allocation Project authority is invalid.")
         projects[code] = project_id
     return projects

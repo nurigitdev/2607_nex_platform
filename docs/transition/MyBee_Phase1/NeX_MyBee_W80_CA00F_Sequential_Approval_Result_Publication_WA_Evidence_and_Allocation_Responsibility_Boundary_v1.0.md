@@ -306,6 +306,20 @@ completion. Preserve source-pool eligibility and the generic approved-plan
 resolver. Add a separate accounting-authorized allocation orchestration and
 ensure combined user prompts split into separately governed operations.
 
+### W80-CA00F.4A - Independent Accounting Allocation Authority Lineage Closure
+
+Replace the temporary D04-preparation dependency with a typed, hash-bound
+accounting allocation WorkIntent and a fresh OA
+`finance:allocation:execute` authority checkpoint. Bind each execution to its
+own RuntimeJob, replay identity, and IA or accounting Workspace publication
+target. The caller supplies approved Project codes and ratios; EOS resolves the
+current ACTIVE Project UUIDs and APPROVED company bindings before selecting the
+exact approved AllocationPlan. The pre-W80 UUID resolver and
+`READY_FOR_D04` lineage remain readable only through an explicit historical
+replay adapter. Reuse current allocation and P&L persistence; do not add a
+scenario-specific table, default ratio, Project count, Plan ID, or database
+migration.
+
 ### W80-CA00F.5 - Split Live Journeys and Protected Closure
 
 Replace the canonical combined acceptance with two journeys:

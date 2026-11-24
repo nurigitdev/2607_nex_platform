@@ -10,6 +10,10 @@ from mybee_ax.orchestration import (
     M1FinancialResultIntegrator,
     load_m1_transaction_preparation_registration,
 )
+from nex_ae_api.accounting_allocation_authority import (
+    AccountingAllocationAuthorityError,
+    build_accounting_allocation_work_intent,
+)
 from nex_ae_api.business_result_summary import (
     BusinessResultSummaryError,
     admit_business_result_summary,
@@ -47,6 +51,8 @@ CODE_B = "VO00D260002"
 HASH_A = "sha256:" + "a" * 64
 HASH_B = "sha256:" + "b" * 64
 HASH_C = "sha256:" + "c" * 64
+ALLOCATION_EXECUTION = "92000000-0000-4000-8000-000000000020"
+ALLOCATION_INTENT = "92000000-0000-4000-8000-000000000021"
 
 
 def _pool() -> dict[str, object]:
@@ -213,10 +219,16 @@ def test_cost_allocation_client_uses_journal_authority_and_exact_replay_identity
 
 
 class _Allocation:
-    def admit_source_pool(self, **_values):
+    def __init__(self) -> None:
+        self.admit_calls = []
+        self.run_calls = []
+
+    def admit_source_pool(self, **values):
+        self.admit_calls.append(values)
         return MappingProxyType(_pool())
 
-    def run_verified(self, **_values):
+    def run_verified(self, **values):
+        self.run_calls.append(values)
         return (
             {
                 "batch_id": str(uuid.uuid4()),
@@ -325,6 +337,64 @@ def test_financial_integrator_preserves_authority_and_redacts_public_summary():
     assert "posted_allocated_cost" not in str(summary)
     assert "components" not in str(summary)
     assert admit_business_result_summary(summary, strict=True) == summary
+
+
+def test_financial_integrator_uses_scenario_neutral_independent_lineage() -> None:
+    allocation = _Allocation()
+    refresh = _Refresh()
+    authority = {
+        "schema_version": "mybee.approved_allocation_plan_authority.v2",
+        "checkpoint_hash": HASH_C,
+        "allocation_plan": {
+            "project_refs": [
+                {
+                    "project_id": PROJECT_B,
+                    "project_code": CODE_B,
+                    "allocation_ratio": "0.600000000000",
+                },
+                {
+                    "project_id": PROJECT_A,
+                    "project_code": CODE_A,
+                    "allocation_ratio": "0.400000000000",
+                },
+            ]
+        },
+    }
+    resolver_calls = []
+
+    def resolve(**values):
+        resolver_calls.append(values)
+        return authority
+
+    result = M1FinancialResultIntegrator(
+        allocation_client=allocation,
+        refresh_client=refresh,
+        pnl_client=_Pnl(),
+        authority_resolver=resolve,
+    ).integrate(
+        tenant_id=TENANT,
+        company_id=COMPANY,
+        subject_id="accountant-1",
+        correlation_id="allocation-independent-1",
+        journal_id=JOURNAL,
+        work_intent={"schema_version": "ae.accounting_allocation_work_intent.v1"},
+        allocation_authority_checkpoint={"authority_hash": HASH_C},
+        source_record_line_ref="m1-expense-line",
+        source_kind="SHARED_EXPENSE",
+    )
+
+    assert result["schema_version"] == (
+        "mybee.accounting-allocation-financial-result.v1"
+    )
+    assert allocation.admit_calls[0]["allocation_mode"] == "MANAGEMENT_ALLOCATION"
+    assert resolver_calls[0]["allocation_authority_checkpoint"] == {
+        "authority_hash": HASH_C
+    }
+    assert "preparation_checkpoint" not in resolver_calls[0]
+    assert [item["project_code"] for item in result["project_results"]] == [
+        CODE_A,
+        CODE_B,
+    ]
 
 
 def test_financial_result_and_summary_fail_closed_on_lineage_or_privacy_drift():
@@ -453,9 +523,7 @@ def test_background_closer_finalizes_publishes_and_resumes_after_restart():
     assert finalizer.calls[0]["execution_id"] == "pa-1"
 
     with sessions.begin() as session:
-        session.execute(
-            text("UPDATE ae_agent_execution SET phase = 'RESULT_PUBLISH'")
-        )
+        session.execute(text("UPDATE ae_agent_execution SET phase = 'RESULT_PUBLISH'"))
         session.execute(
             text(
                 "INSERT INTO ae_result_delivery VALUES "
@@ -513,44 +581,47 @@ class _AccountingAuthority:
         self.calls.append(values)
         return {
             "active": self.active,
+            "tenant_id": values["tenant_id"],
+            "subject_id": values["subject_id"],
             "scopes": list(self.scopes),
             "revision_hash": HASH_C,
+            "evaluated_at": "2026-11-17T00:00:00Z",
         }
 
 
-def _allocation_work_intent() -> dict[str, object]:
-    context = {
-        "schema_version": "ae.business_request_context.v1",
-        "request_kind": "FINANCE_VOUCHER_POSTING",
-        "source_prompt_ref": "AE:INTERACTION:allocation-1",
-        "company_selector": {"kind": "CODE_OR_NAME", "value": "NURI"},
-        "document": {
-            "document_type": "BUSINESS_PROPOSAL",
-            "subject_ref": "Shared expense",
-            "subject_revision": 1,
-            "content_hash": HASH_A,
-            "attachment_manifest_hash": None,
-        },
-        "transaction": {
-            "counterparty_selector": "Vendor",
-            "amount": "10000.00",
-            "currency": "KRW",
-            "recognition_date": "2026-11-17",
-            "description": "Accounting allocation request",
-        },
-        "requested_allocation": [
-            {"project_code": CODE_A, "ratio": "0.400000"},
-            {"project_code": CODE_B, "ratio": "0.600000"},
-        ],
-        "candidate_provenance": {
-            "intent_candidate_hash": HASH_A,
-            "input_context_hash": HASH_B,
-            "model_profile": "generation-default",
-            "model_ref": "provider-neutral/revision-bound",
-        },
+def _allocation_work_intent(projects=None):
+    return build_accounting_allocation_work_intent(
+        tenant_id=TENANT,
+        company_id=COMPANY,
+        subject_id="accountant-1",
+        execution_id=ALLOCATION_EXECUTION,
+        work_intent_id=ALLOCATION_INTENT,
+        journal_id=JOURNAL,
+        source_record_line_ref="m1-expense-line",
+        source_kind="SHARED_EXPENSE",
+        projects=(
+            [
+                {"project_code": CODE_A, "allocation_ratio": "0.400000000000"},
+                {"project_code": CODE_B, "allocation_ratio": "0.600000000000"},
+            ]
+            if projects is None
+            else projects
+        ),
+        source_ref="AE:INTERACTION:allocation-1",
+        requested_at="2026-11-17T00:00:00Z",
+        publication_target="ACCOUNTING_WORKSPACE",
+        publication_target_ref="accounting:workspace:allocation",
+    )
+
+
+def _allocation_runtime_job():
+    return {
+        "runtime_job_id": "92000000-0000-4000-8000-000000000022",
+        "job_type": "START_EXECUTION",
+        "execution_id": ALLOCATION_EXECUTION,
+        "state": "RUNNING",
+        "dedup_key": "allocation:run:92000000",
     }
-    context["context_hash"] = semantic_sha256_hash_ref(context)
-    return {"business_request_context": context}
 
 
 def test_accounting_allocation_requires_fresh_oa_scope_and_explicit_ratios():
@@ -588,12 +659,16 @@ def test_accounting_allocation_requires_fresh_oa_scope_and_explicit_ratios():
         correlation_id="allocation-1",
         journal_id=JOURNAL,
         work_intent=_allocation_work_intent(),
-        preparation_checkpoint=_preparation(),
+        runtime_job=_allocation_runtime_job(),
     )
 
     assert result["operation"] == "FINANCE.COST_ALLOCATION.RUN"
     assert result["business_summary"]["result_type"] == "FINANCE.PROJECT_ALLOCATION"
     assert financial.calls[0]["journal_id"] == JOURNAL
+    assert financial.calls[0]["allocation_authority_checkpoint"]["stage"] == (
+        "AUTHORIZED_FOR_ALLOCATION_RESOLUTION"
+    )
+    assert result["runtime_job_ref"].endswith("000000000022")
     assert authority.calls == [{"tenant_id": TENANT, "subject_id": "accountant-1"}]
 
 
@@ -606,34 +681,15 @@ def test_accounting_allocation_denies_missing_scope_and_empty_ratios():
         denied.execute(
             tenant_id=TENANT,
             company_id=COMPANY,
-            subject_id="employee-1",
+            subject_id="accountant-1",
             correlation_id="allocation-2",
             journal_id=JOURNAL,
             work_intent=_allocation_work_intent(),
-            preparation_checkpoint=_preparation(),
+            runtime_job=_allocation_runtime_job(),
         )
 
-    work_intent = _allocation_work_intent()
-    context = dict(work_intent["business_request_context"])
-    context["requested_allocation"] = []
-    context["context_hash"] = semantic_sha256_hash_ref(
-        {key: value for key, value in context.items() if key != "context_hash"}
-    )
-    work_intent["business_request_context"] = context
-    runtime = InstalledAccountingAllocationRuntime(
-        integrator=_Financial({}),
-        authority=_AccountingAuthority(),
-    )
-    with pytest.raises(AccountingAllocationRuntimeError, match="explicit Project"):
-        runtime.execute(
-            tenant_id=TENANT,
-            company_id=COMPANY,
-            subject_id="accountant-1",
-            correlation_id="allocation-3",
-            journal_id=JOURNAL,
-            work_intent=work_intent,
-            preparation_checkpoint=_preparation(),
-        )
+    with pytest.raises(AccountingAllocationAuthorityError, match="1..64"):
+        _allocation_work_intent([])
 
 
 def test_m1_controlled_outcome_stops_at_posted_journal_and_defers_allocation():
@@ -662,9 +718,7 @@ def test_m1_controlled_outcome_stops_at_posted_journal_and_defers_allocation():
     result = SimpleNamespace(
         outcome=SimpleNamespace(
             commit_state=SimpleNamespace(value="COMMITTED"),
-            result=SimpleNamespace(
-                business_reference=f"eos.posted_journal:{JOURNAL}"
-            ),
+            result=SimpleNamespace(business_reference=f"eos.posted_journal:{JOURNAL}"),
         ),
         verification=SimpleNamespace(status=SimpleNamespace(value="VERIFIED")),
         write_request=SimpleNamespace(idempotency_key="journal-key"),

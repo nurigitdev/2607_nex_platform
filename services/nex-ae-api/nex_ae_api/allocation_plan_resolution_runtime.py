@@ -11,10 +11,12 @@ from mybee_ax.integrations import (
     ALLOCATION_PLAN_RESOLVE_OPERATION,
     HttpAllocationPlanProviderTransport,
     NexAllocationPlanResolverClient,
+    build_allocation_plan_resolve_by_code_request,
     build_allocation_plan_resolve_request,
 )
 from mybee_ax.orchestration import (
     APPROVED_ALLOCATION_PLAN_AUTHORITY_SCHEMA,
+    INDEPENDENT_ALLOCATION_PLAN_AUTHORITY_SCHEMA,
     AllocationAuthorityLineage,
     ApprovedAllocationPlanAuthorityBinder,
 )
@@ -43,6 +45,9 @@ class InstalledApprovedAllocationPlanResolution:
             "provider_service_id": "nex-eos",
             "operation": ALLOCATION_PLAN_RESOLVE_OPERATION,
             "authority_schema": APPROVED_ALLOCATION_PLAN_AUTHORITY_SCHEMA,
+            "independent_authority_schema": (
+                INDEPENDENT_ALLOCATION_PLAN_AUTHORITY_SCHEMA
+            ),
             "timeout_seconds": self.timeout_seconds,
             "business_defaults_included": False,
             "content_included": False,
@@ -65,6 +70,36 @@ class InstalledApprovedAllocationPlanResolution:
         existing_checkpoint: Mapping[str, Any] | None = None,
     ) -> Mapping[str, Any]:
         request = build_allocation_plan_resolve_request(
+            tenant_id=tenant_id,
+            company_id=company_id,
+            source_kind=source_kind,
+            effective_on=effective_on,
+            projects=projects,
+            correlation_id=correlation_id,
+        )
+        resolution = self.client.resolve_request(request)
+        return self.binder.bind(
+            request=request,
+            resolution=resolution,
+            source_pool=source_pool,
+            lineage=lineage,
+            existing_checkpoint=existing_checkpoint,
+        )
+
+    def resolve_and_bind_by_project_codes(
+        self,
+        *,
+        tenant_id: str,
+        company_id: str,
+        source_kind: str,
+        effective_on: str,
+        projects: Sequence[Mapping[str, Any]],
+        correlation_id: str,
+        source_pool: Mapping[str, Any],
+        lineage: AllocationAuthorityLineage,
+        existing_checkpoint: Mapping[str, Any] | None = None,
+    ) -> Mapping[str, Any]:
+        request = build_allocation_plan_resolve_by_code_request(
             tenant_id=tenant_id,
             company_id=company_id,
             source_kind=source_kind,

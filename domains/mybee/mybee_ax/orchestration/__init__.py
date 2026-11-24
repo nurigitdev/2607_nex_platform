@@ -3,6 +3,7 @@
 from .allocation_plan_authority import (
     APPROVED_ALLOCATION_PLAN_AUTHORITY_SCHEMA,
     APPROVED_ALLOCATION_PLAN_AUTHORITY_STAGE,
+    INDEPENDENT_ALLOCATION_PLAN_AUTHORITY_SCHEMA,
     AllocationAuthorityLineage,
     ApprovedAllocationPlanAuthorityBinder,
     ApprovedAllocationPlanAuthorityError,
@@ -25,6 +26,7 @@ from .m1_transaction_preparation import (
 __all__ = [
     "APPROVED_ALLOCATION_PLAN_AUTHORITY_SCHEMA",
     "APPROVED_ALLOCATION_PLAN_AUTHORITY_STAGE",
+    "INDEPENDENT_ALLOCATION_PLAN_AUTHORITY_SCHEMA",
     "DEFAULT_M1_TRANSACTION_PREPARATION_REGISTRY",
     "M1_FINANCIAL_RESULT_SCHEMA",
     "M1_PREPARATION_ADAPTER_ID",

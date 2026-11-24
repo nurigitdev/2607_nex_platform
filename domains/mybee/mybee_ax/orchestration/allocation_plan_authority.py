@@ -18,6 +18,9 @@ from ..integrations.nex_allocation_plan_client import AllocationPlanProviderRequ
 APPROVED_ALLOCATION_PLAN_AUTHORITY_SCHEMA = (
     "mybee.approved_allocation_plan_authority.v1"
 )
+INDEPENDENT_ALLOCATION_PLAN_AUTHORITY_SCHEMA = (
+    "mybee.approved_allocation_plan_authority.v2"
+)
 APPROVED_ALLOCATION_PLAN_AUTHORITY_STAGE = "READY_FOR_ALLOCATION"
 
 _SCOPED_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:@/-]{0,255}$")
@@ -82,6 +85,20 @@ _CHECKPOINT_FIELDS = frozenset(
         "checkpoint_hash",
     }
 )
+_INDEPENDENT_CHECKPOINT_FIELDS = frozenset(
+    {
+        "schema_version",
+        "stage",
+        "tenant_id",
+        "company_id",
+        "business_context_hash",
+        "allocation_authority_hash",
+        "source_pool",
+        "allocation_plan",
+        "authority_binding_hash",
+        "checkpoint_hash",
+    }
+)
 
 
 class ApprovedAllocationPlanAuthorityError(RuntimeError):
@@ -94,7 +111,8 @@ class ApprovedAllocationPlanAuthorityError(RuntimeError):
 @dataclass(frozen=True)
 class AllocationAuthorityLineage:
     business_context_hash: str
-    preparation_hash: str
+    preparation_hash: str | None = None
+    allocation_authority_hash: str | None = None
 
 
 class ApprovedAllocationPlanAuthorityBinder:
@@ -110,7 +128,7 @@ class ApprovedAllocationPlanAuthorityBinder:
         existing_checkpoint: Mapping[str, Any] | None = None,
     ) -> Mapping[str, Any]:
         context_hash = _hash("business_context_hash", lineage.business_context_hash)
-        preparation_hash = _hash("preparation_hash", lineage.preparation_hash)
+        lineage_field, lineage_hash = _lineage(lineage)
         pool = _source_pool(source_pool, request=request)
         plan = _allocation_plan(resolution, request=request)
         pool_hash = semantic_sha256_hash_ref(dict(pool))
@@ -118,7 +136,7 @@ class ApprovedAllocationPlanAuthorityBinder:
             "tenant_id": request.tenant_id,
             "company_id": request.company_id,
             "business_context_hash": context_hash,
-            "preparation_hash": preparation_hash,
+            lineage_field: lineage_hash,
             "source_pool_hash": pool_hash,
             "source_pool_source_hash": pool["source_hash"],
             "source_journal_hash": pool["source_journal_hash"],
@@ -128,13 +146,28 @@ class ApprovedAllocationPlanAuthorityBinder:
             "plan_revision": plan["plan_revision"],
             "plan_hash": plan["plan_hash"],
         }
+        independent = lineage_field == "allocation_authority_hash"
+        allocation_plan = {
+            "plan_id": plan["plan_id"],
+            "plan_revision": plan["plan_revision"],
+            "plan_hash": plan["plan_hash"],
+            "approved_proof": plan["approved_proof"],
+            "selector_hash": plan["selector_hash"],
+            "resolution_hash": plan["resolution_hash"],
+        }
+        if independent:
+            allocation_plan["project_refs"] = _project_refs(plan)
         semantics = {
-            "schema_version": APPROVED_ALLOCATION_PLAN_AUTHORITY_SCHEMA,
+            "schema_version": (
+                INDEPENDENT_ALLOCATION_PLAN_AUTHORITY_SCHEMA
+                if independent
+                else APPROVED_ALLOCATION_PLAN_AUTHORITY_SCHEMA
+            ),
             "stage": APPROVED_ALLOCATION_PLAN_AUTHORITY_STAGE,
             "tenant_id": request.tenant_id,
             "company_id": request.company_id,
             "business_context_hash": context_hash,
-            "preparation_hash": preparation_hash,
+            lineage_field: lineage_hash,
             "source_pool": {
                 "pool_id": pool["pool_id"],
                 "journal_id": pool["journal_id"],
@@ -145,14 +178,7 @@ class ApprovedAllocationPlanAuthorityBinder:
                 "source_journal_hash": pool["source_journal_hash"],
                 "source_pool_hash": pool_hash,
             },
-            "allocation_plan": {
-                "plan_id": plan["plan_id"],
-                "plan_revision": plan["plan_revision"],
-                "plan_hash": plan["plan_hash"],
-                "approved_proof": plan["approved_proof"],
-                "selector_hash": plan["selector_hash"],
-                "resolution_hash": plan["resolution_hash"],
-            },
+            "allocation_plan": allocation_plan,
             "authority_binding_hash": semantic_sha256_hash_ref(binding),
         }
         checkpoint = {
@@ -226,7 +252,11 @@ def _allocation_plan(
         raise _invalid("AllocationPlan resolution must be an object.")
     plan = dict(value)
     if (
-        plan.get("schema_version") != "eos_cost_allocation_plan_resolution.v1"
+        plan.get("schema_version")
+        not in {
+            "eos_cost_allocation_plan_resolution.v1",
+            "eos_cost_allocation_plan_resolution.v2",
+        }
         or plan.get("operation") != "FINANCE.COST_ALLOCATION_PLAN.RESOLVE"
         or plan.get("resolution_disposition") != "EXACT_MATCH"
         or plan.get("tenant_id") != request.tenant_id
@@ -249,14 +279,26 @@ def _allocation_plan(
 
 
 def _checkpoint(value: object) -> dict[str, Any]:
-    checkpoint = _exact_mapping("checkpoint", value, _CHECKPOINT_FIELDS)
+    if not isinstance(value, Mapping):
+        raise _invalid("checkpoint fields are not canonical.")
+    schema_version = value.get("schema_version")
+    fields = (
+        _INDEPENDENT_CHECKPOINT_FIELDS
+        if schema_version == INDEPENDENT_ALLOCATION_PLAN_AUTHORITY_SCHEMA
+        else _CHECKPOINT_FIELDS
+    )
+    checkpoint = _exact_mapping("checkpoint", value, fields)
     for field in ("source_pool", "allocation_plan"):
         nested = checkpoint.get(field)
         if not isinstance(nested, Mapping):
             raise _invalid(f"Existing allocation authority {field} is invalid.")
         checkpoint[field] = dict(nested)
     if (
-        checkpoint.get("schema_version") != APPROVED_ALLOCATION_PLAN_AUTHORITY_SCHEMA
+        checkpoint.get("schema_version")
+        not in {
+            APPROVED_ALLOCATION_PLAN_AUTHORITY_SCHEMA,
+            INDEPENDENT_ALLOCATION_PLAN_AUTHORITY_SCHEMA,
+        }
         or checkpoint.get("stage") != APPROVED_ALLOCATION_PLAN_AUTHORITY_STAGE
     ):
         raise _invalid("Existing allocation authority checkpoint is invalid.")
@@ -266,6 +308,46 @@ def _checkpoint(value: object) -> dict[str, Any]:
     if checkpoint.get("checkpoint_hash") != expected:
         raise _invalid("Existing allocation authority checkpoint hash drifted.")
     return checkpoint
+
+
+def _lineage(lineage: AllocationAuthorityLineage) -> tuple[str, str]:
+    values = (
+        lineage.preparation_hash is not None,
+        lineage.allocation_authority_hash is not None,
+    )
+    if values == (True, False):
+        return "preparation_hash", _hash("preparation_hash", lineage.preparation_hash)
+    if values == (False, True):
+        return "allocation_authority_hash", _hash(
+            "allocation_authority_hash", lineage.allocation_authority_hash
+        )
+    raise _invalid("Exactly one allocation lineage authority is required.")
+
+
+def _project_refs(plan: Mapping[str, Any]) -> list[dict[str, Any]]:
+    lines = plan.get("lines")
+    if not isinstance(lines, (list, tuple)) or not lines:
+        raise _invalid("AllocationPlan Project authority is unavailable.")
+    refs: list[dict[str, Any]] = []
+    seen_ids: set[str] = set()
+    seen_codes: set[str] = set()
+    for line in lines:
+        if not isinstance(line, Mapping):
+            raise _invalid("AllocationPlan Project authority is invalid.")
+        project_id = _uuid("project_id", line.get("project_id"))
+        project_code = _pattern("project_code", line.get("project_code"), _PROJECT_CODE)
+        if project_id in seen_ids or project_code in seen_codes:
+            raise _invalid("AllocationPlan Project authority is duplicated.")
+        seen_ids.add(project_id)
+        seen_codes.add(project_code)
+        refs.append(
+            {
+                "project_id": project_id,
+                "project_code": project_code,
+                "allocation_ratio": str(line.get("allocation_ratio")),
+            }
+        )
+    return sorted(refs, key=lambda item: item["project_code"])
 
 
 def _freeze_checkpoint(value: Mapping[str, Any]) -> Mapping[str, Any]:

@@ -327,7 +327,10 @@ def build_cost_allocation_run(
     authority = dict(allocation_authority)
     if (
         authority.get("schema_version")
-        != "mybee.approved_allocation_plan_authority.v1"
+        not in {
+            "mybee.approved_allocation_plan_authority.v1",
+            "mybee.approved_allocation_plan_authority.v2",
+        }
         or authority.get("stage") != "READY_FOR_ALLOCATION"
         or authority.get("tenant_id") != tenant
         or authority.get("company_id") != company

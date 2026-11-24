@@ -142,12 +142,15 @@ def test_verified_product_release_profile_is_fail_closed_and_ready(
             "provider_service_id": "nex-eos",
             "operation": "FINANCE.COST_ALLOCATION_PLAN.RESOLVE",
             "authority_schema": "mybee.approved_allocation_plan_authority.v1",
+                "independent_authority_schema": (
+                    "mybee.approved_allocation_plan_authority.v2"
+                ),
             "timeout_seconds": 15.0,
             "business_defaults_included": False,
             "content_included": False,
             "secret_included": False,
             "readiness_hash": (
-                "sha256:9b52623852ed5b733e587e43ae872c5f08699905932b73ad720c1aaa2901ce5b"
+                    "sha256:6663da1077b049e103c2ae566a248287e40ea051309657b7d2654b1b9f570c87"
             ),
         },
         "accounting_allocation": {

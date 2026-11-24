@@ -21,6 +21,8 @@ ALLOCATION_PLAN_RESOLVE_OPERATION = "FINANCE.COST_ALLOCATION_PLAN.RESOLVE"
 ALLOCATION_PLAN_RESOLVE_PATH = "/internal/v2/finance/cost-allocation-plans:resolve"
 ALLOCATION_PLAN_RESOLVE_SCHEMA = "eos_cost_allocation_plan_resolve.v1"
 ALLOCATION_PLAN_RESOLUTION_SCHEMA = "eos_cost_allocation_plan_resolution.v1"
+ALLOCATION_PLAN_RESOLVE_BY_CODE_SCHEMA = "eos_cost_allocation_plan_resolve.v2"
+ALLOCATION_PLAN_RESOLUTION_BY_CODE_SCHEMA = "eos_cost_allocation_plan_resolution.v2"
 
 _SCOPED_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:@-]{0,127}$")
 _PROJECT_CODE = re.compile(r"^[A-Z0-9]{4}[DMSOIG][0-9]{6}$")
@@ -161,6 +163,26 @@ class NexAllocationPlanResolverClient:
             self._transport.send(request), request=request
         )
 
+    def resolve_by_project_codes(
+        self,
+        *,
+        tenant_id: str,
+        company_id: str,
+        source_kind: str,
+        effective_on: str,
+        projects: Sequence[Mapping[str, Any]],
+        correlation_id: str,
+    ) -> Mapping[str, Any]:
+        request = build_allocation_plan_resolve_by_code_request(
+            tenant_id=tenant_id,
+            company_id=company_id,
+            source_kind=source_kind,
+            effective_on=effective_on,
+            projects=projects,
+            correlation_id=correlation_id,
+        )
+        return self.resolve_request(request)
+
 
 class HttpAllocationPlanProviderTransport:
     def __init__(
@@ -258,12 +280,50 @@ def build_allocation_plan_resolve_request(
     )
 
 
+def build_allocation_plan_resolve_by_code_request(
+    *,
+    tenant_id: str,
+    company_id: str,
+    source_kind: str,
+    effective_on: str,
+    projects: Sequence[Mapping[str, Any]],
+    correlation_id: str,
+) -> AllocationPlanProviderRequest:
+    tenant = _scoped_id("tenant_id", tenant_id)
+    company = _request_uuid("company_id", company_id)
+    source = _request_choice("source_kind", source_kind, _SOURCE_KINDS)
+    effective = _request_date("effective_on", effective_on)
+    correlation = _scoped_id("correlation_id", correlation_id)
+    body = {
+        "schema_version": ALLOCATION_PLAN_RESOLVE_BY_CODE_SCHEMA,
+        "source_kind": source,
+        "scope_type": "PROJECT_SET",
+        "effective_on": effective,
+        "projects": _projects_by_code(projects),
+    }
+    return AllocationPlanProviderRequest(
+        method="POST",
+        path=ALLOCATION_PLAN_RESOLVE_PATH,
+        operation_id=ALLOCATION_PLAN_RESOLVE_OPERATION,
+        tenant_id=tenant,
+        company_id=company,
+        correlation_id=correlation,
+        body=body,
+    )
+
+
 def admit_allocation_plan_resolution(
     value: object, *, request: AllocationPlanProviderRequest
 ) -> Mapping[str, Any]:
     response = _exact_mapping("resolution", value, _RESPONSE_FIELDS)
+    request_schema = request.body.get("schema_version")
+    expected_response_schema = (
+        ALLOCATION_PLAN_RESOLUTION_BY_CODE_SCHEMA
+        if request_schema == ALLOCATION_PLAN_RESOLVE_BY_CODE_SCHEMA
+        else ALLOCATION_PLAN_RESOLUTION_SCHEMA
+    )
     if (
-        response.get("schema_version") != ALLOCATION_PLAN_RESOLUTION_SCHEMA
+        response.get("schema_version") != expected_response_schema
         or response.get("operation") != ALLOCATION_PLAN_RESOLVE_OPERATION
         or response.get("resolution_disposition") != "EXACT_MATCH"
         or response.get("tenant_id") != request.tenant_id
@@ -311,18 +371,36 @@ def admit_allocation_plan_resolution(
             for line in lines
         )
     )
-    expected_projects = tuple(
-        sorted(
-            (item["project_id"], item["project_code"], item["allocation_ratio"])
-            for item in request.body["projects"]
+    expected_projects = (
+        tuple(
+            sorted(
+                (item["project_id"], item["project_code"], item["allocation_ratio"])
+                for item in request.body["projects"]
+            )
+        )
+        if request_schema == ALLOCATION_PLAN_RESOLVE_SCHEMA
+        else tuple(
+            sorted(
+                (item["project_code"], item["allocation_ratio"])
+                for item in request.body["projects"]
+            )
         )
     )
-    if observed_projects != expected_projects:
+    observed_comparison = (
+        observed_projects
+        if request_schema == ALLOCATION_PLAN_RESOLVE_SCHEMA
+        else tuple(sorted((item[1], item[2]) for item in observed_projects))
+    )
+    if observed_comparison != expected_projects:
         raise _drift("Allocation-plan Project set or ratios drifted")
 
     expected_selector_hash = semantic_sha256_hash_ref(
         {
-            "domain": "EOS-COST-ALLOCATION-PLAN-RESOLVE-V1",
+            "domain": (
+                "EOS-COST-ALLOCATION-PLAN-RESOLVE-V2"
+                if request_schema == ALLOCATION_PLAN_RESOLVE_BY_CODE_SCHEMA
+                else "EOS-COST-ALLOCATION-PLAN-RESOLVE-V1"
+            ),
             "schema_version": request.body["schema_version"],
             "tenant_id": request.tenant_id,
             "company_id": request.company_id,
@@ -396,6 +474,43 @@ def _projects(value: object) -> list[Mapping[str, Any]]:
     if len({item["project_id"] for item in admitted}) != len(admitted) or len(
         {item["project_code"] for item in admitted}
     ) != len(admitted):
+        raise _invalid(
+            "MYBEE_ALLOCATION_PLAN_PROJECTS_INVALID",
+            "duplicate projects are prohibited",
+        )
+    if sum((Decimal(item["allocation_ratio"]) for item in admitted), Decimal()) != 1:
+        raise _invalid(
+            "MYBEE_ALLOCATION_PLAN_RATIO_INVALID", "project ratios must total one"
+        )
+    return admitted
+
+
+def _projects_by_code(value: object) -> list[Mapping[str, Any]]:
+    if (
+        isinstance(value, (str, bytes))
+        or not isinstance(value, Sequence)
+        or not 0 < len(value) <= 64
+    ):
+        raise _invalid(
+            "MYBEE_ALLOCATION_PLAN_PROJECTS_INVALID", "bounded projects required"
+        )
+    admitted: list[Mapping[str, Any]] = []
+    for item in value:
+        project = _request_mapping(
+            "project",
+            item,
+            frozenset({"project_code", "allocation_ratio"}),
+        )
+        admitted.append(
+            {
+                "project_code": _request_pattern(
+                    "project_code", project["project_code"], _PROJECT_CODE
+                ),
+                "allocation_ratio": _request_ratio(project["allocation_ratio"]),
+            }
+        )
+    admitted.sort(key=lambda item: item["project_code"])
+    if len({item["project_code"] for item in admitted}) != len(admitted):
         raise _invalid(
             "MYBEE_ALLOCATION_PLAN_PROJECTS_INVALID",
             "duplicate projects are prohibited",

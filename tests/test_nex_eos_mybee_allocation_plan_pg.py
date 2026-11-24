@@ -145,7 +145,7 @@ def _payload(proof_id: str) -> dict:
             "plan_id": PLAN_ID,
             "plan_revision": 1,
             "source_kind": "SHARED_EXPENSE",
-            "scope_type": "PROJECT",
+            "scope_type": "PROJECT_SET",
             "basis_kind": "JUSTIFIED_PERCENTAGE",
             "rule_release_hash": HASH_A,
             "basis_source_ref": "eos.approved-ratio:w50-smoke",
@@ -522,6 +522,24 @@ def test_actual_postgres_business_formal_release_and_fresh_oa_denial() -> None:
         assert created["idempotency_disposition"] == "CREATED"
         assert replay["idempotency_disposition"] == "EXACT_REPLAY"
         assert created["basis_priority"] == 4
+        resolved = service.resolve(
+            tenant_id=TENANT,
+            company_id=COMPANY_ID,
+            payload={
+                "schema_version": "eos_cost_allocation_plan_resolve.v2",
+                "source_kind": "SHARED_EXPENSE",
+                "scope_type": "PROJECT_SET",
+                "effective_on": "2026-11-15",
+                "projects": [
+                    {
+                        "project_code": "W502D260001",
+                        "allocation_ratio": "1.000000000000",
+                    }
+                ],
+            },
+        )
+        assert resolved["schema_version"] == ("eos_cost_allocation_plan_resolution.v2")
+        assert resolved["lines"][0]["project_id"] == PROJECT_ID
 
         with oa.api_engine.begin() as connection:
             connection.execute(

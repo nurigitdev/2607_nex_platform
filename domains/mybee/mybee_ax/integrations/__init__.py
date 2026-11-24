@@ -15,6 +15,8 @@ from .nex_allocation_plan_client import (
     ALLOCATION_PLAN_RESOLVE_OPERATION,
     ALLOCATION_PLAN_RESOLVE_PATH,
     ALLOCATION_PLAN_RESOLVE_SCHEMA,
+    ALLOCATION_PLAN_RESOLVE_BY_CODE_SCHEMA,
+    ALLOCATION_PLAN_RESOLUTION_BY_CODE_SCHEMA,
     AllocationPlanConsumerError,
     AllocationPlanProviderRequest,
     AllocationPlanProviderTransport,
@@ -22,6 +24,7 @@ from .nex_allocation_plan_client import (
     NexAllocationPlanResolverClient,
     admit_allocation_plan_resolution,
     build_allocation_plan_resolve_request,
+    build_allocation_plan_resolve_by_code_request,
 )
 from .nex_approval_client import (
     ACCOUNTING_APPROVAL_REQUEST_OPERATION,
@@ -175,6 +178,8 @@ __all__ = [
     "ALLOCATION_PLAN_RESOLVE_OPERATION",
     "ALLOCATION_PLAN_RESOLVE_PATH",
     "ALLOCATION_PLAN_RESOLVE_SCHEMA",
+    "ALLOCATION_PLAN_RESOLVE_BY_CODE_SCHEMA",
+    "ALLOCATION_PLAN_RESOLUTION_BY_CODE_SCHEMA",
     "ALLOCATION_RUN_OPERATION",
     "ALLOCATION_VERIFY_OPERATION",
     "CREATE_OPERATION",
@@ -283,6 +288,7 @@ __all__ = [
     "admit_project_pnl_refresh_result",
     "admit_scoped_approval_receipt",
     "build_allocation_plan_resolve_request",
+    "build_allocation_plan_resolve_by_code_request",
     "build_business_proposal_approval_request",
     "build_candidate_create_request",
     "build_candidate_review_request",

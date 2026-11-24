@@ -46,6 +46,7 @@ from nex_ae_api.m1_accounting_allocation_runtime import (
     InstalledAccountingAllocationRuntime,
 )
 from nex_ae_api.m1_allocation_plan_composition import (
+    resolve_accounting_allocation_plan_authority,
     resolve_m1_allocation_plan_authority,
 )
 from nex_ae_api.m1_plan_materialization import materialize_m1_transaction_plan
@@ -172,10 +173,7 @@ class M1InstalledSkillRuntime:
             service_token=config.ae_to_oa_service_token,
         )
         self.accounting_allocation = None
-        if (
-            transaction_preparation is not None
-            and allocation_plan_resolution is not None
-        ):
+        if allocation_plan_resolution is not None:
             financial_result = M1FinancialResultIntegrator(
                 allocation_client=NexCostAllocationClient(
                     HttpCostAllocationProviderTransport(
@@ -195,8 +193,12 @@ class M1InstalledSkillRuntime:
                         service_token=config.ae_to_eos_service_token,
                     )
                 ),
-                authority_resolver=self.resolve_allocation_plan_authority,
-                registration=transaction_preparation.adapter.registration,
+                authority_resolver=self.resolve_accounting_allocation_plan_authority,
+                registration=(
+                    None
+                    if transaction_preparation is None
+                    else transaction_preparation.adapter.registration
+                ),
             )
             self.accounting_allocation = InstalledAccountingAllocationRuntime(
                 integrator=financial_result,
@@ -302,6 +304,29 @@ class M1InstalledSkillRuntime:
             self.allocation_plan_resolution,
             work_intent=work_intent,
             preparation_checkpoint=preparation_checkpoint,
+            source_pool=source_pool,
+            correlation_id=correlation_id,
+            existing_checkpoint=existing_checkpoint,
+        )
+
+    def resolve_accounting_allocation_plan_authority(
+        self,
+        *,
+        work_intent: Mapping[str, Any],
+        allocation_authority_checkpoint: Mapping[str, Any],
+        source_pool: Mapping[str, Any],
+        correlation_id: str,
+        existing_checkpoint: Mapping[str, Any] | None = None,
+    ) -> Mapping[str, Any]:
+        if self.allocation_plan_resolution is None:
+            raise ProductSkillCatalogError(
+                "PRODUCT_ALLOCATION_PLAN_RESOLVER_REQUIRED",
+                "Installed AllocationPlan resolution is unavailable.",
+            )
+        return resolve_accounting_allocation_plan_authority(
+            self.allocation_plan_resolution,
+            work_intent=work_intent,
+            allocation_authority_checkpoint=allocation_authority_checkpoint,
             source_pool=source_pool,
             correlation_id=correlation_id,
             existing_checkpoint=existing_checkpoint,

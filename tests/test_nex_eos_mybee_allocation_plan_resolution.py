@@ -13,7 +13,9 @@ from fastapi.responses import JSONResponse
 from fastapi.testclient import TestClient
 from jsonschema import Draft202012Validator, FormatChecker
 from nex_eos import (
+    ALLOCATION_PLAN_RESOLUTION_BY_CODE_SCHEMA,
     ALLOCATION_PLAN_RESOLUTION_SCHEMA,
+    ALLOCATION_PLAN_RESOLVE_BY_CODE_REQUEST_SCHEMA,
     ALLOCATION_PLAN_RESOLVE_OPERATION,
     ALLOCATION_PLAN_RESOLVE_REQUEST_SCHEMA,
     EOS_COST_ALLOCATION_PLAN_LINE_TABLE,
@@ -38,6 +40,25 @@ def _selector() -> dict[str, object]:
             },
             {
                 "project_id": base.PROJECT_A,
+                "project_code": "VO00D260001",
+                "allocation_ratio": "0.600000000000",
+            },
+        ],
+    }
+
+
+def _selector_v2() -> dict[str, object]:
+    return {
+        "schema_version": ALLOCATION_PLAN_RESOLVE_BY_CODE_REQUEST_SCHEMA,
+        "source_kind": "SHARED_EXPENSE",
+        "scope_type": "PROJECT_SET",
+        "effective_on": "2026-11-15",
+        "projects": [
+            {
+                "project_code": "VO00D260002",
+                "allocation_ratio": "0.400000000000",
+            },
+            {
                 "project_code": "VO00D260001",
                 "allocation_ratio": "0.600000000000",
             },
@@ -106,6 +127,80 @@ def test_exact_resolution_is_deterministic_read_only_and_schema_valid() -> None:
         ).read_text(encoding="utf-8")
     )
     Draft202012Validator(schema, format_checker=FormatChecker()).validate(first)
+    engine.dispose()
+
+
+def test_code_based_resolution_resolves_eos_project_authority() -> None:
+    engine, sessions, auth, service = base._runtime()
+    released = _release_default(sessions, service)
+    auth.calls.clear()
+    before = _counts(sessions)
+
+    first = service.resolve(
+        tenant_id=base.TENANT,
+        company_id=base.COMPANY_ID,
+        payload=_selector_v2(),
+    )
+    second = service.resolve(
+        tenant_id=base.TENANT,
+        company_id=base.COMPANY_ID,
+        payload=_selector_v2(),
+    )
+
+    assert first == second
+    assert first["schema_version"] == ALLOCATION_PLAN_RESOLUTION_BY_CODE_SCHEMA
+    assert first["plan_id"] == released["plan_id"]
+    assert [(line["project_id"], line["project_code"]) for line in first["lines"]] == [
+        (base.PROJECT_A, "VO00D260001"),
+        (base.PROJECT_B, "VO00D260002"),
+    ]
+    assert _counts(sessions) == before
+    assert auth.calls == []
+
+    schema = json.loads(
+        Path(
+            "contracts/schemas/service/nex_eos/"
+            "cost_allocation_plan_resolution.v2.schema.json"
+        ).read_text(encoding="utf-8")
+    )
+    Draft202012Validator(schema, format_checker=FormatChecker()).validate(first)
+    engine.dispose()
+
+
+@pytest.mark.parametrize("authority", ["project", "binding"])
+def test_code_based_resolution_fails_closed_without_active_project_authority(
+    authority,
+) -> None:
+    engine, sessions, _auth, service = base._runtime()
+    _release_default(sessions, service)
+    with sessions.begin() as session:
+        if authority == "project":
+            session.execute(
+                update(base.EOS_PROJECT_TABLE)
+                .where(base.EOS_PROJECT_TABLE.c.project_id == base.PROJECT_A)
+                .values(status="INACTIVE")
+            )
+        else:
+            session.execute(
+                update(base.EOS_PROJECT_COMPANY_BINDING_TABLE)
+                .where(
+                    base.EOS_PROJECT_COMPANY_BINDING_TABLE.c.project_id
+                    == base.PROJECT_A
+                )
+                .values(state="REVOKED")
+            )
+
+    with pytest.raises(EosAllocationPlanError) as error:
+        service.resolve(
+            tenant_id=base.TENANT,
+            company_id=base.COMPANY_ID,
+            payload=_selector_v2(),
+        )
+
+    assert error.value.error_code == (
+        "EOS_COST_ALLOCATION_PROJECT_AUTHORITY_NOT_RESOLVED"
+    )
+    assert error.value.status_code == 409
     engine.dispose()
 
 
@@ -221,6 +316,16 @@ def test_resolver_contract_and_openapi_are_canonical() -> None:
     Draft202012Validator.check_schema(request_schema)
     Draft202012Validator(request_schema, format_checker=FormatChecker()).validate(
         _selector()
+    )
+    request_schema_v2 = json.loads(
+        Path(
+            "contracts/schemas/service/nex_eos/"
+            "cost_allocation_plan_resolve.v2.schema.json"
+        ).read_text(encoding="utf-8")
+    )
+    Draft202012Validator.check_schema(request_schema_v2)
+    Draft202012Validator(request_schema_v2, format_checker=FormatChecker()).validate(
+        _selector_v2()
     )
 
     spec = yaml.safe_load(

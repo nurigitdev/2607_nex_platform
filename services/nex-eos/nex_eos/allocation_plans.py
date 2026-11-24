@@ -49,6 +49,8 @@ ALLOCATION_PLAN_APPROVE_SCOPE = "finance:cost-allocation-plan:approve"
 ALLOCATION_PLAN_SCHEMA = "eos_cost_allocation_plan.v1"
 ALLOCATION_PLAN_RESOLVE_REQUEST_SCHEMA = "eos_cost_allocation_plan_resolve.v1"
 ALLOCATION_PLAN_RESOLUTION_SCHEMA = "eos_cost_allocation_plan_resolution.v1"
+ALLOCATION_PLAN_RESOLVE_BY_CODE_REQUEST_SCHEMA = "eos_cost_allocation_plan_resolve.v2"
+ALLOCATION_PLAN_RESOLUTION_BY_CODE_SCHEMA = "eos_cost_allocation_plan_resolution.v2"
 _RESOLUTION_CANDIDATE_LIMIT = 256
 _RATIO_QUANTUM = Decimal("0.000000000001")
 
@@ -203,6 +205,10 @@ class AllocationPlanRepository(Protocol):
         self, selector: Mapping[str, Any]
     ) -> Sequence[Mapping[str, Any]]: ...
 
+    def resolve_project_authority(
+        self, selector: Mapping[str, Any]
+    ) -> Sequence[Mapping[str, Any]]: ...
+
 
 class SqlAlchemyEosAllocationPlanRepository:
     def __init__(
@@ -270,6 +276,81 @@ class SqlAlchemyEosAllocationPlanRepository:
             raise
         except SQLAlchemyError as exc:
             raise _unavailable() from exc
+
+    def resolve_project_authority(
+        self, selector: Mapping[str, Any]
+    ) -> Sequence[Mapping[str, Any]]:
+        tenant_id = _selector_scoped_id("tenant_id", selector.get("tenant_id"))
+        company_id = _selector_uuid("company_id", selector.get("company_id"))
+        effective_on = _date_value("effective_on", selector.get("effective_on"))
+        requested = tuple(
+            sorted(
+                (
+                    str(item["project_code"]),
+                    str(item["allocation_ratio"]),
+                )
+                for item in selector["projects"]
+            )
+        )
+        codes = [item[0] for item in requested]
+        project = EOS_PROJECT_TABLE
+        binding = EOS_PROJECT_COMPANY_BINDING_TABLE
+        try:
+            with self._session_factory() as session:
+                rows = list(
+                    session.execute(
+                        select(
+                            project.c.project_id,
+                            project.c.project_code,
+                            project.c.version.label("project_version"),
+                            binding.c.binding_id,
+                            binding.c.version.label("binding_version"),
+                            binding.c.approved_proof_hash,
+                        )
+                        .select_from(
+                            project.join(
+                                binding,
+                                (binding.c.tenant_id == project.c.tenant_id)
+                                & (binding.c.project_id == project.c.project_id),
+                            )
+                        )
+                        .where(
+                            project.c.tenant_id == tenant_id,
+                            project.c.project_code.in_(codes),
+                            project.c.status == "ACTIVE",
+                            binding.c.company_id == company_id,
+                            binding.c.state == "APPROVED",
+                            binding.c.valid_from <= effective_on,
+                            or_(
+                                binding.c.valid_until.is_(None),
+                                binding.c.valid_until >= effective_on,
+                            ),
+                        )
+                        .order_by(project.c.project_code, binding.c.binding_id)
+                    ).mappings()
+                )
+        except SQLAlchemyError as exc:
+            raise _unavailable() from exc
+        grouped: dict[str, list[Mapping[str, Any]]] = {}
+        for row in rows:
+            grouped.setdefault(str(row["project_code"]), []).append(row)
+        if set(grouped) != set(codes) or any(
+            len(items) != 1 for items in grouped.values()
+        ):
+            raise _authority_not_resolved()
+        ratios = dict(requested)
+        return tuple(
+            {
+                "project_id": str(grouped[code][0]["project_id"]),
+                "project_code": code,
+                "allocation_ratio": ratios[code],
+                "project_version": int(grouped[code][0]["project_version"]),
+                "binding_id": str(grouped[code][0]["binding_id"]),
+                "binding_version": int(grouped[code][0]["binding_version"]),
+                "approved_proof_hash": str(grouped[code][0]["approved_proof_hash"]),
+            }
+            for code in sorted(codes)
+        )
 
     def release(
         self,
@@ -467,6 +548,12 @@ class EosAllocationPlanService:
             company_id=company_id,
             payload=payload,
         )
+        if selector["schema_version"] == ALLOCATION_PLAN_RESOLVE_BY_CODE_REQUEST_SCHEMA:
+            resolver = getattr(self._repository, "resolve_project_authority", None)
+            if not callable(resolver):
+                raise _unavailable("EOS Project authority resolver is unavailable")
+            authorities = resolver(selector)
+            selector = _bind_project_authority(selector, authorities)
         matches = self._repository.resolve_matches(selector)
         if not matches:
             raise _not_resolved()
@@ -474,7 +561,12 @@ class EosAllocationPlanService:
             raise _ambiguous()
         result = {
             **dict(matches[0]),
-            "schema_version": ALLOCATION_PLAN_RESOLUTION_SCHEMA,
+            "schema_version": (
+                ALLOCATION_PLAN_RESOLUTION_BY_CODE_SCHEMA
+                if selector.get("request_schema_version")
+                == ALLOCATION_PLAN_RESOLVE_BY_CODE_REQUEST_SCHEMA
+                else ALLOCATION_PLAN_RESOLUTION_SCHEMA
+            ),
             "operation": ALLOCATION_PLAN_RESOLVE_OPERATION,
             "resolution_disposition": "EXACT_MATCH",
             "selector_hash": selector["selector_hash"],
@@ -595,7 +687,11 @@ def _admit_resolution_selector(
     }
     if not isinstance(payload, Mapping) or set(payload) != expected:
         raise _selector_invalid("payload must contain only canonical selector fields")
-    if payload.get("schema_version") != ALLOCATION_PLAN_RESOLVE_REQUEST_SCHEMA:
+    schema_version = payload.get("schema_version")
+    if schema_version not in {
+        ALLOCATION_PLAN_RESOLVE_REQUEST_SCHEMA,
+        ALLOCATION_PLAN_RESOLVE_BY_CODE_REQUEST_SCHEMA,
+    }:
         raise _selector_invalid("selector schema version is not supported")
     if payload.get("scope_type") != "PROJECT_SET":
         raise _selector_invalid("scope_type must be PROJECT_SET")
@@ -609,11 +705,12 @@ def _admit_resolution_selector(
         raise _selector_invalid("projects must be a bounded non-empty array")
     projects: list[dict[str, Any]] = []
     for item in project_values:
-        if not isinstance(item, Mapping) or set(item) != {
-            "project_id",
-            "project_code",
-            "allocation_ratio",
-        }:
+        expected_project_fields = (
+            {"project_code", "allocation_ratio"}
+            if schema_version == ALLOCATION_PLAN_RESOLVE_BY_CODE_REQUEST_SCHEMA
+            else {"project_id", "project_code", "allocation_ratio"}
+        )
+        if not isinstance(item, Mapping) or set(item) != expected_project_fields:
             raise _selector_invalid("project selector fields are not canonical")
         project_code = item.get("project_code")
         if (
@@ -621,23 +718,24 @@ def _admit_resolution_selector(
             or _PROJECT_CODE.fullmatch(project_code) is None
         ):
             raise _selector_invalid("project_code is invalid")
-        projects.append(
-            {
-                "project_id": _selector_uuid("project_id", item.get("project_id")),
-                "project_code": project_code,
-                "allocation_ratio": _selector_ratio(item.get("allocation_ratio")),
-            }
-        )
-    project_ids = [item["project_id"] for item in projects]
+        project = {
+            "project_code": project_code,
+            "allocation_ratio": _selector_ratio(item.get("allocation_ratio")),
+        }
+        if schema_version == ALLOCATION_PLAN_RESOLVE_REQUEST_SCHEMA:
+            project["project_id"] = _selector_uuid("project_id", item.get("project_id"))
+        projects.append(project)
+    project_ids = [item.get("project_id") for item in projects]
     project_codes = [item["project_code"] for item in projects]
-    if len(set(project_ids)) != len(project_ids) or len(set(project_codes)) != len(
-        project_codes
-    ):
+    if (
+        schema_version == ALLOCATION_PLAN_RESOLVE_REQUEST_SCHEMA
+        and len(set(project_ids)) != len(project_ids)
+    ) or len(set(project_codes)) != len(project_codes):
         raise _selector_invalid("projects must not contain duplicate identities")
     if sum((Decimal(item["allocation_ratio"]) for item in projects), Decimal()) != 1:
         raise _selector_invalid("allocation ratios must total exactly one")
     normalized: dict[str, Any] = {
-        "schema_version": ALLOCATION_PLAN_RESOLVE_REQUEST_SCHEMA,
+        "schema_version": schema_version,
         "tenant_id": _selector_scoped_id("tenant_id", tenant_id),
         "company_id": _selector_uuid("company_id", company_id),
         "source_kind": _selector_choice(
@@ -646,13 +744,55 @@ def _admit_resolution_selector(
         "scope_type": "PROJECT_SET",
         "effective_on": _selector_date(payload.get("effective_on")),
         "projects": sorted(
-            projects, key=lambda item: (item["project_code"], item["project_id"])
+            projects,
+            key=lambda item: (
+                item["project_code"],
+                str(item.get("project_id") or ""),
+            ),
         ),
     }
     normalized["selector_hash"] = semantic_sha256_hash_ref(
-        {"domain": "EOS-COST-ALLOCATION-PLAN-RESOLVE-V1", **normalized}
+        {
+            "domain": (
+                "EOS-COST-ALLOCATION-PLAN-RESOLVE-V2"
+                if schema_version == ALLOCATION_PLAN_RESOLVE_BY_CODE_REQUEST_SCHEMA
+                else "EOS-COST-ALLOCATION-PLAN-RESOLVE-V1"
+            ),
+            **normalized,
+        }
     )
     return normalized
+
+
+def _bind_project_authority(
+    selector: Mapping[str, Any], authorities: Sequence[Mapping[str, Any]]
+) -> dict[str, Any]:
+    requested = {
+        str(item["project_code"]): str(item["allocation_ratio"])
+        for item in selector["projects"]
+    }
+    resolved: list[dict[str, Any]] = []
+    for item in authorities:
+        code = str(item.get("project_code") or "")
+        if code not in requested:
+            raise _selector_invalid("EOS Project authority contains an extra Project")
+        resolved.append(
+            {
+                "project_id": _selector_uuid("project_id", item.get("project_id")),
+                "project_code": code,
+                "allocation_ratio": requested.pop(code),
+            }
+        )
+    if requested:
+        raise _authority_not_resolved()
+    return {
+        **selector,
+        "schema_version": ALLOCATION_PLAN_RESOLVE_REQUEST_SCHEMA,
+        "request_schema_version": ALLOCATION_PLAN_RESOLVE_BY_CODE_REQUEST_SCHEMA,
+        "projects": sorted(
+            resolved, key=lambda item: (item["project_code"], item["project_id"])
+        ),
+    }
 
 
 def _admit_lines(value: object) -> list[dict[str, Any]]:
@@ -1184,6 +1324,14 @@ def _not_resolved() -> EosAllocationPlanError:
         "EOS_COST_ALLOCATION_PLAN_NOT_RESOLVED",
         "No approved allocation plan matches the exact selector",
         status_code=404,
+    )
+
+
+def _authority_not_resolved() -> EosAllocationPlanError:
+    return EosAllocationPlanError(
+        "EOS_COST_ALLOCATION_PROJECT_AUTHORITY_NOT_RESOLVED",
+        "Every allocation Project must be ACTIVE and bound to the selected company",
+        status_code=409,
     )
 
 

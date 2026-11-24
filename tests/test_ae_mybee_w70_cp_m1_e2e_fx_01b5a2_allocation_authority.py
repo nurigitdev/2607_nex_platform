@@ -12,16 +12,20 @@ import mybee_ax.integrations.nex_allocation_plan_client as client_module
 import nex_ae_api.allocation_plan_resolution_runtime as runtime_module
 import pytest
 from mybee_ax.integrations import (
+    ALLOCATION_PLAN_RESOLUTION_BY_CODE_SCHEMA,
     ALLOCATION_PLAN_RESOLUTION_SCHEMA,
+    ALLOCATION_PLAN_RESOLVE_BY_CODE_SCHEMA,
     ALLOCATION_PLAN_RESOLVE_OPERATION,
     AllocationPlanConsumerError,
     HttpAllocationPlanProviderTransport,
     NexAllocationPlanResolverClient,
     admit_allocation_plan_resolution,
+    build_allocation_plan_resolve_by_code_request,
     build_allocation_plan_resolve_request,
 )
 from mybee_ax.orchestration import (
     APPROVED_ALLOCATION_PLAN_AUTHORITY_SCHEMA,
+    INDEPENDENT_ALLOCATION_PLAN_AUTHORITY_SCHEMA,
     AllocationAuthorityLineage,
     ApprovedAllocationPlanAuthorityBinder,
     ApprovedAllocationPlanAuthorityError,
@@ -119,17 +123,21 @@ def _request(scenario: _Scenario):
 
 def _resolution(scenario: _Scenario, request=None) -> dict[str, object]:
     request = request or _request(scenario)
+    project_ids = {
+        project["project_code"]: project["project_id"] for project in scenario.projects
+    }
     lines: list[dict[str, object]] = []
     for line_no, project in enumerate(request.body["projects"], 1):
+        project_id = project.get("project_id") or project_ids[project["project_code"]]
         semantics = {
             "line_no": line_no,
-            "project_id": project["project_id"],
+            "project_id": project_id,
             "project_code": project["project_code"],
             "work_code": None,
             "basis_units": f"{line_no}.00000000",
             "allocation_ratio": project["allocation_ratio"],
             "eligibility_hash": semantic_sha256_hash_ref(
-                {"project_id": project["project_id"], "eligible": True}
+                {"project_id": project_id, "eligible": True}
             ),
             "confidentiality_class": "INTERNAL",
         }
@@ -142,12 +150,21 @@ def _resolution(scenario: _Scenario, request=None) -> dict[str, object]:
             }
         )
     response: dict[str, object] = {
-        "schema_version": ALLOCATION_PLAN_RESOLUTION_SCHEMA,
+        "schema_version": (
+            ALLOCATION_PLAN_RESOLUTION_BY_CODE_SCHEMA
+            if request.body["schema_version"] == ALLOCATION_PLAN_RESOLVE_BY_CODE_SCHEMA
+            else ALLOCATION_PLAN_RESOLUTION_SCHEMA
+        ),
         "operation": ALLOCATION_PLAN_RESOLVE_OPERATION,
         "resolution_disposition": "EXACT_MATCH",
         "selector_hash": semantic_sha256_hash_ref(
             {
-                "domain": "EOS-COST-ALLOCATION-PLAN-RESOLVE-V1",
+                "domain": (
+                    "EOS-COST-ALLOCATION-PLAN-RESOLVE-V2"
+                    if request.body["schema_version"]
+                    == ALLOCATION_PLAN_RESOLVE_BY_CODE_SCHEMA
+                    else "EOS-COST-ALLOCATION-PLAN-RESOLVE-V1"
+                ),
                 "schema_version": request.body["schema_version"],
                 "tenant_id": request.tenant_id,
                 "company_id": request.company_id,
@@ -334,6 +351,77 @@ def test_generic_client_resolve_entrypoint_and_effective_end() -> None:
 
     assert result["effective_end"] == scenario.effective_on
     assert transport.requests[0].correlation_id == "allocation:entrypoint:17"
+
+
+@pytest.mark.parametrize("scenario", SCENARIOS)
+def test_code_based_client_admits_eos_authoritative_project_ids(
+    scenario: _Scenario,
+) -> None:
+    request = build_allocation_plan_resolve_by_code_request(
+        tenant_id=scenario.tenant_id,
+        company_id=scenario.company_id,
+        source_kind=scenario.source_kind,
+        effective_on=scenario.effective_on,
+        projects=tuple(
+            {
+                "project_code": item["project_code"],
+                "allocation_ratio": item["allocation_ratio"],
+            }
+            for item in scenario.projects
+        ),
+        correlation_id=f"allocation:code:{scenario.tenant_id}",
+    )
+    transport = _Transport(_resolution(scenario, request))
+
+    admitted = NexAllocationPlanResolverClient(transport).resolve_request(request)
+
+    assert request.body["schema_version"] == ALLOCATION_PLAN_RESOLVE_BY_CODE_SCHEMA
+    assert all("project_id" not in item for item in request.body["projects"])
+    assert admitted["schema_version"] == ALLOCATION_PLAN_RESOLUTION_BY_CODE_SCHEMA
+    assert {
+        (line["project_id"], line["project_code"]) for line in admitted["lines"]
+    } == {(item["project_id"], item["project_code"]) for item in scenario.projects}
+
+
+def test_independent_binder_uses_allocation_authority_not_d04_preparation() -> None:
+    scenario = SCENARIOS[0]
+    request = build_allocation_plan_resolve_by_code_request(
+        tenant_id=scenario.tenant_id,
+        company_id=scenario.company_id,
+        source_kind=scenario.source_kind,
+        effective_on=scenario.effective_on,
+        projects=tuple(
+            {
+                "project_code": item["project_code"],
+                "allocation_ratio": item["allocation_ratio"],
+            }
+            for item in scenario.projects
+        ),
+        correlation_id="allocation:independent:17",
+    )
+    admitted = admit_allocation_plan_resolution(
+        _resolution(scenario, request), request=request
+    )
+
+    checkpoint = ApprovedAllocationPlanAuthorityBinder().bind(
+        request=request,
+        resolution=admitted,
+        source_pool=_source_pool(scenario),
+        lineage=AllocationAuthorityLineage(
+            business_context_hash=HASH_A,
+            allocation_authority_hash=HASH_C,
+        ),
+    )
+
+    assert checkpoint["schema_version"] == (
+        INDEPENDENT_ALLOCATION_PLAN_AUTHORITY_SCHEMA
+    )
+    assert checkpoint["allocation_authority_hash"] == HASH_C
+    assert "preparation_hash" not in checkpoint
+    assert {
+        (item["project_id"], item["project_code"])
+        for item in checkpoint["allocation_plan"]["project_refs"]
+    } == {(item["project_id"], item["project_code"]) for item in scenario.projects}
 
 
 @pytest.mark.parametrize(
