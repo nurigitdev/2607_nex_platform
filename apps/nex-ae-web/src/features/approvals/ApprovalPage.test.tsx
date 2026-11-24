@@ -53,7 +53,15 @@ describe("Approval Inbox React surface", () => {
     await user.click(screen.getByRole("button", { name: /업무 결재 검토/ }));
     expect(await screen.findByRole("heading", { name: "업무 결재 검토" })).toBeInTheDocument();
     expect(screen.getByText("project-p8-s42")).toBeInTheDocument();
-    expect(screen.getByRole("list", { name: "업무 결재 진행 단계" })).toBeInTheDocument();
+    const progress = screen.getByRole("list", { name: "업무 결재 진행 단계" });
+    expect(progress).toBeInTheDocument();
+    expect(screen.getByText("1단계 현재 결재").closest("li")).toHaveAttribute(
+      "aria-current",
+      "step",
+    );
+    expect(screen.getByText("2단계 대기").closest("li")).not.toHaveAttribute(
+      "aria-current",
+    );
     expect(screen.getByText("요청 역할: TEAM_LEAD")).toBeInTheDocument();
   });
 

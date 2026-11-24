@@ -337,6 +337,9 @@ def test_two_stage_human_decision_creates_exact_evidence_and_replays() -> None:
     sessions, scoped, decisions, _auth, wc = _build_runtime()
     request_receipt = _create_case(scoped)
     first_item = request_receipt["wc_publication"]["work_item"]
+    assert len(wc.items) == 1
+    assert first_item["target_role_ref"] == "TEAM_LEAD"
+    assert first_item["resume_target_ref"].endswith(":stage:1")
     assert first_item["target_project_scope_ref"] == "PROJECT-S203"
     summary = first_item["display_safe_summary"]
     assert '"market_base_rate":"1350.20"' in summary
@@ -348,7 +351,9 @@ def test_two_stage_human_decision_creates_exact_evidence_and_replays() -> None:
     assert first["case_state"] == "PENDING"
     assert first["accounting_approval_evidence"] is None
     next_item = first["next_stage_publication"]["work_item"]
+    assert len(wc.items) == 2
     assert next_item["target_role_ref"] == "CEO"
+    assert next_item["resume_target_ref"].endswith(":stage:2")
     assert next_item["target_project_scope_ref"] == "PROJECT-S203"
 
     second_delivery = _delivery(next_item, decided_by="accountant-ceo", suffix="2")
@@ -385,6 +390,43 @@ def test_two_stage_human_decision_creates_exact_evidence_and_replays() -> None:
             == 1
         )
     assert len(wc.items) == 2
+
+
+def test_business_rejection_never_publishes_accounting_stage() -> None:
+    sessions, scoped, decisions, _auth, wc = _build_runtime()
+    request_receipt = _create_case(scoped)
+    business_item = request_receipt["wc_publication"]["work_item"]
+
+    rejected = decisions.ingest_wc_delivery(
+        _delivery(
+            business_item,
+            decided_by="accountant-lead",
+            decision="REJECT",
+            suffix="3",
+        )
+    )
+
+    assert rejected["case_state"] == "REJECTED"
+    assert rejected["next_stage_publication"] is None
+    assert rejected["accounting_approval_evidence"] is None
+    assert len(wc.items) == 1
+    with sessions() as session:
+        case = session.execute(
+            select(EOS_SCOPED_APPROVAL_CASE_TABLE).where(
+                EOS_SCOPED_APPROVAL_CASE_TABLE.c.tenant_id == TENANT,
+                EOS_SCOPED_APPROVAL_CASE_TABLE.c.case_id == CASE_ID,
+            )
+        ).mappings().one()
+        assert case["active_stage_order"] is None
+        assert case["target_role_ref"] is None
+        assert (
+            session.scalar(
+                select(func.count()).select_from(
+                    EOS_ACCOUNTING_APPROVAL_EVIDENCE_TABLE
+                )
+            )
+            == 0
+        )
 
 
 def test_candidate_review_rejection_hook_is_transactional_and_replay_safe() -> None:

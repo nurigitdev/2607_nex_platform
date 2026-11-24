@@ -329,10 +329,18 @@ function ApprovalDetailContent({
 function FormalProgress({ progress }: { readonly progress: NonNullable<ApprovalGate["formal_approval"]> }) {
   const items = Array.from({ length: progress.stage_count }, (_, index) => {
     const stage = index + 1;
+    const state =
+      stage < progress.current_stage
+        ? "complete"
+        : stage === progress.current_stage
+          ? "current"
+          : "pending";
+    const stateLabel =
+      state === "complete" ? "완료" : state === "current" ? "현재 결재" : "대기";
     return {
       id: `stage-${stage}`,
-      label: `${stage}단계`,
-      state: stage < progress.current_stage ? "complete" : stage === progress.current_stage ? "current" : "pending",
+      label: `${stage}단계 ${stateLabel}`,
+      state,
     } as const;
   });
   return (
