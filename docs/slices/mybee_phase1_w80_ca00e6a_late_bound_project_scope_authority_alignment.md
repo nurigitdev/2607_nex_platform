@@ -77,12 +77,16 @@ reports/quality/slice-nex-ae-api.coverage.json
 reports/coverage/mybee-w70-ga-ret-02a-ae-ownership-hotspots.json
 ```
 
-## Protected Continuation
+## Protected Acceptance Result
 
-W80-CA00E.6 must now rebuild the canonical nine-image release set and AE
-Product Runtime image from this clean exact head, then replay the protected
-actual-PostgreSQL and live-provider journey. Acceptance requires the WC claim
-handoff to pass this boundary while retaining the expected semantic stage
-counts, provider-call reduction, authenticated Playwright evidence, and zero
-residue. Any later failure is a separate typed boundary and must not weaken
-this authority rule.
+W80-CA00E.6 rebuilt the canonical nine-image release set and AE Product
+Runtime image from commit `e248abed0413bbb1fe6aba48613fccab24e3c612`, then
+replayed the actual-PostgreSQL and live-provider journey. The WC claim handoff
+passed this authority boundary while retaining the expected semantic stage
+counts, provider-call reduction, authenticated Playwright evidence, restart
+recovery, and zero residue.
+
+The accepted evidence and Repository Full Gate are recorded in
+`docs/slices/mybee_phase1_w80_ca00e6_cross_agent_semantic_handoff_acceptance.md`.
+Any later failure remains a separate typed boundary and must not weaken this
+authority rule.
