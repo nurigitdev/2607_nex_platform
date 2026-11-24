@@ -223,15 +223,18 @@ class HttpM1PreparationAuthoritySource:
         ):
             raise _conflict("M1 authority request lineage differs.")
         transaction = context["transaction"]
+        project_codes = [
+            item["project_code"] for item in context["requested_allocation"]
+        ]
+        if not project_codes:
+            project_codes = [_primary_project_code(work_intent)]
         body = {
             "schema_version": TRANSACTION_PREPARATION_AUTHORITY_REQUEST_SCHEMA,
             "tenant_id": tenant_id,
             "requester_subject_id": subject_id,
             "business_context_hash": context["context_hash"],
             "company_selector": dict(context["company_selector"]),
-            "project_codes": [
-                item["project_code"] for item in context["requested_allocation"]
-            ],
+            "project_codes": project_codes,
             "amount": transaction["amount"],
             "currency": transaction["currency"],
             "recognition_date": transaction["recognition_date"],
@@ -255,6 +258,18 @@ class HttpM1PreparationAuthoritySource:
             }
         )
         return body
+
+
+def _primary_project_code(work_intent: Mapping[str, Any]) -> str:
+    parameters = work_intent.get("parameter_candidates")
+    matches = [
+        str(item.get("value") or "").strip().upper()
+        for item in parameters
+        if isinstance(item, Mapping) and item.get("name") == "primary_project_code"
+    ] if isinstance(parameters, list) else []
+    if len(matches) != 1 or not matches[0]:
+        raise _invalid("Primary Project Code is unavailable.")
+    return matches[0]
 
 
 def admit_transaction_preparation_authority(

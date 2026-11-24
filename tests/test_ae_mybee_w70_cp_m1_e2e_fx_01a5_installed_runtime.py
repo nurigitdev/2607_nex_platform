@@ -150,6 +150,12 @@ def test_verified_product_release_profile_is_fail_closed_and_ready(
                 "sha256:9b52623852ed5b733e587e43ae872c5f08699905932b73ad720c1aaa2901ce5b"
             ),
         },
+        "accounting_allocation": {
+            "status": "READY",
+            "operation": "FINANCE.COST_ALLOCATION.RUN",
+            "required_scope": "finance:allocation:execute",
+            "journal_auto_invocation": False,
+        },
     }
     assert profile.in_process_package_readiness is not None
     assert profile.in_process_package_readiness["status"] == "PASS"

@@ -275,11 +275,14 @@ def _primary_project_selector(
     if (
         len(primary_matches) != 1
         or len(project_codes) != len(set(project_codes))
-        or not set(project_codes).issubset(allocation_project_codes)
+        or (
+            allocation_project_codes
+            and not set(project_codes).issubset(allocation_project_codes)
+        )
     ):
         raise _error(
             "ae.business_context_project_ambiguous",
-            "Primary Project identity must match exactly one requested allocation selector.",
+            "Primary Project identity must match exactly one delegated selector.",
         )
     return primary_matches[0]
 
@@ -295,9 +298,10 @@ def _allocations(parameters: Mapping[str, Mapping[str, Any]]) -> list[dict[str, 
         elif ratio_match:
             ratio_records[int(ratio_match.group(1))] = item
     indexes = set(project_records) | set(ratio_records)
+    if not indexes:
+        return []
     if (
-        not indexes
-        or indexes != set(project_records)
+        indexes != set(project_records)
         or indexes != set(ratio_records)
         or indexes != set(range(1, len(indexes) + 1))
         or len(indexes) > BUSINESS_ALLOCATION_MAX_ITEMS

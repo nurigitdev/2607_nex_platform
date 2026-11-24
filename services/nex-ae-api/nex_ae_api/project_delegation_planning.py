@@ -492,14 +492,14 @@ def _one_project_code(candidate: Mapping[str, Any]) -> tuple[str, Mapping[str, A
     if (
         len(primary_records) != 1
         or len(primary_values) != 1
-        or primary_value not in allocation_codes
+        or (allocation_codes and primary_value not in allocation_codes)
         or len(selected) != 1
         or len(project_codes) != len(set(project_codes))
-        or not set(project_codes).issubset(allocation_codes)
+        or (allocation_codes and not set(project_codes).issubset(allocation_codes))
     ):
         raise ProjectDelegationPlanningError(
             "PRIMARY_PROJECT_IDENTITY_INVALID",
-            "Primary Project identity does not match the admitted allocation candidates.",
+            "Primary Project identity does not match the admitted candidates.",
         )
     assert primary_value is not None
     return primary_value, selected[0]

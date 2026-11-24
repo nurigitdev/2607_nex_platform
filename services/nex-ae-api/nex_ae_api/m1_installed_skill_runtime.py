@@ -35,13 +35,15 @@ from sqlalchemy.orm import Session, sessionmaker
 from nex_ae_api.allocation_plan_resolution_runtime import (
     InstalledApprovedAllocationPlanResolution,
 )
-from nex_ae_api.business_result_summary import build_project_allocation_summary
 from nex_ae_api.controlled_skill_runtime import (
     ControlledExecutionAuthority,
     ControlledSkillRuntime,
     ControlledSkillRuntimeError,
     HttpOaAuthoritySource,
     principal_document,
+)
+from nex_ae_api.m1_accounting_allocation_runtime import (
+    InstalledAccountingAllocationRuntime,
 )
 from nex_ae_api.m1_allocation_plan_composition import (
     resolve_m1_allocation_plan_authority,
@@ -169,7 +171,7 @@ class M1InstalledSkillRuntime:
             base_url=config.oa_base_url,
             service_token=config.ae_to_oa_service_token,
         )
-        financial_result = None
+        self.accounting_allocation = None
         if (
             transaction_preparation is not None
             and allocation_plan_resolution is not None
@@ -196,6 +198,10 @@ class M1InstalledSkillRuntime:
                 authority_resolver=self.resolve_allocation_plan_authority,
                 registration=transaction_preparation.adapter.registration,
             )
+            self.accounting_allocation = InstalledAccountingAllocationRuntime(
+                integrator=financial_result,
+                authority=self._oa,
+            )
         nsl_package_readiness = inspect_installed_nsl_package(
             _json_object(config.wheel_lock_path),
             platform_lock_path=config.platform_lock_path,
@@ -211,7 +217,6 @@ class M1InstalledSkillRuntime:
                 config=config,
                 public_api=self.public_api,
                 catalog_hash=catalog.catalog_hash,
-                financial_result=financial_result,
             )
             for selection in catalog.selections
             if selection.operation_adapter.operation_semantics == "WRITE"
@@ -231,6 +236,10 @@ class M1InstalledSkillRuntime:
         if allocation_plan_resolution is not None:
             readiness["allocation_plan_resolution"] = (
                 allocation_plan_resolution.readiness()
+            )
+        if self.accounting_allocation is not None:
+            readiness["accounting_allocation"] = dict(
+                self.accounting_allocation.readiness()
             )
         self.package_readiness = MappingProxyType(readiness)
 
@@ -506,7 +515,6 @@ class _M1JournalControlledRuntime(ControlledSkillRuntime):
         config: M1InstalledSkillRuntimeConfig,
         public_api: Any,
         catalog_hash: str,
-        financial_result: M1FinancialResultIntegrator | None,
     ) -> None:
         self._sessions = sessions
         self._selection = selection
@@ -520,7 +528,6 @@ class _M1JournalControlledRuntime(ControlledSkillRuntime):
         )
         self.public_api = public_api
         self._registry_hash = catalog_hash
-        self._financial_result = financial_result
         self._evidence = SqlAlchemyPlatformApprovalEvidenceRepository(sessions)
         from nex_ae_api.nsl_approval_requests import (
             SqlAlchemyProtectedApprovalRequestStore,
@@ -706,61 +713,49 @@ class _M1JournalControlledRuntime(ControlledSkillRuntime):
         )
         if base.state != "SUCCEEDED":
             return base
-        if self._financial_result is None or authority.runtime_metadata is None:
-            raise ControlledSkillRuntimeError(
-                "M1 financial result integration is not installed."
-            )
-        metadata = authority.runtime_metadata
-        preparation = metadata.get("preparation_checkpoint")
-        work_intent = metadata.get("work_intent")
-        if not isinstance(preparation, Mapping) or not isinstance(work_intent, Mapping):
-            raise ControlledSkillRuntimeError(
-                "M1 durable preparation lineage is unavailable."
-            )
-        financial = self._financial_result.integrate(
-            tenant_id=str(context.job["tenant_id"]),
-            company_id=str(authority.canonical_write_payload["company_id"]),
-            subject_id=str(metadata["principal_id"]),
-            correlation_id=str(metadata["correlation_id"]),
-            journal_id=_committed_journal_id(result),
-            work_intent=work_intent,
-            preparation_checkpoint=preparation,
-        )
-        summary = build_project_allocation_summary(financial)
+        journal_id = _committed_journal_id(result)
+        deferred = _deferred_accounting_operations(authority.runtime_metadata)
         return P5ExecutorOutcome(
             state=base.state,
             result_contract_ref=base.result_contract_ref,
             result_payload={
                 **dict(base.result_payload),
-                "financial_result": dict(financial),
-                "business_summary": summary,
+                "journal_id": journal_id,
+                "journal_ref": f"eos.posted_journal:{journal_id}",
+                "deferred_operations": list(deferred),
             },
             external_refs=tuple(
                 sorted(
                     {
                         *base.external_refs,
-                        str(financial["journal_ref"]),
-                        str(financial["source_pool_ref"]),
-                        str(financial["allocation_batch_ref"]),
+                        f"eos.posted_journal:{journal_id}",
                     }
                 )
             ),
             artifact_refs=base.artifact_refs,
-            evidence_refs=tuple(
-                sorted(
-                    {
-                        *base.evidence_refs,
-                        f"EOS:PNL_REFRESH:{financial['pnl_refresh_hash']}",
-                        *(
-                            f"EOS:PROJECT_PNL:{item['projection_id']}:v{item['projection_version']}"
-                            for item in financial["project_results"]
-                        ),
-                    }
-                )
-            ),
+            evidence_refs=base.evidence_refs,
             error_ref=base.error_ref,
             business_operation_id=base.business_operation_id,
         )
+
+
+def _deferred_accounting_operations(
+    runtime_metadata: Mapping[str, Any] | None,
+) -> tuple[str, ...]:
+    work_intent = (
+        runtime_metadata.get("work_intent")
+        if isinstance(runtime_metadata, Mapping)
+        else None
+    )
+    context = (
+        work_intent.get("business_request_context")
+        if isinstance(work_intent, Mapping)
+        else None
+    )
+    allocations = (
+        context.get("requested_allocation") if isinstance(context, Mapping) else None
+    )
+    return ("FINANCE.COST_ALLOCATION.RUN",) if allocations else ()
 
 
 @dataclass(frozen=True)

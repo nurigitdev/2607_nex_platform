@@ -141,10 +141,11 @@ def _validate_transaction(value: object) -> None:
 def _validate_allocation_records(value: object) -> None:
     if (
         not isinstance(value, list)
-        or not value
         or len(value) > BUSINESS_ALLOCATION_MAX_ITEMS
     ):
         raise _invalid("Business requested allocation is invalid.")
+    if not value:
+        return
     seen: set[str] = set()
     total = Decimal(0)
     for item in value:

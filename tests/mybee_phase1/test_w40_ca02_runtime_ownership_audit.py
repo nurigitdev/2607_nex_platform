@@ -27,6 +27,7 @@ def test_current_repository_freezes_runtime_ownership_and_installed_binding() ->
     assert result["current_composition"]["forbidden_mybee_runtime_entrypoints"] == []
     assert result["current_composition"]["mybee_service_imports"] == [
         "services/nex-ae-api/nex_ae_api/allocation_plan_resolution_runtime.py",
+        "services/nex-ae-api/nex_ae_api/m1_accounting_allocation_runtime.py",
         "services/nex-ae-api/nex_ae_api/m1_allocation_plan_composition.py",
         "services/nex-ae-api/nex_ae_api/m1_installed_skill_runtime.py",
         "services/nex-ae-api/nex_ae_api/m1_plan_materialization.py",

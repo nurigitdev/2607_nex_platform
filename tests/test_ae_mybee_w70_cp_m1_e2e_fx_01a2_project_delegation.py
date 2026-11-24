@@ -776,13 +776,15 @@ def test_eos_project_resolution_preserves_bounded_http_failure_category(
     assert raised.value.retryable is retryable
 
 
-def test_active_intent_prompt_is_v12_and_delegation_prompt_is_separate():
+def test_active_intent_prompt_is_v13_and_delegation_prompt_is_separate():
     source = Path("services/nex-ae-api/nex_ae_api/prompts.py").read_text(
         encoding="utf-8"
     )
-    assert 'version="v12"' in source
+    assert 'version="v13"' in source
     assert "primary_project_code" in source
     assert "allocation_project_code_1" in source
+    assert "Allocation is a separate accounting" in source
+    assert "operation and is never required" in source
     assert '"ae.plan_builder.project_delegation.v1"' in source
     assert "p7.plan_candidate.v1" in source
     assert "suggested_plan_kind equals DIRECT" in source

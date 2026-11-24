@@ -21,6 +21,7 @@ ACTIVE_IMPORT_BASELINE = 103
 ACTIVE_IMPORT_PROMOTIONS = frozenset(
     {
         "services/nex-ae-api/nex_ae_api/agent_authority.py",
+        "services/nex-ae-api/nex_ae_api/m1_accounting_allocation_runtime.py",
         "services/nex-ae-api/nex_ae_api/m1_preparation_authority_source.py",
         "services/nex-ae-api/nex_ae_api/product_coordinator_activation.py",
         "services/nex-ae-api/nex_ae_api/product_domain_intent_activators.py",

@@ -16,6 +16,10 @@ from nex_ae_api.business_result_summary import (
     build_project_allocation_summary,
 )
 from nex_ae_api.controlled_skill_runtime import ControlledSkillRuntimeError
+from nex_ae_api.m1_accounting_allocation_runtime import (
+    AccountingAllocationRuntimeError,
+    InstalledAccountingAllocationRuntime,
+)
 from nex_ae_api.m1_installed_skill_runtime import (
     _committed_journal_id,
     _M1JournalControlledRuntime,
@@ -499,7 +503,140 @@ class _Financial:
         return self.result
 
 
-def test_m1_controlled_outcome_adds_durable_financial_lineage():
+class _AccountingAuthority:
+    def __init__(self, *, scopes=("finance:allocation:execute",), active=True):
+        self.scopes = scopes
+        self.active = active
+        self.calls = []
+
+    def effective_authorization(self, **values):
+        self.calls.append(values)
+        return {
+            "active": self.active,
+            "scopes": list(self.scopes),
+            "revision_hash": HASH_C,
+        }
+
+
+def _allocation_work_intent() -> dict[str, object]:
+    context = {
+        "schema_version": "ae.business_request_context.v1",
+        "request_kind": "FINANCE_VOUCHER_POSTING",
+        "source_prompt_ref": "AE:INTERACTION:allocation-1",
+        "company_selector": {"kind": "CODE_OR_NAME", "value": "NURI"},
+        "document": {
+            "document_type": "BUSINESS_PROPOSAL",
+            "subject_ref": "Shared expense",
+            "subject_revision": 1,
+            "content_hash": HASH_A,
+            "attachment_manifest_hash": None,
+        },
+        "transaction": {
+            "counterparty_selector": "Vendor",
+            "amount": "10000.00",
+            "currency": "KRW",
+            "recognition_date": "2026-11-17",
+            "description": "Accounting allocation request",
+        },
+        "requested_allocation": [
+            {"project_code": CODE_A, "ratio": "0.400000"},
+            {"project_code": CODE_B, "ratio": "0.600000"},
+        ],
+        "candidate_provenance": {
+            "intent_candidate_hash": HASH_A,
+            "input_context_hash": HASH_B,
+            "model_profile": "generation-default",
+            "model_ref": "provider-neutral/revision-bound",
+        },
+    }
+    context["context_hash"] = semantic_sha256_hash_ref(context)
+    return {"business_request_context": context}
+
+
+def test_accounting_allocation_requires_fresh_oa_scope_and_explicit_ratios():
+    financial = _Financial(
+        {
+            "journal_ref": f"eos.posted_journal:{JOURNAL}",
+            "source_pool_ref": f"eos.cost-source-pool:{POOL}",
+            "source_pool_hash": HASH_A,
+            "allocation_batch_ref": "eos.cost-allocation-batch:batch-1",
+            "allocation_reconciliation_hash": HASH_B,
+            "pnl_refresh_hash": HASH_C,
+            "project_results": [
+                {
+                    "project_code": CODE_A,
+                    "projection_id": PROJECT_A,
+                    "projection_version": 1,
+                    "projection_hash": HASH_A,
+                    "reconciliation_status": "VERIFIED",
+                    "freshness_status": "CURRENT",
+                    "data_classification": "CONFIDENTIAL_FINANCIAL",
+                }
+            ],
+        }
+    )
+    authority = _AccountingAuthority()
+    runtime = InstalledAccountingAllocationRuntime(
+        integrator=financial,
+        authority=authority,
+    )
+
+    result = runtime.execute(
+        tenant_id=TENANT,
+        company_id=COMPANY,
+        subject_id="accountant-1",
+        correlation_id="allocation-1",
+        journal_id=JOURNAL,
+        work_intent=_allocation_work_intent(),
+        preparation_checkpoint=_preparation(),
+    )
+
+    assert result["operation"] == "FINANCE.COST_ALLOCATION.RUN"
+    assert result["business_summary"]["result_type"] == "FINANCE.PROJECT_ALLOCATION"
+    assert financial.calls[0]["journal_id"] == JOURNAL
+    assert authority.calls == [{"tenant_id": TENANT, "subject_id": "accountant-1"}]
+
+
+def test_accounting_allocation_denies_missing_scope_and_empty_ratios():
+    denied = InstalledAccountingAllocationRuntime(
+        integrator=_Financial({}),
+        authority=_AccountingAuthority(scopes=()),
+    )
+    with pytest.raises(AccountingAllocationRuntimeError, match="denied"):
+        denied.execute(
+            tenant_id=TENANT,
+            company_id=COMPANY,
+            subject_id="employee-1",
+            correlation_id="allocation-2",
+            journal_id=JOURNAL,
+            work_intent=_allocation_work_intent(),
+            preparation_checkpoint=_preparation(),
+        )
+
+    work_intent = _allocation_work_intent()
+    context = dict(work_intent["business_request_context"])
+    context["requested_allocation"] = []
+    context["context_hash"] = semantic_sha256_hash_ref(
+        {key: value for key, value in context.items() if key != "context_hash"}
+    )
+    work_intent["business_request_context"] = context
+    runtime = InstalledAccountingAllocationRuntime(
+        integrator=_Financial({}),
+        authority=_AccountingAuthority(),
+    )
+    with pytest.raises(AccountingAllocationRuntimeError, match="explicit Project"):
+        runtime.execute(
+            tenant_id=TENANT,
+            company_id=COMPANY,
+            subject_id="accountant-1",
+            correlation_id="allocation-3",
+            journal_id=JOURNAL,
+            work_intent=work_intent,
+            preparation_checkpoint=_preparation(),
+        )
+
+
+def test_m1_controlled_outcome_stops_at_posted_journal_and_defers_allocation():
     financial_result = {
         "journal_ref": f"eos.posted_journal:{JOURNAL}",
         "source_pool_ref": f"eos.cost-source-pool:{POOL}",
@@ -550,19 +687,18 @@ def test_m1_controlled_outcome_adds_durable_financial_lineage():
     )
 
     assert outcome.state == "SUCCEEDED"
-    assert outcome.result_payload["business_summary"]["result_type"] == (
-        "FINANCE.PROJECT_ALLOCATION"
-    )
-    assert financial.calls[0]["journal_id"] == JOURNAL
-    assert f"eos.cost-source-pool:{POOL}" in outcome.external_refs
+    assert outcome.result_payload["journal_id"] == JOURNAL
+    assert outcome.result_payload["deferred_operations"] == []
+    assert financial.calls == []
+    assert f"eos.posted_journal:{JOURNAL}" in outcome.external_refs
+    assert "financial_result" not in outcome.result_payload
 
 
-def test_committed_journal_reference_and_missing_runtime_lineage_fail_closed():
+def test_committed_journal_reference_is_required_for_journal_completion():
     with pytest.raises(ControlledSkillRuntimeError):
         _committed_journal_id(SimpleNamespace(outcome=SimpleNamespace(result=None)))
 
     writer = object.__new__(_M1JournalControlledRuntime)
-    writer._financial_result = None
     result = SimpleNamespace(
         outcome=SimpleNamespace(
             commit_state=SimpleNamespace(value="COMMITTED"), result=object()
@@ -570,7 +706,7 @@ def test_committed_journal_reference_and_missing_runtime_lineage_fail_closed():
         verification=SimpleNamespace(status=SimpleNamespace(value="VERIFIED")),
         write_request=SimpleNamespace(idempotency_key="journal-key"),
     )
-    with pytest.raises(ControlledSkillRuntimeError, match="not installed"):
+    with pytest.raises(ControlledSkillRuntimeError, match="reference is unavailable"):
         writer._controlled_write_outcome(
             context=SimpleNamespace(job={"tenant_id": TENANT}),
             result=result,

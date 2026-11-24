@@ -474,6 +474,8 @@ def _authority(
     except (TypeError, ValueError, AttributeError) as exc:
         raise _invalid("M1 preparation authority identity is invalid.") from exc
     requested = {str(item["project_code"]) for item in context["requested_allocation"]}
+    if not requested:
+        requested = {value.primary_project_code}
     projects = tuple(dict(item) for item in value.project_refs)
     authorizations = tuple(dict(item) for item in value.project_authorizations)
     if (

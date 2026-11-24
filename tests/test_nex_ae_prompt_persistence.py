@@ -288,11 +288,11 @@ def test_startup_upgrades_existing_intent_v9_binding_with_history() -> None:
 
     after = store.get_binding(AE_INTENT_RESOLUTION_BINDING)
     version = store.get_template_version(after["prompt_template_version_id"])
-    assert version["version"] == "v12"
-    assert version["metadata"]["historical_scenario_dependency"] is False
-    assert version["metadata"]["nvt_project_operations"] == ("create_get_list_update")
-    assert version["metadata"]["employee_authority"] == "oa_only"
-    assert version["metadata"]["nvt_fallback_rule"] == "non_nvt_only"
+    assert version["version"] == "v13"
+    assert version["metadata"]["journal_allocation_coupling"] == "forbidden"
+    assert version["metadata"]["allocation_contract"] == (
+        "optional_deferred_accounting_operation"
+    )
     assert version["metadata"]["business_request_context"] == (
         "ae.business_request_context.v1"
     )
@@ -304,7 +304,7 @@ def test_startup_upgrades_existing_intent_v9_binding_with_history() -> None:
                     "new_prompt_template_version_id, correlation_id "
                     "FROM ae_prompt_binding_history "
                     "WHERE correlation_id = "
-                    "'w70-cp-m1-e2e-fx-01b7i-intent-prompt-v12'"
+                    "'w80-ca00f4-intent-prompt-v13'"
                 )
             )
             .mappings()

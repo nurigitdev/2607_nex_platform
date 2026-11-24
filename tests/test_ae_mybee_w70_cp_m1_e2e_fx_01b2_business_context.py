@@ -501,7 +501,6 @@ def test_01b2_rejects_allocation_shape_and_project_conflicts() -> None:
         lambda value: value["transaction"].update(amount="01.00"),
         lambda value: value["transaction"].update(currency="usd"),
         lambda value: value["transaction"].update(recognition_date="invalid"),
-        lambda value: value.update(requested_allocation=[]),
         lambda value: value["requested_allocation"][0].pop("ratio"),
         lambda value: value["requested_allocation"].append(
             copy.deepcopy(value["requested_allocation"][0])
@@ -523,6 +522,23 @@ def test_01b2_context_validation_fails_closed_for_invalid_shapes(mutation) -> No
 
     with pytest.raises(BusinessRequestContextError):
         validate_business_request_context(context)
+
+
+def test_01b2_journal_context_allows_no_allocation_request() -> None:
+    candidate = _candidate()
+    candidate["parameter_candidates"] = [
+        item
+        for item in candidate["parameter_candidates"]
+        if not str(item["name"]).startswith("allocation_")
+    ]
+
+    work_intent = _intent(candidate)
+
+    assert work_intent["business_request_context"]["requested_allocation"] == []
+    assert not any(
+        str(item["name"]).startswith("allocation_")
+        for item in work_intent["parameter_candidates"]
+    )
 
 
 def test_01b2_context_validator_rejects_non_mapping_and_error_is_readable() -> None:

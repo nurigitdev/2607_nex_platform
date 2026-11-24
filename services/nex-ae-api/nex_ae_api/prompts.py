@@ -5,6 +5,7 @@ from typing import Any
 from nex_runtime.prompts import (
     PromptRegistryStore,
     PromptSeed,
+    build_prompt_binding,
     build_prompt_template,
     build_prompt_template_version,
     seed_prompt_registry,
@@ -195,6 +196,27 @@ _MYBEE_M1_PRIMARY_PROJECT_IDENTITY_INTENT_CANDIDATE_V12_CONTENT = (
     "or confidence, determines delegation."
 )
 
+_MYBEE_W80_SPLIT_ACCOUNTING_INTENT_CANDIDATE_V13_CONTENT = (
+    _MYBEE_M1_PROJECT_DELEGATION_INTENT_CANDIDATE_V9_CONTENT
+    + " For FINANCE.VOUCHER.APPROVE_AND_POST, emit exactly these required scalar "
+    "business parameter candidates: company_selector, primary_project_code, "
+    "document_subject, counterparty_selector, amount, currency, recognition_date, "
+    "and description. primary_project_code must equal the single explicitly "
+    "delegated Project Code. Use amount as a positive decimal with at most two "
+    "fractional digits, currency as an uppercase ISO 4217 candidate, and "
+    "recognition_date as YYYY-MM-DD. Allocation is a separate accounting "
+    "operation and is never required to admit or post a Journal. When the user "
+    "explicitly requests allocation, preserve complete contiguous "
+    "allocation_project_code_N and allocation_ratio_N candidate pairs only as "
+    "an untrusted deferred accounting request; never imply that Journal posting "
+    "executes allocation or Project P&L refresh. Ratios, when present, must be "
+    "positive decimal candidates totaling exactly 1.000000. Never invent a "
+    "default ratio, Plan ID, Project count, allocation authority, account ID, "
+    "FX rate, period status, approval proof, Candidate identity, Posting result, "
+    "credentials, payroll detail, or hidden reasoning. If a required Journal "
+    "business value is missing or ambiguous, set clarification.required true."
+)
+
 _P65_CONTEXT_CANDIDATE_V1_CONTENT = (
     "You generate an untrusted context candidate set, never an "
     "authoritative context or access decision. Return exactly one JSON "
@@ -379,6 +401,34 @@ AE_HISTORICAL_PROMPT_SEEDS = [
             "historical_scenario_dependency": False,
             "business_request_context": "ae.business_request_context.v1",
             "allocation_contract": "contiguous_indexed_scalar_pairs",
+        },
+    ),
+    PromptSeed(
+        service_id="nex-ae-api",
+        purpose="intent_resolution",
+        name="p65_default_intent_candidate_system",
+        owner_domain="agent-experience",
+        binding_key=AE_INTENT_RESOLUTION_BINDING,
+        version="v12",
+        role="system",
+        segment_order=0,
+        content=_MYBEE_M1_PRIMARY_PROJECT_IDENTITY_INTENT_CANDIDATE_V12_CONTENT,
+        model_capability="generation",
+        metadata={
+            "phase": "MyBee-W70",
+            "slice": "CP-M1-E2E-FX-01B.7I",
+            "candidate_schema": "p65.intent_candidate.v1",
+            "authority": "untrusted_candidate_only",
+            "project_membership_batch": "indexed_scalar_candidates",
+            "nvt_project_operations": "create_get_list_update",
+            "employee_authority": "oa_only",
+            "nvt_fallback_rule": "non_nvt_only",
+            "mybee_m1_project_delegation": "FINANCE.VOUCHER.APPROVE_AND_POST",
+            "primary_project_identity": "typed_cross_validated",
+            "historical_scenario_dependency": False,
+            "business_request_context": "ae.business_request_context.v1",
+            "allocation_contract": "contiguous_indexed_scalar_pairs",
+            "status": "REPLAY_ONLY",
         },
     ),
     PromptSeed(
@@ -664,25 +714,21 @@ AE_PROMPT_SEEDS = [
         name="p65_default_intent_candidate_system",
         owner_domain="agent-experience",
         binding_key=AE_INTENT_RESOLUTION_BINDING,
-        version="v12",
+        version="v13",
         role="system",
         segment_order=0,
-        content=_MYBEE_M1_PRIMARY_PROJECT_IDENTITY_INTENT_CANDIDATE_V12_CONTENT,
+        content=_MYBEE_W80_SPLIT_ACCOUNTING_INTENT_CANDIDATE_V13_CONTENT,
         model_capability="generation",
         metadata={
-            "phase": "MyBee-W70",
-            "slice": "CP-M1-E2E-FX-01B.7I",
+            "phase": "MyBee-W80",
+            "slice": "W80-CA00F.4",
             "candidate_schema": "p65.intent_candidate.v1",
             "authority": "untrusted_candidate_only",
-            "project_membership_batch": "indexed_scalar_candidates",
-            "nvt_project_operations": "create_get_list_update",
-            "employee_authority": "oa_only",
-            "nvt_fallback_rule": "non_nvt_only",
             "mybee_m1_project_delegation": "FINANCE.VOUCHER.APPROVE_AND_POST",
             "primary_project_identity": "typed_cross_validated",
-            "historical_scenario_dependency": False,
             "business_request_context": "ae.business_request_context.v1",
-            "allocation_contract": "contiguous_indexed_scalar_pairs",
+            "allocation_contract": "optional_deferred_accounting_operation",
+            "journal_allocation_coupling": "forbidden",
         },
     ),
     PromptSeed(
@@ -857,8 +903,6 @@ def _activate_current_project_delegation_plan_prompt(store: Any) -> None:
 
 def _activate_current_intent_candidate_prompt(store: Any) -> None:
     activate = getattr(store, "activate_binding", None)
-    if not callable(activate):
-        return
     seed = next(
         item
         for item in AE_PROMPT_SEEDS
@@ -866,6 +910,9 @@ def _activate_current_intent_candidate_prompt(store: Any) -> None:
     )
     template = build_prompt_template(seed)
     target = build_prompt_template_version(seed, template)
+    if not callable(activate):
+        store.save_binding(build_prompt_binding(seed, target))
+        return
     current = store.get_binding(AE_INTENT_RESOLUTION_BINDING)
     if (
         current is None
@@ -877,8 +924,8 @@ def _activate_current_intent_candidate_prompt(store: Any) -> None:
         new_prompt_template_version_id=target["prompt_template_version_id"],
         expected_prompt_template_version_id=current["prompt_template_version_id"],
         changed_by="nex-ae-api-bootstrap",
-        reason="W70 deterministic primary Project candidate identity activation",
-        correlation_id="w70-cp-m1-e2e-fx-01b7i-intent-prompt-v12",
+        reason="W80 Journal and allocation responsibility split",
+        correlation_id="w80-ca00f4-intent-prompt-v13",
     )
 
 
