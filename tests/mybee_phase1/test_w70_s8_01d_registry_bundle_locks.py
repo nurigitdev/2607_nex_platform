@@ -163,7 +163,7 @@ def test_w70_deployed_runtime_points_to_verified_m1_registry_with_rollback() -> 
 
     expected = (
         "/app/deployment/product/repository/deployment/environments/"
-        "ae-product-capability-registry.mybee-m1.v4.json"
+        "ae-product-capability-registry.mybee-m1.v5.json"
     )
     assert expected in compose
     assert expected in containerfile
@@ -172,10 +172,10 @@ def test_w70_deployed_runtime_points_to_verified_m1_registry_with_rollback() -> 
     assert "NEX_AE_PRODUCT_RUNTIME_PROFILE: VERIFIED_PRODUCT_RELEASE" in compose
     assert "NEX_AE_PRODUCT_RUNTIME_PROFILE=VERIFIED_PRODUCT_RELEASE" in containerfile
     activation = _json(
-        ROOT / "deployment/locks/ae-mybee-m1-runtime-activation.v2.json"
+        ROOT / "deployment/locks/ae-mybee-m1-runtime-activation.v5.json"
     )
     assert activation["rollback_target"]["receipt_ref"] == (
-        "deployment/locks/ae-mybee-m1-generalized-rollback.v1.json"
+        "deployment/locks/ae-mybee-m1-generalized-rollback.v3.json"
     )
     assert activation["rollback_target"]["golden_a_dependency"] is False
 

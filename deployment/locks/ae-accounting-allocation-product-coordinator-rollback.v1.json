@@ -1,0 +1,12 @@
+{
+  "content_hash": "sha256:dcd88712626efc01201525d4b27c59e63fbd4debe262eab2db1003496690ab09",
+  "content_included": false,
+  "coordinator_id": "MYBEE.ACCOUNTING.ALLOCATION",
+  "coordinator_registration_hash": "sha256:e9e8a0f47998b521efbd9e0b628c8f97987e62e52f1dbf139ba6cb6e3cb51cf0",
+  "coordinator_version": "1.0.0",
+  "history_preservation": "PRESERVE_INTENT_CHECKPOINT_PLAN_JOB_RESULT",
+  "product_capability_registry_hash": "sha256:6656b57b3d3e65bda9666db90100b2dc13f51270b875d60904927027c2c23e95",
+  "rollback_state": "CONTRACT_ONLY",
+  "schema_version": "ae.accounting_allocation_coordinator_rollback.v1",
+  "secret_included": false
+}

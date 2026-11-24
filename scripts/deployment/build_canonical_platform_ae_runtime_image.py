@@ -36,8 +36,8 @@ DEFAULT_WHEEL = (
 )
 DEFAULT_NSL_SOURCE = Path("/home/tprover/2608_nsl")
 DEFAULT_REPORT = ROOT / "reports/deployment/canonical-platform-ae-runtime-image.json"
-M1_ADMISSION_LOCK = ROOT / "deployment/locks/ae-mybee-m1-runtime-admission.v4.json"
-M1_ACTIVATION_LOCK = ROOT / "deployment/locks/ae-mybee-m1-runtime-activation.v4.json"
+M1_ADMISSION_LOCK = ROOT / "deployment/locks/ae-mybee-m1-runtime-admission.v5.json"
+M1_ACTIVATION_LOCK = ROOT / "deployment/locks/ae-mybee-m1-runtime-activation.v5.json"
 
 
 class CanonicalPlatformAeImageBuildError(RuntimeError):
@@ -211,17 +211,25 @@ def _stage_context(
         "deployment/locks/ae-mybee-m1-generalized-rollback.v3.json",
         "deployment/locks/ae-mybee-m1-generalized-rollback.v2.json",
         "deployment/locks/ae-mybee-m1-generalized-rollback.v1.json",
+        "deployment/locks/ae-mybee-m1-product-coordinator-activation.v4.json",
         "deployment/locks/ae-mybee-m1-product-coordinator-activation.v3.json",
         "deployment/locks/ae-mybee-m1-product-coordinator-activation.v2.json",
         "deployment/locks/ae-mybee-m1-product-coordinator-activation.v1.json",
+        "deployment/locks/ae-mybee-m1-product-coordinator-rollback.v4.json",
         "deployment/locks/ae-mybee-m1-product-coordinator-rollback.v3.json",
         "deployment/locks/ae-mybee-m1-product-coordinator-rollback.v2.json",
         "deployment/locks/ae-mybee-m1-product-coordinator-rollback.v1.json",
+        "deployment/locks/ae-mybee-m1-signed-skill-checkpoint.v4.json",
         "deployment/locks/ae-mybee-m1-signed-skill-checkpoint.v3.json",
+        "deployment/locks/ae-mybee-m1-runtime-admission.v5.json",
+        "deployment/locks/ae-mybee-m1-runtime-activation.v5.json",
         "deployment/locks/ae-mybee-m1-signed-skill-checkpoint.v2.json",
         "deployment/locks/ae-mybee-m1-signed-skill-checkpoint.v1.json",
+        "deployment/locks/ae-accounting-allocation-product-coordinator-activation.v1.json",
+        "deployment/locks/ae-accounting-allocation-product-coordinator-rollback.v1.json",
         "deployment/locks/nsl-v0.2.1-wheel.json",
         "deployment/locks/python-production.lock",
+        "deployment/environments/ae-product-capability-registry.mybee-m1.v5.json",
         "deployment/environments/ae-product-capability-registry.mybee-m1.v4.json",
         "deployment/environments/ae-product-capability-registry.mybee-m1.v1.json",
         "deployment/environments/ae-product-capability-registry.mybee-m1.v2.json",
@@ -234,7 +242,11 @@ def _stage_context(
         "domains/mybee/skills/m1_checkpoint/mybee-m1-release-public-key.v3.json",
         "domains/mybee/skills/m1_checkpoint/mybee-m1-release-public-key.v2.json",
         "domains/mybee/skills/m1_checkpoint/mybee-m1-release-public-key.v1.json",
+        "domains/mybee/skills/m1_checkpoint/tool_catalog.v2.json",
         "domains/mybee/skills/m1_checkpoint/tool_catalog.v1.json",
+        "domains/mybee/skills/m1_checkpoint/mybee-m1-d04-d12-allocation.v4.nsp",
+        "domains/mybee/skills/m1_checkpoint/mybee-m1-release-public-key.v4.json",
+        "domains/mybee/skills/d04_accounting/allocation_execution.v1.ns",
         "domains/mybee/skills/d04_accounting/journal_posting.v1_0_2.ns",
         "domains/mybee/skills/d04_accounting/journal_posting.v1_0_1.ns",
         "domains/mybee/skills/d04_accounting/journal_posting.v1.ns",
@@ -303,7 +315,10 @@ def _record(
 
 def _wheel_readiness(wheel_path: Path, lock_path: Path) -> dict[str, Any]:
     lock = json.loads(lock_path.read_text(encoding="utf-8"))
-    if not isinstance(lock, Mapping) or lock.get("schema_version") != "nsl_wheel_lock.v2":
+    if (
+        not isinstance(lock, Mapping)
+        or lock.get("schema_version") != "nsl_wheel_lock.v2"
+    ):
         raise CanonicalPlatformAeImageBuildError("NSL wheel lock is invalid.")
     expected_name = str(lock.get("wheel_filename") or "")
     expected_hash = str(lock.get("wheel_sha256") or "")

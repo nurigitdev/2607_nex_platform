@@ -1,0 +1,39 @@
+language NSL "0.2";
+
+skill MYBEE.D04.ACCOUNTING_ALLOCATION {
+    version "1.0.0";
+    risk WRITE;
+
+    requires {
+        tool FINANCE.COST_ALLOCATION.RUN version "1.0.0";
+    }
+
+    limits {
+        tool_calls 1;
+        loop_iterations 1;
+        emitted_rows 1;
+        collection_size 64;
+    }
+
+    input {
+        allocation_work_intent_json: String classification CONFIDENTIAL;
+    }
+
+    output {
+        allocation_result_ref: String classification CONFIDENTIAL;
+        result_hash: String classification CONFIDENTIAL;
+    }
+
+    approve ACCOUNTING_ALLOCATION_WRITE {
+        message "Execute the independently authorized accounting allocation?";
+    }
+
+    let allocation = write FINANCE.COST_ALLOCATION.RUN(
+        allocation_work_intent_json = allocation_work_intent_json
+    ) approved_by ACCOUNTING_ALLOCATION_WRITE;
+
+    emit {
+        allocation_result_ref: allocation.allocation_result_ref;
+        result_hash: allocation.result_hash;
+    }
+}

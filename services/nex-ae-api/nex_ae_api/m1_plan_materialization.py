@@ -389,7 +389,7 @@ def _capabilities(
     snapshot: Mapping[str, Any],
     installed: Mapping[str, Mapping[str, Any]],
 ) -> dict[str, Mapping[str, Any]]:
-    if set(installed) != set(_CAPABILITY_IDS):
+    if not set(_CAPABILITY_IDS).issubset(installed):
         raise _invalid(
             "M1_PLAN_CAPABILITY_SET_INCOMPLETE",
             "Installed M1 capability set is incomplete.",

@@ -12,6 +12,9 @@ from mybee_ax.orchestration import load_m1_transaction_preparation_registration
 from nex_runtime.semantic_hashes import semantic_sha256_hash_ref
 from sqlalchemy.orm import Session, sessionmaker
 
+from nex_ae_api.accounting_allocation_product_coordinator import (
+    load_accounting_allocation_coordinator_activation,
+)
 from nex_ae_api.m1_preparation_authority_source import (
     M1_PREPARATION_AUTHORITY_SOURCE_IDENTITY,
     HttpM1PreparationAuthoritySource,
@@ -29,10 +32,10 @@ ROOT = Path(__file__).resolve().parents[3]
 ACTIVATION_SCHEMA_VERSION = "ae.product_coordinator_activation.v1"
 ROLLBACK_SCHEMA_VERSION = "ae.product_coordinator_rollback_receipt.v1"
 DEFAULT_ACTIVATION_PATH = (
-    ROOT / "deployment/locks/ae-mybee-m1-product-coordinator-activation.v3.json"
+    ROOT / "deployment/locks/ae-mybee-m1-product-coordinator-activation.v4.json"
 )
 DEFAULT_ROLLBACK_PATH = (
-    ROOT / "deployment/locks/ae-mybee-m1-product-coordinator-rollback.v3.json"
+    ROOT / "deployment/locks/ae-mybee-m1-product-coordinator-rollback.v4.json"
 )
 AUTHORITY_IMPLEMENTATION_REF = (
     "nex_ae_api.m1_preparation_authority_source:HttpM1PreparationAuthoritySource"
@@ -86,7 +89,7 @@ def build_product_coordinator_activation_documents(
     rollback = {
         "schema_version": ROLLBACK_SCHEMA_VERSION,
         "receipt_id": "mybee-m1-product-coordinator-contract-only",
-        "receipt_version": 3,
+        "receipt_version": 4,
         "rollback_state": "CONTRACT_ONLY",
         "coordinator_registry_hash": contract.registry_hash,
         "coordinator_registration_hash": contract_registration.registration_hash,
@@ -100,7 +103,7 @@ def build_product_coordinator_activation_documents(
     rollback["content_hash"] = semantic_sha256_hash_ref(rollback)
     activation = {
         "schema_version": ACTIVATION_SCHEMA_VERSION,
-        "activation_id": "mybee-m1-product-coordinator-active-v3",
+        "activation_id": "mybee-m1-product-coordinator-active-v4",
         "activation_state": "ACTIVE",
         "coordinator_registry": {
             "registry_id": active.registry_id,
@@ -137,8 +140,7 @@ def build_product_coordinator_activation_documents(
         "process_identities": list(PROCESS_IDENTITIES),
         "rollback_receipt": {
             "receipt_ref": (
-                "deployment/locks/"
-                "ae-mybee-m1-product-coordinator-rollback.v3.json"
+                "deployment/locks/ae-mybee-m1-product-coordinator-rollback.v4.json"
             ),
             "receipt_hash": rollback["content_hash"],
         },
@@ -197,9 +199,7 @@ def load_product_coordinator_activation(
         "product_capability_registry_hash": product_capabilities.registry_hash,
         "planning_policy_mode": registration.planning_policy.mode,
         "runtime_assignment_handlers": list(ASSIGNMENT_HANDLER_KINDS),
-        "migration_inventory_hash": activation["migration_inventory"][
-            "inventory_hash"
-        ],
+        "migration_inventory_hash": activation["migration_inventory"]["inventory_hash"],
         "content_included": False,
         "secret_included": False,
     }
@@ -222,6 +222,7 @@ def build_activated_m1_product_planning_composition(
     """Assemble one active Product coordinator from immutable installed locks."""
 
     from nex_ae_api.product_planning_runtime import (
+        build_installed_accounting_allocation_coordinator_runtime,
         build_installed_m1_product_coordinator_runtime,
         build_installed_product_planning_composition,
     )
@@ -235,6 +236,10 @@ def build_activated_m1_product_planning_composition(
     )
     runtime = product_runtime or build_installed_product_skill_runtime(
         sessions, environ
+    )
+    allocation_admission = load_accounting_allocation_coordinator_activation(
+        product_capabilities=product_capabilities,
+        environ=environ,
     )
     preparation = getattr(runtime, "transaction_preparation", None)
     if preparation is None:
@@ -261,10 +266,24 @@ def build_activated_m1_product_planning_composition(
         authority_source=authority,
         materializer=runtime,
     )
+    allocation_runtime = build_installed_accounting_allocation_coordinator_runtime(
+        sessions=sessions,
+        registration=allocation_admission.registration,
+        materializer=runtime,
+    )
+    combined_registry = ProductPlanningCoordinatorRegistry(
+        (
+            *admission.coordinator_registry.registrations,
+            allocation_admission.registration,
+        ),
+        registry_id="ae-product-coordinators-mybee-accounting",
+        registry_version=4,
+    )
+    combined_registry.require_product_capabilities(product_capabilities)
     return build_installed_product_planning_composition(
         sessions=sessions,
-        coordinator_registry=admission.coordinator_registry,
-        runtimes=(coordinator_runtime,),
+        coordinator_registry=combined_registry,
+        runtimes=(coordinator_runtime, allocation_runtime),
     )
 
 

@@ -187,7 +187,7 @@ def test_candidate_packs_remain_unpromoted_while_compose_selects_m1_release() ->
     )
     assert (
         "/app/deployment/product/repository/deployment/environments/"
-        "ae-product-capability-registry.mybee-m1.v4.json"
+        "ae-product-capability-registry.mybee-m1.v5.json"
     ) in compose
     assert "/app/deployment/product/config/ae-product-capability-registry.v1.json" not in compose
 

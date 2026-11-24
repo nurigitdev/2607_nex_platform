@@ -7,6 +7,14 @@ from types import SimpleNamespace
 
 import pytest
 from mybee_ax.orchestration import load_m1_transaction_preparation_registration
+from nex_ae_api.accounting_allocation_product_coordinator import (
+    ACCOUNTING_ALLOCATION_COORDINATOR_ID,
+    ACCOUNTING_ALLOCATION_COORDINATOR_VERSION,
+)
+from nex_ae_api.m1_product_planning_coordinator import (
+    M1_PRODUCT_COORDINATOR_ID,
+    M1_PRODUCT_COORDINATOR_VERSION,
+)
 from nex_ae_api.product_capabilities import load_product_capability_registry
 from nex_ae_api.product_coordinator_activation import (
     DEFAULT_ACTIVATION_PATH,
@@ -25,9 +33,8 @@ def _capabilities():
     return load_product_capability_registry(
         {
             "NEX_AE_PRODUCT_CAPABILITY_REGISTRY_PATH": str(
-                ROOT
-                / "deployment/environments/"
-                "ae-product-capability-registry.mybee-m1.v4.json"
+                ROOT / "deployment/environments/"
+                "ae-product-capability-registry.mybee-m1.v5.json"
             )
         }
     )
@@ -77,9 +84,7 @@ def test_activation_admission_is_hash_bound_and_secret_free() -> None:
 
     assert admitted.coordinator_registry.registrations[0].activation_status == "ACTIVE"
     assert admitted.readiness["status"] == "READY"
-    assert admitted.readiness["planning_policy_mode"] == (
-        "PROVIDER_ASSISTED_REQUIRED"
-    )
+    assert admitted.readiness["planning_policy_mode"] == ("PROVIDER_ASSISTED_REQUIRED")
     serialized = json.dumps(dict(admitted.readiness), sort_keys=True)
     assert "token" not in serialized.lower()
     assert "amount" not in serialized.lower()
@@ -166,6 +171,7 @@ def test_activated_factory_installs_exact_runtime_without_business_defaults() ->
             adapter=SimpleNamespace(registration=preparation)
         ),
         materialize_transaction_plan=lambda **_values: None,
+        materialize_accounting_allocation_plan=lambda **_values: None,
     )
     sessions = sessionmaker(create_engine("sqlite+pysqlite:///:memory:"))
 
@@ -176,10 +182,20 @@ def test_activated_factory_installs_exact_runtime_without_business_defaults() ->
         product_runtime=runtime,
     )
 
-    registration = composition.coordinator_registry.registrations[0]
-    assert registration.activation_status == "ACTIVE"
-    assert composition.runtime_registry.identities == (
-        (registration.coordinator_id, registration.coordinator_version),
+    assert all(
+        registration.activation_status == "ACTIVE"
+        for registration in composition.coordinator_registry.registrations
+    )
+    assert composition.runtime_registry.identities == tuple(
+        sorted(
+            (
+                (
+                    ACCOUNTING_ALLOCATION_COORDINATOR_ID,
+                    ACCOUNTING_ALLOCATION_COORDINATOR_VERSION,
+                ),
+                (M1_PRODUCT_COORDINATOR_ID, M1_PRODUCT_COORDINATOR_VERSION),
+            )
+        )
     )
     assert composition.assignment_handler is not None
     assert composition.event_admission is not None
@@ -194,7 +210,8 @@ def test_activated_factory_requires_product_preparation_runtime() -> None:
             product_capabilities=_capabilities(),
             environ=_environment(),
             product_runtime=SimpleNamespace(
-                materialize_transaction_plan=lambda **_values: None
+                materialize_transaction_plan=lambda **_values: None,
+                materialize_accounting_allocation_plan=lambda **_values: None,
             ),
         )
 

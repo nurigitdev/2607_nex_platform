@@ -276,7 +276,14 @@ def test_startup_upgrades_project_delegation_v1_binding_with_history() -> None:
 def test_startup_upgrades_existing_intent_v9_binding_with_history() -> None:
     factory = session_factory()
     store = SqlAlchemyAePromptRegistryStore(factory)
-    seed_prompt_registry(store, AE_HISTORICAL_PROMPT_SEEDS)
+    seed_prompt_registry(
+        store,
+        [
+            seed
+            for seed in AE_HISTORICAL_PROMPT_SEEDS
+            if seed.binding_key == AE_INTENT_RESOLUTION_BINDING and seed.version == "v9"
+        ],
+    )
 
     before = store.get_binding(AE_INTENT_RESOLUTION_BINDING)
     assert (
@@ -288,14 +295,12 @@ def test_startup_upgrades_existing_intent_v9_binding_with_history() -> None:
 
     after = store.get_binding(AE_INTENT_RESOLUTION_BINDING)
     version = store.get_template_version(after["prompt_template_version_id"])
-    assert version["version"] == "v13"
+    assert version["version"] == "v14"
     assert version["metadata"]["journal_allocation_coupling"] == "forbidden"
     assert version["metadata"]["allocation_contract"] == (
-        "optional_deferred_accounting_operation"
+        "contiguous_indexed_scalar_pairs"
     )
-    assert version["metadata"]["business_request_context"] == (
-        "ae.business_request_context.v1"
-    )
+    assert version["metadata"]["authority_binding"] == "runtime_oa_eos_only"
     with factory() as session:
         history = (
             session.execute(
@@ -304,7 +309,7 @@ def test_startup_upgrades_existing_intent_v9_binding_with_history() -> None:
                     "new_prompt_template_version_id, correlation_id "
                     "FROM ae_prompt_binding_history "
                     "WHERE correlation_id = "
-                    "'w80-ca00f4-intent-prompt-v13'"
+                    "'w80-ca00f5a-intent-prompt-v14'"
                 )
             )
             .mappings()

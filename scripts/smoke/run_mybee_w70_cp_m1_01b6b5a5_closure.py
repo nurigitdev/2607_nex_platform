@@ -41,8 +41,7 @@ DEFAULT_REPORT = Path(
 )
 SCHEMA_VERSION = "mybee.w70_cp_m1_01b6b5a5_protected_gate.v1"
 PRODUCT_CAPABILITY_REGISTRY = (
-    ROOT
-    / "deployment/environments/ae-product-capability-registry.mybee-m1.v4.json"
+    ROOT / "deployment/environments/ae-product-capability-registry.mybee-m1.v4.json"
 )
 
 PROTECTED_TESTS = (
@@ -123,9 +122,8 @@ def run_gate(
     capabilities = load_product_capability_registry(
         {
             "NEX_AE_PRODUCT_CAPABILITY_REGISTRY_PATH": str(
-                repository_root
-                / "deployment/environments/"
-                "ae-product-capability-registry.mybee-m1.v4.json"
+                repository_root / "deployment/environments/"
+                "ae-product-capability-registry.mybee-m1.v5.json"
             )
         }
     )
@@ -133,14 +131,12 @@ def run_gate(
         product_capabilities=capabilities,
         environ={
             "NEX_AE_PRODUCT_COORDINATOR_ACTIVATION_PATH": str(
-                repository_root
-                / "deployment/locks/"
-                "ae-mybee-m1-product-coordinator-activation.v3.json"
+                repository_root / "deployment/locks/"
+                "ae-mybee-m1-product-coordinator-activation.v4.json"
             ),
             "NEX_AE_PRODUCT_COORDINATOR_ROLLBACK_PATH": str(
-                repository_root
-                / "deployment/locks/"
-                "ae-mybee-m1-product-coordinator-rollback.v3.json"
+                repository_root / "deployment/locks/"
+                "ae-mybee-m1-product-coordinator-rollback.v4.json"
             ),
         },
         repository_root=repository_root,

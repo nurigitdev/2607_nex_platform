@@ -18,8 +18,8 @@ def test_demo_ae_runtime_containerfile_admits_every_embedded_asset_path() -> Non
         "NEX_AE_NSL_PLATFORM_LOCK=/app/deployment/product/repository/"
         "deployment/locks/python-production.lock"
     ) in source
-    assert "ae-mybee-m1-runtime-activation.v4.json" in source
-    assert "mybee-m1-d04-d12.v3.nsp" in source
+    assert "ae-mybee-m1-runtime-activation.v5.json" in source
+    assert "mybee-m1-d04-d12-allocation.v4.nsp" in source
     assert (
         "install -d -o 65532 -g 65532 -m 0700 /var/lib/nex-platform/ae-runtime/nsl"
     ) in source
@@ -61,13 +61,14 @@ def test_demo_ae_runtime_image_dry_run_requires_locked_bundle() -> None:
     assert result["active_runtime_profile"] == "VERIFIED_PRODUCT_RELEASE"
     assert result["verified_product_release"] == {
         "activation_state": "ACTIVE_GENERALIZED",
-        "activation_hash": "sha256:ce6f8b858b6a432bf661aa1cc0c67b3454b0d8062950203251d805915a481b65",
-        "admission_hash": "sha256:7158792d96d7496d7b1ba4091491b053613d68623f32ab39a75c56532a14b309",
-        "release_id": "nex-mybee-m1-d04-d12-checkpoint-v3",
-        "release_hash": "sha256:7011c13b883137d15c930adc64b62e2cdf6c8ba2e78880d5404c239e1bf12b4c",
-        "package_hash": "sha256:a2397cc11559d882e11bfaaa4ecf742ab965158b1cbcebb8dc32bf0eaf477b9c",
-        "skill_catalog_hash": "sha256:1bc19745f7a93844e59b70a20bbd7ce28e6a23d0723c4fcff399eef95b9a5a0a",
+        "activation_hash": "sha256:a391a324a5c10a41505a2197300eef4e0befcc331cdc90b3f0af4312fd8e6e20",
+        "admission_hash": "sha256:a3b105b029f1f62de3d65e1d95fac5781ea75eeea0135f69bfc74b0a00b2234f",
+        "release_id": "nex-mybee-m1-d04-d12-allocation-checkpoint-v4",
+        "release_hash": "sha256:228296ee2f4df8019a4d47ab66fa53d9ceaf26f00030bd0ab0ab1acabfcf5de0",
+        "package_hash": "sha256:78b7a009c1c15e040aa7b8d9fe2cf0ab15f86cacd58f77c8411549aecf76fea6",
+        "skill_catalog_hash": "sha256:d412fdaa3baf6ec8feb9ab68edbd2c6c9cc45246eed4295e16641378f9ec1a98",
         "runtime_selectable_capabilities": [
+            "FINANCE.COST_ALLOCATION.RUN",
             "FINANCE.VOUCHER.APPROVE_AND_POST",
             "PROJECT.WORK_CODE_SET.GET",
         ],

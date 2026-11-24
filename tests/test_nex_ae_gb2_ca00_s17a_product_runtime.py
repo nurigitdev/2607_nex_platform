@@ -214,7 +214,7 @@ def test_product_runtime_deployment_audit_passes_and_detects_residue(
         *CANONICAL_DEPLOYMENT_ENTRYPOINTS,
         *LEGACY_DEPLOYMENT_WRAPPERS,
         *PRODUCT_RUNTIME_PATHS,
-        "deployment/environments/ae-product-capability-registry.mybee-m1.v4.json",
+        "deployment/environments/ae-product-capability-registry.mybee-m1.v5.json",
     ):
         target = lease_drift_root / relative
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -245,7 +245,7 @@ def test_product_runtime_deployment_audit_passes_and_detects_residue(
         *CANONICAL_DEPLOYMENT_ENTRYPOINTS,
         *LEGACY_DEPLOYMENT_WRAPPERS,
         *PRODUCT_RUNTIME_PATHS,
-            "deployment/environments/ae-product-capability-registry.mybee-m1.v4.json",
+        "deployment/environments/ae-product-capability-registry.mybee-m1.v5.json",
     ):
         target = tmp_path / relative
         target.parent.mkdir(parents=True, exist_ok=True)

@@ -1,0 +1,200 @@
+{
+  "tools": [
+    {
+      "tool_id": "FINANCE.COST_ALLOCATION.RUN",
+      "version": "1.0.0",
+      "capability": "WRITE",
+      "operation_kind": "CREATE",
+      "inputs": [
+        {
+          "name": "allocation_work_intent_json",
+          "type": {"kind": "primitive", "name": "String"}
+        }
+      ],
+      "output": {
+        "kind": "record",
+        "name": "AccountingAllocationResult",
+        "fields": [
+          {
+            "name": "allocation_result_ref",
+            "type": {"kind": "primitive", "name": "String"}
+          },
+          {
+            "name": "result_hash",
+            "type": {"kind": "primitive", "name": "String"}
+          }
+        ]
+      },
+      "required_scope": "finance:allocation:execute",
+      "risk_level": "R3",
+      "output_classification": "CONFIDENTIAL",
+      "write_semantics": {
+        "side_effect": true,
+        "atomicity": "ATOMIC",
+        "idempotency": {
+          "required": true,
+          "scope": "TOOL_AND_TENANT",
+          "retention": "PROVIDER_DEFINED",
+          "duplicate_behavior": "RETURN_ORIGINAL_RESULT",
+          "payload_conflict_behavior": "IDEMPOTENCY_CONFLICT"
+        },
+        "commit": {"confirmation": "EXPLICIT"},
+        "approval": {"required": true},
+        "preconditions": {"supported": true},
+        "verification": {
+          "tool_id": "FINANCE.COST_ALLOCATION.VERIFY",
+          "reference_schema": {
+            "kind": "record",
+            "name": "AccountingAllocationResult",
+            "fields": [
+              {
+                "name": "allocation_result_ref",
+                "type": {"kind": "primitive", "name": "String"}
+              },
+              {
+                "name": "result_hash",
+                "type": {"kind": "primitive", "name": "String"}
+              }
+            ]
+          },
+          "consistency_hint": "READ_AFTER_WRITE_STRONG"
+        }
+      }
+    },
+    {
+      "tool_id": "FINANCE.COST_ALLOCATION.VERIFY",
+      "version": "1.0.0",
+      "capability": "READ",
+      "inputs": [
+        {
+          "name": "allocation_result_ref",
+          "type": {"kind": "primitive", "name": "String"}
+        }
+      ],
+      "output": {
+        "kind": "record",
+        "name": "AccountingAllocationResult",
+        "fields": [
+          {
+            "name": "allocation_result_ref",
+            "type": {"kind": "primitive", "name": "String"}
+          },
+          {
+            "name": "result_hash",
+            "type": {"kind": "primitive", "name": "String"}
+          }
+        ]
+      },
+      "required_scope": "finance:allocation:verify",
+      "risk_level": "R1",
+      "output_classification": "CONFIDENTIAL"
+    },
+    {
+      "tool_id": "FINANCE.JOURNAL.RECONCILE",
+      "version": "1.0.0",
+      "capability": "READ",
+      "inputs": [
+        {
+          "name": "business_operation_id",
+          "type": {"kind": "primitive", "name": "String"}
+        }
+      ],
+      "output": {
+        "kind": "record",
+        "name": "JournalReconciliationResult",
+        "fields": [
+          {
+            "name": "business_result_ref",
+            "type": {"kind": "primitive", "name": "String"}
+          },
+          {
+            "name": "journal_id",
+            "type": {"kind": "primitive", "name": "String"}
+          }
+        ]
+      },
+      "required_scope": "finance:journal:read",
+      "risk_level": "R1",
+      "output_classification": "INTERNAL"
+    },
+    {
+      "tool_id": "FINANCE.VOUCHER.APPROVE_AND_POST",
+      "version": "1.0.0",
+      "capability": "WRITE",
+      "operation_kind": "CREATE",
+      "inputs": [
+        {"name": "schema_version", "type": {"kind": "primitive", "name": "String"}},
+        {"name": "tenant_id", "type": {"kind": "primitive", "name": "String"}},
+        {"name": "company_id", "type": {"kind": "primitive", "name": "String"}},
+        {"name": "candidate_id", "type": {"kind": "primitive", "name": "String"}},
+        {"name": "expected_candidate_version", "type": {"kind": "primitive", "name": "Int"}},
+        {"name": "expected_candidate_revision", "type": {"kind": "primitive", "name": "Int"}},
+        {"name": "expected_candidate_hash", "type": {"kind": "primitive", "name": "String"}},
+        {"name": "accounting_approval_evidence_id", "type": {"kind": "primitive", "name": "String"}}
+      ],
+      "output": {
+        "kind": "record",
+        "name": "PostedJournalResult",
+        "fields": [
+          {"name": "business_result_ref", "type": {"kind": "primitive", "name": "String"}},
+          {"name": "journal_id", "type": {"kind": "primitive", "name": "String"}},
+          {"name": "journal_no", "type": {"kind": "primitive", "name": "String"}}
+        ]
+      },
+      "required_scope": "finance:journal:approve",
+      "risk_level": "R3",
+      "output_classification": "CONFIDENTIAL",
+      "write_semantics": {
+        "side_effect": true,
+        "atomicity": "ATOMIC",
+        "idempotency": {
+          "required": true,
+          "scope": "TOOL_AND_TENANT",
+          "retention": "PROVIDER_DEFINED",
+          "duplicate_behavior": "RETURN_ORIGINAL_RESULT",
+          "payload_conflict_behavior": "IDEMPOTENCY_CONFLICT"
+        },
+        "commit": {"confirmation": "EXPLICIT"},
+        "approval": {"required": true},
+        "preconditions": {"supported": true},
+        "verification": {
+          "tool_id": "FINANCE.JOURNAL.RECONCILE",
+          "reference_schema": {
+            "kind": "record",
+            "name": "PostedJournalResult",
+            "fields": [
+              {"name": "business_result_ref", "type": {"kind": "primitive", "name": "String"}},
+              {"name": "journal_id", "type": {"kind": "primitive", "name": "String"}},
+              {"name": "journal_no", "type": {"kind": "primitive", "name": "String"}}
+            ]
+          },
+          "consistency_hint": "READ_AFTER_WRITE_STRONG"
+        }
+      }
+    },
+    {
+      "tool_id": "PROJECT.WORK_CODE_SET.GET",
+      "version": "1.0.0",
+      "capability": "READ",
+      "inputs": [
+        {"name": "tenant_id", "type": {"kind": "primitive", "name": "String"}},
+        {"name": "requester_subject_id", "type": {"kind": "primitive", "name": "String"}},
+        {"name": "project_id", "type": {"kind": "primitive", "name": "String"}},
+        {"name": "effective_on", "type": {"kind": "primitive", "name": "String"}}
+      ],
+      "output": {
+        "kind": "record",
+        "name": "ProjectWorkCodeSetResult",
+        "fields": [
+          {"name": "project_id", "type": {"kind": "primitive", "name": "String"}},
+          {"name": "revision", "type": {"kind": "primitive", "name": "Int"}},
+          {"name": "state", "type": {"kind": "primitive", "name": "String"}},
+          {"name": "work_set_hash", "type": {"kind": "primitive", "name": "String"}}
+        ]
+      },
+      "required_scope": "project:work-code:read",
+      "risk_level": "R1",
+      "output_classification": "INTERNAL"
+    }
+  ]
+}

@@ -1167,25 +1167,24 @@ def test_canonical_oci_and_compose_select_same_verified_release() -> None:
     ).read_text(encoding="utf-8")
     for expected in (
         "VERIFIED_PRODUCT_RELEASE",
-        "ae-mybee-m1-runtime-admission.v4.json",
-        "ae-mybee-m1-runtime-activation.v4.json",
-        "ae-product-capability-registry.mybee-m1.v4.json",
-        "mybee-m1-d04-d12.v3.nsp",
-        "tool_catalog.v1.json",
+        "ae-mybee-m1-runtime-admission.v5.json",
+        "ae-mybee-m1-runtime-activation.v5.json",
+        "ae-product-capability-registry.mybee-m1.v5.json",
+        "tool_catalog.v2.json",
     ):
         assert expected in containerfile
     for expected in (
         "VERIFIED_PRODUCT_RELEASE",
-        "ae-mybee-m1-runtime-admission.v4.json",
-        "ae-mybee-m1-runtime-activation.v4.json",
-        "ae-product-capability-registry.mybee-m1.v4.json",
-        "tool_catalog.v1.json",
+        "ae-mybee-m1-runtime-admission.v5.json",
+        "ae-mybee-m1-runtime-activation.v5.json",
+        "ae-product-capability-registry.mybee-m1.v5.json",
+        "tool_catalog.v2.json",
     ):
         assert expected in compose
     assert (
         compose.count(
             "/app/deployment/product/repository/deployment/environments/"
-            "ae-product-capability-registry.mybee-m1.v4.json"
+            "ae-product-capability-registry.mybee-m1.v5.json"
         )
         == 2
     )

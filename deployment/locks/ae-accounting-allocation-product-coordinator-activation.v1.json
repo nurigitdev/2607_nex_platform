@@ -1,0 +1,32 @@
+{
+  "activation_state": "ACTIVE",
+  "checkpoint_schema_version": "ae.product_preparation_checkpoint.v1",
+  "content_hash": "sha256:60353ddb50839f18110f1fe7dbbae713526525b7bd8d8798cdbeb41a1d5a444f",
+  "content_included": false,
+  "coordinator": {
+    "coordinator_id": "MYBEE.ACCOUNTING.ALLOCATION",
+    "coordinator_version": "1.0.0",
+    "registration_hash": "sha256:3640771d79a94ddef4bf5ee1135dcc2a96c93a41621a13e62e525e88470f5d2e"
+  },
+  "materializer_source_identity": "nex-ae:accounting-allocation-plan-materializer:ae.accounting_allocation_plan.v1",
+  "preparation_adapter_source_identity": "nex-ae:accounting-allocation-immediate-preparation:v1",
+  "product_capability_registry_hash": "sha256:6656b57b3d3e65bda9666db90100b2dc13f51270b875d60904927027c2c23e95",
+  "rollback_receipt_hash": "sha256:dcd88712626efc01201525d4b27c59e63fbd4debe262eab2db1003496690ab09",
+  "runtime_assignment_handlers": [
+    "EXECUTABLE_STEP"
+  ],
+  "schema_version": "ae.accounting_allocation_coordinator_activation.v1",
+  "secret_included": false,
+  "skill_bundle_locks": [
+    {
+      "bundle_id": "nex-mybee-m1-d04-d12-allocation-checkpoint-v4",
+      "bundle_manifest_ref": "deployment-lock://ae-mybee-m1-signed-skill-checkpoint.v4",
+      "capability_id": "FINANCE.COST_ALLOCATION.RUN",
+      "capability_registration_hash": "sha256:b0500956fdda83dea8f7695a9a57defd96d16682a60a6150acac55619d81b225",
+      "capability_version": "1.0.0",
+      "exact_skill_version": "1.0.0",
+      "skill_id": "MYBEE.D04.ACCOUNTING_ALLOCATION",
+      "skill_semantic_hash": "sha256:622204f6f9f485114b6f028e7921fc4b3b51bada2b73eac085115bf21b1797bd"
+    }
+  ]
+}

@@ -38,6 +38,7 @@ MyBee office-work AX Service Phase-1 program.
 31. `NeX_MyBee_W80_CA00D_MO_Capability_Scoped_Readiness_and_Healthcheck_Boundary_v1.0.md`
 32. `NeX_MyBee_W80_CA00E_Cross_Agent_Semantic_Handoff_Evidence_Reuse_and_Role_Scoped_Replanning_Boundary_v1.0.md`
 33. `NeX_MyBee_W80_CA00F_Sequential_Approval_Result_Publication_WA_Evidence_and_Allocation_Responsibility_Boundary_v1.0.md`
+34. `NeX_MyBee_W80_CA00F_5A_Accounting_Allocation_Product_Entry_and_Domain_Intent_Activation_Closure_v1.0.md`
 
 The Markdown Slice Plan and its Execution Matrix JSON are one planning set.
 The JSON is machine-readable traceability input, not runtime configuration or
@@ -95,6 +96,14 @@ barrier, distinguishes mandatory WA execution evidence from optional rendered
 assets, and retires automatic allocation/P&L execution from Journal completion.
 Journal and accounting allocation are verified by separate protected live
 journeys, with no fixture-specific product branch or planned database migration.
+
+W80-CA00F.5A closes the semantic product-entry gap discovered before the split
+live acceptance. It admits `FINANCE.COST_ALLOCATION.RUN` through the generic
+DomainIntentActivator registry, preserves a typed/hash-bound allocation intent
+inside the common WorkIntent SoR, and enters the existing Product Coordinator,
+AgentPlan, ExecutablePlan, and RuntimeJob pipeline. Fresh OA/EOS authority remains
+an execution-time requirement; fixed tenants, ratios, Project counts, Plan IDs,
+and fixture-driven product branches are forbidden.
 
 The W30-CA01 pair is the source-backed post-W20 delta. It takes precedence
 only for W30 entry ordering, current migration-number reservations, the

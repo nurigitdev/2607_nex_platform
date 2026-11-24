@@ -87,29 +87,41 @@ def test_s20_installed_acceptance_orchestrates_live_and_restart_hooks(
         "resolve_current_platform_database_targets",
         lambda _env: _targets(),
     )
-    monkeypatch.setattr(installed, "inspect_demo_database_targets", lambda *_args, **_kwargs: ())
+    monkeypatch.setattr(
+        installed, "inspect_demo_database_targets", lambda *_args, **_kwargs: ()
+    )
     monkeypatch.setattr(
         installed,
         "current_platform_database_admission_public_projection",
         lambda _items: {"migration_current_count": 8, "state": "ADMITTED"},
     )
-    monkeypatch.setattr(installed, "_pending_domain_counts", lambda _urls: {"pending": 0})
+    monkeypatch.setattr(
+        installed, "_pending_domain_counts", lambda _urls: {"pending": 0}
+    )
     monkeypatch.setattr(
         installed,
         "canonical_service_principal_specs",
         lambda: (SimpleNamespace(owner="nex-ae-api"),),
     )
-    monkeypatch.setattr(installed, "prepare_staging_runtime_directory", lambda *_a, **_k: None)
+    monkeypatch.setattr(
+        installed, "prepare_staging_runtime_directory", lambda *_a, **_k: None
+    )
     monkeypatch.setattr(
         installed,
         "_compose",
-        lambda _env, *, root, arguments, check=True: compose_calls.append(tuple(arguments))
-        or subprocess.CompletedProcess(arguments, 0, stdout="production_container_bootstrap=pass"),
+        lambda _env, *, root, arguments, check=True: (
+            compose_calls.append(tuple(arguments))
+            or subprocess.CompletedProcess(
+                arguments, 0, stdout="production_container_bootstrap=pass"
+            )
+        ),
     )
     monkeypatch.setattr(installed, "_wait_for_tls", lambda *_a, **_k: None)
     monkeypatch.setattr(installed, "OpenBaoAdminClient", Admin)
     monkeypatch.setattr(
-        installed, "initialize_openbao", lambda *_a, **_k: SimpleNamespace(root_token="root")
+        installed,
+        "initialize_openbao",
+        lambda *_a, **_k: SimpleNamespace(root_token="root"),
     )
     monkeypatch.setattr(installed, "_secret_values", lambda *_a, **_k: {})
     monkeypatch.setattr(installed, "configure_openbao_staging", lambda *_a, **_k: None)
@@ -118,9 +130,15 @@ def test_s20_installed_acceptance_orchestrates_live_and_restart_hooks(
         "configure_canonical_runtime_approles",
         lambda *_a, **_k: {"status": "PASS"},
     )
-    monkeypatch.setattr(installed, "refresh_openbao_approle_credentials", lambda *_a, **_k: None)
-    monkeypatch.setattr(installed, "configure_openbao_s144_trust", lambda *_a, **_k: None)
-    monkeypatch.setattr(installed, "refresh_openbao_s144_transit_credentials", lambda *_a, **_k: None)
+    monkeypatch.setattr(
+        installed, "refresh_openbao_approle_credentials", lambda *_a, **_k: None
+    )
+    monkeypatch.setattr(
+        installed, "configure_openbao_s144_trust", lambda *_a, **_k: None
+    )
+    monkeypatch.setattr(
+        installed, "refresh_openbao_s144_transit_credentials", lambda *_a, **_k: None
+    )
     monkeypatch.setattr(installed, "_write_secret", lambda *_a, **_k: None)
 
     def create_engine(url, **_kwargs):
@@ -139,28 +157,42 @@ def test_s20_installed_acceptance_orchestrates_live_and_restart_hooks(
         "_provision_demo_object_storage",
         lambda **_kwargs: {"status": "PASS", "bucket_count": 2},
     )
-    monkeypatch.setattr(installed, "_service_readiness", lambda _dir: {"nex-oa": "READY"})
+    monkeypatch.setattr(
+        installed, "_service_readiness", lambda _dir: {"nex-oa": "READY"}
+    )
     heartbeat_calls = iter(
         (
             {"worker": {"status": "IDLE", "observed_at": "one"}},
             {"worker": {"status": "IDLE", "observed_at": "two"}},
         )
     )
-    monkeypatch.setattr(installed, "_wait_for_heartbeats", lambda *_a, **_k: next(heartbeat_calls))
+    monkeypatch.setattr(
+        installed, "_wait_for_heartbeats", lambda *_a, **_k: next(heartbeat_calls)
+    )
     monkeypatch.setattr(
         installed,
         "_signed_token_runtime_acceptance",
         lambda *_a, **_k: {"nex-oa": {"status": "PASS"}},
     )
-    monkeypatch.setattr(installed, "_wait_for_service_readiness", lambda _dir: {"nex-oa": "READY"})
-    monkeypatch.setattr(installed, "_bootstrap_log_counts", lambda *_a, **_k: {"worker": 1})
+    monkeypatch.setattr(
+        installed, "_wait_for_service_readiness", lambda _dir: {"nex-oa": "READY"}
+    )
+    monkeypatch.setattr(
+        installed, "_bootstrap_log_counts", lambda *_a, **_k: {"worker": 1}
+    )
     monkeypatch.setattr(
         installed,
         "admit_demo_domain_runtime_evidence",
-        lambda **_kwargs: {"status": "PASS", "process_count": 1, "signed_service_count": 1},
+        lambda **_kwargs: {
+            "status": "PASS",
+            "process_count": 1,
+            "signed_service_count": 1,
+        },
     )
     monkeypatch.setattr(installed, "_assert_redacted", lambda *_a, **_k: None)
-    monkeypatch.setattr(installed, "_cleanup_oa_acceptance_rows", lambda *_a, **_k: None)
+    monkeypatch.setattr(
+        installed, "_cleanup_oa_acceptance_rows", lambda *_a, **_k: None
+    )
 
     live_calls: list[str] = []
 
@@ -198,7 +230,9 @@ def test_s20_golden_journey_runs_live_and_restart_projections(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     engines: list[_Engine] = []
-    monkeypatch.setattr(golden, "resolve_demo_database_targets", lambda _env: _targets())
+    monkeypatch.setattr(
+        golden, "resolve_demo_database_targets", lambda _env: _targets()
+    )
 
     def create_engine(url, **_kwargs):
         engine = _Engine(str(url))
@@ -208,7 +242,9 @@ def test_s20_golden_journey_runs_live_and_restart_projections(
     monkeypatch.setattr(golden, "create_engine", create_engine)
     monkeypatch.setattr(golden, "_prepare_screenshot_directory", lambda _path: None)
     monkeypatch.setattr(golden, "_cleanup_dynamic_rows", lambda *_a, **_k: {})
-    monkeypatch.setattr(golden, "_rotate_demo_credentials", lambda *_a, **_k: [{"credential_id": "one"}])
+    monkeypatch.setattr(
+        golden, "_rotate_demo_credentials", lambda *_a, **_k: [{"credential_id": "one"}]
+    )
     monkeypatch.setattr(
         golden,
         "_fixture_visibility",
@@ -229,7 +265,9 @@ def test_s20_golden_journey_runs_live_and_restart_projections(
     browser_calls: list[str] = []
 
     def browser(_env, **kwargs):
-        browser_calls.append("restart" if kwargs.get("recovery_interaction_id") else "live")
+        browser_calls.append(
+            "restart" if kwargs.get("recovery_interaction_id") else "live"
+        )
         return {
             "status": "PASS",
             "checks": {"browser": True},
@@ -258,7 +296,9 @@ def test_s20_golden_journey_runs_live_and_restart_projections(
         "voucher_count": 1,
         "voucher_line_count": 2,
     }
-    monkeypatch.setattr(golden, "_database_acceptance_projection", lambda *_a, **_k: dict(projection))
+    monkeypatch.setattr(
+        golden, "_database_acceptance_projection", lambda *_a, **_k: dict(projection)
+    )
     monkeypatch.setattr(golden, "_restore_demo_credentials", lambda *_a, **_k: None)
     monkeypatch.setattr(golden, "_delete_demo_sessions", lambda *_a, **_k: None)
     monkeypatch.setattr(golden, "_assert_zero_journey_residue", lambda *_a, **_k: None)
@@ -297,7 +337,9 @@ def test_s20_golden_journey_runs_live_and_restart_projections(
     assert result["status"] == "PASS"
     assert result["actual_remote_generation"] is True
     assert result["extended_acceptance"]["checks"]["one_voucher"] is True
-    assert result["post_restart_acceptance"]["checks"]["one_voucher_after_restart"] is True
+    assert (
+        result["post_restart_acceptance"]["checks"]["one_voucher_after_restart"] is True
+    )
     assert browser_calls == ["live", "restart"]
     assert engines and all(engine.disposed for engine in engines)
 
@@ -327,30 +369,50 @@ def test_s20_trust_admission_orchestrates_rotation_and_restart(
             "source_admitted": True,
         },
     )
-    monkeypatch.setattr(trust, "_image_environment_from_release_report", lambda _report: {})
-    monkeypatch.setattr(trust, "prepare_staging_runtime_directory", lambda *_a, **_k: None)
+    monkeypatch.setattr(
+        trust, "_image_environment_from_release_report", lambda _report: {}
+    )
+    monkeypatch.setattr(
+        trust, "prepare_staging_runtime_directory", lambda *_a, **_k: None
+    )
     monkeypatch.setattr(
         trust,
         "_compose",
-        lambda _env, *, root, arguments, check=True: compose_calls.append(tuple(arguments))
-        or subprocess.CompletedProcess(arguments, 0, stdout="pass"),
+        lambda _env, *, root, arguments, check=True: (
+            compose_calls.append(tuple(arguments))
+            or subprocess.CompletedProcess(arguments, 0, stdout="pass")
+        ),
     )
     monkeypatch.setattr(trust, "OpenBaoAdminClient", lambda *_a, **_k: object())
-    monkeypatch.setattr(trust, "_synthetic_secret_values", lambda: {"ONE": "secret-one"})
-    monkeypatch.setattr(trust, "provision_openbao_environment", lambda *_a, **_k: provisioning)
+    monkeypatch.setattr(
+        trust, "_synthetic_secret_values", lambda: {"ONE": "secret-one"}
+    )
+    monkeypatch.setattr(
+        trust, "provision_openbao_environment", lambda *_a, **_k: provisioning
+    )
     generations = iter(
         (
-            {"resolved_owner_count": len(owners), "dependency_readiness": {"state": "READY"}},
-            {"resolved_owner_count": len(owners), "dependency_readiness": {"state": "READY"}},
+            {
+                "resolved_owner_count": len(owners),
+                "dependency_readiness": {"state": "READY"},
+            },
+            {
+                "resolved_owner_count": len(owners),
+                "dependency_readiness": {"state": "READY"},
+            },
         )
     )
-    monkeypatch.setattr(trust, "_resolve_generation", lambda *_a, **_k: next(generations))
+    monkeypatch.setattr(
+        trust, "_resolve_generation", lambda *_a, **_k: next(generations)
+    )
     monkeypatch.setattr(
         trust,
         "reactivate_openbao_after_restart",
         lambda *_a, **_k: {"status": "PASS"},
     )
-    monkeypatch.setattr(trust, "refresh_openbao_approle_credentials", lambda *_a, **_k: None)
+    monkeypatch.setattr(
+        trust, "refresh_openbao_approle_credentials", lambda *_a, **_k: None
+    )
     monkeypatch.setattr(trust, "_cross_owner_denied", lambda _dir: True)
     monkeypatch.setattr(
         trust,
@@ -470,7 +532,9 @@ def test_s20_installed_runtime_helpers_cover_network_queue_and_image_contracts(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     materials = {
-        "nex-ae-api": SimpleNamespace(credential_id="ae-cred", client_secret="ae-secret"),
+        "nex-ae-api": SimpleNamespace(
+            credential_id="ae-cred", client_secret="ae-secret"
+        ),
         "nex-wc": SimpleNamespace(credential_id="wc-cred", client_secret="wc-secret"),
     }
     https_calls: list[tuple[str, str]] = []
@@ -510,7 +574,11 @@ def test_s20_installed_runtime_helpers_cover_network_queue_and_image_contracts(
             return None
 
     monkeypatch.setattr(installed, "create_engine", lambda *_a, **_k: Engine())
-    urls = {"nex-ae-api": "postgresql://ae", "nex-wc": "postgresql://wc", "nex-eos": "postgresql://eos"}
+    urls = {
+        "nex-ae-api": "postgresql://ae",
+        "nex-wc": "postgresql://wc",
+        "nex-eos": "postgresql://eos",
+    }
     inventory = {"worker": ("nex-ae-api", "worker-1", "AE")}
     assert installed._pending_domain_counts(urls) == {
         "ae_runtime_jobs": 0,
@@ -519,9 +587,12 @@ def test_s20_installed_runtime_helpers_cover_network_queue_and_image_contracts(
     }
     observed = installed._heartbeats(urls, worker_inventory=inventory)
     assert observed["worker"]["status"] == "IDLE"
-    assert installed._wait_for_heartbeats(
-        urls, timeout_seconds=0.1, worker_inventory=inventory
-    ) == observed
+    assert (
+        installed._wait_for_heartbeats(
+            urls, timeout_seconds=0.1, worker_inventory=inventory
+        )
+        == observed
+    )
 
     monkeypatch.setattr(installed, "_heartbeats", lambda *_a, **_k: {})
     with pytest.raises(
@@ -541,8 +612,7 @@ def test_s20_installed_runtime_helpers_cover_network_queue_and_image_contracts(
         )
     )
     assert installed._structured_process_failure(blocked_log) == (
-        "ae.agent_runtime_process.unavailable:"
-        "failed_checks=package_readiness_satisfied"
+        "ae.agent_runtime_process.unavailable:failed_checks=package_readiness_satisfied"
     )
     assert installed._structured_process_failure("unstructured") == (
         "structured_failure_unavailable"
@@ -551,9 +621,13 @@ def test_s20_installed_runtime_helpers_cover_network_queue_and_image_contracts(
     monkeypatch.setattr(
         installed,
         "_compose",
-        lambda *_a, **_k: subprocess.CompletedProcess([], 0, stdout="production_container_bootstrap=pass\n"),
+        lambda *_a, **_k: subprocess.CompletedProcess(
+            [], 0, stdout="production_container_bootstrap=pass\n"
+        ),
     )
-    assert all(value == 1 for value in installed._bootstrap_log_counts({}, root=ROOT).values())
+    assert all(
+        value == 1 for value in installed._bootstrap_log_counts({}, root=ROOT).values()
+    )
 
     image_id = "sha256:" + "a" * 64
     artifacts = []
@@ -568,7 +642,9 @@ def test_s20_installed_runtime_helpers_cover_network_queue_and_image_contracts(
             }
         )
     release = {"status": "PASS", "image_build": {"artifacts": artifacts}}
-    ae_release = next(item for item in artifacts if item["artifact_id"] == "nex-ae-runtime")
+    ae_release = next(
+        item for item in artifacts if item["artifact_id"] == "nex-ae-runtime"
+    )
     ae_report = {
         "status": "PASS",
         "slice": "GB2-CA00-S18A",
@@ -592,8 +668,10 @@ def test_s20_installed_transport_file_and_cli_helpers(
     monkeypatch.setattr(
         installed.subprocess,
         "run",
-        lambda command, **_kwargs: completed_commands.append(list(command))
-        or subprocess.CompletedProcess(command, 0, stdout="ok"),
+        lambda command, **_kwargs: (
+            completed_commands.append(list(command))
+            or subprocess.CompletedProcess(command, 0, stdout="ok")
+        ),
     )
     completed = installed._compose({}, root=ROOT, arguments=("config",))
     assert completed.returncode == 0
@@ -621,7 +699,9 @@ def test_s20_installed_transport_file_and_cli_helpers(
         def close():
             return None
 
-    monkeypatch.setattr(installed.ssl, "create_default_context", lambda **_kwargs: object())
+    monkeypatch.setattr(
+        installed.ssl, "create_default_context", lambda **_kwargs: object()
+    )
     monkeypatch.setattr(installed, "_ResolvedHttpsConnection", Https)
     status, payload = installed._https_json(
         "oa.nex-staging.test",
@@ -666,15 +746,21 @@ def test_s20_golden_browser_credential_and_cleanup_helpers(
             [], 0, stdout=json.dumps(browser_evidence) + "\n", stderr=""
         ),
     )
-    assert golden._run_playwright(
-        {}, requester_password="requester", approver_password="approver"
-    )["status"] == "PASS"
-    assert golden._run_playwright(
-        {},
-        requester_password="requester",
-        approver_password="approver",
-        recovery_interaction_id="interaction-1",
-    )["runtime"]["interaction_id"] == "interaction-1"
+    assert (
+        golden._run_playwright(
+            {}, requester_password="requester", approver_password="approver"
+        )["status"]
+        == "PASS"
+    )
+    assert (
+        golden._run_playwright(
+            {},
+            requester_password="requester",
+            approver_password="approver",
+            recovery_interaction_id="interaction-1",
+        )["runtime"]["interaction_id"]
+        == "interaction-1"
+    )
     assert golden._result_payload({"result_payload": {"state": "PASS"}}) == {
         "state": "PASS"
     }
@@ -730,7 +816,10 @@ def test_s20_trust_helpers_cover_source_image_compose_and_cli(
 
     image_id = "sha256:" + "b" * 64
     artifacts = [
-        {"artifact_id": artifact_id, "image_reference": f"example/{artifact_id}@{image_id}"}
+        {
+            "artifact_id": artifact_id,
+            "image_reference": f"example/{artifact_id}@{image_id}",
+        }
         for artifact_id in trust.CURRENT_ARTIFACT_REFERENCE_ENVIRONMENTS
     ]
     environment = trust._image_environment_from_release_report(
@@ -743,8 +832,10 @@ def test_s20_trust_helpers_cover_source_image_compose_and_cli(
     monkeypatch.setattr(
         trust.subprocess,
         "run",
-        lambda command, **_kwargs: commands.append(list(command))
-        or subprocess.CompletedProcess(command, 0, stdout="ok"),
+        lambda command, **_kwargs: (
+            commands.append(list(command))
+            or subprocess.CompletedProcess(command, 0, stdout="ok")
+        ),
     )
     assert trust._compose({}, root=ROOT, arguments=("config",)).returncode == 0
     assert commands[0][:4] == ["docker", "compose", "-p", trust.PROJECT_NAME]
@@ -822,15 +913,21 @@ def test_s20_installed_oa_trust_provisioning_uses_fresh_key(
             key_states.append((key_id, target_state))
 
     monkeypatch.setattr(installed, "sessionmaker", lambda **_kwargs: object())
-    monkeypatch.setattr(installed, "SqlAlchemyOaServicePrincipalRepository", lambda _factory: object())
-    monkeypatch.setattr(installed, "OaServicePrincipalService", lambda _repository: object())
+    monkeypatch.setattr(
+        installed, "SqlAlchemyOaServicePrincipalRepository", lambda _factory: object()
+    )
+    monkeypatch.setattr(
+        installed, "OaServicePrincipalService", lambda _repository: object()
+    )
     monkeypatch.setattr(installed, "canonical_service_principal_specs", lambda: specs)
     monkeypatch.setattr(
         installed,
         "_existing_demo_principal_ids",
         lambda _engine, *, specs: {"principal-existing"},
     )
-    monkeypatch.setattr(installed, "SqlAlchemyOaSignedTokenRepository", lambda _factory: object())
+    monkeypatch.setattr(
+        installed, "SqlAlchemyOaSignedTokenRepository", lambda _factory: object()
+    )
     monkeypatch.setattr(installed, "OaSigningKeyService", lambda **_kwargs: Keys())
     monkeypatch.setattr(installed.time, "time", lambda: 1_000_000)
     monkeypatch.setattr(
@@ -838,8 +935,12 @@ def test_s20_installed_oa_trust_provisioning_uses_fresh_key(
         "provision_canonical_service_principals",
         lambda *_a, **_k: provisioned,
     )
-    monkeypatch.setattr(installed, "OpenBaoTransitKeyProvisioner", lambda *_a, **_k: object())
-    monkeypatch.setattr(installed, "register_openbao_transit_key_version", lambda *_a, **_k: None)
+    monkeypatch.setattr(
+        installed, "OpenBaoTransitKeyProvisioner", lambda *_a, **_k: object()
+    )
+    monkeypatch.setattr(
+        installed, "register_openbao_transit_key_version", lambda *_a, **_k: None
+    )
 
     result, key_id, created = installed._provision_oa_trust(
         object(),
@@ -884,9 +985,7 @@ def test_s20_golden_cleanup_projection_and_zero_residue_contracts() -> None:
         def connect(self):
             return _ConnectionContext(Connection(self.owner))
 
-    engines = {
-        owner: Engine(owner) for owner in ("nex-ae-api", "nex-wc", "nex-eos")
-    }
+    engines = {owner: Engine(owner) for owner in ("nex-ae-api", "nex-wc", "nex-eos")}
     deleted = golden._cleanup_dynamic_rows(engines, tenant_id="VO00")
     projection = golden._database_acceptance_projection(
         engines, interaction_id="interaction-1"
@@ -972,15 +1071,23 @@ def test_s20_image_builder_stages_product_runtime_bundle(
         "deployment/locks/ae-mybee-m1-generalized-rollback.v3.json": "{}\n",
         "deployment/locks/ae-mybee-m1-generalized-rollback.v2.json": "{}\n",
         "deployment/locks/ae-mybee-m1-generalized-rollback.v1.json": "{}\n",
+        "deployment/locks/ae-mybee-m1-product-coordinator-activation.v4.json": "{}\n",
         "deployment/locks/ae-mybee-m1-product-coordinator-activation.v3.json": "{}\n",
         "deployment/locks/ae-mybee-m1-product-coordinator-activation.v2.json": "{}\n",
         "deployment/locks/ae-mybee-m1-product-coordinator-activation.v1.json": "{}\n",
+        "deployment/locks/ae-mybee-m1-product-coordinator-rollback.v4.json": "{}\n",
         "deployment/locks/ae-mybee-m1-product-coordinator-rollback.v3.json": "{}\n",
         "deployment/locks/ae-mybee-m1-product-coordinator-rollback.v2.json": "{}\n",
         "deployment/locks/ae-mybee-m1-product-coordinator-rollback.v1.json": "{}\n",
+        "deployment/locks/ae-accounting-allocation-product-coordinator-activation.v1.json": "{}\n",
+        "deployment/locks/ae-accounting-allocation-product-coordinator-rollback.v1.json": "{}\n",
+        "deployment/locks/ae-mybee-m1-runtime-admission.v5.json": "{}\n",
+        "deployment/locks/ae-mybee-m1-runtime-activation.v5.json": "{}\n",
+        "deployment/locks/ae-mybee-m1-signed-skill-checkpoint.v4.json": "{}\n",
         "deployment/locks/ae-mybee-m1-signed-skill-checkpoint.v3.json": "{}\n",
         "deployment/locks/ae-mybee-m1-signed-skill-checkpoint.v2.json": "{}\n",
         "deployment/locks/ae-mybee-m1-signed-skill-checkpoint.v1.json": "{}\n",
+        "deployment/environments/ae-product-capability-registry.mybee-m1.v5.json": "{}\n",
         "deployment/environments/ae-product-capability-registry.mybee-m1.v4.json": "{}\n",
         "deployment/environments/ae-product-capability-registry.mybee-m1.v3.json": "{}\n",
         "deployment/environments/ae-product-capability-registry.mybee-m1.v1.json": "{}\n",
@@ -988,13 +1095,17 @@ def test_s20_image_builder_stages_product_runtime_bundle(
         "deployment/product/config/project-agent-profile-policy.v1.json": "{}\n",
         "domains/mybee/config/m1_transaction_preparation_registry.v1.json": "{}\n",
         "domains/mybee/skills/m1_checkpoint/context.json": "{}\n",
+        "domains/mybee/skills/m1_checkpoint/mybee-m1-d04-d12-allocation.v4.nsp": "nsp\n",
         "domains/mybee/skills/m1_checkpoint/mybee-m1-d04-d12.v3.nsp": "nsp\n",
         "domains/mybee/skills/m1_checkpoint/mybee-m1-d04-d12.v2.nsp": "nsp\n",
         "domains/mybee/skills/m1_checkpoint/mybee-m1-d04-d12.v1.nsp": "nsp\n",
+        "domains/mybee/skills/m1_checkpoint/mybee-m1-release-public-key.v4.json": "{}\n",
         "domains/mybee/skills/m1_checkpoint/mybee-m1-release-public-key.v3.json": "{}\n",
         "domains/mybee/skills/m1_checkpoint/mybee-m1-release-public-key.v2.json": "{}\n",
         "domains/mybee/skills/m1_checkpoint/mybee-m1-release-public-key.v1.json": "{}\n",
+        "domains/mybee/skills/m1_checkpoint/tool_catalog.v2.json": "{}\n",
         "domains/mybee/skills/m1_checkpoint/tool_catalog.v1.json": "{}\n",
+        "domains/mybee/skills/d04_accounting/allocation_execution.v1.ns": "skill\n",
         "domains/mybee/skills/d04_accounting/journal_posting.v1_0_2.ns": "skill\n",
         "domains/mybee/skills/d04_accounting/journal_posting.v1_0_1.ns": "skill\n",
         "domains/mybee/skills/d04_accounting/journal_posting.v1.ns": "skill\n",
@@ -1030,8 +1141,7 @@ def test_s20_image_builder_stages_product_runtime_bundle(
     ) == ["project-agent-profile-policy.v1.json"]
     assert not (context / "locks").exists()
     assert (
-        context
-        / "repository/deployment/locks/ae-mybee-m1-runtime-activation.v2.json"
+        context / "repository/deployment/locks/ae-mybee-m1-runtime-activation.v2.json"
     ).is_file()
     assert (
         context
@@ -1071,9 +1181,7 @@ def test_s20_installed_cleanup_lookup_and_loopback_helpers(
         SimpleNamespace(principal_id="existing"),
         SimpleNamespace(principal_id="new"),
     )
-    assert installed._existing_demo_principal_ids(Engine(), specs=specs) == {
-        "existing"
-    }
+    assert installed._existing_demo_principal_ids(Engine(), specs=specs) == {"existing"}
 
     cleanup_calls: list[dict] = []
     monkeypatch.setattr(
@@ -1127,8 +1235,12 @@ def test_s20_installed_tls_wait_and_invalid_report_fail_closed(
         def wrap_socket(connection, **_kwargs):
             return connection
 
-    monkeypatch.setattr(installed.ssl, "create_default_context", lambda **_k: TlsContext())
-    monkeypatch.setattr(installed.socket, "create_connection", lambda *_a, **_k: SocketContext())
+    monkeypatch.setattr(
+        installed.ssl, "create_default_context", lambda **_k: TlsContext()
+    )
+    monkeypatch.setattr(
+        installed.socket, "create_connection", lambda *_a, **_k: SocketContext()
+    )
     installed._wait_for_tls(
         "127.0.0.1",
         8443,
@@ -1139,7 +1251,9 @@ def test_s20_installed_tls_wait_and_invalid_report_fail_closed(
 
     invalid = tmp_path / "invalid.json"
     invalid.write_text("[]", encoding="utf-8")
-    with pytest.raises(installed.CanonicalPlatformInstalledAcceptanceError, match="object"):
+    with pytest.raises(
+        installed.CanonicalPlatformInstalledAcceptanceError, match="object"
+    ):
         installed._load_json(invalid)
 
 
@@ -1183,7 +1297,9 @@ def test_s20_direct_golden_cli_and_image_inspection_branches(
         "_json_command",
         lambda _command: [{"Id": "sha256:one", "Config": {}}],
     )
-    assert image_build._single_image_inspection("example/image:one")["Id"] == "sha256:one"
+    assert (
+        image_build._single_image_inspection("example/image:one")["Id"] == "sha256:one"
+    )
     monkeypatch.setattr(image_build, "_json_command", lambda _command: [])
     with pytest.raises(image_build.CanonicalPlatformAeImageBuildError, match="invalid"):
         image_build._single_image_inspection("example/image:missing")
@@ -1202,7 +1318,9 @@ def test_s20_installed_transport_and_image_identity_fail_closed(
             command, 2, stdout="compose failed safely"
         ),
     )
-    with pytest.raises(installed.CanonicalPlatformInstalledAcceptanceError, match="compose failed"):
+    with pytest.raises(
+        installed.CanonicalPlatformInstalledAcceptanceError, match="compose failed"
+    ):
         installed._compose({}, root=ROOT, arguments=("up",))
 
     class Response:
@@ -1231,11 +1349,17 @@ def test_s20_installed_transport_and_image_identity_fail_closed(
         def close():
             return None
 
-    monkeypatch.setattr(installed.ssl, "create_default_context", lambda **_kwargs: object())
+    monkeypatch.setattr(
+        installed.ssl, "create_default_context", lambda **_kwargs: object()
+    )
     monkeypatch.setattr(installed, "_ResolvedHttpsConnection", Https)
     for message in ("too large", "invalid", "invalid"):
-        with pytest.raises(installed.CanonicalPlatformInstalledAcceptanceError, match=message):
-            installed._https_json("oa.nex-staging.test", "/ready", ca_file=tmp_path / "ca")
+        with pytest.raises(
+            installed.CanonicalPlatformInstalledAcceptanceError, match=message
+        ):
+            installed._https_json(
+                "oa.nex-staging.test", "/ready", ca_file=tmp_path / "ca"
+            )
 
     image_id = "sha256:" + "a" * 64
     valid_artifacts = [
@@ -1247,21 +1371,30 @@ def test_s20_installed_transport_and_image_identity_fail_closed(
         }
         for artifact_id in installed.CURRENT_ARTIFACT_REFERENCE_ENVIRONMENTS
     ]
-    with pytest.raises(installed.CanonicalPlatformInstalledAcceptanceError, match="not passing"):
+    with pytest.raises(
+        installed.CanonicalPlatformInstalledAcceptanceError, match="not passing"
+    ):
         installed._image_environment_from_installed_runtime_reports({}, {})
-    with pytest.raises(installed.CanonicalPlatformInstalledAcceptanceError, match="coverage drift"):
+    with pytest.raises(
+        installed.CanonicalPlatformInstalledAcceptanceError, match="coverage drift"
+    ):
         installed._image_environment_from_installed_runtime_reports(
             {"status": "PASS", "image_build": {"artifacts": valid_artifacts[:-1]}},
             {},
         )
     invalid_identity = [dict(item) for item in valid_artifacts]
     invalid_identity[0]["local_tag"] = "missing-tag"
-    with pytest.raises(installed.CanonicalPlatformInstalledAcceptanceError, match="identity drift"):
+    with pytest.raises(
+        installed.CanonicalPlatformInstalledAcceptanceError, match="identity drift"
+    ):
         installed._image_environment_from_installed_runtime_reports(
             {"status": "PASS", "image_build": {"artifacts": invalid_identity}},
             {},
         )
-    with pytest.raises(installed.CanonicalPlatformInstalledAcceptanceError, match="report is not passing"):
+    with pytest.raises(
+        installed.CanonicalPlatformInstalledAcceptanceError,
+        match="report is not passing",
+    ):
         installed._image_environment_from_installed_runtime_reports(
             {"status": "PASS", "image_build": {"artifacts": valid_artifacts}},
             {"status": "FAIL"},
@@ -1276,7 +1409,9 @@ def test_s20_runtime_readiness_and_token_failures_are_bounded(
         "_https_json",
         lambda *_a, **_k: (503, {"readiness_status": "BLOCKED"}),
     )
-    with pytest.raises(installed.CanonicalPlatformInstalledAcceptanceError, match="not ready"):
+    with pytest.raises(
+        installed.CanonicalPlatformInstalledAcceptanceError, match="not ready"
+    ):
         installed._service_readiness(tmp_path)
 
     materials = {
@@ -1284,12 +1419,16 @@ def test_s20_runtime_readiness_and_token_failures_are_bounded(
         "nex-wc": SimpleNamespace(credential_id="wc", client_secret="secret"),
     }
     monkeypatch.setattr(installed, "_https_json", lambda *_a, **_k: (401, {}))
-    with pytest.raises(installed.CanonicalPlatformInstalledAcceptanceError, match="exchange failed"):
+    with pytest.raises(
+        installed.CanonicalPlatformInstalledAcceptanceError, match="exchange failed"
+    ):
         installed._signed_token_runtime_acceptance(tmp_path, materials=materials)
 
     calls = iter(((200, {"access_token": "token"}), (403, {"error_code": "denied"})))
     monkeypatch.setattr(installed, "_https_json", lambda *_a, **_k: next(calls))
-    with pytest.raises(installed.CanonicalPlatformInstalledAcceptanceError, match="runtime admission"):
+    with pytest.raises(
+        installed.CanonicalPlatformInstalledAcceptanceError, match="runtime admission"
+    ):
         installed._signed_token_runtime_acceptance(tmp_path, materials=materials)
 
 
@@ -1299,9 +1438,13 @@ def test_s20_golden_invalid_browser_output_and_residue_fail_closed(
     monkeypatch.setattr(
         golden.subprocess,
         "run",
-        lambda *_a, **_k: subprocess.CompletedProcess([], 0, stdout="not-json\n", stderr=""),
+        lambda *_a, **_k: subprocess.CompletedProcess(
+            [], 0, stdout="not-json\n", stderr=""
+        ),
     )
-    with pytest.raises(golden.CanonicalPlatformGoldenJourneyError, match="output is invalid"):
+    with pytest.raises(
+        golden.CanonicalPlatformGoldenJourneyError, match="output is invalid"
+    ):
         golden._run_playwright(
             {}, requester_password="requester", approver_password="approver"
         )
@@ -1323,7 +1466,9 @@ def test_s20_golden_invalid_browser_output_and_residue_fail_closed(
             return _ConnectionContext(Connection(self.owner))
 
     engines = {owner: Engine(owner) for owner in ("nex-ae-api", "nex-wc", "nex-eos")}
-    with pytest.raises(golden.CanonicalPlatformGoldenJourneyError, match="durable residue"):
+    with pytest.raises(
+        golden.CanonicalPlatformGoldenJourneyError, match="durable residue"
+    ):
         golden._assert_zero_journey_residue(engines)
 
 
@@ -1338,9 +1483,12 @@ def test_s20_remaining_runtime_failure_branches_are_explicit(
             [], 1, stdout=json.dumps(failure) + "\n", stderr=""
         ),
     )
-    assert golden._run_playwright(
-        {}, requester_password="requester", approver_password="approver"
-    ) == failure
+    assert (
+        golden._run_playwright(
+            {}, requester_password="requester", approver_password="approver"
+        )
+        == failure
+    )
     assert golden._result_payload({"result_payload": "[]"}) == {}
 
     class MissingCredentialConnection:
@@ -1353,7 +1501,9 @@ def test_s20_remaining_runtime_failure_branches_are_explicit(
         def begin():
             return _ConnectionContext(MissingCredentialConnection())
 
-    with pytest.raises(golden.CanonicalPlatformGoldenJourneyError, match="credential is missing"):
+    with pytest.raises(
+        golden.CanonicalPlatformGoldenJourneyError, match="credential is missing"
+    ):
         golden._rotate_demo_credentials(
             MissingCredentialEngine(), passwords={"1001": "secret"}
         )
@@ -1369,7 +1519,10 @@ def test_s20_remaining_runtime_failure_branches_are_explicit(
         "create_connection",
         lambda *_a, **_k: (_ for _ in ()).throw(OSError("offline")),
     )
-    with pytest.raises(installed.CanonicalPlatformInstalledAcceptanceError, match="did not become ready"):
+    with pytest.raises(
+        installed.CanonicalPlatformInstalledAcceptanceError,
+        match="did not become ready",
+    ):
         installed._wait_for_tls(
             "127.0.0.1",
             8443,
@@ -1394,7 +1547,9 @@ def test_s20_ae_runtime_image_evidence_and_trust_compose_fail_closed(
         for artifact_id in installed.CURRENT_ARTIFACT_REFERENCE_ENVIRONMENTS
     ]
     release = {"status": "PASS", "image_build": {"artifacts": artifacts}}
-    ae_release = next(item for item in artifacts if item["artifact_id"] == "nex-ae-runtime")
+    ae_release = next(
+        item for item in artifacts if item["artifact_id"] == "nex-ae-runtime"
+    )
     cases = (
         (
             {
@@ -1424,7 +1579,9 @@ def test_s20_ae_runtime_image_evidence_and_trust_compose_fail_closed(
         ),
     )
     for ae_report, message in cases:
-        with pytest.raises(installed.CanonicalPlatformInstalledAcceptanceError, match=message):
+        with pytest.raises(
+            installed.CanonicalPlatformInstalledAcceptanceError, match=message
+        ):
             installed._image_environment_from_installed_runtime_reports(
                 release, ae_report
             )
@@ -1436,9 +1593,13 @@ def test_s20_ae_runtime_image_evidence_and_trust_compose_fail_closed(
             command, 2, stdout="trust compose failed"
         ),
     )
-    with pytest.raises(trust.CanonicalPlatformTrustAdmissionError, match="trust compose failed"):
+    with pytest.raises(
+        trust.CanonicalPlatformTrustAdmissionError, match="trust compose failed"
+    ):
         trust._compose({}, root=ROOT, arguments=("up",))
-    with pytest.raises(trust.CanonicalPlatformTrustAdmissionError, match="coverage drift"):
+    with pytest.raises(
+        trust.CanonicalPlatformTrustAdmissionError, match="coverage drift"
+    ):
         trust._image_environment_from_release_report(
             {"status": "PASS", "image_build": {"artifacts": []}}
         )

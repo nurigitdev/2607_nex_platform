@@ -4,6 +4,7 @@ from collections.abc import Mapping
 from pathlib import Path
 
 from mybee_ax.integrations import (
+    M1_ALLOCATION_CAPABILITY_ID,
     M1_D04_CAPABILITY_ID,
     M1_D12_CAPABILITY_ID,
     load_m1_signed_skill_release,
@@ -42,30 +43,50 @@ DEFAULT_M1_RELEASE_LOCK = (
 )
 
 
-def build_mybee_m1_operation_adapter_registry() -> ProductOperationAdapterRegistry:
-    return ProductOperationAdapterRegistry(
-        (
+def build_mybee_m1_operation_adapter_registry(
+    *, include_allocation: bool = False
+) -> ProductOperationAdapterRegistry:
+    registrations = [
+        ProductOperationAdapterRegistration(
+            capability_id=M1_D04_CAPABILITY_ID,
+            operation_semantics="WRITE",
+            backend_profile=MYBEE_M1_BACKEND_PROFILE,
+            adapter_id="nex-ae:eos-journal-controlled-write:v1",
+            operation_ids=(
+                EOS_JOURNAL_POST_OPERATION,
+                EOS_JOURNAL_RECONCILE_OPERATION,
+            ),
+            factory=_build_d04_adapters,
+        ),
+        ProductOperationAdapterRegistration(
+            capability_id=M1_D12_CAPABILITY_ID,
+            operation_semantics="READ",
+            backend_profile=MYBEE_M1_BACKEND_PROFILE,
+            adapter_id="nex-ae:eos-project-work-code-read:v1",
+            operation_ids=(EOS_PROJECT_WORK_CODE_GET_OPERATION,),
+            factory=_build_d12_adapters,
+        ),
+    ]
+    if include_allocation:
+        registrations.append(
             ProductOperationAdapterRegistration(
-                capability_id=M1_D04_CAPABILITY_ID,
+                capability_id=M1_ALLOCATION_CAPABILITY_ID,
                 operation_semantics="WRITE",
                 backend_profile=MYBEE_M1_BACKEND_PROFILE,
-                adapter_id="nex-ae:eos-journal-controlled-write:v1",
-                operation_ids=(
-                    EOS_JOURNAL_POST_OPERATION,
-                    EOS_JOURNAL_RECONCILE_OPERATION,
-                ),
-                factory=_build_d04_adapters,
-            ),
-            ProductOperationAdapterRegistration(
-                capability_id=M1_D12_CAPABILITY_ID,
-                operation_semantics="READ",
-                backend_profile=MYBEE_M1_BACKEND_PROFILE,
-                adapter_id="nex-ae:eos-project-work-code-read:v1",
-                operation_ids=(EOS_PROJECT_WORK_CODE_GET_OPERATION,),
-                factory=_build_d12_adapters,
-            ),
+                adapter_id="nex-ae:eos-accounting-allocation:v1",
+                operation_ids=(M1_ALLOCATION_CAPABILITY_ID,),
+                factory=_build_allocation_adapters,
+            )
         )
-    )
+    return ProductOperationAdapterRegistry(registrations)
+
+
+def _build_allocation_adapters(
+    _context: ProductOperationAdapterContext,
+) -> ProductOperationAdapterSet:
+    # The allocation capability is executed by InstalledAccountingAllocationRuntime.
+    # Registration here proves exact operation ownership without duplicating its ports.
+    return ProductOperationAdapterSet()
 
 
 def build_mybee_m1_verified_skill_catalog(
@@ -76,7 +97,9 @@ def build_mybee_m1_verified_skill_catalog(
     return VerifiedProductSkillCatalog(
         release=release,
         capability_registry=capabilities,
-        operation_registry=build_mybee_m1_operation_adapter_registry(),
+        operation_registry=build_mybee_m1_operation_adapter_registry(
+            include_allocation=_release_has_allocation(release)
+        ),
     )
 
 
@@ -84,8 +107,10 @@ def build_mybee_m1_runtime_admission(
     environ: Mapping[str, str],
 ) -> dict[str, object]:
     capabilities = load_product_capability_registry(environ)
-    operations = build_mybee_m1_operation_adapter_registry()
     release = load_mybee_m1_signed_release(environ)
+    operations = build_mybee_m1_operation_adapter_registry(
+        include_allocation=_release_has_allocation(release)
+    )
     catalog = VerifiedProductSkillCatalog(
         release=release,
         capability_registry=capabilities,
@@ -122,6 +147,13 @@ def load_mybee_m1_signed_release(environ: Mapping[str, str]):
     )
     repository_root = Path(str(environ.get("NEX_AE_M1_REPOSITORY_ROOT") or ROOT))
     return load_m1_signed_skill_release(lock, repository_root=repository_root)
+
+
+def _release_has_allocation(release: object) -> bool:
+    return any(
+        skill.capability_id == M1_ALLOCATION_CAPABILITY_ID
+        for skill in getattr(release, "skills", ())
+    )
 
 
 def _build_d12_adapters(

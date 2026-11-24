@@ -96,9 +96,7 @@ def run_gate(root: Path = ROOT) -> dict[str, Any]:
     )
     historical_assets = quarantine.get("historical_assets")
     active_import_graph = active_ae_import_graph(root)
-    forbidden_historical_sources = {
-        item.as_posix() for item in HISTORICAL_SOURCE_PATHS
-    }
+    forbidden_historical_sources = {item.as_posix() for item in HISTORICAL_SOURCE_PATHS}
     checks = {
         "successor_artifacts_exact": exact,
         "active_registry_is_d04_d12_only": tuple(
@@ -140,18 +138,15 @@ def run_gate(root: Path = ROOT) -> dict[str, Any]:
             and NEUTRAL_CONTROLLED_RUNTIME.as_posix() in active_import_graph
             and not (forbidden_historical_sources & active_import_graph)
         ),
-        "active_prompt_is_v13_and_scenario_free": (
-            prompt.version == "v13"
+        "active_prompt_is_v14_and_scenario_free": (
+            prompt.version == "v14"
             and "FINANCE.CREATE_VOUCHER_DRAFT" not in prompt.content
             and "golden_a" not in json.dumps(prompt.metadata, sort_keys=True).lower()
             and "FINANCE.VOUCHER.APPROVE_AND_POST" in prompt.content
             and "primary_project_code" in prompt.content
-            and prompt.metadata.get("primary_project_identity")
-            == "typed_cross_validated"
-            and "ae.business_request_context.v1"
-            == prompt.metadata.get("business_request_context")
             and prompt.metadata.get("allocation_contract")
-            == "optional_deferred_accounting_operation"
+            == "contiguous_indexed_scalar_pairs"
+            and prompt.metadata.get("authority_binding") == "runtime_oa_eos_only"
             and prompt.metadata.get("journal_allocation_coupling") == "forbidden"
         ),
         "historical_assets_are_hash_pinned": (

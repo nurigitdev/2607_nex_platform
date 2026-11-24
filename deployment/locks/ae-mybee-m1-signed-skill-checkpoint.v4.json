@@ -1,0 +1,117 @@
+{
+  "schema_version": "nex.mybee.m1-signed-skill-checkpoint.v1",
+  "release_id": "nex-mybee-m1-d04-d12-allocation-checkpoint-v4",
+  "release_version": 4,
+  "checkpoint_id": "CP-M1-MB8-01",
+  "release_state": "SIGNED_ACTIVE_CHECKPOINT",
+  "runtime_selectable": true,
+  "admitted_at": "2026-11-25T00:00:00Z",
+  "nsl_runtime": {
+    "language_version": "0.2",
+    "package_version": "0.2.1",
+    "backend_profile": "NSL_V02_IN_PROCESS",
+    "wheel_lock_ref": "deployment/locks/nsl-v0.2.1-wheel.json",
+    "wheel_lock_sha256": "sha256:7efa6376602f1c89951657ba170a51ae7157189a0f46e607cebbb9ef949964ea"
+  },
+  "package": {
+    "path": "domains/mybee/skills/m1_checkpoint/mybee-m1-d04-d12-allocation.v4.nsp",
+    "file_sha256": "sha256:a3d39a44563c1f8412a837e0e12e7bc4fed8216f1da202663a34c3c5e4b4cc83",
+    "package_hash": "sha256:78b7a009c1c15e040aa7b8d9fe2cf0ab15f86cacd58f77c8411549aecf76fea6",
+    "signature_algorithm": "Ed25519",
+    "signing_key_id": "release:nex-mybee-m1-checkpoint-2026-11-v4",
+    "public_key_ref": "domains/mybee/skills/m1_checkpoint/mybee-m1-release-public-key.v4.json",
+    "public_key_sha256": "sha256:0d3cbc1796d5d57a1416c9829b9dfd96ac8ffc826b765b34d55d7378b5ac8c0a",
+    "signature_status": "VERIFIED"
+  },
+  "tool_catalog": {
+    "path": "domains/mybee/skills/m1_checkpoint/tool_catalog.v2.json",
+    "sha256": "sha256:730871d919236930d1db54f5f2aa2294a3961fa8b70e4c085e59c7a6b85f5c86"
+  },
+  "skills": [
+    {
+      "domain_code": "D04_ACCOUNTING",
+      "skill_id": "MYBEE.D04.ACCOUNTING_ALLOCATION",
+      "skill_version": "1.0.0",
+      "semantic_hash": "sha256:622204f6f9f485114b6f028e7921fc4b3b51bada2b73eac085115bf21b1797bd",
+      "artifact_hash": "sha256:bef9e8ceebd45cfc2463cd32d28f51e346f16b40c3b5ad8410b001e58ab33287",
+      "source_ref": "domains/mybee/skills/d04_accounting/allocation_execution.v1.ns",
+      "source_sha256": "sha256:0d92fff004b3b3e14b37d09b5de90075a79a5ef557327ef6a7ed65778b0200e6",
+      "capability_id": "FINANCE.COST_ALLOCATION.RUN",
+      "operation_semantics": "GOVERNED_WRITE",
+      "approval_requirement": "NONE",
+      "oa_action": "finance:allocation:execute",
+      "service_scope": "service:call",
+      "input_contract_ref": "contracts/schemas/service/nex_eos/cost_allocation_run.v1.schema.json",
+      "output_contract_ref": "contracts/schemas/service/nex_eos/cost_allocation_batch.v1.schema.json",
+      "contract_admission_ref": "contracts/admissions/nex_eos/w70_tool_contract_admission.v1.json#/contracts/0",
+      "trust_policy_id": "policy://nex/ae/mybee/d04-accounting-allocation/w80/v1"
+    },
+    {
+      "domain_code": "D04_ACCOUNTING",
+      "skill_id": "MYBEE.D04.JOURNAL_POSTING",
+      "skill_version": "1.0.2",
+      "semantic_hash": "sha256:54ed4365a9abb2646a8bc5ced81550fe6a27a9dbac363d925449a27198ee718c",
+      "artifact_hash": "sha256:2520caa1b1cb131ea21481ec252c396fe9de2bc00ff4a5e251daac7fbc1cc43d",
+      "source_ref": "domains/mybee/skills/d04_accounting/journal_posting.v1_0_2.ns",
+      "source_sha256": "sha256:cc6d1dd3658f107c807350c1ce1347ee94dd50b6204a6d83a7adb51a95c856af",
+      "capability_id": "FINANCE.VOUCHER.APPROVE_AND_POST",
+      "operation_semantics": "GOVERNED_WRITE",
+      "approval_requirement": "ACCOUNTING_POSTING",
+      "oa_action": "finance:journal:approve",
+      "service_scope": "service:call",
+      "input_contract_ref": "contracts/schemas/service/nex_eos/journal_post_command.v1.schema.json",
+      "output_contract_ref": "contracts/schemas/service/nex_eos/journal_post_result.v1.schema.json",
+      "contract_admission_ref": "contracts/admissions/nex_eos/w70_tool_contract_admission.v1.json#/contracts/7",
+      "trust_policy_id": "policy://nex/ae/mybee/d04-accounting/m1/v1"
+    },
+    {
+      "domain_code": "D12_PROJECT",
+      "skill_id": "MYBEE.D12.PROJECT_WORK_CODE_CONTEXT",
+      "skill_version": "1.0.0",
+      "semantic_hash": "sha256:a3f4e3d97e646f5e7c8f7957cb1981fbabdc019b379c565c9d7759bfcd8fd13e",
+      "artifact_hash": "sha256:6efd51bcb415f9ddf6cb1f1caaf3a5d248d456cb85931b8b7335ac24e7b0a8c5",
+      "source_ref": "domains/mybee/skills/d12_project/work_code_context.v1.ns",
+      "source_sha256": "sha256:8a14466fd6d66fe4dba7508d55615c46ea4fbc5759708bcc351ad73ca44aba09",
+      "capability_id": "PROJECT.WORK_CODE_SET.GET",
+      "operation_semantics": "READ",
+      "approval_requirement": "NONE",
+      "oa_action": "project:work-code:read",
+      "service_scope": "service:call",
+      "input_contract_ref": "contracts/admissions/nex_eos/w70_tool_contract_admission.v1.json#/paths/~1internal~1v2~1projects~1{project_id}~1work-code-set/get#parameters",
+      "output_contract_ref": "contracts/openapi/nex-eos.openapi.yaml#/components/schemas/ProjectWorkCodeSet",
+      "contract_admission_ref": "contracts/admissions/nex_eos/w70_tool_contract_admission.v1.json#/contracts/17",
+      "trust_policy_id": "policy://nex/ae/mybee/d12-project/m1/v1"
+    }
+  ],
+  "fl_bindings": [
+    {
+      "work_code_id": "FL0004009",
+      "binding_role": "PRIMARY_ACTION",
+      "capability_id": "FINANCE.VOUCHER.APPROVE_AND_POST",
+      "skill_id": "MYBEE.D04.JOURNAL_POSTING"
+    },
+    {
+      "work_code_id": "FL0012005",
+      "binding_role": "PROJECT_CONTEXT",
+      "capability_id": "PROJECT.WORK_CODE_SET.GET",
+      "skill_id": "MYBEE.D12.PROJECT_WORK_CODE_CONTEXT"
+    }
+  ],
+  "product_capability_registry": {
+    "path": "deployment/environments/ae-product-capability-registry.mybee-m1.v5.json",
+    "file_sha256": "sha256:b07fd90c4cd4391e395bde972b0ab29756e62d5971fddf87da0a109dab67d586",
+    "registry_id": "ae-product-capabilities-mybee-m1",
+    "registry_version": 7,
+    "registry_hash": "sha256:6656b57b3d3e65bda9666db90100b2dc13f51270b875d60904927027c2c23e95"
+  },
+  "activation_boundary": {
+    "allowed_agent_types": ["PA"],
+    "allowed_project_states": ["ACTIVE"],
+    "allowed_agent_statuses": ["ACTIVE"],
+    "allowed_capability_modes": ["ORDINARY"],
+    "full_pack_activation": "DEFERRED_TO_M2_MB8_01",
+    "canonical_compose_registry_unchanged": false,
+    "remote_provider_required": false
+  },
+  "content_hash": "sha256:228296ee2f4df8019a4d47ab66fa53d9ceaf26f00030bd0ab0ab1acabfcf5de0"
+}

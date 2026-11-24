@@ -322,6 +322,12 @@ migration.
 
 ### W80-CA00F.5 - Split Live Journeys and Protected Closure
 
+Entry to this Slice is gated by
+`W80-CA00F.5A: Accounting Allocation Product Entry and Domain Intent Activation
+Closure`, which replaces direct harness construction with the admitted semantic
+candidate, DomainIntentActivator, Product Coordinator, and common RuntimeJob
+product path.
+
 Replace the canonical combined acceptance with two journeys:
 
 1. an external-labor Journal journey ending at PostedJournal and IA result;

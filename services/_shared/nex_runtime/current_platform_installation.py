@@ -291,7 +291,7 @@ def _product_ae_image_contract_not_overridden(service: Mapping[str, Any]) -> boo
         and environment.get("NEX_AE_PRODUCT_CAPABILITY_REGISTRY_PATH")
         == (
             "/app/deployment/product/repository/deployment/environments/"
-            "ae-product-capability-registry.mybee-m1.v4.json"
+            "ae-product-capability-registry.mybee-m1.v5.json"
         )
     )
 

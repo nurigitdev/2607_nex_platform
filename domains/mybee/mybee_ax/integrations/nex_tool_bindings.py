@@ -30,6 +30,7 @@ M1_PA_PLAN_SCHEMA_VERSION = "nex.mybee.pa-nsl-invocation-plan.v1"
 M1_CHECKPOINT_ID = "CP-M1-MB8-01"
 M1_D04_WORK_CODE_ID = "FL0004009"
 M1_D12_WORK_CODE_ID = "FL0012005"
+M1_ALLOCATION_CAPABILITY_ID = "FINANCE.COST_ALLOCATION.RUN"
 M1_D04_CAPABILITY_ID = "FINANCE.VOUCHER.APPROVE_AND_POST"
 M1_D12_CAPABILITY_ID = "PROJECT.WORK_CODE_SET.GET"
 
@@ -183,7 +184,18 @@ def load_m1_signed_skill_release(
     catalog = load_tool_catalog(catalog_path)
     package_skills = {item.manifest.skill_id: item for item in verified.skills}
     skill_records = lock.get("skills")
-    if not isinstance(skill_records, list) or len(skill_records) != 2:
+    expected_capabilities = {
+        M1_D04_CAPABILITY_ID,
+        M1_D12_CAPABILITY_ID,
+        *(
+            (M1_ALLOCATION_CAPABILITY_ID,)
+            if int(lock.get("release_version") or 0) >= 4
+            else ()
+        ),
+    }
+    if not isinstance(skill_records, list) or len(skill_records) != len(
+        expected_capabilities
+    ):
         _fail("M1_SKILL_SET_INVALID", str(skill_records))
     skills = tuple(
         _admit_skill(
@@ -194,10 +206,7 @@ def load_m1_signed_skill_release(
         )
         for record in skill_records
     )
-    if {item.capability_id for item in skills} != {
-        M1_D04_CAPABILITY_ID,
-        M1_D12_CAPABILITY_ID,
-    }:
+    if {item.capability_id for item in skills} != expected_capabilities:
         _fail("M1_SKILL_SET_INVALID", "unexpected capability set")
     _verify_candidate_bindings(skills, repository_root=repository_root)
 
@@ -221,7 +230,9 @@ def load_m1_signed_skill_release(
         "allowed_agent_statuses": ["ACTIVE"],
         "allowed_capability_modes": ["ORDINARY"],
         "full_pack_activation": "DEFERRED_TO_M2_MB8_01",
-        "canonical_compose_registry_unchanged": True,
+        "canonical_compose_registry_unchanged": (
+            int(lock.get("release_version") or 0) < 4
+        ),
         "remote_provider_required": False,
     }
     if dict(boundary) != expected_boundary:
@@ -464,8 +475,7 @@ def _verify_candidate_bindings(
             repository_root / "domains/mybee/skills",
             inventory=inventory,
             contracts=contracts,
-            wheel_lock_path=repository_root
-            / "deployment/locks/nsl-v0.2.1-wheel.json",
+            wheel_lock_path=repository_root / "deployment/locks/nsl-v0.2.1-wheel.json",
         )
         for binding in manifest.bindings
     }

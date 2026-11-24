@@ -217,6 +217,24 @@ _MYBEE_W80_SPLIT_ACCOUNTING_INTENT_CANDIDATE_V13_CONTENT = (
     "business value is missing or ambiguous, set clarification.required true."
 )
 
+_MYBEE_W80_ACCOUNTING_ALLOCATION_PRODUCT_ENTRY_V14_CONTENT = (
+    _MYBEE_W80_SPLIT_ACCOUNTING_INTENT_CANDIDATE_V13_CONTENT
+    + " For a separate request by accounting staff to allocate one already posted "
+    "Journal source across Projects, use the canonical intent_label "
+    "FINANCE.COST_ALLOCATION.RUN. Emit exactly company_id, journal_id, "
+    "source_record_line_ref, and source_kind plus one or more contiguous "
+    "allocation_project_code_1 and allocation_ratio_1 pairs, then _2 pairs and "
+    "so on. company_id and journal_id are opaque canonical UUID candidates that "
+    "must be explicit in trusted UI or prior-result context; never invent them. "
+    "source_kind must be PAYROLL, PURCHASE, SERVICE, SHARED_EXPENSE, REVENUE, "
+    "FX_GAIN_LOSS, or OTHER. Project codes must be unique, ratios must be positive, "
+    "and their exact total must be 1.000000. Do not emit tenant, principal, Plan ID, "
+    "Project UUID, OA decision, EOS authority, publication target, credentials, or "
+    "hidden reasoning. If any required value is missing or ambiguous, set "
+    "clarification.required true instead of inventing it. Journal posting and "
+    "allocation remain separate intents and operations."
+)
+
 _P65_CONTEXT_CANDIDATE_V1_CONTENT = (
     "You generate an untrusted context candidate set, never an "
     "authoritative context or access decision. Return exactly one JSON "
@@ -352,6 +370,30 @@ _MYBEE_PROJECT_DELEGATION_PLAN_V3_CONTENT = (
 )
 
 AE_HISTORICAL_PROMPT_SEEDS = [
+    PromptSeed(
+        service_id="nex-ae-api",
+        purpose="intent_resolution",
+        name="p65_default_intent_candidate_system",
+        owner_domain="agent-experience",
+        binding_key=AE_INTENT_RESOLUTION_BINDING,
+        version="v13",
+        role="system",
+        segment_order=0,
+        content=_MYBEE_W80_SPLIT_ACCOUNTING_INTENT_CANDIDATE_V13_CONTENT,
+        model_capability="generation",
+        metadata={
+            "phase": "MyBee-W80",
+            "slice": "W80-CA00F.4",
+            "candidate_schema": "p65.intent_candidate.v1",
+            "authority": "untrusted_candidate_only",
+            "mybee_m1_project_delegation": "FINANCE.VOUCHER.APPROVE_AND_POST",
+            "primary_project_identity": "typed_cross_validated",
+            "business_request_context": "ae.business_request_context.v1",
+            "allocation_contract": "optional_deferred_accounting_operation",
+            "journal_allocation_coupling": "forbidden",
+            "status": "REPLAY_ONLY",
+        },
+    ),
     PromptSeed(
         service_id="nex-ae-api",
         purpose="intent_resolution",
@@ -714,20 +756,19 @@ AE_PROMPT_SEEDS = [
         name="p65_default_intent_candidate_system",
         owner_domain="agent-experience",
         binding_key=AE_INTENT_RESOLUTION_BINDING,
-        version="v13",
+        version="v14",
         role="system",
         segment_order=0,
-        content=_MYBEE_W80_SPLIT_ACCOUNTING_INTENT_CANDIDATE_V13_CONTENT,
+        content=_MYBEE_W80_ACCOUNTING_ALLOCATION_PRODUCT_ENTRY_V14_CONTENT,
         model_capability="generation",
         metadata={
             "phase": "MyBee-W80",
-            "slice": "W80-CA00F.4",
+            "slice": "W80-CA00F.5A",
             "candidate_schema": "p65.intent_candidate.v1",
             "authority": "untrusted_candidate_only",
-            "mybee_m1_project_delegation": "FINANCE.VOUCHER.APPROVE_AND_POST",
-            "primary_project_identity": "typed_cross_validated",
-            "business_request_context": "ae.business_request_context.v1",
-            "allocation_contract": "optional_deferred_accounting_operation",
+            "mybee_accounting_allocation": "FINANCE.COST_ALLOCATION.RUN",
+            "allocation_contract": "contiguous_indexed_scalar_pairs",
+            "authority_binding": "runtime_oa_eos_only",
             "journal_allocation_coupling": "forbidden",
         },
     ),
@@ -924,8 +965,8 @@ def _activate_current_intent_candidate_prompt(store: Any) -> None:
         new_prompt_template_version_id=target["prompt_template_version_id"],
         expected_prompt_template_version_id=current["prompt_template_version_id"],
         changed_by="nex-ae-api-bootstrap",
-        reason="W80 Journal and allocation responsibility split",
-        correlation_id="w80-ca00f4-intent-prompt-v13",
+        reason="W80 accounting allocation Product entry activation",
+        correlation_id="w80-ca00f5a-intent-prompt-v14",
     )
 
 

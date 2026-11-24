@@ -80,6 +80,12 @@ def planning_mode(environ: Mapping[str, str] | None = None) -> str:
     return mode
 
 
+def validate_work_intent(value: Mapping[str, Any]) -> dict[str, Any]:
+    """Validate a persisted WorkIntent without exposing mutable internals."""
+
+    return _validate_work_intent(value)
+
+
 def build_work_intent_from_decision(
     *,
     execution_id: str,

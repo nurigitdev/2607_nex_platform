@@ -12,6 +12,8 @@ from types import MappingProxyType, SimpleNamespace
 from typing import Any
 
 from mybee_ax.integrations import (
+    M1_ALLOCATION_CAPABILITY_ID,
+    M1_D04_CAPABILITY_ID,
     HttpCostAllocationProviderTransport,
     HttpProjectPnlProviderTransport,
     HttpProjectPnlRefreshProviderTransport,
@@ -32,6 +34,9 @@ from nex_runtime.semantic_hashes import semantic_sha256_hash_ref
 from sqlalchemy import text
 from sqlalchemy.orm import Session, sessionmaker
 
+from nex_ae_api.accounting_allocation_plan import (
+    materialize_accounting_allocation_plan,
+)
 from nex_ae_api.allocation_plan_resolution_runtime import (
     InstalledApprovedAllocationPlanResolution,
 )
@@ -221,7 +226,7 @@ class M1InstalledSkillRuntime:
                 catalog_hash=catalog.catalog_hash,
             )
             for selection in catalog.selections
-            if selection.operation_adapter.operation_semantics == "WRITE"
+            if selection.capability.capability_id == M1_D04_CAPABILITY_ID
         }
         readiness = {
             "status": "READY",
@@ -309,6 +314,23 @@ class M1InstalledSkillRuntime:
             existing_checkpoint=existing_checkpoint,
         )
 
+    def materialize_accounting_allocation_plan(
+        self,
+        *,
+        work_intent: Mapping[str, Any],
+        allocation_work_intent: Mapping[str, Any],
+        agent_context: Mapping[str, Any],
+        capability_snapshot: Mapping[str, Any],
+    ):
+        selection = self._catalog.select(M1_ALLOCATION_CAPABILITY_ID)
+        return materialize_accounting_allocation_plan(
+            work_intent=work_intent,
+            allocation_work_intent=allocation_work_intent,
+            agent_context=agent_context,
+            capability_snapshot=capability_snapshot,
+            installed_capability=selection.capability.capability,
+        )
+
     def resolve_accounting_allocation_plan_authority(
         self,
         *,
@@ -344,10 +366,93 @@ class M1InstalledSkillRuntime:
         )
         if selection.operation_adapter.operation_semantics == "READ":
             return self._execute_read(context, dependencies, selection)
+        if selection.capability.capability_id == M1_ALLOCATION_CAPABILITY_ID:
+            return self._execute_accounting_allocation(context)
         writer = self._writers.get(selection.capability.capability_id)
         if writer is None:
             raise _worker_error("Product WRITE handler is unavailable.")
         return writer.initial(context, dependencies)
+
+    def _execute_accounting_allocation(self, context: Any) -> P5ExecutorOutcome:
+        if self.accounting_allocation is None:
+            raise _worker_error("Accounting allocation runtime is unavailable.")
+        persisted = _read_stage(
+            "ae.product_accounting_allocation_context_resolution_failed",
+            "Accounting allocation execution context resolution failed.",
+            lambda: _allocation_execution_context(
+                self._sessions,
+                tenant_id=context.job["tenant_id"],
+                execution_id=context.step["agent_execution_id"],
+            ),
+        )
+        inputs = _read_stage(
+            "ae.product_accounting_allocation_input_resolution_failed",
+            "Accounting allocation input resolution failed.",
+            lambda: _compiled_inputs(context),
+        )
+        encoded_intent = inputs.get("allocation_work_intent_json")
+        if set(inputs) != {"allocation_work_intent_json"} or not isinstance(
+            encoded_intent, str
+        ):
+            raise _worker_error("Accounting allocation input contract differs.")
+        try:
+            allocation_intent = json.loads(encoded_intent)
+        except (TypeError, ValueError) as exc:
+            raise _worker_error(
+                "Accounting allocation WorkIntent JSON is invalid."
+            ) from exc
+        if (
+            allocation_intent.get("work_intent_id")
+            != persisted["work_intent"]["work_intent_id"]
+            or allocation_intent.get("execution_id")
+            != context.step["agent_execution_id"]
+            or allocation_intent.get("subject_id") != persisted["principal_id"]
+            or allocation_intent.get("tenant_id") != context.job["tenant_id"]
+        ):
+            raise _worker_error("Accounting allocation persisted lineage differs.")
+        result = _read_stage(
+            "ae.product_accounting_allocation_execution_failed",
+            "Accounting allocation execution failed.",
+            lambda: self.accounting_allocation.execute(
+                tenant_id=context.job["tenant_id"],
+                company_id=allocation_intent["company_id"],
+                subject_id=persisted["principal_id"],
+                correlation_id=persisted["correlation_id"],
+                journal_id=allocation_intent["journal_id"],
+                work_intent=allocation_intent,
+                runtime_job=context.job,
+            ),
+        )
+        financial = result.get("financial_result")
+        if not isinstance(financial, Mapping):
+            raise _worker_error("Accounting allocation financial result is invalid.")
+        projects = financial.get("project_results")
+        if not isinstance(projects, (list, tuple)):
+            raise _worker_error("Accounting allocation result references are invalid.")
+        external_refs = tuple(
+            sorted(
+                {
+                    str(result["journal_ref"]),
+                    str(financial["allocation_batch_ref"]),
+                    *(
+                        f"eos.project-pnl-projection:{item['projection_id']}"
+                        for item in projects
+                        if isinstance(item, Mapping) and item.get("projection_id")
+                    ),
+                }
+            )
+        )
+        return P5ExecutorOutcome(
+            state="SUCCEEDED",
+            result_contract_ref=str(context.step["output_contract_ref"]),
+            result_payload=dict(result),
+            external_refs=external_refs,
+            evidence_refs=(
+                f"release:{self._catalog.release_hash}",
+                f"allocation-authority:{result['allocation_execution_authority_hash']}",
+            ),
+            business_operation_id=str(financial["allocation_business_operation_id"]),
+        )
 
     def resume(
         self,
@@ -998,6 +1103,42 @@ def _execution_context(
         "principal_id": str(row["principal_id"]),
         "agent_id": str(row["agent_id"]),
         "project_id": str(projects[0]),
+        "correlation_id": str(row["correlation_id"]),
+        "work_intent": dict(work_intent),
+    }
+
+
+def _allocation_execution_context(
+    sessions: sessionmaker[Session], *, tenant_id: str, execution_id: str
+) -> dict[str, Any]:
+    with sessions() as session:
+        row = (
+            session.execute(
+                text(
+                    "SELECT context.principal_id, execution.correlation_id, "
+                    "intent.intent_json FROM ae_agent_context AS context "
+                    "JOIN ae_agent_execution AS execution "
+                    "ON execution.tenant_id = context.tenant_id "
+                    "AND execution.agent_execution_id = context.agent_execution_id "
+                    "JOIN ae_work_intent AS intent "
+                    "ON intent.tenant_id = context.tenant_id "
+                    "AND intent.work_intent_id = context.work_intent_id "
+                    "WHERE context.tenant_id = :tenant_id "
+                    "AND context.agent_execution_id = :execution_id "
+                    "ORDER BY context.context_generation DESC LIMIT 1"
+                ),
+                {"tenant_id": tenant_id, "execution_id": execution_id},
+            )
+            .mappings()
+            .one()
+        )
+    work_intent = row["intent_json"]
+    if isinstance(work_intent, str):
+        work_intent = json.loads(work_intent)
+    if not isinstance(work_intent, Mapping):
+        raise ControlledSkillRuntimeError("Persisted WorkIntent is invalid.")
+    return {
+        "principal_id": str(row["principal_id"]),
         "correlation_id": str(row["correlation_id"]),
         "work_intent": dict(work_intent),
     }

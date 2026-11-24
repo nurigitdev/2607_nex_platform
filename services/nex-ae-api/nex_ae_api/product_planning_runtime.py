@@ -218,6 +218,14 @@ class PublicProductPlanningRouter:
             planning_proposal=proposal,
             planning_fallback_ref=fallback_ref,
         )
+        if result.get("ready"):
+            _invoke_product_boundary(
+                runtime.activation.activate,
+                work_intent=work_intent,
+                agent_context=agent_context,
+                capability_snapshot=capability_snapshot,
+                execution=execution,
+            )
         return _admission_projection(
             result,
             registration=registration,
@@ -254,6 +262,14 @@ class PublicProductPlanningRouter:
         )
         if result is None:
             return None
+        if result.get("ready"):
+            _invoke_product_boundary(
+                runtime.activation.activate,
+                work_intent=work_intent,
+                agent_context=agent_context,
+                capability_snapshot=capability_snapshot,
+                execution=execution,
+            )
         proposal_ref = result.get("planning_proposal_ref")
         return _admission_projection(
             result,
@@ -726,6 +742,40 @@ def build_installed_m1_product_coordinator_runtime(
     )
 
 
+def build_installed_accounting_allocation_coordinator_runtime(
+    *,
+    sessions: sessionmaker[Session],
+    registration: ProductPlanningCoordinatorRegistration,
+    materializer: Any,
+) -> InstalledProductCoordinatorRuntime:
+    """Assemble allocation admission over the common Product and job stores."""
+
+    from nex_ae_api.accounting_allocation_plan import (
+        build_installed_accounting_allocation_plan_activation,
+    )
+    from nex_ae_api.accounting_allocation_product_coordinator import (
+        InstalledAccountingAllocationProductCoordinator,
+        InstalledAccountingAllocationProductPlanActivation,
+    )
+
+    coordinator = InstalledAccountingAllocationProductCoordinator(
+        registration=registration,
+        checkpoints=SqlAlchemyProductPreparationCheckpointRepository(sessions),
+    )
+    activation = InstalledAccountingAllocationProductPlanActivation(
+        registration=registration,
+        activation=build_installed_accounting_allocation_plan_activation(
+            sessions,
+            materializer=materializer,
+        ),
+    )
+    return InstalledProductCoordinatorRuntime(
+        registration=registration,
+        coordinator=coordinator,
+        activation=activation,
+    )
+
+
 def build_contract_m1_product_planning_composition(
     *,
     sessions: sessionmaker[Session],
@@ -890,6 +940,7 @@ __all__ = [
     "PublicProductPlanningRouter",
     "SqlAlchemyProductPlanningLineageSource",
     "build_contract_m1_product_planning_composition",
+    "build_installed_accounting_allocation_coordinator_runtime",
     "build_installed_m1_product_coordinator_runtime",
     "build_installed_product_planning_composition",
 ]

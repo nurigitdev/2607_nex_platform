@@ -21,12 +21,16 @@ ACTIVE_IMPORT_BASELINE = 103
 ACTIVE_IMPORT_PROMOTIONS = frozenset(
     {
         "services/nex-ae-api/nex_ae_api/accounting_allocation_authority.py",
+        "services/nex-ae-api/nex_ae_api/accounting_allocation_intent_activation.py",
+        "services/nex-ae-api/nex_ae_api/accounting_allocation_plan.py",
+        "services/nex-ae-api/nex_ae_api/accounting_allocation_product_coordinator.py",
         "services/nex-ae-api/nex_ae_api/agent_authority.py",
         "services/nex-ae-api/nex_ae_api/m1_accounting_allocation_runtime.py",
         "services/nex-ae-api/nex_ae_api/m1_preparation_authority_source.py",
         "services/nex-ae-api/nex_ae_api/product_coordinator_activation.py",
         "services/nex-ae-api/nex_ae_api/product_domain_intent_activators.py",
         "services/nex-ae-api/nex_ae_api/product_planning_proposals.py",
+        "services/nex-ae-api/nex_ae_api/product_plan_activation.py",
         "services/nex-ae-api/nex_ae_api/runtime_continuation_sources.py",
         "services/nex-ae-api/nex_ae_api/semantic_handoff_reuse.py",
         "services/nex-ae-api/nex_ae_api/work_result_resume.py",

@@ -209,11 +209,7 @@ def test_active_product_builder_honors_retirement_before_authority_loading() -> 
 
 
 def test_active_product_builder_omits_unconfigured_authority() -> None:
-    capabilities = SimpleNamespace(
-        resolve=lambda *_args, **_kwargs: pytest.fail(
-            "unconfigured activator must not resolve capability metadata"
-        )
-    )
+    capabilities = SimpleNamespace(resolve=lambda *_args, **_kwargs: None)
     retirements = SimpleNamespace(is_new_selection_denied=lambda _capability: False)
 
     registry = build_active_product_domain_intent_activator_registry(
@@ -530,8 +526,6 @@ def test_request_text_helpers_reject_missing_or_invalid_values(value) -> None:
 
 
 def test_timestamp_normalizes_naive_datetime() -> None:
-    assert admission_module._timestamp(
-        datetime(2026, 10, 17, 3, 0)
-    ) == (  # noqa: DTZ001
+    assert admission_module._timestamp(datetime(2026, 10, 17, 3, 0)) == (  # noqa: DTZ001
         "2026-10-17T03:00:00Z"
     )

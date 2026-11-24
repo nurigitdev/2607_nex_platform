@@ -13,6 +13,11 @@ for source in (
 ):
     sys.path.insert(0, str(source))
 
+from nex_ae_api.accounting_allocation_product_coordinator import (
+    DEFAULT_ACCOUNTING_ALLOCATION_ACTIVATION_PATH,
+    DEFAULT_ACCOUNTING_ALLOCATION_ROLLBACK_PATH,
+    build_accounting_allocation_activation_documents,
+)
 from nex_ae_api.product_capabilities import load_product_capability_registry
 from nex_ae_api.product_coordinator_activation import (
     DEFAULT_ACTIVATION_PATH,
@@ -25,9 +30,8 @@ def main() -> int:
     capabilities = load_product_capability_registry(
         {
             "NEX_AE_PRODUCT_CAPABILITY_REGISTRY_PATH": str(
-                ROOT
-                / "deployment/environments/"
-                "ae-product-capability-registry.mybee-m1.v4.json"
+                ROOT / "deployment/environments/"
+                "ae-product-capability-registry.mybee-m1.v5.json"
             )
         }
     )
@@ -35,9 +39,22 @@ def main() -> int:
         product_capabilities=capabilities,
         repository_root=ROOT,
     )
+    allocation_activation, allocation_rollback = (
+        build_accounting_allocation_activation_documents(
+            product_capabilities=capabilities
+        )
+    )
     for path, value in (
         (DEFAULT_ACTIVATION_PATH, activation),
         (DEFAULT_ROLLBACK_PATH, rollback),
+        (
+            DEFAULT_ACCOUNTING_ALLOCATION_ACTIVATION_PATH,
+            allocation_activation,
+        ),
+        (
+            DEFAULT_ACCOUNTING_ALLOCATION_ROLLBACK_PATH,
+            allocation_rollback,
+        ),
     ):
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(
@@ -47,7 +64,10 @@ def main() -> int:
     print(
         "product_coordinator_activation=pass "
         f"activation_hash={activation['content_hash']} "
-        f"rollback_hash={rollback['content_hash']}"
+        f"rollback_hash={rollback['content_hash']} "
+        "allocation_activation_hash="
+        f"{allocation_activation['content_hash']} "
+        f"allocation_rollback_hash={allocation_rollback['content_hash']}"
     )
     return 0
 

@@ -110,7 +110,7 @@ def test_product_ae_image_contract_cannot_be_overridden_by_compose() -> None:
             "environment": {
                 "NEX_AE_PRODUCT_CAPABILITY_REGISTRY_PATH": (
                     "/app/deployment/product/repository/deployment/environments/"
-                        "ae-product-capability-registry.mybee-m1.v4.json"
+                        "ae-product-capability-registry.mybee-m1.v5.json"
                 ),
             }
         }

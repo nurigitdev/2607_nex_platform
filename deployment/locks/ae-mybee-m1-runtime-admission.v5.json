@@ -1,0 +1,125 @@
+{
+  "schema_version": "ae.mybee_m1_runtime_admission.v1",
+  "release_id": "nex-mybee-m1-d04-d12-allocation-checkpoint-v4",
+  "release_hash": "sha256:228296ee2f4df8019a4d47ab66fa53d9ceaf26f00030bd0ab0ab1acabfcf5de0",
+  "package_ref": "domains/mybee/skills/m1_checkpoint/mybee-m1-d04-d12-allocation.v4.nsp",
+  "package_hash": "sha256:78b7a009c1c15e040aa7b8d9fe2cf0ab15f86cacd58f77c8411549aecf76fea6",
+  "signing_key_id": "release:nex-mybee-m1-checkpoint-2026-11-v4",
+  "capability_registry_id": "ae-product-capabilities-mybee-m1",
+  "capability_registry_version": 7,
+  "capability_registry_hash": "sha256:6656b57b3d3e65bda9666db90100b2dc13f51270b875d60904927027c2c23e95",
+  "operation_registry": {
+    "schema_version": "ae.product_operation_adapter_registry.v1",
+    "registrations": [
+      {
+        "capability_id": "FINANCE.COST_ALLOCATION.RUN",
+        "operation_semantics": "WRITE",
+        "backend_profile": "NSL_V02_IN_PROCESS",
+        "adapter_id": "nex-ae:eos-accounting-allocation:v1",
+        "operation_ids": [
+          "FINANCE.COST_ALLOCATION.RUN"
+        ]
+      },
+      {
+        "capability_id": "FINANCE.VOUCHER.APPROVE_AND_POST",
+        "operation_semantics": "WRITE",
+        "backend_profile": "NSL_V02_IN_PROCESS",
+        "adapter_id": "nex-ae:eos-journal-controlled-write:v1",
+        "operation_ids": [
+          "FINANCE.VOUCHER.APPROVE_AND_POST",
+          "FINANCE.JOURNAL.RECONCILE"
+        ]
+      },
+      {
+        "capability_id": "PROJECT.WORK_CODE_SET.GET",
+        "operation_semantics": "READ",
+        "backend_profile": "NSL_V02_IN_PROCESS",
+        "adapter_id": "nex-ae:eos-project-work-code-read:v1",
+        "operation_ids": [
+          "PROJECT.WORK_CODE_SET.GET"
+        ]
+      }
+    ]
+  },
+  "operation_registry_hash": "sha256:f86209752cdfe6a84d0802114b0f1dced9b4cc33b8a70c4f3e270a6f51943af5",
+  "skill_catalog": {
+    "schema_version": "ae.verified_product_skill_catalog.v1",
+    "release_id": "nex-mybee-m1-d04-d12-allocation-checkpoint-v4",
+    "release_hash": "sha256:228296ee2f4df8019a4d47ab66fa53d9ceaf26f00030bd0ab0ab1acabfcf5de0",
+    "package_hash": "sha256:78b7a009c1c15e040aa7b8d9fe2cf0ab15f86cacd58f77c8411549aecf76fea6",
+    "signing_key_id": "release:nex-mybee-m1-checkpoint-2026-11-v4",
+    "admitted_at": "2026-11-25T00:00:00Z",
+    "selections": [
+      {
+        "capability_id": "FINANCE.COST_ALLOCATION.RUN",
+        "capability_version": "1.0.0",
+        "skill_id": "MYBEE.D04.ACCOUNTING_ALLOCATION",
+        "skill_version": "1.0.0",
+        "skill_semantic_hash": "sha256:622204f6f9f485114b6f028e7921fc4b3b51bada2b73eac085115bf21b1797bd",
+        "skill_artifact_hash": "sha256:bef9e8ceebd45cfc2463cd32d28f51e346f16b40c3b5ad8410b001e58ab33287",
+        "release_id": "nex-mybee-m1-d04-d12-allocation-checkpoint-v4",
+        "release_hash": "sha256:228296ee2f4df8019a4d47ab66fa53d9ceaf26f00030bd0ab0ab1acabfcf5de0",
+        "operation_adapter": {
+          "capability_id": "FINANCE.COST_ALLOCATION.RUN",
+          "operation_semantics": "WRITE",
+          "backend_profile": "NSL_V02_IN_PROCESS",
+          "adapter_id": "nex-ae:eos-accounting-allocation:v1",
+          "operation_ids": [
+            "FINANCE.COST_ALLOCATION.RUN"
+          ]
+        }
+      },
+      {
+        "capability_id": "FINANCE.VOUCHER.APPROVE_AND_POST",
+        "capability_version": "1.0.2",
+        "skill_id": "MYBEE.D04.JOURNAL_POSTING",
+        "skill_version": "1.0.2",
+        "skill_semantic_hash": "sha256:54ed4365a9abb2646a8bc5ced81550fe6a27a9dbac363d925449a27198ee718c",
+        "skill_artifact_hash": "sha256:2520caa1b1cb131ea21481ec252c396fe9de2bc00ff4a5e251daac7fbc1cc43d",
+        "release_id": "nex-mybee-m1-d04-d12-allocation-checkpoint-v4",
+        "release_hash": "sha256:228296ee2f4df8019a4d47ab66fa53d9ceaf26f00030bd0ab0ab1acabfcf5de0",
+        "operation_adapter": {
+          "capability_id": "FINANCE.VOUCHER.APPROVE_AND_POST",
+          "operation_semantics": "WRITE",
+          "backend_profile": "NSL_V02_IN_PROCESS",
+          "adapter_id": "nex-ae:eos-journal-controlled-write:v1",
+          "operation_ids": [
+            "FINANCE.VOUCHER.APPROVE_AND_POST",
+            "FINANCE.JOURNAL.RECONCILE"
+          ]
+        }
+      },
+      {
+        "capability_id": "PROJECT.WORK_CODE_SET.GET",
+        "capability_version": "1.0.0",
+        "skill_id": "MYBEE.D12.PROJECT_WORK_CODE_CONTEXT",
+        "skill_version": "1.0.0",
+        "skill_semantic_hash": "sha256:a3f4e3d97e646f5e7c8f7957cb1981fbabdc019b379c565c9d7759bfcd8fd13e",
+        "skill_artifact_hash": "sha256:6efd51bcb415f9ddf6cb1f1caaf3a5d248d456cb85931b8b7335ac24e7b0a8c5",
+        "release_id": "nex-mybee-m1-d04-d12-allocation-checkpoint-v4",
+        "release_hash": "sha256:228296ee2f4df8019a4d47ab66fa53d9ceaf26f00030bd0ab0ab1acabfcf5de0",
+        "operation_adapter": {
+          "capability_id": "PROJECT.WORK_CODE_SET.GET",
+          "operation_semantics": "READ",
+          "backend_profile": "NSL_V02_IN_PROCESS",
+          "adapter_id": "nex-ae:eos-project-work-code-read:v1",
+          "operation_ids": [
+            "PROJECT.WORK_CODE_SET.GET"
+          ]
+        }
+      }
+    ]
+  },
+  "skill_catalog_hash": "sha256:d412fdaa3baf6ec8feb9ab68edbd2c6c9cc45246eed4295e16641378f9ec1a98",
+  "backend_profiles": [
+    "NSL_V02_IN_PROCESS"
+  ],
+  "runtime_selectable_capabilities": [
+    "FINANCE.COST_ALLOCATION.RUN",
+    "FINANCE.VOUCHER.APPROVE_AND_POST",
+    "PROJECT.WORK_CODE_SET.GET"
+  ],
+  "remote_provider_required": false,
+  "database_migration_required": false,
+  "content_hash": "sha256:a3b105b029f1f62de3d65e1d95fac5781ea75eeea0135f69bfc74b0a00b2234f"
+}
