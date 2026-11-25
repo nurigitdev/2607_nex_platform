@@ -8,6 +8,8 @@
 - Historical contexts without the additive primary Project field remain
   replay-compatible through the matching preparation authority.
 - Project, context, account, and committed-result drift fail closed.
+- Child controlled-WRITE identity remains in the typed business projection;
+  the parent delegated P5 StepResult does not claim that WRITE identity.
 - No migration, fixture, parallel result API, or allocation coupling was added.
 
 ## Verification
@@ -16,6 +18,8 @@
 - PA/WC/IA projection and split-journey regression: `31 passed`, `1 skipped`
   because the protected PostgreSQL smoke is opt-in.
 - AE Web Workspace result rendering: `14 passed`.
+- Delegated-result/P5-StepResult settlement regression: `20 passed` across the
+  CA00B, CA00F.5C, and P7 resilience boundary.
 - AE Slice Gate: PASS, `7,095 passed`, `55 skipped`, `6/6` commands; statement
   coverage `96.47%`, branch coverage `94.71%`.
 - Protected live journey and Repository Full Gate evidence follow on the

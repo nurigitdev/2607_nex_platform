@@ -52,6 +52,12 @@ No new table, public API, event type, result pipeline, model call, or database
 migration is admitted. Existing WorkResult business-projection hashes protect
 the summary across the handoff.
 
+The delegated parent step did not execute the child WRITE. Therefore the EOS
+business operation remains in the typed `business_summary`, business-object
+lineage, and external references, while the P5 delegated StepResult's own
+`business_operation_id` remains null. Only the admitted `LOCAL_SKILL` that
+performed the controlled WRITE owns the StepResult WRITE identity.
+
 ## 6. Outcome Semantics
 
 - `COMMITTED + VERIFIED` includes the verified Journal number.
@@ -69,6 +75,14 @@ the summary across the handoff.
    and authenticated Playwright acceptance;
 5. result card and recovery rendering evidence;
 6. zero-residue cleanup and Repository Full Gate.
+
+The first protected run proved EOS posting, WA evidence intake, and a complete
+`FINANCE.VOUCHER_DRAFT` summary in the WC WorkResult. It also exposed an
+existing P5 contract violation during generalized IA resume: the child EOS
+operation identity had been copied into the parent delegated StepResult WRITE
+identity. The contract was corrected without changing persistence or public
+APIs, and focused regression now materializes the complete P5 StepResult rather
+than stopping at the intermediate executor outcome.
 
 ## 8. Non-Goals
 

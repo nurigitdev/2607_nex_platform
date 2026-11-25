@@ -2,9 +2,8 @@ from __future__ import annotations
 
 import copy
 
-import pytest
-
 import nex_wc.work_results as wc_work_results
+import pytest
 from nex_ae_api.business_result_summary import (
     build_project_allocation_summary,
     build_voucher_draft_summary,
@@ -12,6 +11,7 @@ from nex_ae_api.business_result_summary import (
 )
 from nex_ae_api.multi_step_engine import StepExecutionContext
 from nex_ae_api.step_executors import P5StepExecutorError, _delegated_result_outcome
+from nex_ae_api.step_results import build_step_result
 from nex_ae_api.work_result_events import (
     WorkResultEventError,
     validate_work_result_event,
@@ -191,9 +191,28 @@ def test_ca00b_ae_resume_restores_summary_and_business_operation_lineage() -> No
     event = validate_work_result_event(_event())
     outcome = _delegated_result_outcome(_context(event), event)
     assert outcome.state == "SUCCEEDED"
-    assert outcome.business_operation_id == BUSINESS_OPERATION_ID
+    assert outcome.business_operation_id is None
     assert outcome.result_payload["business_summary"] == _summary()
     assert outcome.result_payload["source_agent_result_hash"] == AGENT_RESULT_HASH
+    step_result = build_step_result(
+        step_result_id="99999999-9999-4999-8999-999999999991",
+        execution_id=EXECUTION_ID,
+        executable_plan_id="99999999-9999-4999-8999-999999999992",
+        executable_step_id="99999999-9999-4999-8999-999999999993",
+        compiled_step_key="E1",
+        logical_step_ref="S1",
+        attempt_no=1,
+        status=outcome.state,
+        result_contract_ref=outcome.result_contract_ref,
+        result_payload=outcome.result_payload,
+        external_refs=outcome.external_refs,
+        evidence_refs=outcome.evidence_refs,
+        business_operation_id=outcome.business_operation_id,
+        started_at=NOW,
+        completed_at=NOW,
+    )
+    assert step_result["schema_version"] == "1.1"
+    assert step_result["business_operation_id"] is None
     assert summary_from_step_results(
         ({"result_payload": outcome.result_payload},)
     ) == _summary()
@@ -273,7 +292,7 @@ def test_ca00b_reference_only_projection_remains_admissible() -> None:
     event = validate_work_result_event(event)
     outcome = _delegated_result_outcome(_context(event), event)
     assert "business_summary" not in outcome.result_payload
-    assert outcome.business_operation_id == BUSINESS_OPERATION_ID
+    assert outcome.business_operation_id is None
 
 
 def test_ca00b_legacy_work_result_event_remains_compatible() -> None:

@@ -7,8 +7,8 @@ from datetime import UTC, datetime
 from typing import Any, Literal, Protocol
 
 from nex_ae_api.business_result_summary import (
-    BusinessResultSummaryError,
     VOUCHER_DRAFT_RESULT_TYPE,
+    BusinessResultSummaryError,
     admit_business_result_summary,
 )
 from nex_ae_api.chat_application import ChatApplicationService
@@ -818,7 +818,9 @@ def _delegated_result_outcome(
         external_refs=tuple(sorted(external_refs)),
         evidence_refs=(f"WC:WORK_RESULT_EVENT:{event['event_id']}",),
         error_ref=error_ref,
-        business_operation_id=business_operation_id,
+        # The delegated step did not execute the WRITE. Keep the child's
+        # operation identity in the typed result payload and external refs.
+        business_operation_id=None,
     )
 
 
