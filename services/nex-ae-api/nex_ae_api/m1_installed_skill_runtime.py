@@ -22,6 +22,10 @@ from mybee_ax.integrations import (
     NexProjectPnlRefreshClient,
 )
 from mybee_ax.orchestration import M1FinancialResultIntegrator
+from nex_runtime.business_context import (
+    BusinessContextValidationError,
+    validate_business_request_context,
+)
 from nex_runtime.nsl_package_admission import inspect_installed_nsl_package
 from nex_runtime.nsl_runtime_adapter import (
     InstalledNslExecution,
@@ -40,6 +44,7 @@ from nex_ae_api.accounting_allocation_plan import (
 from nex_ae_api.allocation_plan_resolution_runtime import (
     InstalledApprovedAllocationPlanResolution,
 )
+from nex_ae_api.business_result_summary import build_voucher_draft_summary
 from nex_ae_api.controlled_skill_runtime import (
     ControlledExecutionAuthority,
     ControlledSkillRuntime,
@@ -758,7 +763,10 @@ class _M1JournalControlledRuntime(ControlledSkillRuntime):
             project_id=persisted["project_id"],
             agent_id=persisted["agent_id"],
             org_scope_refs=tuple(authorization.get("org_scope_refs", ())),
-            business_result_seed=None,
+            business_result_seed=_journal_business_result_seed(
+                work_intent=persisted["work_intent"],
+                preparation=preparation,
+            ),
             runtime_metadata={
                 "work_intent": persisted["work_intent"],
                 "preparation_checkpoint": preparation,
@@ -841,9 +849,43 @@ class _M1JournalControlledRuntime(ControlledSkillRuntime):
             authority=authority,
             business_operation_id=business_operation_id,
         )
+        seed = authority.business_result_seed
+        if not isinstance(seed, Mapping):
+            raise ControlledSkillRuntimeError(
+                "Journal business-result seed is unavailable."
+            )
+        journal = (
+            _committed_journal_projection(result, project_code=seed["project_code"])
+            if base.state == "SUCCEEDED"
+            else None
+        )
+        summary = build_voucher_draft_summary(
+            commit_state=str(base.result_payload["commit_state"]),
+            verification_status=base.result_payload.get("verification_status"),
+            approval_state="APPROVED",
+            business_operation_id=business_operation_id,
+            voucher_number=None if journal is None else journal["journal_no"],
+            amount=seed["amount"],
+            currency=str(seed["currency"]),
+            account_codes=seed["account_codes"],
+            project_code=str(seed["project_code"]),
+        )
         if base.state != "SUCCEEDED":
-            return base
-        journal_id = _committed_journal_id(result)
+            return P5ExecutorOutcome(
+                state=base.state,
+                result_contract_ref=base.result_contract_ref,
+                result_payload={
+                    **dict(base.result_payload),
+                    "business_summary": summary,
+                },
+                external_refs=base.external_refs,
+                artifact_refs=base.artifact_refs,
+                evidence_refs=base.evidence_refs,
+                error_ref=base.error_ref,
+                business_operation_id=base.business_operation_id,
+            )
+        assert journal is not None
+        journal_id = journal["journal_id"]
         deferred = _deferred_accounting_operations(authority.runtime_metadata)
         return P5ExecutorOutcome(
             state=base.state,
@@ -853,6 +895,7 @@ class _M1JournalControlledRuntime(ControlledSkillRuntime):
                 "journal_id": journal_id,
                 "journal_ref": f"eos.posted_journal:{journal_id}",
                 "deferred_operations": list(deferred),
+                "business_summary": summary,
             },
             external_refs=tuple(
                 sorted(
@@ -886,6 +929,62 @@ def _deferred_accounting_operations(
         context.get("requested_allocation") if isinstance(context, Mapping) else None
     )
     return ("FINANCE.COST_ALLOCATION.RUN",) if allocations else ()
+
+
+def _journal_business_result_seed(
+    *,
+    work_intent: Mapping[str, Any],
+    preparation: object,
+) -> dict[str, Any]:
+    context_value = work_intent.get("business_request_context")
+    try:
+        context = validate_business_request_context(context_value)
+    except BusinessContextValidationError as exc:
+        raise ControlledSkillRuntimeError(
+            "Journal business context is invalid for result projection."
+        ) from exc
+    if (
+        not isinstance(preparation, Mapping)
+        or preparation.get("schema_version")
+        != "nex.mybee.m1-transaction-preparation.v1"
+        or preparation.get("stage") != "READY_FOR_D04"
+        or preparation.get("business_context_hash") != context["context_hash"]
+    ):
+        raise ControlledSkillRuntimeError(
+            "Journal preparation checkpoint differs from its business context."
+        )
+    authority = preparation.get("authority")
+    if (
+        not isinstance(authority, Mapping)
+        or authority.get("schema_version") != "nex.mybee.m1-preparation-authority.v1"
+    ):
+        raise ControlledSkillRuntimeError(
+            "Journal preparation authority is invalid for result projection."
+        )
+    project_code = context.get("primary_project_code")
+    authority_project_code = authority.get("primary_project_code")
+    if project_code is None:
+        project_code = authority_project_code
+    if not isinstance(project_code, str) or authority_project_code != project_code:
+        raise ControlledSkillRuntimeError(
+            "Journal Project authority differs from its business context."
+        )
+    debit_key = authority.get("debit_semantic_key")
+    credit_key = authority.get("credit_semantic_key")
+    if any(
+        not isinstance(value, str) or not value.strip()
+        for value in (debit_key, credit_key)
+    ):
+        raise ControlledSkillRuntimeError(
+            "Journal account authority is invalid for result projection."
+        )
+    transaction = context["transaction"]
+    return {
+        "amount": transaction["amount"],
+        "currency": transaction["currency"],
+        "account_codes": [debit_key, credit_key],
+        "project_code": project_code,
+    }
 
 
 @dataclass(frozen=True)
@@ -1141,6 +1240,42 @@ def _allocation_execution_context(
         "principal_id": str(row["principal_id"]),
         "correlation_id": str(row["correlation_id"]),
         "work_intent": dict(work_intent),
+    }
+
+
+def _committed_journal_projection(result: Any, *, project_code: str) -> dict[str, Any]:
+    outcome = getattr(result, "outcome", None)
+    write_result = getattr(outcome, "result", None)
+    reference = str(getattr(write_result, "business_reference", ""))
+    prefix = "eos.posted_journal:"
+    if not reference.startswith(prefix):
+        raise ControlledSkillRuntimeError(
+            "Committed Journal result reference is unavailable."
+        )
+    candidate = reference[len(prefix) :]
+    try:
+        journal_id = str(uuid.UUID(candidate))
+    except (ValueError, AttributeError) as exc:
+        raise ControlledSkillRuntimeError(
+            "Committed Journal result reference is invalid."
+        ) from exc
+    envelope = getattr(write_result, "value", None)
+    value = getattr(envelope, "value", None)
+    journal_no = value.get("journal_no") if isinstance(value, Mapping) else None
+    project_codes = value.get("project_codes") if isinstance(value, Mapping) else None
+    if (
+        not isinstance(journal_no, str)
+        or not journal_no.strip()
+        or not isinstance(project_codes, list)
+        or project_code not in project_codes
+    ):
+        raise ControlledSkillRuntimeError(
+            "Committed Journal result projection is invalid."
+        )
+    return {
+        "journal_id": journal_id,
+        "journal_no": journal_no.strip(),
+        "project_codes": list(project_codes),
     }
 
 

@@ -330,6 +330,10 @@ product path. Installed Journal acceptance also requires
 `W80-CA00F.5B: Primary Project Code Typed Business Context Propagation Closure`,
 which preserves the canonical Project identity through claimed-work
 reconstruction without imposing Project scope on general queries.
+Installed result rendering further requires
+`W80-CA00F.5C: Installed Journal Business Result Summary and IA Projection
+Closure`, which restores the typed user summary from product authorities and
+the verified EOS result without creating a second publication pipeline.
 
 Replace the canonical combined acceptance with two journeys:
 

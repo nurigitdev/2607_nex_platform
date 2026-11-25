@@ -718,13 +718,30 @@ def test_m1_controlled_outcome_stops_at_posted_journal_and_defers_allocation():
     result = SimpleNamespace(
         outcome=SimpleNamespace(
             commit_state=SimpleNamespace(value="COMMITTED"),
-            result=SimpleNamespace(business_reference=f"eos.posted_journal:{JOURNAL}"),
+            result=SimpleNamespace(
+                business_reference=f"eos.posted_journal:{JOURNAL}",
+                value=SimpleNamespace(
+                    value={
+                        "journal_no": "VO00-2026-000001",
+                        "project_codes": [CODE_A],
+                    }
+                ),
+            ),
         ),
         verification=SimpleNamespace(status=SimpleNamespace(value="VERIFIED")),
         write_request=SimpleNamespace(idempotency_key="journal-key"),
     )
     authority = SimpleNamespace(
         canonical_write_payload={"company_id": COMPANY},
+        business_result_seed={
+            "amount": "100000.00",
+            "currency": "KRW",
+            "account_codes": [
+                "MB-COA-OTHER-EXPENSE",
+                "MB-COA-ACCOUNTS-PAYABLE-FX",
+            ],
+            "project_code": CODE_A,
+        },
         runtime_metadata={
             "work_intent": {"intent": "bound"},
             "preparation_checkpoint": _preparation(),
@@ -746,6 +763,21 @@ def test_m1_controlled_outcome_stops_at_posted_journal_and_defers_allocation():
     assert financial.calls == []
     assert f"eos.posted_journal:{JOURNAL}" in outcome.external_refs
     assert "financial_result" not in outcome.result_payload
+    assert outcome.result_payload["business_summary"]["summary"] == {
+        "outcome": "COMMITTED",
+        "verification_status": "VERIFIED",
+        "approval_state": "APPROVED",
+        "business_operation_id": "operation-1",
+        "voucher_number": "VO00-2026-000001",
+        "amount": "100000.00",
+        "currency": "KRW",
+        "account_codes": [
+            "MB-COA-OTHER-EXPENSE",
+            "MB-COA-ACCOUNTS-PAYABLE-FX",
+        ],
+        "project_code": CODE_A,
+        "business_object_link": None,
+    }
 
 
 def test_committed_journal_reference_is_required_for_journal_completion():
@@ -764,6 +796,17 @@ def test_committed_journal_reference_is_required_for_journal_completion():
         writer._controlled_write_outcome(
             context=SimpleNamespace(job={"tenant_id": TENANT}),
             result=result,
-            authority=SimpleNamespace(runtime_metadata=None),
+            authority=SimpleNamespace(
+                business_result_seed={
+                    "amount": "100000.00",
+                    "currency": "KRW",
+                    "account_codes": [
+                        "MB-COA-OTHER-EXPENSE",
+                        "MB-COA-ACCOUNTS-PAYABLE-FX",
+                    ],
+                    "project_code": CODE_A,
+                },
+                runtime_metadata=None,
+            ),
             business_operation_id="operation-1",
         )

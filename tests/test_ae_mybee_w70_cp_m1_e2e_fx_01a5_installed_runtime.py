@@ -966,6 +966,19 @@ def test_journal_authority_rejects_input_and_scope_drift(
             "work_intent": {"intent_hash": HASH},
         },
     )
+    monkeypatch.setattr(
+        installed,
+        "_journal_business_result_seed",
+        lambda **_values: {
+            "amount": "1000.00",
+            "currency": "KRW",
+            "account_codes": [
+                "MB-COA-OTHER-EXPENSE",
+                "MB-COA-ACCOUNTS-PAYABLE-FX",
+            ],
+            "project_code": "V101D260001",
+        },
+    )
     invalid = _write_context(runtime)
     invalid.step["compiled_input_bindings"].pop()
     with pytest.raises(ControlledSkillRuntimeError, match="business contract"):
@@ -995,7 +1008,7 @@ def test_journal_authority_rejects_input_and_scope_drift(
     )
     authority = writer._resolve_authority(_write_context(runtime))
     assert authority.project_id == PROJECT_ID
-    assert authority.business_result_seed is None
+    assert authority.business_result_seed["project_code"] == "V101D260001"
 
 
 def test_controlled_skill_initial_preserves_authority_stage_failure(

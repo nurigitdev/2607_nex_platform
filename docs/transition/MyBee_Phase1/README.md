@@ -40,6 +40,7 @@ MyBee office-work AX Service Phase-1 program.
 33. `NeX_MyBee_W80_CA00F_Sequential_Approval_Result_Publication_WA_Evidence_and_Allocation_Responsibility_Boundary_v1.0.md`
 34. `NeX_MyBee_W80_CA00F_5A_Accounting_Allocation_Product_Entry_and_Domain_Intent_Activation_Closure_v1.0.md`
 35. `NeX_MyBee_W80_CA00F_5B_Primary_Project_Code_Typed_Business_Context_Propagation_Closure_v1.0.md`
+36. `NeX_MyBee_W80_CA00F_5C_Installed_Journal_Business_Result_Summary_and_IA_Projection_Closure_v1.0.md`
 
 The Markdown Slice Plan and its Execution Matrix JSON are one planning set.
 The JSON is machine-readable traceability input, not runtime configuration or
@@ -112,6 +113,13 @@ canonical `primary_project_code` as typed, hash-bound input across IA, WC, and
 PA, while pre-amendment v1 replay remains compatible. General Chat/RAG remains
 Project-neutral; personal default scope and PA lifecycle are explicitly
 deferred to a separate design decision.
+
+W80-CA00F.5C closes the installed Journal result-projection gap exposed after
+5B. It derives the user-facing summary only from admitted BusinessRequestContext,
+the matching preparation authority, and the verified EOS commit result. The
+existing PA WorkResult, WC event, IA finalization, and Workspace projection path
+remains the sole publication route; no fixture, result table, or parallel API is
+introduced.
 
 The W30-CA01 pair is the source-backed post-W20 delta. It takes precedence
 only for W30 entry ordering, current migration-number reservations, the
