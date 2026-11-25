@@ -202,6 +202,7 @@ def test_w70_candidate_packs_preserve_deployed_capabilities_and_limit_nsl_source
         path.relative_to(DEFAULT_SKILL_PACK_ROOT).as_posix()
         for path in DEFAULT_SKILL_PACK_ROOT.glob("d*/*.ns")
     } == {
+        "d04_accounting/allocation_execution.v1.ns",
         "d04_accounting/journal_posting.v1.ns",
         "d04_accounting/journal_posting.v1_0_1.ns",
         "d04_accounting/journal_posting.v1_0_2.ns",

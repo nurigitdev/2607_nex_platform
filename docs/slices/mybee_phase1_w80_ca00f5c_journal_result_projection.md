@@ -50,7 +50,10 @@
   `1 skipped` protected opt-in test.
 - AE Web regression: `400 passed`; AE Web Slice Gate: PASS, `297 passed`,
   statement coverage `97.78%`, branch coverage `97.28%`.
+- W70 Skill-Pack inventory now recognizes the productized allocation NSL source,
+  and the generated Golden A quarantine digest remains exact after the active
+  controlled-skill runtime changed.
 - AE Slice Gate: PASS, `7,100 passed`, `55 skipped`, `6/6` commands; statement
-  coverage `96.46%`, branch coverage `94.70%`.
+  coverage `96.46%`, branch coverage `94.69%`.
 - Protected live journey and Repository Full Gate evidence follow on the
   exact-head deployment boundary.
