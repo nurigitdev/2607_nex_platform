@@ -326,6 +326,7 @@ def test_closer_reports_retryable_or_lineage_failure_without_crashing(store) -> 
     assert result["published_count"] == 0
     assert result["failed_count"] == 1
     assert result["failures"][0]["error_code"] == "ae.workspace_result_lineage_invalid"
+    assert result["failures"][0]["reason"] == "OWNER_PRINCIPAL"
 
 
 def test_plan_result_exposes_business_operation_as_reference() -> None:

@@ -27,6 +27,7 @@ class WorkspaceResultPublicationError(Exception):
     error_code: str
     detail: str
     retryable: bool = False
+    reason: str | None = None
 
     def __str__(self) -> str:
         return self.detail
@@ -271,14 +272,16 @@ class SqlAlchemyInstalledIaResultCloser:
                 published_count += int(not publication["replayed"])
                 replayed_count += int(publication["replayed"])
             except (P5PlanFinalizationError, WorkspaceResultPublicationError) as exc:
-                failures.append(
-                    {
-                        "tenant_id": tenant_id,
-                        "agent_execution_id": execution_id,
-                        "error_code": exc.error_code,
-                        "retryable": bool(exc.retryable),
-                    }
-                )
+                failure = {
+                    "tenant_id": tenant_id,
+                    "agent_execution_id": execution_id,
+                    "error_code": exc.error_code,
+                    "retryable": bool(exc.retryable),
+                }
+                reason = getattr(exc, "reason", None)
+                if isinstance(reason, str) and reason:
+                    failure["reason"] = reason
+                failures.append(failure)
         return {
             "candidate_count": len(rows),
             "finalized_count": finalized_count,
@@ -406,18 +409,27 @@ def _load_publication(
 
 
 def _require_workspace_result_lineage(record: Mapping[str, Any]) -> None:
-    if (
-        record.get("agent_type") != "IA"
-        or record.get("source_type") != "PROMPT"
-        or record.get("target_type") != "WORKSPACE_RESULT"
-        or str(record.get("target_ref")) != str(record.get("workspace_id"))
-        or str(record.get("principal_id")) != str(record.get("owner_user_id"))
-        or record.get("result_status") not in {"SUCCEEDED", "PARTIAL"}
-    ):
-        raise WorkspaceResultPublicationError(
-            "ae.workspace_result_lineage_invalid",
-            "Workspace result delivery is outside its owner-private IA lineage.",
-        )
+    invariants = (
+        ("AGENT_TYPE", record.get("agent_type") == "IA"),
+        ("SOURCE_TYPE", record.get("source_type") == "PROMPT"),
+        ("TARGET_TYPE", record.get("target_type") == "WORKSPACE_RESULT"),
+        (
+            "TARGET_WORKSPACE",
+            str(record.get("target_ref")) == str(record.get("workspace_id")),
+        ),
+        (
+            "OWNER_PRINCIPAL",
+            str(record.get("principal_id")) == str(record.get("owner_user_id")),
+        ),
+        ("RESULT_STATUS", record.get("result_status") in {"SUCCEEDED", "PARTIAL"}),
+    )
+    for reason, satisfied in invariants:
+        if not satisfied:
+            raise WorkspaceResultPublicationError(
+                "ae.workspace_result_lineage_invalid",
+                "Workspace result delivery is outside its owner-private IA lineage.",
+                reason=reason,
+            )
 
 
 def _workspace_activity(record: Mapping[str, Any]) -> dict[str, Any]:

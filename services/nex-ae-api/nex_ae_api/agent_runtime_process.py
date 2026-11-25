@@ -505,6 +505,12 @@ def _bounded_settlement_diagnostics(result: Mapping[str, Any]) -> dict[str, Any]
                     {
                         "error_code": error_code[:128],
                         "retryable": bool(failure.get("retryable")),
+                        **(
+                            {"reason": str(failure["reason"])[:64]}
+                            if isinstance(failure.get("reason"), str)
+                            and failure["reason"].strip()
+                            else {}
+                        ),
                     }
                 )
         diagnostics[target] = {
