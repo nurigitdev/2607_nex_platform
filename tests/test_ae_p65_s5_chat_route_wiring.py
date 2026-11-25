@@ -100,6 +100,47 @@ def test_required_mode_returns_async_compiled_projection_without_direct_generati
     assert store.get(body["interaction_id"]) == body
 
 
+def test_required_product_coordination_returns_pending_projection() -> None:
+    product_admission = {
+        "schema_version": "ae_product_planning_admission.v1",
+        "status": "PREPARATION_STARTED",
+        "capability_id": "FINANCE.COST_ALLOCATION.RUN",
+    }
+    runtime = Runtime(
+        result=SemanticCandidateAdmissionResult(
+            mode="required",
+            status="PRODUCT_COORDINATION_STARTED",
+            directive="WAIT_FOR_PRODUCT_COORDINATION",
+            agent_execution_id="10000000-0000-4000-8000-000000000659",
+            work_intent_id="20000000-0000-4000-8000-000000000659",
+            agent_context_id="30000000-0000-4000-8000-000000000659",
+            product_planning_admission=product_admission,
+        )
+    )
+    client, generation, store = _client(runtime)
+
+    response = client.post(
+        "/api/v1/chat/interactions",
+        json={
+            "interaction_id": "40000000-0000-4000-8000-000000000659",
+            "tenant_id": "tenant-a",
+            "user_id": "user-a",
+            "user_message": "allocate an approved accounting source",
+        },
+        headers=_headers(),
+    )
+
+    assert response.status_code == 202
+    body = response.json()
+    assert body["status"] == "PENDING"
+    planning = body["generation"]["semantic_planning"]
+    assert planning["status"] == "PRODUCT_COORDINATION_STARTED"
+    assert planning["directive"] == "WAIT_FOR_PRODUCT_COORDINATION"
+    assert planning["product_planning_admission"] == product_admission
+    assert generation.calls == []
+    assert store.get(body["interaction_id"]) == body
+
+
 def test_required_block_is_problem_response_and_shadow_failure_falls_back() -> None:
     blocked = Runtime(
         result=SemanticCandidateAdmissionResult(

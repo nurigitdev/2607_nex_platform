@@ -15,6 +15,10 @@
   `CLAIMED_WORKITEM`-only, while independent accounting allocation admits
   `IA_PROMPT` and enters its deterministic materializer instead of the generic
   provider-generated plan path.
+- Required-mode chat admission treats `PRODUCT_COORDINATION_STARTED` as an
+  asynchronous `202 PENDING` result. The `WAIT_FOR_PRODUCT_COORDINATION`
+  directive remains visible in the semantic projection without being
+  misclassified as a blocked `409` response.
 - No migration, fixture, parallel result API, or allocation coupling was added.
 
 ## Verification
@@ -29,7 +33,9 @@
   identity fields or the exact-total-one invariant.
 - Allocation source admission and Product planning router regression:
   `75 passed`, `1 skipped` protected opt-in test.
-- AE Slice Gate: PASS, `7,099 passed`, `55 skipped`, `6/6` commands; statement
+- Product-coordination public admission regression: `79 passed`, `1 skipped`
+  protected opt-in test.
+- AE Slice Gate: PASS, `7,100 passed`, `55 skipped`, `6/6` commands; statement
   coverage `96.46%`, branch coverage `94.70%`.
 - Protected live journey and Repository Full Gate evidence follow on the
   exact-head deployment boundary.

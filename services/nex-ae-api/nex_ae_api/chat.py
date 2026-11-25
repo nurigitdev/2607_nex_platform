@@ -2538,7 +2538,13 @@ def _admit_semantic_candidate_pipeline(
             retryable=False,
             failure_directive="BLOCKED",
         ) from exc
-    if result.status in {"COMPILED", "DISABLED", "SHADOW_ONLY", "SHADOW_SKIPPED"}:
+    if result.status in {
+        "COMPILED",
+        "PRODUCT_COORDINATION_STARTED",
+        "DISABLED",
+        "SHADOW_ONLY",
+        "SHADOW_SKIPPED",
+    }:
         return result
     if getattr(runtime, "mode", None) == "shadow":
         return result
