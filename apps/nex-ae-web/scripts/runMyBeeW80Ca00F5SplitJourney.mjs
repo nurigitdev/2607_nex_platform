@@ -2,6 +2,7 @@
 import { pathToFileURL } from "node:url";
 
 import {
+  browserJson,
   configuredPage,
   contextOptions,
   driveApprovalsUntilResult,
@@ -30,7 +31,8 @@ const ENV = Object.freeze({
   accountingApproverEmployeeId: "NEX_MYBEE_W80_SPLIT_ACCOUNTING_APPROVER_EMPLOYEE_ID",
   accountingApproverPassword: "NEX_MYBEE_W80_SPLIT_ACCOUNTING_APPROVER_PASSWORD",
   screenshotDir: "NEX_MYBEE_W80_SPLIT_SCREENSHOT_DIR",
-  recoveryInteractionId: "NEX_MYBEE_W80_SPLIT_RECOVERY_INTERACTION_ID"
+  recoveryInteractionId: "NEX_MYBEE_W80_SPLIT_RECOVERY_INTERACTION_ID",
+  progressAcceptance: "NEX_MYBEE_W80_CA00G0A_PROGRESS_ACCEPTANCE"
 });
 
 const MODES = Object.freeze({
@@ -105,10 +107,15 @@ export async function runSplitJourney({
   const { actionTimeout, semanticSubmitTimeout, resultTimeout } =
     myBeeM1RuntimeTimeouts(environ);
   const captures = screenCapture(environ[ENV.screenshotDir], `w80-${mode}`);
+  const progressCaptures = screenCapture(
+    environ[ENV.screenshotDir],
+    `w80-ca00g0a-${mode}-progress`
+  );
   const responses = [];
   let browser;
   const contexts = [];
   let stage = "launch";
+  let progressObserver = null;
   try {
     const playwright = await importPlaywright();
     browser = await launchBrowser(playwright, environ);
@@ -130,6 +137,9 @@ export async function runSplitJourney({
       expectedState: "SUBMITTER_WORKSPACE_READY",
       assertion: "workspace-heading-visible"
     });
+    if (environ[ENV.progressAcceptance] === "1") {
+      progressObserver = observeExecutionProgress(submitter, progressCaptures);
+    }
 
     stage = "accounting_approver_login";
     await accountingApprover.goto(environ[ENV.webUrl], { waitUntil: "domcontentloaded", timeout: actionTimeout });
@@ -204,6 +214,9 @@ export async function runSplitJourney({
       assertion: mode === "journal" ? "journal-result-visible" : "allocation-result-visible",
       interactionId
     });
+    const progressAcceptance = progressObserver
+      ? await progressObserver.finish(interactionId)
+      : null;
 
     const checks = {
       live_plan_compiled: splitJourneyAdmissionAccepted({
@@ -215,6 +228,7 @@ export async function runSplitJourney({
       delivery_acknowledged: completed.result?.delivery?.state === "ACKNOWLEDGED",
       result_heading_rendered: true,
       approval_replay_idempotent: completed.replayStatuses.every(status => status === 200),
+      ...(progressAcceptance?.checks || {}),
       ...splitJourneyChecks({
         mode,
         approvalDomains: completed.approvalDomains,
@@ -229,9 +243,13 @@ export async function runSplitJourney({
       observations: {
         approval_domains: completed.approvalDomains,
         approval_actor_roles: completed.approvalActorRoles,
-        authenticated_http_response_count: responses.length
+        authenticated_http_response_count: responses.length,
+        execution_progress_event_codes:
+          progressAcceptance?.event_codes || []
       },
       screen_capture: captures.evidence(),
+      progress_screen_capture: progressCaptures.evidence(),
+      progress_acceptance: progressAcceptance,
       checks,
       runtime: {
         interaction_id: interactionId,
@@ -249,12 +267,184 @@ export async function runSplitJourney({
       recent_api_responses: responses.slice(-8)
     });
     evidence.screen_capture = captures.evidence();
+    evidence.progress_screen_capture = progressCaptures.evidence();
     assertRedacted(evidence, environ);
     return evidence;
   } finally {
+    if (progressObserver) await progressObserver.stop();
     for (const context of contexts.reverse()) await context.close();
     if (browser) await browser.close();
   }
+}
+
+export function evaluateExecutionProgressAcceptance({
+  snapshots,
+  transport,
+  projection,
+  progressCaptureCount
+}) {
+  const events = Array.isArray(projection?.events) ? projection.events : [];
+  const sequences = events.map(item => item.sequence);
+  const eventCodes = events.map(item => item.event_code);
+  const ordered = sequences.every(
+    (sequence, index) => sequence === index + 1
+  );
+  const unique = new Set(events.map(item => item.event_id)).size === events.length;
+  const appendOnly = snapshots.every(item => item.append_only === true);
+  const latestLines = snapshots.at(-1)?.lines || [];
+  const debugTimePrefixed = latestLines.length > 0 && latestLines.every(
+    line => /^\[\d{2}:\d{2}:\d{2}\]/.test(line)
+  );
+  const checks = {
+    progress_poll_started_before_chat_response:
+      Number.isFinite(transport.first_progress_request_at) &&
+      Number.isFinite(transport.chat_response_at) &&
+      transport.first_progress_request_at <= transport.chat_response_at,
+    progress_dom_is_append_only: appendOnly && snapshots.length > 0,
+    progress_debug_time_prefix_visible: debugTimePrefixed,
+    progress_projection_owner_scoped:
+      projection?.metadata?.owner_scoped === true,
+    progress_projection_private_payload_absent:
+      projection?.metadata?.raw_prompt_included === false &&
+      projection?.metadata?.private_payload_included === false,
+    progress_projection_ordered_and_unique:
+      ordered && unique && events.length > 0,
+    progress_projection_terminal: projection?.terminal === true,
+    progress_polling_stopped_after_terminal:
+      transport.poll_count_before_stability_check ===
+      transport.poll_count_after_stability_check,
+    progress_screen_evidence_captured: progressCaptureCount > 0
+  };
+  return {
+    status: Object.values(checks).every(Boolean) ? "PASS" : "FAIL",
+    checks,
+    event_codes: eventCodes,
+    event_count: events.length,
+    dom_snapshot_count: snapshots.length,
+    final_line_count: latestLines.length,
+    transport: {
+      progress_request_count: transport.progress_request_count,
+      progress_http_statuses: [...transport.progress_http_statuses]
+    },
+    raw_prompt_included: false,
+    private_payload_included: false
+  };
+}
+
+export function observeExecutionProgress(page, captures) {
+  const snapshots = [];
+  const transport = {
+    chat_request_at: null,
+    chat_response_at: null,
+    first_progress_request_at: null,
+    progress_request_count: 0,
+    progress_http_statuses: []
+  };
+  let previousLines = [];
+  let observedInteractionId = null;
+  let stopped = false;
+  let captureChain = Promise.resolve();
+
+  const requestListener = request => {
+    const route = new URL(request.url()).pathname;
+    if (request.method() === "POST" && route === "/ae-api/api/v1/chat/interactions") {
+      transport.chat_request_at ??= Date.now();
+    }
+    if (request.method() === "GET" && route.endsWith("/execution-progress")) {
+      transport.progress_request_count += 1;
+      transport.first_progress_request_at ??= Date.now();
+      observedInteractionId ??= progressInteractionId(route);
+    }
+  };
+  const responseListener = response => {
+    const route = new URL(response.url()).pathname;
+    if (
+      response.request().method() === "POST" &&
+      route === "/ae-api/api/v1/chat/interactions"
+    ) {
+      transport.chat_response_at ??= Date.now();
+    }
+    if (
+      response.request().method() === "GET" &&
+      route.endsWith("/execution-progress")
+    ) {
+      transport.progress_http_statuses.push(response.status());
+      captureChain = captureChain.then(async () => {
+        if (stopped) return;
+        await page.waitForTimeout(80);
+        const lines = (await page
+          .locator('[aria-label="실행 진행 로그"] li')
+          .allTextContents())
+          .map(value => value.trim())
+          .filter(Boolean);
+        if (
+          lines.length === previousLines.length &&
+          lines.every((line, index) => line === previousLines[index])
+        ) {
+          return;
+        }
+        const appendOnly =
+          lines.length >= previousLines.length &&
+          previousLines.every((line, index) => lines[index] === line);
+        previousLines = [...lines];
+        snapshots.push({ lines: [...lines], append_only: appendOnly });
+        await captures.capture(page, `progress-${String(lines.length).padStart(2, "0")}`, {
+          expectedState: "EXECUTION_PROGRESS_VISIBLE",
+          assertion: "ordered-progress-lines-visible",
+          interactionId: observedInteractionId
+        });
+      });
+    }
+  };
+  page.on("request", requestListener);
+  page.on("response", responseListener);
+
+  async function stop() {
+    if (stopped) return;
+    stopped = true;
+    page.off("request", requestListener);
+    page.off("response", responseListener);
+    await captureChain;
+  }
+
+  return {
+    async finish(interactionId) {
+      observedInteractionId ??= interactionId;
+      await page.waitForTimeout(1_200);
+      await captureChain;
+      transport.poll_count_before_stability_check =
+        transport.progress_request_count;
+      await page.waitForTimeout(1_200);
+      await captureChain;
+      transport.poll_count_after_stability_check =
+        transport.progress_request_count;
+      const response = await browserJson(
+        page,
+        `/ae-api/api/v1/chat/interactions/${encodeURIComponent(interactionId)}/execution-progress?after_sequence=0`
+      );
+      await stop();
+      if (response.status !== 200) {
+        throw new Error(`ExecutionProgressStatus${response.status}`);
+      }
+      if (observedInteractionId !== interactionId) {
+        throw new Error("ExecutionProgressInteractionMismatch");
+      }
+      return evaluateExecutionProgressAcceptance({
+        snapshots,
+        transport,
+        projection: response.payload,
+        progressCaptureCount: captures.evidence().count
+      });
+    },
+    stop
+  };
+}
+
+function progressInteractionId(route) {
+  const match = route.match(
+    /^\/ae-api\/api\/v1\/chat\/interactions\/([^/]+)\/execution-progress$/
+  );
+  return match ? decodeURIComponent(match[1]) : null;
 }
 
 export function splitJourneyAdmissionAccepted({ mode, httpStatus, semanticPlanning }) {

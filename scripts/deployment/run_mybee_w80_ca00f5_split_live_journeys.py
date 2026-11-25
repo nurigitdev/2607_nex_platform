@@ -42,6 +42,7 @@ from nex_runtime.current_platform_installation import CURRENT_JOURNEY_WORKERS
 from nex_runtime.database import sqlalchemy_database_url
 
 EXECUTION_ENV = "NEX_MYBEE_W80_CA00F5_LIVE"
+PROGRESS_ACCEPTANCE_ENV = "NEX_MYBEE_W80_CA00G0A_PROGRESS_ACCEPTANCE"
 SCHEMA_VERSION = "mybee_w80_ca00f5_split_live_journeys.v1"
 DEFAULT_REPORT = ROOT / "reports/deployment/mybee-w80-ca00f5-split-live-journeys.json"
 DEFAULT_BROWSER_REPORT = ROOT / "reports/deployment/mybee-w80-ca00f5-browser-evidence.json"
@@ -163,7 +164,11 @@ def _execute(env: Mapping[str, str], *, root: Path) -> dict[str, Any]:
         runtime_env
     )
     live_state: dict[str, Any] = {}
-    SCREENSHOT_DIR.mkdir(parents=True, exist_ok=True, mode=0o700)
+    screenshot_dir = Path(
+        env.get("NEX_MYBEE_W80_SPLIT_SCREENSHOT_DIR") or SCREENSHOT_DIR
+    )
+    progress_acceptance = env.get(PROGRESS_ACCEPTANCE_ENV) == "1"
+    screenshot_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
 
     def live_hook(**values: Any) -> Mapping[str, Any]:
         urls = dict(values["urls"])
@@ -337,25 +342,37 @@ def _execute(env: Mapping[str, str], *, root: Path) -> dict[str, Any]:
         }
 
     def finalization_hook(**values: Any) -> Mapping[str, Any]:
+        progress_manifests = (
+            (
+                "mybee-m1-w80-ca00g0a-journal-progress-screen-manifest.json",
+                "mybee-m1-w80-ca00g0a-allocation-progress-screen-manifest.json",
+            )
+            if progress_acceptance
+            else ()
+        )
+        required_states = {
+            "SUBMITTER_WORKSPACE_READY": 2,
+            "REQUEST_ADMITTED": 2,
+            "APPROVAL_RECORDED": 3,
+            "RESULT_RENDERED": 2,
+            "RESULT_RECOVERED": 2,
+        }
+        if progress_acceptance:
+            required_states["EXECUTION_PROGRESS_VISIBLE"] = 2
         return m1_acceptance._collect_live_journey_diagnostics(
             values["runtime_env"],
             root=values["root"],
             session_id=session_id,
             forbidden_values={requester_password, business_password, accounting_password},
-            screen_source_root=SCREENSHOT_DIR,
+            screen_source_root=screenshot_dir,
             screen_manifest_names=(
                 "mybee-m1-w80-journal-screen-manifest.json",
                 "mybee-m1-w80-allocation-screen-manifest.json",
                 "mybee-m1-w80-journal-recovery-screen-manifest.json",
                 "mybee-m1-w80-allocation-recovery-screen-manifest.json",
+                *progress_manifests,
             ),
-            screen_required_state_counts={
-                "SUBMITTER_WORKSPACE_READY": 2,
-                "REQUEST_ADMITTED": 2,
-                "APPROVAL_RECORDED": 3,
-                "RESULT_RENDERED": 2,
-                "RESULT_RECOVERED": 2,
-            },
+            screen_required_state_counts=required_states,
         )
 
     execution_error: Exception | None = None
@@ -477,7 +494,9 @@ def _browser_env(
         "NEX_MYBEE_W80_SPLIT_ACCOUNTING_APPROVER_PASSWORD": passwords[
             "accounting_approver"
         ],
-        "NEX_MYBEE_W80_SPLIT_SCREENSHOT_DIR": str(SCREENSHOT_DIR),
+        "NEX_MYBEE_W80_SPLIT_SCREENSHOT_DIR": env.get(
+            "NEX_MYBEE_W80_SPLIT_SCREENSHOT_DIR", str(SCREENSHOT_DIR)
+        ),
         "NEX_MYBEE_M1_GOLDEN_TIMEOUT_MS": "60000",
         "NEX_MYBEE_M1_GOLDEN_SEMANTIC_SUBMIT_TIMEOUT_MS": "180000",
         "NEX_MYBEE_M1_GOLDEN_RESULT_TIMEOUT_MS": "900000",
