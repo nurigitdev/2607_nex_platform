@@ -36,6 +36,10 @@ from nex_ae_api.product_capabilities import load_product_capability_registry
 from nex_ae_api.product_capability_retirements import (
     ProductCapabilityRetirementProjection,
 )
+from nex_ae_api.product_controlled_skill import (
+    ProductControlledSkillError,
+    _oa_revision_hash_ref,
+)
 from nex_ae_api.product_domain_intent_activators import (
     build_active_product_domain_intent_activator_registry,
 )
@@ -84,6 +88,26 @@ INTERACTION = "59000000-0000-4000-8000-000000000010"
 NOW = "2026-11-25T02:00:00Z"
 DATABASE_URL = os.getenv("NEX_AE_TEST_DATABASE_URL", "")
 POSTGRES_SMOKE = os.getenv("NEX_AE_MYBEE_W80_CA00F5_POSTGRES_SMOKE") == "1"
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    (
+        ("a" * 64, "sha256:" + "a" * 64),
+        ("B" * 64, "sha256:" + "b" * 64),
+        ("sha256:" + "c" * 64, "sha256:" + "c" * 64),
+    ),
+)
+def test_oa_revision_digest_is_normalized_to_platform_hash_ref(
+    value: str, expected: str
+) -> None:
+    assert _oa_revision_hash_ref(value) == expected
+
+
+@pytest.mark.parametrize("value", (None, "", " sha256:" + "a" * 64, "not-a-hash"))
+def test_invalid_oa_revision_digest_fails_closed(value: object) -> None:
+    with pytest.raises(ProductControlledSkillError, match="revision is invalid"):
+        _oa_revision_hash_ref(value)
 
 
 def _capabilities():

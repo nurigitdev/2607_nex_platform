@@ -25,7 +25,7 @@ from nex_runtime.nsl_runtime_bundle import (
     load_nsl_runtime_bundle,
     verify_nsl_runtime_bundle,
 )
-from nex_runtime.semantic_hashes import semantic_sha256_hash_ref
+from nex_runtime.semantic_hashes import semantic_sha256_hash_ref, validate_hash_ref
 from sqlalchemy import text
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -229,9 +229,7 @@ class ProductControlledSkillRuntime:
                 verified_artifact_ref=artifact["artifact_ref"],
                 context_projection=authority.context_projection,
                 compiled_inputs={
-                    "canonical_write_payload": dict(
-                        authority.canonical_write_payload
-                    )
+                    "canonical_write_payload": dict(authority.canonical_write_payload)
                 },
                 input_provenance={"canonical_write_payload": "CONTEXT"},
                 now=now,
@@ -504,9 +502,7 @@ class ProductControlledSkillRuntime:
             agent_context_ref=persisted["context_ref"],
             agent_context_hash=persisted["context_hash"],
             runtime_context_entries=(),
-            explicit_resource_refs=(
-                f"EOS:PROJECT:{product['project']['project_id']}",
-            ),
+            explicit_resource_refs=(f"EOS:PROJECT:{product['project']['project_id']}",),
             verified_principal={
                 **principal,
                 "roles": list(principal["roles"]),
@@ -604,7 +600,10 @@ class _BundleResolver:
         self.bundle = bundle
 
     def resolve(self, *, skill_id: str, skill_version: str) -> object:
-        if skill_id != self.bundle.skill_id or skill_version != self.bundle.skill_version:
+        if (
+            skill_id != self.bundle.skill_id
+            or skill_version != self.bundle.skill_version
+        ):
             raise ProductControlledSkillError(
                 "Skill selector is outside the product bundle."
             )
@@ -660,9 +659,7 @@ class _HttpOaAuthoritySource:
     def effective_authorization(
         self, *, tenant_id: str, subject_id: str
     ) -> Mapping[str, Any]:
-        token = resolve_ae_outbound_service_token(
-            self.service_token, audience="nex-oa"
-        )
+        token = resolve_ae_outbound_service_token(self.service_token, audience="nex-oa")
         response = httpx.get(
             f"{self.base_url}/internal/v1/auth/tenants/"
             f"{quote(tenant_id, safe='')}/subjects/{quote(subject_id, safe='')}"
@@ -683,9 +680,27 @@ class _HttpOaAuthoritySource:
         return {
             **authorization,
             "active": True,
+            "revision_hash": _oa_revision_hash_ref(authorization.get("revision_hash")),
             "evaluated_at": authorization.get("evaluated_at")
             or _time(datetime.now(UTC)),
         }
+
+
+def _oa_revision_hash_ref(value: object) -> str:
+    if not isinstance(value, str) or not value or value != value.strip():
+        raise ProductControlledSkillError("OA authorization revision is invalid.")
+    candidate = value.lower()
+    if len(candidate) == 64 and all(
+        character in "0123456789abcdef" for character in candidate
+    ):
+        candidate = f"sha256:{candidate}"
+    try:
+        validate_hash_ref(candidate)
+    except (TypeError, ValueError) as exc:
+        raise ProductControlledSkillError(
+            "OA authorization revision is invalid."
+        ) from exc
+    return candidate
 
 
 class _HttpEosBusinessAuthoritySource:
@@ -733,9 +748,7 @@ class _HttpEosBusinessAuthoritySource:
         ]
         return {"project": matches[0], "accounts": accounts}
 
-    def _get(
-        self, path: str, *, tenant_id: str, subject_id: str
-    ) -> dict[str, Any]:
+    def _get(self, path: str, *, tenant_id: str, subject_id: str) -> dict[str, Any]:
         token = resolve_ae_outbound_service_token(
             self.service_token, audience="nex-eos"
         )
@@ -865,12 +878,8 @@ def _persisted_execution_context(
         or not _same_persisted_identifier(
             identity.get("principal_id"), row["principal_id"]
         )
-        or not _same_persisted_identifier(
-            identity.get("agent_id"), row["agent_id"]
-        )
-        or not _same_persisted_identifier(
-            intent.get("execution_id"), execution_id
-        )
+        or not _same_persisted_identifier(identity.get("agent_id"), row["agent_id"])
+        or not _same_persisted_identifier(intent.get("execution_id"), execution_id)
     ):
         raise ProductControlledSkillError(
             "Persisted AgentContext and WorkIntent lineage is invalid."
@@ -1090,9 +1099,7 @@ def _product_handlers(product: Mapping[str, Any]) -> dict[str, Any]:
             {"accounting_period": inputs["accounting_period"]},
             {"accounting_period": inputs["accounting_period"], "open": True},
         ),
-        "FINANCE.RESOLVE_VOUCHER_DRAFT_COMMAND": _exact_handler(
-            dict(inputs), payload
-        ),
+        "FINANCE.RESOLVE_VOUCHER_DRAFT_COMMAND": _exact_handler(dict(inputs), payload),
     }
 
 
@@ -1192,9 +1199,7 @@ def _controlled_write_outcome(
         result_contract_ref=PRODUCT_RESULT_CONTRACT,
         result_payload=result_payload,
         external_refs=(f"EOS:BUSINESS_OPERATION:{business_operation_id}",),
-        evidence_refs=(
-            f"AE:WRITE_REQUESTED:{result.write_request.idempotency_key}",
-        ),
+        evidence_refs=(f"AE:WRITE_REQUESTED:{result.write_request.idempotency_key}",),
         error_ref=error_ref,
         business_operation_id=business_operation_id,
     )
@@ -1203,9 +1208,7 @@ def _controlled_write_outcome(
 def _voucher_number(result: Any) -> str | None:
     committed = getattr(getattr(result, "outcome", None), "result", None)
     reference = getattr(committed, "business_reference", None)
-    if not isinstance(reference, str) or not reference.startswith(
-        "eos.voucher_draft:"
-    ):
+    if not isinstance(reference, str) or not reference.startswith("eos.voucher_draft:"):
         return None
     value = reference.removeprefix("eos.voucher_draft:").strip()
     return value or None
@@ -1244,9 +1247,7 @@ def _bundle_hash(bundle: NslRuntimeBundle) -> str:
     )
 
 
-def _resolve_admission_lock(
-    manifest_path: Path, bundle: NslRuntimeBundle
-) -> Path:
+def _resolve_admission_lock(manifest_path: Path, bundle: NslRuntimeBundle) -> Path:
     candidates = (
         manifest_path.parents[1] / bundle.admission_lock,
         manifest_path.parent / Path(bundle.admission_lock).name,
@@ -1272,7 +1273,9 @@ def _json_mapping(value: object, label: str) -> dict[str, Any]:
         try:
             value = json.loads(value)
         except json.JSONDecodeError as exc:
-            raise ProductControlledSkillError(f"Persisted {label} is malformed.") from exc
+            raise ProductControlledSkillError(
+                f"Persisted {label} is malformed."
+            ) from exc
     if not isinstance(value, Mapping):
         raise ProductControlledSkillError(f"Persisted {label} must be an object.")
     return dict(value)

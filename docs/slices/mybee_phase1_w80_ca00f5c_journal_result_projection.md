@@ -30,6 +30,9 @@
   its AE observation time when OA does not emit `evaluated_at`. Allocation
   authority therefore retains fresh scope and revision checks without inventing
   tenant, Project, ratio, or scenario defaults.
+- The same adapter normalizes OA's canonical 64-character revision digest to the
+  platform `sha256:<digest>` hash-ref contract. Already-prefixed hash refs are
+  preserved, and malformed revisions fail closed before allocation execution.
 
 ## Verification
 
@@ -48,6 +51,8 @@
 - OpenBao provisioning and canonical orchestration regression: `46 passed`.
 - OA adapter, allocation authority, and Product entry regression: `100 passed`,
   `1 skipped` protected opt-in test.
+- OA revision normalization and Golden A quarantine regression: `55 passed`,
+  `1 skipped` protected PostgreSQL opt-in test.
 - AE Web regression: `400 passed`; AE Web Slice Gate: PASS, `297 passed`,
   statement coverage `97.78%`, branch coverage `97.28%`.
 - W70 Skill-Pack inventory now recognizes the productized allocation NSL source,
