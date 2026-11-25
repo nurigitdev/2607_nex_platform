@@ -59,3 +59,27 @@ def test_progress_acceptance_summary_is_bounded() -> None:
             "progress_checks": {"screen_evidence_captured": True},
         }
     ) == "mybee_w80_ca00g0a_progress=pass executed=true screens=true"
+
+
+def test_progress_acceptance_preserves_redacted_underlying_failure(monkeypatch) -> None:
+    failure = {
+        "status": "FAIL",
+        "issues": ["browser_stage_failed"],
+        "secret_included": False,
+        "raw_prompt_in_report": False,
+        "zero_residue": True,
+    }
+    monkeypatch.setattr(
+        acceptance.split,
+        "run_split_live_journeys",
+        lambda _env, *, execute: failure if execute else {"source_admitted": True},
+    )
+
+    result = acceptance.run_progress_acceptance(
+        {acceptance.EXECUTION_ENV: "1"},
+        execute=True,
+    )
+
+    assert result["status"] == "FAIL"
+    assert result["protected_result_status"] == "FAIL"
+    assert result["underlying_result"] == failure

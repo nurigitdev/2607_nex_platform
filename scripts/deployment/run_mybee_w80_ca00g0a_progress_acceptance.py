@@ -54,6 +54,7 @@ def run_progress_acceptance(
             "executed": True,
             "issues": [str(exc)],
             "protected_result_status": result.get("status"),
+            "underlying_result": result,
         }
     return {
         **source,
