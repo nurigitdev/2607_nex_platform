@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  splitJourneyAdmissionAccepted,
   splitJourneyChecks,
   splitJourneyContract
 } from "../scripts/runMyBeeW80Ca00F5SplitJourney.mjs";
@@ -41,4 +42,50 @@ test("allocation contract rejects a business approval stage", () => {
 
 test("unknown split journey mode fails closed", () => {
   assert.throws(() => splitJourneyContract("combined"), /SplitJourneyModeInvalid/);
+});
+
+test("journal admission requires a compiled three-stage semantic plan", () => {
+  assert.equal(splitJourneyAdmissionAccepted({
+    mode: "journal",
+    httpStatus: 202,
+    semanticPlanning: {
+      status: "COMPILED",
+      stages: [{}, {}, {}]
+    }
+  }), true);
+  assert.equal(splitJourneyAdmissionAccepted({
+    mode: "journal",
+    httpStatus: 202,
+    semanticPlanning: {
+      status: "PRODUCT_COORDINATION_STARTED",
+      stages: [{}, {}]
+    }
+  }), false);
+});
+
+test("allocation admission requires deterministic product coordination", () => {
+  const semanticPlanning = {
+    status: "PRODUCT_COORDINATION_STARTED",
+    directive: "WAIT_FOR_PRODUCT_COORDINATION",
+    product_planning_admission: { status: "PREPARATION_STARTED" },
+    stages: [
+      { semantic_stage: "INTENT" },
+      { semantic_stage: "CONTEXT" }
+    ]
+  };
+  assert.equal(splitJourneyAdmissionAccepted({
+    mode: "allocation",
+    httpStatus: 202,
+    semanticPlanning
+  }), true);
+  assert.equal(splitJourneyAdmissionAccepted({
+    mode: "allocation",
+    httpStatus: 200,
+    semanticPlanning
+  }), false);
+  assert.equal(splitJourneyAdmissionAccepted({
+    mode: "allocation",
+    httpStatus: 202,
+    semanticPlanning: { ...semanticPlanning, product_planning_admission: null }
+  }), false);
 });

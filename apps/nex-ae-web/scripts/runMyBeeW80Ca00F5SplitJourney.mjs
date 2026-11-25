@@ -160,9 +160,13 @@ export async function runSplitJourney({
       semanticSubmitTimeout,
       { observeWorkspace: true }
     );
+    const semanticPlanning = admitted.payload?.generation?.semantic_planning;
     if (
-      admitted.status !== 202 ||
-      admitted.payload?.generation?.semantic_planning?.status !== "COMPILED" ||
+      !splitJourneyAdmissionAccepted({
+        mode,
+        httpStatus: admitted.status,
+        semanticPlanning
+      }) ||
       !admitted.payload?.interaction_id
     ) {
       throw new Error(`SplitJourneyAdmissionStatus${admitted.status}`);
@@ -204,8 +208,11 @@ export async function runSplitJourney({
     });
 
     const checks = {
-      live_plan_compiled:
-        admitted.payload.generation.semantic_planning.stages?.length === 3,
+      live_plan_compiled: splitJourneyAdmissionAccepted({
+        mode,
+        httpStatus: admitted.status,
+        semanticPlanning
+      }),
       terminal_result_succeeded: completed.terminal === true && completed.result?.status === "SUCCEEDED",
       delivery_acknowledged: completed.result?.delivery?.state === "ACKNOWLEDGED",
       result_heading_rendered: true,
@@ -250,6 +257,22 @@ export async function runSplitJourney({
     for (const context of contexts.reverse()) await context.close();
     if (browser) await browser.close();
   }
+}
+
+export function splitJourneyAdmissionAccepted({ mode, httpStatus, semanticPlanning }) {
+  splitJourneyContract(mode);
+  if (httpStatus !== 202 || !semanticPlanning) return false;
+  const stages = semanticPlanning.stages;
+  if (!Array.isArray(stages)) return false;
+  if (mode === "journal") {
+    return semanticPlanning.status === "COMPILED" && stages.length === 3;
+  }
+  return semanticPlanning.status === "PRODUCT_COORDINATION_STARTED" &&
+    semanticPlanning.directive === "WAIT_FOR_PRODUCT_COORDINATION" &&
+    semanticPlanning.product_planning_admission != null &&
+    stages.length === 2 &&
+    stages[0]?.semantic_stage === "INTENT" &&
+    stages[1]?.semantic_stage === "CONTEXT";
 }
 
 export async function runSplitJourneyRecovery({

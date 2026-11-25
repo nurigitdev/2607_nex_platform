@@ -19,6 +19,9 @@
   asynchronous `202 PENDING` result. The `WAIT_FOR_PRODUCT_COORDINATION`
   directive remains visible in the semantic projection without being
   misclassified as a blocked `409` response.
+- The protected browser harness admits Journal work only after a three-stage
+  compiled semantic plan and admits allocation only after the two-stage
+  INTENT/CONTEXT path has started deterministic Product coordination.
 - No migration, fixture, parallel result API, or allocation coupling was added.
 - Canonical OpenBao provisioning now gives the admin request a 30-second
   transport budget, safely exceeding the observed single-node raft election
@@ -39,6 +42,8 @@
 - Product-coordination public admission regression: `79 passed`, `1 skipped`
   protected opt-in test.
 - OpenBao provisioning and canonical orchestration regression: `46 passed`.
+- AE Web regression: `400 passed`; AE Web Slice Gate: PASS, `297 passed`,
+  statement coverage `97.78%`, branch coverage `97.28%`.
 - AE Slice Gate: PASS, `7,100 passed`, `55 skipped`, `6/6` commands; statement
   coverage `96.46%`, branch coverage `94.70%`.
 - Protected live journey and Repository Full Gate evidence follow on the
