@@ -680,7 +680,12 @@ class _HttpOaAuthoritySource:
         authorization = body.get("authorization") if isinstance(body, Mapping) else None
         if not isinstance(authorization, Mapping):
             raise ProductControlledSkillError("OA authorization response is invalid.")
-        return {**authorization, "active": True}
+        return {
+            **authorization,
+            "active": True,
+            "evaluated_at": authorization.get("evaluated_at")
+            or _time(datetime.now(UTC)),
+        }
 
 
 class _HttpEosBusinessAuthoritySource:

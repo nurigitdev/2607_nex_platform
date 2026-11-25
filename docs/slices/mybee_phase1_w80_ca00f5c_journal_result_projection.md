@@ -26,6 +26,10 @@
 - Canonical OpenBao provisioning now gives the admin request a 30-second
   transport budget, safely exceeding the observed single-node raft election
   interval while preserving fail-closed initialization and credential handling.
+- The installed OA HTTP adapter binds the successful authorization response to
+  its AE observation time when OA does not emit `evaluated_at`. Allocation
+  authority therefore retains fresh scope and revision checks without inventing
+  tenant, Project, ratio, or scenario defaults.
 
 ## Verification
 
@@ -42,6 +46,8 @@
 - Product-coordination public admission regression: `79 passed`, `1 skipped`
   protected opt-in test.
 - OpenBao provisioning and canonical orchestration regression: `46 passed`.
+- OA adapter, allocation authority, and Product entry regression: `100 passed`,
+  `1 skipped` protected opt-in test.
 - AE Web regression: `400 passed`; AE Web Slice Gate: PASS, `297 passed`,
   statement coverage `97.78%`, branch coverage `97.28%`.
 - AE Slice Gate: PASS, `7,100 passed`, `55 skipped`, `6/6` commands; statement

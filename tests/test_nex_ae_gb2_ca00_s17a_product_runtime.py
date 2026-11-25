@@ -584,12 +584,11 @@ def test_product_bundle_and_http_authority_adapters(monkeypatch) -> None:
         base_url="https://eos.example/", service_token="eos-token"
     )
 
-    assert (
-        oa.effective_authorization(tenant_id="VO00", subject_id="employee-1001")[
-            "active"
-        ]
-        is True
+    authorization = oa.effective_authorization(
+        tenant_id="VO00", subject_id="employee-1001"
     )
+    assert authorization["active"] is True
+    assert authorization["evaluated_at"].endswith("Z")
     resolved = eos.resolve(
         tenant_id="VO00",
         subject_id="employee-1001",
