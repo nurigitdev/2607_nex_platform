@@ -677,15 +677,13 @@ class DeterministicCandidateAdmissionService:
             )
 
         capability_snapshot = self.capabilities.save(request.capability_snapshot)
-        if (
-            request.planning_source_type == "CLAIMED_WORKITEM"
-            and self.product_planning_router is not None
-        ):
+        if self.product_planning_router is not None:
             try:
                 product_registration = (
                     self.product_planning_router.resolve_registration(
                         work_intent=work_intent,
                         capability_snapshot=capability_snapshot,
+                        planning_source_type=request.planning_source_type,
                     )
                 )
                 execution_projection = {
@@ -698,6 +696,7 @@ class DeterministicCandidateAdmissionService:
                         agent_context=agent_context,
                         capability_snapshot=capability_snapshot,
                         execution=execution_projection,
+                        planning_source_type=request.planning_source_type,
                     )
                     if product_registration is not None
                     else None
@@ -784,6 +783,7 @@ class DeterministicCandidateAdmissionService:
                     agent_context=agent_context,
                     capability_snapshot=capability_snapshot,
                     execution=execution_projection,
+                    planning_source_type=request.planning_source_type,
                     planning_proposal=planning_proposal,
                     planning_fallback_ref=planning_fallback_ref,
                 )

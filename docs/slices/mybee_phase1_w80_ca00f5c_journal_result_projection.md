@@ -10,6 +10,11 @@
 - Project, context, account, and committed-result drift fail closed.
 - Child controlled-WRITE identity remains in the typed business projection;
   the parent delegated P5 StepResult does not claim that WRITE identity.
+- Product coordinator dispatch is admitted by both exact capability and the
+  installed runtime's declared planning source. M1 Journal preparation remains
+  `CLAIMED_WORKITEM`-only, while independent accounting allocation admits
+  `IA_PROMPT` and enters its deterministic materializer instead of the generic
+  provider-generated plan path.
 - No migration, fixture, parallel result API, or allocation coupling was added.
 
 ## Verification
@@ -22,9 +27,9 @@
   CA00B, CA00F.5C, and P7 resilience boundary.
 - Live-provider numeric allocation ratios are canonicalized without weakening
   identity fields or the exact-total-one invariant.
-- Allocation admission and split-journey focused regression: `50 passed`,
-  `2 skipped` protected opt-in tests.
-- AE Slice Gate: PASS, `7,097 passed`, `55 skipped`, `6/6` commands; statement
-  coverage `96.47%`, branch coverage `94.71%`.
+- Allocation source admission and Product planning router regression:
+  `75 passed`, `1 skipped` protected opt-in test.
+- AE Slice Gate: PASS, `7,099 passed`, `55 skipped`, `6/6` commands; statement
+  coverage `96.46%`, branch coverage `94.70%`.
 - Protected live journey and Repository Full Gate evidence follow on the
   exact-head deployment boundary.

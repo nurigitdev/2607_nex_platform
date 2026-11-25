@@ -45,6 +45,7 @@ from nex_ae_api.product_planning_coordinators import (
 from nex_ae_api.product_planning_runtime import (
     InstalledProductCoordinatorRuntime,
     InstalledProductCoordinatorRuntimeRegistry,
+    ProductPlanningRuntimeError,
     PublicProductPlanningRouter,
     build_installed_accounting_allocation_coordinator_runtime,
 )
@@ -493,6 +494,7 @@ def test_ca00f5a_ready_coordinator_activates_common_runtime_on_begin_and_replay(
                 registration=registration,
                 coordinator=coordinator,
                 activation=activation,
+                planning_source_types=("IA_PROMPT",),
             ),
         ),
     )
@@ -506,12 +508,14 @@ def test_ca00f5a_ready_coordinator_activates_common_runtime_on_begin_and_replay(
         agent_context=context,
         capability_snapshot=_snapshot(),
         execution=execution,
+        planning_source_type="IA_PROMPT",
     )
     replay = router.replay_if_registered(
         work_intent=work_intent,
         agent_context=context,
         capability_snapshot=_snapshot(),
         execution=execution,
+        planning_source_type="IA_PROMPT",
     )
 
     assert first["stage"] == ACCOUNTING_ALLOCATION_READY_STATE
@@ -519,6 +523,55 @@ def test_ca00f5a_ready_coordinator_activates_common_runtime_on_begin_and_replay(
     assert replay["replayed"] is True
     assert len(activation.calls) == 2
     assert checkpoints.saved["coordinator_id"] == ACCOUNTING_ALLOCATION_COORDINATOR_ID
+
+
+def test_ca00f5a_router_admits_allocation_only_from_its_installed_source_type():
+    capabilities = _capabilities()
+    registration = build_accounting_allocation_product_coordinator_registration(
+        product_capabilities=capabilities,
+        activation_status="ACTIVE",
+    )
+    registry = ProductPlanningCoordinatorRegistry(
+        (registration,), registry_id="test-allocation-source", registry_version=1
+    )
+    coordinator = InstalledAccountingAllocationProductCoordinator(
+        registration=registration,
+        checkpoints=_Checkpoints(),
+    )
+    runtime = InstalledProductCoordinatorRuntime(
+        registration=registration,
+        coordinator=coordinator,
+        activation=_Activation(registration),
+        planning_source_types=("IA_PROMPT",),
+    )
+    router = PublicProductPlanningRouter(
+        registry,
+        InstalledProductCoordinatorRuntimeRegistry(registry, (runtime,)),
+    )
+
+    assert (
+        router.resolve_registration(
+            work_intent=_activated().work_intent,
+            capability_snapshot=_snapshot(),
+            planning_source_type="IA_PROMPT",
+        )
+        == registration
+    )
+    assert (
+        router.resolve_registration(
+            work_intent=_activated().work_intent,
+            capability_snapshot=_snapshot(),
+            planning_source_type="CLAIMED_WORKITEM",
+        )
+        is None
+    )
+    with pytest.raises(ProductPlanningRuntimeError) as raised:
+        router.resolve_registration(
+            work_intent=_activated().work_intent,
+            capability_snapshot=_snapshot(),
+            planning_source_type="UNKNOWN",
+        )
+    assert raised.value.error_code == "ae.product_planning_runtime_invalid"
 
 
 def test_ca00f5a_coordinator_rejects_invalid_dependencies_and_plan_proposals():

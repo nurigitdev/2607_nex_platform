@@ -771,6 +771,22 @@ def test_claimed_semantic_pipeline_keeps_intent_context_evidence_but_skips_plan(
     assert len(router.calls) == 1
 
 
+def test_ia_semantic_pipeline_can_enter_a_source_admitted_product_route() -> None:
+    service, client, *_ = _semantic_components()
+    router = _ProductRouterSpy()
+    service = replace(service, product_planning_router=router)
+    request = replace(_semantic_request(), planning_source_type="IA_PROMPT")
+
+    result = service.admit_and_compile(request)
+
+    assert result.status == "PRODUCT_COORDINATION_STARTED"
+    assert result.directive == "WAIT_FOR_PRODUCT_COORDINATION"
+    assert [stage.semantic_stage for stage in result.stages] == ["INTENT", "CONTEXT"]
+    assert client.calls == ["INTENT", "CONTEXT"]
+    assert router.replay_calls[0]["planning_source_type"] == "IA_PROMPT"
+    assert router.calls[0]["planning_source_type"] == "IA_PROMPT"
+
+
 def test_claimed_product_route_generates_advisory_plan_before_coordinator() -> None:
     service, client, *_ = _semantic_components()
     registration = _runtime()[1]

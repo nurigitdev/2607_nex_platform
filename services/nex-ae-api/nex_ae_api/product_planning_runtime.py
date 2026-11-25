@@ -31,6 +31,7 @@ PRODUCT_PLANNING_ADMISSION_SCHEMA_VERSION = "ae.product_planning_admission.v1"
 PRODUCT_COORDINATOR_ASSIGNMENT_SCHEMA_VERSION = "ae.product_coordinator_assignment.v1"
 PRODUCT_COORDINATOR_RETRY_DELAY_SECONDS = 5
 PRODUCT_COORDINATOR_MAX_ATTEMPTS = 3
+PRODUCT_PLANNING_SOURCE_TYPES = frozenset({"CLAIMED_WORKITEM", "IA_PROMPT"})
 _PRODUCT_ERROR_CODE = re.compile(r"^[A-Za-z][A-Za-z0-9_.-]{0,127}$")
 
 
@@ -73,8 +74,10 @@ class InstalledProductCoordinatorRuntime:
     registration: ProductPlanningCoordinatorRegistration
     coordinator: ProductCoordinator
     activation: ProductPlanActivation
+    planning_source_types: tuple[str, ...] = ("CLAIMED_WORKITEM",)
 
     def __post_init__(self) -> None:
+        source_types = tuple(self.planning_source_types)
         if (
             getattr(self.coordinator, "registration", None) != self.registration
             or getattr(self.activation, "registration", None) != self.registration
@@ -86,6 +89,13 @@ class InstalledProductCoordinatorRuntime:
             or not callable(getattr(self.activation, "activate", None))
         ):
             raise _invalid("Product coordinator runtime dependencies differ.")
+        if (
+            not source_types
+            or len(set(source_types)) != len(source_types)
+            or any(item not in PRODUCT_PLANNING_SOURCE_TYPES for item in source_types)
+        ):
+            raise _invalid("Product coordinator planning source types are invalid.")
+        object.__setattr__(self, "planning_source_types", tuple(sorted(source_types)))
 
     @property
     def identity(self) -> tuple[str, str]:
@@ -188,12 +198,14 @@ class PublicProductPlanningRouter:
         agent_context: Mapping[str, Any],
         capability_snapshot: Mapping[str, Any],
         execution: Mapping[str, Any],
+        planning_source_type: str = "CLAIMED_WORKITEM",
         planning_proposal: Mapping[str, Any] | None = None,
         planning_fallback_ref: str | None = None,
     ) -> dict[str, Any] | None:
         registration = self.resolve_registration(
             work_intent=work_intent,
             capability_snapshot=capability_snapshot,
+            planning_source_type=planning_source_type,
         )
         if registration is None:
             return None
@@ -242,10 +254,12 @@ class PublicProductPlanningRouter:
         agent_context: Mapping[str, Any],
         capability_snapshot: Mapping[str, Any],
         execution: Mapping[str, Any],
+        planning_source_type: str = "CLAIMED_WORKITEM",
     ) -> dict[str, Any] | None:
         registration = self.resolve_registration(
             work_intent=work_intent,
             capability_snapshot=capability_snapshot,
+            planning_source_type=planning_source_type,
         )
         if registration is None:
             return None
@@ -287,7 +301,10 @@ class PublicProductPlanningRouter:
         *,
         work_intent: Mapping[str, Any],
         capability_snapshot: Mapping[str, Any],
+        planning_source_type: str = "CLAIMED_WORKITEM",
     ) -> ProductPlanningCoordinatorRegistration | None:
+        if planning_source_type not in PRODUCT_PLANNING_SOURCE_TYPES:
+            raise _invalid("Product planning source type is invalid.")
         registrations = self._matching_registrations(
             work_intent=work_intent,
             capability_snapshot=capability_snapshot,
@@ -300,8 +317,12 @@ class PublicProductPlanningRouter:
             )
         registration = registrations[0]
         if registration.activation_status != "ACTIVE":
+            if planning_source_type != "CLAIMED_WORKITEM":
+                return None
             raise _unavailable("Product planning coordinator is not active.")
-        self.runtimes.resolve_registration(registration)
+        runtime = self.runtimes.resolve_registration(registration)
+        if planning_source_type not in runtime.planning_source_types:
+            return None
         return registration
 
     def _matching_registrations(
@@ -739,6 +760,7 @@ def build_installed_m1_product_coordinator_runtime(
         registration=registration,
         coordinator=coordinator,
         activation=activation,
+        planning_source_types=("CLAIMED_WORKITEM",),
     )
 
 
@@ -773,6 +795,7 @@ def build_installed_accounting_allocation_coordinator_runtime(
         registration=registration,
         coordinator=coordinator,
         activation=activation,
+        planning_source_types=("IA_PROMPT",),
     )
 
 
