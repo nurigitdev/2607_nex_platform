@@ -44,6 +44,11 @@
     }
   ],
   "recognition_date": "2026-11-18",
+  "allocation": {
+    "source_kind": "SERVICE",
+    "basis_kind": "JUSTIFIED_PERCENTAGE",
+    "basis_source_ref": "acceptance:m1:allocation-basis:2026-11"
+  },
   "transactions": [
     {
       "scenario_id": "m1-positive-a",

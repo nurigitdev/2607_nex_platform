@@ -36,6 +36,8 @@ def test_split_prompts_keep_journal_and_allocation_responsibilities_separate():
     assert "배부를 수행하지 마" in journal
     assert "전표" in journal
     assert "새 전표를 생성하지 말고" in allocation
+    assert baseline["allocation"]["source_kind"] == "SERVICE"
+    assert "source_kind는 SERVICE" in allocation
     assert "40.000000000000%" in allocation
     assert "60.000000000000%" in allocation
     assert "finance:allocation:execute" in support._OA_SCOPES["business_approver"]

@@ -223,6 +223,7 @@ def build_accounting_allocation_prompt(
     journal_id: str,
     source_record_line_ref: str,
 ) -> str:
+    allocation = baseline["allocation"]
     project_text = ", ".join(
         f"{item['project_code']} {Decimal(str(item['allocation_ratio'])) * 100}%"
         for item in baseline["projects"]
@@ -231,7 +232,8 @@ def build_accounting_allocation_prompt(
         "독립적인 회계 배부 업무로 처리해줘. "
         f"company_id는 {company_id}, journal_id는 {journal_id}, "
         f"source_record_line_ref는 {source_record_line_ref}, "
-        f"source_kind는 SERVICE이고 Project 배부 비율은 {project_text}야. "
+        f"source_kind는 {allocation['source_kind']}이고 "
+        f"Project 배부 비율은 {project_text}야. "
         "기존 전표를 수정하거나 새 전표를 생성하지 말고 배부와 Project P&L 갱신만 수행해줘."
     )
 
@@ -926,6 +928,7 @@ def _seed_allocation_plan(
     tenant_id = baseline["tenant"]["tenant_id"]
     company_id = baseline["company"]["company_id"]
     projects = baseline["projects"]
+    allocation = baseline["allocation"]
     proof_id = _id("allocation-proof")
     payload = {
         "schema_version": "eos_cost_allocation_plan_release.v1",
@@ -933,11 +936,11 @@ def _seed_allocation_plan(
         "plan": {
             "plan_id": _id("allocation-plan"),
             "plan_revision": 1,
-            "source_kind": "SHARED_EXPENSE",
+            "source_kind": allocation["source_kind"],
             "scope_type": "PROJECT_SET",
-            "basis_kind": "JUSTIFIED_PERCENTAGE",
+            "basis_kind": allocation["basis_kind"],
             "rule_release_hash": HASH_A,
-            "basis_source_ref": "acceptance:m1:allocation-basis:2026-11",
+            "basis_source_ref": allocation["basis_source_ref"],
             "basis_source_hash": HASH_B,
             "effective_start": "2026-11-01",
             "effective_end": "2026-11-30",
