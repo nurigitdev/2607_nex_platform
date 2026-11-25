@@ -20,7 +20,7 @@ class DomainIntentActivator(Protocol):
     ) -> Any: ...
 
 
-@dataclass(frozen=True)
+@dataclass
 class DomainIntentActivatorRegistryError(Exception):
     error_code: str
     detail: str

@@ -33,6 +33,12 @@ from nex_ae_api.agent_context import build_agent_context
 from nex_ae_api.m1_installed_skill_runtime import M1InstalledSkillRuntime
 from nex_ae_api.planning_capabilities import build_capability_snapshot
 from nex_ae_api.product_capabilities import load_product_capability_registry
+from nex_ae_api.product_capability_retirements import (
+    ProductCapabilityRetirementProjection,
+)
+from nex_ae_api.product_domain_intent_activators import (
+    build_active_product_domain_intent_activator_registry,
+)
 from nex_ae_api.product_planning_coordinators import (
     ProductPlanningCoordinatorRegistry,
 )
@@ -88,6 +94,26 @@ def _capabilities():
             )
         }
     )
+
+
+def test_ca00f5a_installed_activator_identity_is_bounded_and_deterministic():
+    capabilities = _capabilities()
+    kwargs = {
+        "product_capability_registry": capabilities,
+        "retirement_projection": ProductCapabilityRetirementProjection(),
+        "session_factory": object(),
+    }
+
+    first = build_active_product_domain_intent_activator_registry({}, **kwargs)
+    replay = build_active_product_domain_intent_activator_registry({}, **kwargs)
+    registration = first.resolve(ACCOUNTING_ALLOCATION_OPERATION, required=True)
+
+    assert registration is not None
+    assert len(registration.source_identity) <= 256
+    assert registration.source_identity.startswith(
+        "nex-ae:accounting-allocation-domain-intent:v1:sha256:"
+    )
+    assert first.to_projection() == replay.to_projection()
 
 
 def _candidate(*, ratios=("0.25", "0.75")) -> dict:

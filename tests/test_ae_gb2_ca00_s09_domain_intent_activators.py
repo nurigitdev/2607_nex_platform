@@ -144,6 +144,13 @@ def test_mapping_builder_and_product_builder_preserve_empty_default() -> None:
     assert mapped.resolve("FINANCE.CREATE", required=True) is not None
     assert build_domain_intent_activator_registry({}).registrations == ()
 
+
+def test_registry_error_supports_runtime_traceback_rebinding() -> None:
+    error = DomainIntentActivatorRegistryError("TEST_ERROR", "test failure")
+
+    assert error.with_traceback(None) is error
+    assert error.__traceback__ is None
+
 def test_semantic_admission_depends_only_on_canonical_registry_boundary() -> None:
     source = (
         ROOT / "services/nex-ae-api/nex_ae_api/semantic_candidate_admission.py"

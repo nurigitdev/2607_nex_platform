@@ -3,6 +3,8 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
+from nex_runtime.semantic_hashes import semantic_sha256_hash_ref
+
 from nex_ae_api.accounting_allocation_authority import (
     ACCOUNTING_ALLOCATION_OPERATION,
 )
@@ -75,9 +77,15 @@ def build_active_product_domain_intent_activator_registry(
                 capability_id=ACCOUNTING_ALLOCATION_OPERATION,
                 version=ACCOUNTING_ALLOCATION_INTENT_PROFILE_VERSION,
                 source_identity=(
-                    allocation_activator.profile.source_identity
-                    + ":"
-                    + allocation_capability.source_identity
+                    "nex-ae:accounting-allocation-domain-intent:v1:"
+                    + semantic_sha256_hash_ref(
+                        {
+                            "activator": (
+                                allocation_activator.profile.source_identity
+                            ),
+                            "capability": allocation_capability.source_identity,
+                        }
+                    )
                 ),
                 activator=allocation_activator,
             )
