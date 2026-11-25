@@ -151,7 +151,7 @@ def test_neutral_oa_authority_source_accepts_mapping_and_rejects_malformed(
 
     payloads = iter(
         (
-            {"authorization": {"revision_hash": "revision-1", "scopes": []}},
+            {"authorization": {"revision_hash": "a" * 64, "scopes": []}},
             {"authorization": "invalid"},
         )
     )
@@ -165,13 +165,19 @@ def test_neutral_oa_authority_source_accepts_mapping_and_rejects_malformed(
         "get",
         lambda *_args, **_kwargs: _Response(next(payloads)),
     )
+    monkeypatch.setattr(controlled, "_utc_now", lambda: "2026-11-25T05:30:00Z")
     source = controlled.HttpOaAuthoritySource(
         base_url="http://oa.local/", service_token="bootstrap-token"
     )
 
     assert source.effective_authorization(
         tenant_id="VO00", subject_id="employee-1"
-    ) == {"revision_hash": "revision-1", "scopes": [], "active": True}
+    ) == {
+        "revision_hash": "sha256:" + "a" * 64,
+        "scopes": [],
+        "active": True,
+        "evaluated_at": "2026-11-25T05:30:00Z",
+    }
     with pytest.raises(
         controlled.ControlledSkillRuntimeError, match="response is invalid"
     ):

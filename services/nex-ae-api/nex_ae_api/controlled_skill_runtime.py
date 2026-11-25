@@ -12,6 +12,7 @@ from nex_runtime.nsl_runtime_adapter import (
     InstalledNslExecution,
     NslExecutionBinding,
 )
+from nex_runtime.semantic_hashes import validate_hash_ref
 
 from nex_ae_api.delegated_work import SqlAlchemyWaitRegistrationRepository
 from nex_ae_api.nsl_approval_evidence import (
@@ -328,9 +329,7 @@ class HttpOaAuthoritySource:
     def effective_authorization(
         self, *, tenant_id: str, subject_id: str
     ) -> Mapping[str, Any]:
-        token = resolve_ae_outbound_service_token(
-            self.service_token, audience="nex-oa"
-        )
+        token = resolve_ae_outbound_service_token(self.service_token, audience="nex-oa")
         response = httpx.get(
             f"{self.base_url}/internal/v1/auth/tenants/"
             f"{quote(tenant_id, safe='')}/subjects/{quote(subject_id, safe='')}"
@@ -347,10 +346,30 @@ class HttpOaAuthoritySource:
         body = response.json()
         authorization = body.get("authorization") if isinstance(body, Mapping) else None
         if not isinstance(authorization, Mapping):
-            raise ControlledSkillRuntimeError(
-                "OA authorization response is invalid."
-            )
-        return {**authorization, "active": True}
+            raise ControlledSkillRuntimeError("OA authorization response is invalid.")
+        return {
+            **authorization,
+            "active": True,
+            "revision_hash": _oa_revision_hash_ref(authorization.get("revision_hash")),
+            "evaluated_at": authorization.get("evaluated_at") or _utc_now(),
+        }
+
+
+def _oa_revision_hash_ref(value: object) -> str:
+    if not isinstance(value, str) or not value or value != value.strip():
+        raise ControlledSkillRuntimeError("OA authorization revision is invalid.")
+    candidate = value.lower()
+    if len(candidate) == 64 and all(
+        character in "0123456789abcdef" for character in candidate
+    ):
+        candidate = f"sha256:{candidate}"
+    try:
+        validate_hash_ref(candidate)
+    except (TypeError, ValueError) as exc:
+        raise ControlledSkillRuntimeError(
+            "OA authorization revision is invalid."
+        ) from exc
+    return candidate
 
 
 def principal_document(
@@ -447,9 +466,7 @@ def _controlled_write_outcome(
             "business_operation_id": business_operation_id,
         },
         external_refs=(f"EOS:BUSINESS_OPERATION:{business_operation_id}",),
-        evidence_refs=(
-            f"AE:WRITE_REQUESTED:{result.write_request.idempotency_key}",
-        ),
+        evidence_refs=(f"AE:WRITE_REQUESTED:{result.write_request.idempotency_key}",),
         error_ref=error_ref,
         business_operation_id=business_operation_id,
     )
@@ -493,9 +510,7 @@ def _retryable(exc: Exception) -> bool:
     )
 
 
-def _initial_stage(
-    error_code: str, detail: str, operation: Callable[[], Any]
-) -> Any:
+def _initial_stage(error_code: str, detail: str, operation: Callable[[], Any]) -> Any:
     try:
         return operation()
     except P5StepExecutorError:

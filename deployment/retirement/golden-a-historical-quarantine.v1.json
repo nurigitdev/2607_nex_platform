@@ -72,7 +72,7 @@
     },
     {
       "path": "services/nex-ae-api/nex_ae_api/product_controlled_skill.py",
-      "sha256": "sha256:26bec76acb51dd55735752aaca7c26cdcf5bf316dba5a9ec378f2b0481db5fe8"
+      "sha256": "sha256:b12d3d86141f0accc9c5ca9b3f396c7a5e84fde3d51b9d43158ac536af712641"
     }
   ],
   "historical_policy": {
@@ -106,5 +106,5 @@
   ],
   "database_migration_required": false,
   "remote_provider_required": false,
-  "content_hash": "sha256:d9854f2914462bbce898112b0c396274a36bfe3eb2e17fd54f5d2d7e4b31fba6"
+  "content_hash": "sha256:3f172b69fdd8a5dca28df71a6f66ad65d666e80389f18ddf2b64f1b28ab52033"
 }

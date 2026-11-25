@@ -30,15 +30,15 @@ from nex_ae_api.accounting_allocation_product_coordinator import (
     load_accounting_allocation_coordinator_activation,
 )
 from nex_ae_api.agent_context import build_agent_context
+from nex_ae_api.controlled_skill_runtime import (
+    ControlledSkillRuntimeError,
+    _oa_revision_hash_ref,
+)
 from nex_ae_api.m1_installed_skill_runtime import M1InstalledSkillRuntime
 from nex_ae_api.planning_capabilities import build_capability_snapshot
 from nex_ae_api.product_capabilities import load_product_capability_registry
 from nex_ae_api.product_capability_retirements import (
     ProductCapabilityRetirementProjection,
-)
-from nex_ae_api.product_controlled_skill import (
-    ProductControlledSkillError,
-    _oa_revision_hash_ref,
 )
 from nex_ae_api.product_domain_intent_activators import (
     build_active_product_domain_intent_activator_registry,
@@ -106,7 +106,7 @@ def test_oa_revision_digest_is_normalized_to_platform_hash_ref(
 
 @pytest.mark.parametrize("value", (None, "", " sha256:" + "a" * 64, "not-a-hash"))
 def test_invalid_oa_revision_digest_fails_closed(value: object) -> None:
-    with pytest.raises(ProductControlledSkillError, match="revision is invalid"):
+    with pytest.raises(ControlledSkillRuntimeError, match="revision is invalid"):
         _oa_revision_hash_ref(value)
 
 

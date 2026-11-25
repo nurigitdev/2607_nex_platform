@@ -25,7 +25,7 @@ from nex_runtime.nsl_runtime_bundle import (
     load_nsl_runtime_bundle,
     verify_nsl_runtime_bundle,
 )
-from nex_runtime.semantic_hashes import semantic_sha256_hash_ref, validate_hash_ref
+from nex_runtime.semantic_hashes import semantic_sha256_hash_ref
 from sqlalchemy import text
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -677,30 +677,7 @@ class _HttpOaAuthoritySource:
         authorization = body.get("authorization") if isinstance(body, Mapping) else None
         if not isinstance(authorization, Mapping):
             raise ProductControlledSkillError("OA authorization response is invalid.")
-        return {
-            **authorization,
-            "active": True,
-            "revision_hash": _oa_revision_hash_ref(authorization.get("revision_hash")),
-            "evaluated_at": authorization.get("evaluated_at")
-            or _time(datetime.now(UTC)),
-        }
-
-
-def _oa_revision_hash_ref(value: object) -> str:
-    if not isinstance(value, str) or not value or value != value.strip():
-        raise ProductControlledSkillError("OA authorization revision is invalid.")
-    candidate = value.lower()
-    if len(candidate) == 64 and all(
-        character in "0123456789abcdef" for character in candidate
-    ):
-        candidate = f"sha256:{candidate}"
-    try:
-        validate_hash_ref(candidate)
-    except (TypeError, ValueError) as exc:
-        raise ProductControlledSkillError(
-            "OA authorization revision is invalid."
-        ) from exc
-    return candidate
+        return {**authorization, "active": True}
 
 
 class _HttpEosBusinessAuthoritySource:
