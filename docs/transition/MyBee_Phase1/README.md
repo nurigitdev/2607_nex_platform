@@ -143,6 +143,9 @@ execution progress foundation. A browser-generated interaction identity binds
 concurrent Chat admission and ordered polling; deterministic Workspace activity
 events expose IA, WC, assigned Agent, runtime, and terminal boundaries without
 including raw prompts, plans, or private business payloads.
+W80-CA00G.0A proves that boundary on the installed Journal and independent
+Allocation journeys with actual PostgreSQL, the canonical generation provider,
+Playwright change captures, restart recovery, and zero-residue cleanup.
 
 The W30-CA01 pair is the source-backed post-W20 delta. It takes precedence
 only for W30 entry ordering, current migration-number reservations, the

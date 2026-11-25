@@ -357,6 +357,7 @@ W80-CA00G does not:
 ## 11. Implementation Slices
 
 0. `W80-CA00G.0: Owner-Scoped Agent Execution Progress Projection Foundation`
+0A. `W80-CA00G.0A: Protected Live Progress and Playwright Evidence Acceptance`
 1. `W80-CA00G.1: Proposal Persistence and Revision Contract Closure`
 2. `W80-CA00G.2: Amount-Tiered Policy Resolution and Approval-Line Selection`
 3. `W80-CA00G.3: Proposal Draft/Edit/Submit Product APIs and AE Web`
@@ -373,6 +374,9 @@ replay idempotent. Existing Workspace activity persistence is reused; raw
 prompt, plan payload, and private business content are not part of this
 projection. The initial diagnostic UI may prefix each line with the event time,
 but time formatting is presentation-only and must not change durable identity.
+`.0A` reuses the installed Journal and independent Allocation product journeys
+to prove concurrent polling, append-only rendering, terminal stop, owner scope,
+restart recovery, screenshot integrity, and zero residue before `.1` begins.
 
 Checkpoint gates run after `.3` and `.5`. `.7` runs the six protected journeys,
 actual PostgreSQL smoke, Playwright evidence, restart/replay acceptance, coverage

@@ -86,6 +86,11 @@ reports/quality/mybee-w80-ca00g0-ae-slice-gate.json
 reports/coverage/mybee-w80-ca00g0-ae-slice-gate.report_ae_coverage_ownership.json
 ```
 
+The installed PostgreSQL, remote-provider, and Playwright proof is closed by
+[`W80-CA00G.0A`](mybee_phase1_w80_ca00g0a_protected_live_progress_acceptance.md).
+It accepted both Journal and independent Allocation journeys with `27` durable
+events, `12` progress screenshots, restart recovery, and zero residue.
+
 ## Deferred UX
 
 This Slice deliberately renders append-only diagnostic lines. Replacing prior

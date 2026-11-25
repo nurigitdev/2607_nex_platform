@@ -2,7 +2,7 @@
 
 ## Status
 
-IMPLEMENTED / PROTECTED LIVE EXECUTION PENDING
+ACCEPTED / PROTECTED LIVE EXECUTION PASSED
 
 ## Purpose
 
@@ -50,3 +50,45 @@ manifest metadata.
    terminal result coexistence.
 6. Record provider revision, event inventory, screenshot manifest digest,
    database isolation, and zero-residue outcome here after execution.
+
+## Acceptance Result
+
+The exact-head acceptance passed on revision `f6f671f9a65c` on 2026-11-25.
+The canonical nine-image release set and packaged AE product Runtime image were
+built from that revision before execution.
+
+- Actual OA, AG, AE, CX, MO, WC, EOS, and WA PostgreSQL: `8/8`; `210`
+  migrations applied in isolated schemas.
+- Actual remote generation: Qwen3.8-Flash-Next,
+  `hf:fc694b54fb0174e0913e6adf86691ef85a4ead47`; provider contacted.
+- Journal progress: `19` ordered events, `8` observed DOM changes and PNGs.
+- Allocation progress: `8` ordered events, `4` observed DOM changes and PNGs.
+- Progress GET overlapped the Chat POST in both journeys; polling stopped after
+  the terminal result in both journeys.
+- Owner scope, raw-prompt/private-payload exclusion, append-only rendering, and
+  the `[HH:mm:ss]` diagnostic prefix all passed.
+- Installed restart/recovery passed, all `17` service/process logs exited clean,
+  and all `8` isolated schemas were dropped with zero residue.
+- Playwright diagnostics accepted `23` captures across `6` manifests, including
+  `12` `EXECUTION_PROGRESS_VISIBLE` captures.
+
+Progress manifest digests:
+
+```text
+journal   sha256:9a7cec503141f2e9ed14644f8da8f72a0fdf11d8ec491c8d4aa1c5d2983388e6
+allocation sha256:e6c455e10cf7a841e6ff80330e26f8011c0f9ef2c43d9e6b4534c8477ee3a9ab
+```
+
+The first protected attempt intentionally failed closed when the generation
+provider secret was omitted: MO reported `http_status_401` and AE returned
+`PROVIDER_NOT_READY`. The accepted execution explicitly injected the existing
+provider key through the OpenBao secret boundary; the key is absent from reports
+and manifests.
+
+Machine-readable and restricted visual evidence:
+
+```text
+reports/deployment/mybee-w80-ca00g0a-progress-acceptance.json
+reports/deployment/mybee-w80-ca00g0a-progress-screens/
+reports/deployment/mybee-w70-m1-diagnostic-evidence/mybee-w80-ca00f5-20261125T104905Z-99ab05c8/
+```
