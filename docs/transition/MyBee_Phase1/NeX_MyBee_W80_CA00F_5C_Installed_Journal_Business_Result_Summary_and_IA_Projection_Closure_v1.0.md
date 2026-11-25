@@ -2,7 +2,7 @@
 
 ## 1. Status and Parent
 
-- Status: IMPLEMENTATION AND PROTECTED ACCEPTANCE
+- Status: CLOSED / PARENT PROTECTED ACCEPTANCE PASS
 - Parent: W80-CA00F.5
 - Predecessor: W80-CA00F.5B
 - Resumes: W80-CA00F.5 split live journeys and Repository Full Gate
@@ -91,6 +91,14 @@ the accounting-allocation activator accepted ratio candidates only as strings.
 The activator now accepts finite numeric or string ratios and canonicalizes them
 to decimal strings. UUID, Project, source, and other identity fields remain
 string-strict, and ratios must still be positive and total exactly one.
+
+The final parent rerun passed on source head
+`46aadc52116b3df960110d5e7f1f445ff3bed40d`. Journal and allocation each
+rendered an independent IA result, both results recovered after restart, and
+their hashes and authoritative database counts remained stable. The final
+restricted evidence session is
+`mybee-w80-ca00f5-20261125T085606Z-3466be68`; the parent 15-item acceptance
+matrix is `15/15 PASS`.
 
 ## 8. Non-Goals
 

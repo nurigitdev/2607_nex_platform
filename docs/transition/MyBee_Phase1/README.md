@@ -121,6 +121,12 @@ existing PA WorkResult, WC event, IA finalization, and Workspace projection path
 remains the sole publication route; no fixture, result table, or parallel API is
 introduced.
 
+W80-CA00F is now closed. Its final exact-head acceptance ran Journal and
+accounting allocation as independent installed journeys, reconciled all 15
+acceptance requirements, recovered both results after restart, and completed
+zero-residue cleanup. The As-Built evidence index is
+[`mybee_phase1_w80_ca00f5_split_live_journeys_protected_closure.md`](../../slices/mybee_phase1_w80_ca00f5_split_live_journeys_protected_closure.md).
+
 The W30-CA01 pair is the source-backed post-W20 delta. It takes precedence
 only for W30 entry ordering, current migration-number reservations, the
 `MB3-01` wave label, and the scoped `DOCUMENT_SIGNOFF` finalization gap. It

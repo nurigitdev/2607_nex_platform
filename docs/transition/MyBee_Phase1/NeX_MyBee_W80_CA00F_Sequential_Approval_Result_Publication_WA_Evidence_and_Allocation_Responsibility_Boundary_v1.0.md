@@ -1,6 +1,6 @@
 # NeX MyBee W80-CA00F Sequential Approval, Result Publication, WA Evidence, and Allocation Responsibility Boundary v1.0
 
-**Status:** DESIGN FROZEN / IMPLEMENTATION PENDING
+**Status:** CLOSED / PROTECTED ACCEPTANCE PASS
 
 **Predecessor:** W80-CA00E
 
@@ -411,3 +411,21 @@ W80-CA00F closes only after the source-backed sequential approval behavior is
 visible in the product UI, Journal completion no longer performs allocation,
 IA result publication and WA evidence retention satisfy their separate
 contracts, and both exact-head live journeys pass independently.
+
+## 13. As-Built Closure
+
+`W80-CA00F.1` through `.5`, including corrective boundaries `.4A`, `.5A`,
+`.5B`, and `.5C`, are complete. The final protected acceptance ran the Journal
+and accounting-allocation journeys independently on product source head
+`46aadc52116b3df960110d5e7f1f445ff3bed40d`.
+
+The 15 acceptance requirements are `15/15 PASS`. Actual PostgreSQL, installed
+Compose, OpenBao, RustFS, remote generation, authenticated Playwright,
+restart/replay, screen evidence, diagnostic evidence, and zero-residue cleanup
+all passed. The exact-head Repository Full Gate also passed with `24,111`
+Python tests, statement coverage `96.23%`, branch coverage `95.12%`, `401`
+Node tests, and `134` React/Vitest tests.
+
+The canonical evidence and per-requirement disposition are recorded in
+[`mybee_phase1_w80_ca00f5_split_live_journeys_protected_closure.md`](../../slices/mybee_phase1_w80_ca00f5_split_live_journeys_protected_closure.md).
+No product source or persistence migration was added by the final closure.
