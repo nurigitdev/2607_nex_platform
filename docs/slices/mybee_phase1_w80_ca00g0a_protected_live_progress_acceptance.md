@@ -79,6 +79,36 @@ journal   sha256:9a7cec503141f2e9ed14644f8da8f72a0fdf11d8ec491c8d4aa1c5d2983388e
 allocation sha256:e6c455e10cf7a841e6ff80330e26f8011c0f9ef2c43d9e6b4534c8477ee3a9ab
 ```
 
+### Post-Acceptance Prompt/Progress Order Correction
+
+The user-facing order was corrected after the initial acceptance so that the
+latest user prompt is the progress anchor. The installed Workspace now renders
+the prior conversation, latest user prompt, append-only execution progress,
+and subsequent IA response/result in that order. This preserves multi-turn
+history while preventing progress from appearing above the request that caused
+it.
+
+The correction was re-accepted from exact-head revision `054ad2c14ecd` on
+2026-11-25 with rebuilt canonical and packaged AE Runtime images.
+
+- Focused Workspace tests, all `140` AE Web React tests, TypeScript checking,
+  and the production Web build passed.
+- Actual PostgreSQL, remote generation, installed Compose, OpenBao, RustFS, and
+  authenticated Playwright acceptance passed again.
+- Journal produced `19` ordered progress events; Allocation produced `8`.
+- Representative Journal capture
+  `mybee-m1-w80-ca00g0a-journal-progress-04-progress-09.png` proves the blue
+  user prompt precedes the `execution progress` list.
+- Restart/recovery and zero-residue cleanup remained accepted; all `8` isolated
+  schemas were removed.
+
+Re-acceptance progress manifest digests:
+
+```text
+journal    sha256:17f7967c22277140514f6cc1e8ef29f326236d69fd5e611b19dd55c9647211d7
+allocation sha256:901ff37bc8aedcc4f14df362ff54d319626379ae2d8fa1a36dede3aa5dd5256e
+```
+
 The first protected attempt intentionally failed closed when the generation
 provider secret was omitted: MO reported `http_status_401` and AE returned
 `PROVIDER_NOT_READY`. The accepted execution explicitly injected the existing
