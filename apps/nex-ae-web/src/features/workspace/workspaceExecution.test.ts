@@ -8,6 +8,8 @@ import {
   type AgentResultProjection,
   type GroundedGenerationClientPort,
   type InteractionAgentResultPort,
+  type InteractionExecutionProgressEvent,
+  type InteractionExecutionProgressPort,
   type WorkspaceExecutionUpdate,
 } from "./workspaceExecution";
 
@@ -145,26 +147,96 @@ describe("Workspace durable execution integration", () => {
     expect(workStateFromAgentProjection(agentResult("BLOCKED", "FINALIZE")).state)
       .toBe("FAILED");
   });
+
+  it("starts interaction progress polling before the chat POST completes", async () => {
+    const order: string[] = [];
+    const progressEvents: InteractionExecutionProgressEvent[] = [];
+    let releaseAdmission: (() => void) | null = null;
+    const admissionGate = new Promise<void>(resolve => { releaseAdmission = resolve; });
+    const generationClient = compiledGenerationClient();
+    generationClient.admitInteraction = async payload => {
+      order.push(`post-start:${String(payload.interaction_id)}`);
+      await admissionGate;
+      order.push("post-complete");
+      return compiledAdmission(payload);
+    };
+    const progressClient: InteractionExecutionProgressPort = {
+      clientMode: "mock",
+      async getInteractionExecutionProgress(interactionId) {
+        order.push(`progress:${interactionId}`);
+        releaseAdmission?.();
+        return {
+          terminal: true,
+          nextSequence: 1,
+          events: [progressEvent(interactionId)],
+        };
+      },
+    };
+
+    await executeWorkspaceDraft({
+      draft: { ...DRAFT, useEvidence: false },
+      workspaceId: "workspace-1",
+      conversationId: "conversation-1",
+      generationClient,
+      interactionResultClient: sequencedAgentResultClient([
+        agentResult("SUCCEEDED", "FINALIZE", {
+          status: "SUCCEEDED",
+          artifactRefs: [],
+          warnings: [],
+        }),
+      ]),
+      interactionProgressClient: progressClient,
+      onProgress: events => progressEvents.push(...events),
+      wait: async () => undefined,
+    });
+
+    expect(order[0]).toMatch(/^progress:|^post-start:/);
+    expect(order.findIndex(item => item.startsWith("progress:")))
+      .toBeLessThan(order.indexOf("post-complete"));
+    expect(progressEvents).toHaveLength(1);
+    expect(progressEvents[0]).toMatchObject({
+      eventCode: "IA_INTENT_STARTED",
+      message: "IA가 요청 의도를 파악하고 있습니다.",
+    });
+  });
 });
 
 function compiledGenerationClient(): GroundedGenerationClientPort {
   return {
     clientMode: "mock",
     async admitInteraction(payload) {
-      return {
-        groundedGenerationClientSchemaVersion: "ae_web_grounded_generation_client.v1",
-        interactionId: String(payload.interaction_id),
-        status: "PENDING",
-        terminal: false,
-        retryable: false,
-        asyncGeneration: { lifecycle_status: "PENDING", cancellable: true },
-        semanticPlanning: { status: "COMPILED" },
-      };
+      return compiledAdmission(payload);
     },
     getProgress: vi.fn(),
     refreshInteraction: vi.fn(),
     getResponse: vi.fn(),
     getCitationQuality: vi.fn(),
+  };
+}
+
+function compiledAdmission(payload: Readonly<Record<string, unknown>>) {
+  return {
+    groundedGenerationClientSchemaVersion: "ae_web_grounded_generation_client.v1",
+    interactionId: String(payload.interaction_id),
+    status: "PENDING",
+    terminal: false,
+    retryable: false,
+    asyncGeneration: { lifecycle_status: "PENDING", cancellable: true },
+    semanticPlanning: { status: "COMPILED" },
+  };
+}
+
+function progressEvent(interactionId: string): InteractionExecutionProgressEvent {
+  return {
+    eventId: `progress:${interactionId}`,
+    sequence: 1,
+    eventCode: "IA_INTENT_STARTED",
+    state: "STARTED",
+    agentType: "IA",
+    sourceRef: null,
+    occurredAt: "2026-11-25T01:02:03Z",
+    terminal: false,
+    message: "IA가 요청 의도를 파악하고 있습니다.",
   };
 }
 

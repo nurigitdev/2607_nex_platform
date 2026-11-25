@@ -34,7 +34,11 @@
         "chat.interaction.started",
         "chat.interaction.completed",
         "chat.interaction.no_answer",
-        "chat.interaction.failed"
+        "chat.interaction.failed",
+        "chat.agent-runtime.admitted",
+        "chat.async.admitted",
+        "agent.result.published",
+        "agent.execution.progress"
       ]
     },
     "trace_id": {
@@ -57,6 +61,12 @@
         },
         {
           "$ref": "#/$defs/chatInteractionMetadata"
+        },
+        {
+          "$ref": "#/$defs/agentResultPublishedMetadata"
+        },
+        {
+          "$ref": "#/$defs/agentExecutionProgressMetadata"
         }
       ]
     },
@@ -110,6 +120,54 @@
           "type": "string",
           "pattern": "^[0-9a-f]{64}$"
         }
+      }
+    },
+    "agentResultPublishedMetadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "interaction_ref",
+        "agent_execution_ref",
+        "agent_result_ref",
+        "agent_result_hash",
+        "result_delivery_ref",
+        "result_status",
+        "structured_result_contract_ref",
+        "business_refs",
+        "external_refs"
+      ],
+      "properties": {
+        "interaction_ref": {"type": "string", "minLength": 1},
+        "agent_execution_ref": {"type": "string", "minLength": 1},
+        "agent_result_ref": {"type": "string", "minLength": 1},
+        "agent_result_hash": {"type": "string", "minLength": 1},
+        "result_delivery_ref": {"type": "string", "minLength": 1},
+        "result_status": {"type": "string", "minLength": 1},
+        "structured_result_contract_ref": {"type": ["string", "null"]},
+        "business_refs": {"type": "array", "items": {"type": "string"}},
+        "external_refs": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "agentExecutionProgressMetadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "interaction_id",
+        "event_code",
+        "state",
+        "agent_type",
+        "source_ref",
+        "terminal",
+        "private_payload_included"
+      ],
+      "properties": {
+        "interaction_id": {"type": "string", "format": "uuid"},
+        "event_code": {"type": "string", "minLength": 1, "maxLength": 96},
+        "state": {"type": "string", "minLength": 1, "maxLength": 48},
+        "agent_type": {"type": ["string", "null"]},
+        "source_ref": {"type": "string", "minLength": 1, "maxLength": 256},
+        "terminal": {"type": "boolean"},
+        "private_payload_included": {"const": false}
       }
     }
   }

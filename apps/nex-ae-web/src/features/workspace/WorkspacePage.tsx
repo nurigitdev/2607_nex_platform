@@ -39,7 +39,10 @@ import {
   type GenerationFeedbackValue,
 } from "./ResponseQualityActions";
 import styles from "./WorkspacePage.module.css";
-import type { WorkspaceExecutionIssue } from "./workspaceExecution";
+import type {
+  InteractionExecutionProgressEvent,
+  WorkspaceExecutionIssue,
+} from "./workspaceExecution";
 
 export interface WorkspaceAttachment {
   readonly id: string;
@@ -78,6 +81,7 @@ export interface WorkspacePageProps {
   readonly controller?: WorkspaceController | null;
   readonly workState?: WorkStatePresentation;
   readonly progressHistory?: readonly WorkStatePresentation[];
+  readonly executionProgress?: readonly InteractionExecutionProgressEvent[];
   readonly messages?: readonly WorkspaceMessage[];
   readonly sources?: readonly WorkspaceSource[];
   readonly recentTasks?: readonly string[];
@@ -97,6 +101,7 @@ export function WorkspacePage({
   controller = null,
   workState = mapWorkState("IDLE"),
   progressHistory = [],
+  executionProgress = [],
   messages = [],
   sources = [],
   recentTasks = [],
@@ -259,6 +264,21 @@ export function WorkspacePage({
               </div>
             ) : (
               <div className={styles.resultFlow}>
+                {executionProgress.length > 0 ? (
+                  <section className={styles.executionProgress} aria-label="실행 진행 로그">
+                    <h2>실행 진행</h2>
+                    <ol aria-live="polite">
+                      {executionProgress.map(event => (
+                        <li key={event.eventId}>
+                          <time dateTime={event.occurredAt}>
+                            [{debugTimePrefix(event.occurredAt)}]
+                          </time>
+                          <span>{event.message}</span>
+                        </li>
+                      ))}
+                    </ol>
+                  </section>
+                ) : null}
                 {messages.length > 0 ? (
                   <ol className={styles.messages}>
                     {messages.map(item => (
@@ -377,6 +397,16 @@ export function WorkspacePage({
       </div>
     </section>
   );
+}
+
+function debugTimePrefix(value: string) {
+  return new Intl.DateTimeFormat("ko-KR", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+    timeZone: "Asia/Seoul",
+  }).format(new Date(value));
 }
 
 function WorkspaceIssue({ issue }: { readonly issue: WorkspaceExecutionIssue }) {

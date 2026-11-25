@@ -35,6 +35,7 @@ export interface LegacyClientGateway {
   readonly generationFeedback: unknown;
   readonly groundedGeneration: unknown;
   readonly interactionAgentResult: unknown;
+  readonly interactionExecutionProgress: unknown;
   readonly repairedResponseReview: unknown;
   readonly repairedResponseDecision: unknown;
   readonly summary: ClientGatewaySummary;
@@ -67,6 +68,7 @@ export function createLegacyClientGateway({
     generationFeedback: registry.generationFeedbackClient,
     groundedGeneration: registry.groundedGenerationClient,
     interactionAgentResult: registry.interactionAgentResultClient,
+    interactionExecutionProgress: registry.interactionExecutionProgressClient,
     repairedResponseReview: registry.repairedResponseReviewClient,
     repairedResponseDecision: registry.repairedResponseDecisionClient,
     summary: Object.freeze({

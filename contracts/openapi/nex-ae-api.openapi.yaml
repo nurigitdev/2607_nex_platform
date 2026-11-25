@@ -1433,6 +1433,42 @@ paths:
           description: Agent result was not found in the authenticated owner scope.
         "503":
           description: Durable interaction result storage is unavailable.
+  /api/v1/chat/interactions/{interaction_id}/execution-progress:
+    get:
+      operationId: getAeInteractionExecutionProgress
+      tags:
+        - Chat
+      parameters:
+        - name: interaction_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: after_sequence
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+      responses:
+        "200":
+          description: Owner-scoped ordered Agent execution progress projection.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AeInteractionExecutionProgress"
+        "400":
+          description: Progress cursor or persisted projection is invalid.
+        "401":
+          description: Browser claim is missing or invalid.
+        "403":
+          description: An authenticated browser owner is required.
+        "404":
+          description: Interaction was not found in the browser owner scope.
+        "503":
+          description: Durable interaction progress storage is unavailable.
   /api/v1/chat/interactions/{interaction_id}/citation-quality:
     get:
       operationId: getAeChatInteractionCitationQuality
@@ -3657,6 +3693,74 @@ components:
           const: true
         content_included:
           const: false
+    AeInteractionExecutionProgress:
+      type: object
+      x-nex-canonical-json-schema: schemas/service/nex_ae_api/interaction_execution_progress.v1.schema.json
+      additionalProperties: false
+      required:
+        - schema_version
+        - interaction_id
+        - workspace_id
+        - status
+        - terminal
+        - next_sequence
+        - events
+        - metadata
+      properties:
+        schema_version:
+          const: ae_interaction_execution_progress.v1
+        interaction_id:
+          type: string
+          format: uuid
+        workspace_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+        terminal:
+          type: boolean
+        next_sequence:
+          type: integer
+          minimum: 0
+        events:
+          type: array
+          maxItems: 256
+          items:
+            type: object
+            additionalProperties: false
+            required:
+              - event_id
+              - sequence
+              - event_code
+              - state
+              - agent_type
+              - source_ref
+              - occurred_at
+              - terminal
+            properties:
+              event_id: {type: string, format: uuid}
+              sequence: {type: integer, minimum: 1}
+              event_code: {type: string}
+              state: {type: string}
+              agent_type: {type: [string, "null"]}
+              source_ref: {type: [string, "null"]}
+              occurred_at: {type: string, format: date-time}
+              terminal: {type: boolean}
+        metadata:
+          type: object
+          additionalProperties: false
+          required:
+            - owner_scoped
+            - ordered_projection
+            - raw_prompt_included
+            - private_payload_included
+            - debug_time_available
+          properties:
+            owner_scoped: {const: true}
+            ordered_projection: {const: true}
+            raw_prompt_included: {const: false}
+            private_payload_included: {const: false}
+            debug_time_available: {const: true}
     AeGenerationProgress:
       type: object
       x-nex-canonical-json-schema: schemas/service/nex_ae_api/generation_progress.v1.schema.json
@@ -4118,6 +4222,10 @@ components:
             - chat.interaction.completed
             - chat.interaction.no_answer
             - chat.interaction.failed
+            - chat.agent-runtime.admitted
+            - chat.async.admitted
+            - agent.result.published
+            - agent.execution.progress
         trace_id:
           type: string
         request_id:

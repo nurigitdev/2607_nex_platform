@@ -171,6 +171,9 @@ class SemanticCandidateAdmissionRequest:
     reused_context_candidate: Mapping[str, Any] | None = field(
         default=None, repr=False
     )
+    progress_sink: Callable[[str, str], None] | None = field(
+        default=None, repr=False
+    )
 
 
 @dataclass(frozen=True)
@@ -260,6 +263,7 @@ class SemanticCandidateAdmissionRuntime:
         retrieval_package: Mapping[str, Any] | None,
         request_id: str,
         trace_id: str,
+        progress_sink: Callable[[str, str], None] | None = None,
     ) -> SemanticCandidateAdmissionResult:
         if self.mode == "disabled":
             return SemanticCandidateAdmissionResult(
@@ -346,6 +350,7 @@ class SemanticCandidateAdmissionRuntime:
                 trusted_execution_mode=runtime_policy.get("intent_decision", {}).get(
                     "execution_mode"
                 ),
+                progress_sink=progress_sink,
             )
         )
         if (
@@ -469,10 +474,12 @@ class DeterministicCandidateAdmissionService:
         stages: list[SemanticStageProjection] = []
         reuse = _semantic_reuse_inputs(request)
         if reuse is not None:
+            _emit_progress(request, "INTENT", "STARTED")
             intent_evidence = reuse["intent_evidence"]
             intent_candidate = reuse["intent_candidate"]
             intent_result = None
             resumed = True
+            _emit_progress(request, "INTENT", "COMPLETED")
         else:
             intent_evidence, intent_candidate, intent_result, resumed = self._stage(
                 request=request,
@@ -606,10 +613,12 @@ class DeterministicCandidateAdmissionService:
         if reuse is not None and reuse["decision"]["decision"] == (
             "REUSE_INTENT_REBUILD_CONTEXT"
         ):
+            _emit_progress(request, "CONTEXT", "STARTED")
             context_evidence = reuse["context_evidence"]
             context_candidate = reuse["context_candidate"]
             context_result = None
             resumed = True
+            _emit_progress(request, "CONTEXT", "COMPLETED")
         else:
             context_evidence, context_candidate, context_result, resumed = self._stage(
                 request=request,
@@ -978,6 +987,7 @@ class DeterministicCandidateAdmissionService:
         invoke: Callable[[], Any],
         now: str,
     ) -> tuple[dict[str, Any], dict[str, Any], Any | None, bool]:
+        _emit_progress(request, semantic_stage, "STARTED")
         existing = self.evidence.get(
             tenant_id=request.tenant_id, candidate_id=candidate_id
         )
@@ -1009,6 +1019,7 @@ class DeterministicCandidateAdmissionService:
                     "candidate_evidence": existing,
                 },
             )
+            _emit_progress(request, semantic_stage, "COMPLETED")
             return existing, candidate, None, True
 
         try:
@@ -1082,7 +1093,9 @@ class DeterministicCandidateAdmissionService:
                     "model_provenance": result.model_provenance,
                 },
             )
+            _emit_progress(request, semantic_stage, "COMPLETED")
         except Exception as exc:
+            _emit_progress(request, semantic_stage, "FAILED")
             failure = project_semantic_candidate_failure(
                 exc, semantic_stage=semantic_stage
             )
@@ -1139,6 +1152,15 @@ class DeterministicCandidateAdmissionService:
             interaction_id=request.interaction_id,
             agent_execution_id=agent_execution_id,
         )
+
+
+def _emit_progress(
+    request: SemanticCandidateAdmissionRequest,
+    semantic_stage: str,
+    state: str,
+) -> None:
+    if request.progress_sink is not None:
+        request.progress_sink(semantic_stage, state)
 
 
 @dataclass(frozen=True)

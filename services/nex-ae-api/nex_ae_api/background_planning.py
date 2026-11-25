@@ -19,6 +19,7 @@ from nex_ae_api.agent_execution import (
     AgentRuntimeAdmission,
     SqlAlchemyAgentExecutionRepository,
 )
+from nex_ae_api.interaction_execution_progress import InteractionProgressRecorder
 from nex_ae_api.multi_step_engine import MultiStepEngineError, SqlAlchemyMultiStepEngine
 from nex_ae_api.semantic_candidate_admission import (
     DeterministicCandidateAdmissionService,
@@ -32,6 +33,7 @@ from nex_ae_api.semantic_handoff_reuse import (
     SemanticHandoffReuseEvaluator,
     build_default_semantic_reuse_policy_registry,
 )
+from nex_ae_api.workspace_persistence import SqlAlchemyWorkspaceRepository
 
 
 @dataclass(frozen=True)
@@ -63,6 +65,9 @@ class BackgroundAgentPlanningService:
     reuse_evaluator: SemanticHandoffReuseEvaluator | None = field(
         default=None, repr=False
     )
+    progress_recorder: InteractionProgressRecorder | None = field(
+        default=None, repr=False
+    )
 
     def plan_claimed_execution(
         self,
@@ -88,6 +93,36 @@ class BackgroundAgentPlanningService:
                 "Background planning requires an admitted execution and durable source.",
             )
         _require_execution_source(execution, planning_source)
+        progress_scope = self._progress_scope(
+            tenant_id=tenant_id,
+            execution=execution,
+            planning_source=planning_source,
+        )
+        progress_sink = None
+        if progress_scope is not None and self.progress_recorder is not None:
+            agent_type = str(execution["agent_type"])
+            progress_common = {
+                **progress_scope,
+                "request_id": request_id or f"p7-background:{execution_id}",
+                "trace_id": trace_id or _trace_id(execution),
+                "agent_type": agent_type,
+            }
+            self.progress_recorder.append_observation(
+                **progress_common,
+                event_code="WC_WORK_CLAIMED",
+                state="COMPLETED",
+                source_ref=f"WC:WORK_ITEM:{execution['work_item_ref']}:CLAIMED",
+            )
+            self.progress_recorder.append_observation(
+                **progress_common,
+                event_code=f"{agent_type}_ASSIGNED",
+                state="COMPLETED",
+                source_ref=f"AE:AGENT_EXECUTION:{execution_id}:ASSIGNED",
+            )
+            progress_sink = self.progress_recorder.semantic_sink(
+                **progress_common,
+                source_ref=f"AE:AGENT_EXECUTION:{execution_id}:{agent_type}",
+            )
         snapshot = self.semantic_admission.capabilities.get_latest(tenant_id=tenant_id)
         if snapshot is None:
             raise BackgroundPlanningError(
@@ -130,7 +165,7 @@ class BackgroundAgentPlanningService:
             else None
         )
         try:
-            return self.semantic_admission.admit_and_compile(
+            result = self.semantic_admission.admit_and_compile(
                 SemanticCandidateAdmissionRequest(
                     tenant_id=tenant_id,
                     owner_subject_id=str(execution["requester_ref"]),
@@ -177,12 +212,50 @@ class BackgroundAgentPlanningService:
                     reused_context_candidate=(
                         None if reused is None else reused["resolved"].context_candidate
                     ),
+                    progress_sink=progress_sink,
                 )
             )
+            if (
+                progress_scope is not None
+                and self.progress_recorder is not None
+                and result.status in {"COMPILED", "PRODUCT_COORDINATION_STARTED"}
+            ):
+                self.progress_recorder.append_observation(
+                    **progress_common,
+                    event_code="RUNTIME_EXECUTION_STARTED",
+                    state="STARTED",
+                    source_ref=f"AE:AGENT_EXECUTION:{execution_id}:RUNTIME",
+                )
+            return result
         except SemanticCandidateAdmissionError as exc:
             raise BackgroundPlanningError(
                 exc.error_code, exc.detail, exc.retryable
             ) from exc
+
+    def _progress_scope(
+        self,
+        *,
+        tenant_id: str,
+        execution: Mapping[str, Any],
+        planning_source: Mapping[str, Any],
+    ) -> dict[str, str] | None:
+        handoff = planning_source.get("semantic_handoff")
+        if not isinstance(handoff, Mapping):
+            return None
+        interaction_id = handoff.get("source_interaction_id")
+        parent_execution_id = handoff.get("parent_execution_id")
+        if not isinstance(interaction_id, str) or not isinstance(
+            parent_execution_id, str
+        ):
+            return None
+        parent = self.executions.get(tenant_id, parent_execution_id)
+        workspace_id = None if parent is None else parent.get("workspace_id")
+        if not isinstance(workspace_id, str) or not workspace_id:
+            return None
+        return {
+            "workspace_id": workspace_id,
+            "interaction_id": interaction_id,
+        }
 
     def _semantic_reuse(
         self,
@@ -381,6 +454,9 @@ def build_installed_claim_handoff_admission(
             ),
             reuse_evaluator=SemanticHandoffReuseEvaluator(
                 build_default_semantic_reuse_policy_registry()
+            ),
+            progress_recorder=InteractionProgressRecorder(
+                SqlAlchemyWorkspaceRepository(session_factory)
             ),
         ),
         scheduler=SqlAlchemyMultiStepEngine(session_factory, jobs),

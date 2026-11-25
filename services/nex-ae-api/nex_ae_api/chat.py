@@ -5,9 +5,10 @@ import json
 import logging
 import os
 import re
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import Any, Mapping, Protocol
+from typing import Any, Protocol
 from uuid import NAMESPACE_URL, uuid5
 
 import httpx
@@ -65,7 +66,6 @@ from nex_ae_api.async_generation import (
     AeAsyncGenerationError,
     build_async_generation_projection,
     refresh_async_generation_projection,
-    refresh_async_generation_job_projection,
     resolve_execution_strategy,
 )
 from nex_ae_api.cx_async_generation_client import (
@@ -83,6 +83,7 @@ from nex_ae_api.citation_quality_observability import (
     observe_citation_quality_workflow,
 )
 from nex_ae_api.intent_policy import IntentPolicyError
+from nex_ae_api.interaction_execution_progress import InteractionProgressRecorder
 from nex_ae_api.prompt_persistence import PromptRepositoryError
 from nex_ae_api.prompts import DEFAULT_AE_PROMPT_STORE
 from nex_ae_api.retrieval import (
@@ -559,8 +560,29 @@ def register_chat_routes(
                 retrieval_package=retrieval_package,
                 request_id=request_id,
                 trace_id=trace_id,
+                progress_sink=(
+                    InteractionProgressRecorder(workspace_store).semantic_sink(
+                        workspace_id=str(binding.workspace["workspace_id"]),
+                        interaction_id=binding.interaction_id,
+                        agent_type="IA",
+                        request_id=request_id,
+                        trace_id=trace_id,
+                        source_ref=(
+                            f"AE:AGENT_EXECUTION:{binding.interaction_id}:IA"
+                        ),
+                    )
+                    if workspace_store is not None and binding.workspace is not None
+                    else None
+                ),
             )
             if semantic_admission is not None and semantic_admission.mode == "required":
+                _append_semantic_outcome_progress(
+                    semantic_admission=semantic_admission,
+                    workspace_store=workspace_store,
+                    binding=binding,
+                    request_id=request_id,
+                    trace_id=trace_id,
+                )
                 planning_record = chat_store.save(
                     {
                         **pending_record,
@@ -2495,6 +2517,7 @@ def _admit_semantic_candidate_pipeline(
     retrieval_package: Mapping[str, Any] | None,
     request_id: str,
     trace_id: str,
+    progress_sink: Callable[[str, str], None] | None = None,
 ) -> Any | None:
     runtime = getattr(request.app.state, "ae_semantic_candidate_admission", None)
     if runtime is None or getattr(runtime, "mode", "disabled") == "disabled":
@@ -2506,6 +2529,7 @@ def _admit_semantic_candidate_pipeline(
             retrieval_package=retrieval_package,
             request_id=request_id,
             trace_id=trace_id,
+            progress_sink=progress_sink,
         )
     except SemanticCandidateAdmissionError as exc:
         if getattr(runtime, "mode", None) == "shadow":
@@ -2553,6 +2577,42 @@ def _admit_semantic_candidate_pipeline(
         error_code="SEMANTIC_ADMISSION_BLOCKED",
         detail=f"Semantic admission stopped with directive {result.directive}.",
     )
+
+
+def _append_semantic_outcome_progress(
+    *,
+    semantic_admission: Any,
+    workspace_store: Any,
+    binding: WorkspaceChatBinding,
+    request_id: str,
+    trace_id: str,
+) -> None:
+    if binding.workspace is None:
+        return
+    recorder = InteractionProgressRecorder(workspace_store)
+    common = {
+        "workspace_id": str(binding.workspace["workspace_id"]),
+        "interaction_id": binding.interaction_id,
+        "request_id": request_id,
+        "trace_id": trace_id,
+        "agent_type": "IA",
+    }
+    execution_id = semantic_admission.agent_execution_id or binding.interaction_id
+    if semantic_admission.status == "PRODUCT_COORDINATION_STARTED":
+        recorder.append_observation(
+            **common,
+            event_code="WC_DELEGATION_CREATED",
+            state="COMPLETED",
+            source_ref=f"AE:AGENT_EXECUTION:{execution_id}:WC_DELEGATION",
+        )
+        return
+    if semantic_admission.status == "COMPILED":
+        recorder.append_observation(
+            **common,
+            event_code="RUNTIME_EXECUTION_STARTED",
+            state="STARTED",
+            source_ref=f"AE:AGENT_EXECUTION:{execution_id}:RUNTIME",
+        )
 
 
 def chat_owner_scope_from_payload(payload: dict[str, Any]) -> tuple[str, str]:

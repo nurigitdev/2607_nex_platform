@@ -1,6 +1,6 @@
 # NeX MyBee W80-CA00G Business Proposal Draft Review, Amount-Tiered Approval, and Voucher Pre-Submission Review Boundary v1.0
 
-**Status:** DESIGN FROZEN / IMPLEMENTATION PENDING
+**Status:** DESIGN FROZEN / IMPLEMENTATION IN PROGRESS
 
 **Predecessor:** W80-CA00F
 
@@ -356,6 +356,7 @@ W80-CA00G does not:
 
 ## 11. Implementation Slices
 
+0. `W80-CA00G.0: Owner-Scoped Agent Execution Progress Projection Foundation`
 1. `W80-CA00G.1: Proposal Persistence and Revision Contract Closure`
 2. `W80-CA00G.2: Amount-Tiered Policy Resolution and Approval-Line Selection`
 3. `W80-CA00G.3: Proposal Draft/Edit/Submit Product APIs and AE Web`
@@ -363,6 +364,15 @@ W80-CA00G does not:
 5. `W80-CA00G.5: Voucher Draft Review, Revision, Validation, and Explicit Submit`
 6. `W80-CA00G.6: Groupware Journey Integration and Result Projection`
 7. `W80-CA00G.7: Protected Live Matrix, Repository Full Gate, and As-Built Closure`
+
+`.0` is a cross-cutting observability foundation. The browser creates the
+`interaction_id` before submission, starts progress polling concurrently with
+the Chat POST, and appends owner-scoped, ordered progress messages until a
+terminal result is observed. Deterministic activity identifiers make boundary
+replay idempotent. Existing Workspace activity persistence is reused; raw
+prompt, plan payload, and private business content are not part of this
+projection. The initial diagnostic UI may prefix each line with the event time,
+but time formatting is presentation-only and must not change durable identity.
 
 Checkpoint gates run after `.3` and `.5`. `.7` runs the six protected journeys,
 actual PostgreSQL smoke, Playwright evidence, restart/replay acceptance, coverage

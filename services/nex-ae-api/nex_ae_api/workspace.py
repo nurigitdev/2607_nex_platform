@@ -7,8 +7,8 @@ from uuid import NAMESPACE_URL, uuid5
 
 from fastapi import FastAPI, Header, Request
 from fastapi.responses import JSONResponse
-
 from nex_runtime import problem_response, request_id_from_headers, trace_id_from_headers
+
 from nex_ae_api.route_auth import (
     AeFacadeRouteAuthContext,
     authorize_ae_facade_route_request,
@@ -23,7 +23,6 @@ from nex_ae_api.workspace_persistence import (
     SqlAlchemyWorkspaceRepository,
     WorkspaceRepositoryError,
 )
-
 
 DEFAULT_TENANT_ID = "local-tenant"
 DEFAULT_USER_ID = "local-user"
@@ -301,9 +300,10 @@ def build_workspace_activity(
     summary: str,
     metadata: dict[str, Any] | None = None,
     created_at: str | None = None,
+    activity_id: str | None = None,
 ) -> dict[str, Any]:
     timestamp = created_at or _utc_now()
-    activity_id = str(
+    resolved_activity_id = activity_id or str(
         uuid5(
             NAMESPACE_URL,
             f"ae-workspace-activity:{workspace_id}:{activity_type}:{request_id}:{timestamp}",
@@ -311,7 +311,7 @@ def build_workspace_activity(
     )
     return {
         "activity_schema_version": "ae_workspace_activity.v1",
-        "activity_id": activity_id,
+        "activity_id": resolved_activity_id,
         "workspace_id": workspace_id,
         "activity_type": activity_type,
         "trace_id": trace_id,

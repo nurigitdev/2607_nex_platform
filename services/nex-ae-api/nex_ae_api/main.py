@@ -49,6 +49,10 @@ from nex_ae_api.generation_feedback import register_generation_feedback_routes
 from nex_ae_api.interaction_agent_result_api import (
     register_interaction_agent_result_routes,
 )
+from nex_ae_api.interaction_execution_progress import (
+    SqlAlchemyInteractionExecutionProgressSource,
+    register_interaction_execution_progress_routes,
+)
 from nex_ae_api.mvp_acceptance_api import register_ae_mvp_acceptance_routes
 from nex_ae_api.nsl_approval_events import SqlAlchemyNslApprovalEventService
 from nex_ae_api.private_object_store import (
@@ -177,6 +181,16 @@ register_interaction_agent_result_routes(
     app,
     source=(
         SqlAlchemyInteractionAgentResultSource(SERVICE_PERSISTENCE.api_session_factory)
+        if SERVICE_PERSISTENCE.api_session_factory is not None
+        else None
+    ),
+)
+register_interaction_execution_progress_routes(
+    app,
+    source=(
+        SqlAlchemyInteractionExecutionProgressSource(
+            SERVICE_PERSISTENCE.api_session_factory
+        )
         if SERVICE_PERSISTENCE.api_session_factory is not None
         else None
     ),

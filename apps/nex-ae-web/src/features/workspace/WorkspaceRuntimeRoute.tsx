@@ -19,6 +19,8 @@ import {
   workspaceResultFromAgentProjection,
   type GroundedGenerationClientPort,
   type InteractionAgentResultPort,
+  type InteractionExecutionProgressEvent,
+  type InteractionExecutionProgressPort,
   type WorkspaceExecutionIssue,
   type WorkspaceExecutionUpdate,
 } from "./workspaceExecution";
@@ -68,6 +70,7 @@ export function InstalledWorkspaceRuntime({
   const { sessionState } = useSession();
   const [workState, setWorkState] = useState(() => mapWorkState("IDLE"));
   const [progressHistory, setProgressHistory] = useState<WorkStatePresentation[]>([]);
+  const [executionProgress, setExecutionProgress] = useState<InteractionExecutionProgressEvent[]>([]);
   const [messages, setMessages] = useState<WorkspaceMessage[]>([]);
   const [sources, setSources] = useState<readonly WorkspaceSource[]>([]);
   const [result, setResult] = useState<WorkspaceResultProjection | null>(null);
@@ -86,6 +89,7 @@ export function InstalledWorkspaceRuntime({
     let cancelled = false;
     setWorkState(mapWorkState("VERIFYING"));
     setProgressHistory([mapWorkState("VERIFYING")]);
+    setExecutionProgress([]);
     setMessages([]);
     setResult(null);
     setIssue(null);
@@ -143,6 +147,7 @@ export function InstalledWorkspaceRuntime({
       content: draft.prompt,
     }]);
     setProgressHistory([]);
+    setExecutionProgress([]);
     setResult(null);
     setSources([]);
     setIssue(null);
@@ -162,8 +167,13 @@ export function InstalledWorkspaceRuntime({
         sourceDocumentIds: [],
         generationClient: runtime.clients.groundedGeneration as GroundedGenerationClientPort,
         interactionResultClient: runtime.clients.interactionAgentResult as InteractionAgentResultPort,
+        interactionProgressClient:
+          runtime.clients.interactionExecutionProgress as InteractionExecutionProgressPort,
         repairedResponseReviewClient: runtime.clients.repairedResponseReview,
         onUpdate: applyUpdate,
+        onProgress(events) {
+          setExecutionProgress(current => appendProgressEvents(current, events));
+        },
         signal: abort.signal,
       });
       if (outcome.interactionId && outcome.message && outcome.status !== "ACTIVE") {
@@ -264,6 +274,7 @@ export function InstalledWorkspaceRuntime({
       controller={controller}
       workState={workState}
       progressHistory={progressHistory}
+      executionProgress={executionProgress}
       messages={messages}
       sources={sources}
       result={result}
@@ -272,6 +283,15 @@ export function InstalledWorkspaceRuntime({
       repairedResponseReview={repairedResponseReview}
     />
   );
+}
+
+function appendProgressEvents(
+  current: readonly InteractionExecutionProgressEvent[],
+  next: readonly InteractionExecutionProgressEvent[],
+) {
+  const merged = new Map(current.map(event => [event.eventId, event]));
+  for (const event of next) merged.set(event.eventId, event);
+  return [...merged.values()].sort((left, right) => left.sequence - right.sequence);
 }
 
 function appendActualState(

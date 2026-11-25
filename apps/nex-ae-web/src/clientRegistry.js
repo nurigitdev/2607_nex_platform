@@ -27,6 +27,10 @@ import {
   createMockInteractionAgentResultClient
 } from "./interactionAgentResultClient.js";
 import {
+  createFetchInteractionExecutionProgressClient,
+  createMockInteractionExecutionProgressClient
+} from "./interactionExecutionProgressClient.js";
+import {
   createFetchRepairedResponseReviewClient,
   createMockRepairedResponseReviewClient
 } from "./repairedResponseReviewClient.js";
@@ -101,6 +105,10 @@ export function createAeWebClients({
           interactionAgentResultClient: createMockInteractionAgentResultClient({
             responseFactory: responseFactories.interactionAgentResult
           }),
+          interactionExecutionProgressClient:
+            createMockInteractionExecutionProgressClient({
+              responseFactory: responseFactories.interactionExecutionProgress
+            }),
           repairedResponseReviewClient: createMockRepairedResponseReviewClient({
             projections: responseFactories.repairedResponseReviewProjections || [],
             responseFactory: responseFactories.repairedResponseReview
@@ -124,6 +132,8 @@ export function createAeWebClients({
             createFetchGroundedGenerationClient(commonFetchOptions),
           interactionAgentResultClient:
             createFetchInteractionAgentResultClient(commonFetchOptions),
+          interactionExecutionProgressClient:
+            createFetchInteractionExecutionProgressClient(commonFetchOptions),
           repairedResponseReviewClient:
             createFetchRepairedResponseReviewClient(commonFetchOptions),
           repairedResponseDecisionClient:
@@ -165,6 +175,8 @@ export function buildClientRegistrySummary(registry) {
       retrieval: registry.retrievalClient.clientMode,
       grounded_generation: registry.groundedGenerationClient.clientMode,
       interaction_agent_result: registry.interactionAgentResultClient.clientMode,
+      interaction_execution_progress:
+        registry.interactionExecutionProgressClient.clientMode,
       generation_feedback: registry.generationFeedbackClient.clientMode,
       repaired_response_review: registry.repairedResponseReviewClient.clientMode,
       repaired_response_decision: registry.repairedResponseDecisionClient.clientMode
@@ -204,6 +216,8 @@ function isRegistry(value) {
     value.voucherAttachmentClient &&
     value.retrievalClient &&
     value.groundedGenerationClient &&
+    value.interactionAgentResultClient &&
+    value.interactionExecutionProgressClient &&
     value.generationFeedbackClient &&
     value.repairedResponseReviewClient &&
     value.repairedResponseDecisionClient

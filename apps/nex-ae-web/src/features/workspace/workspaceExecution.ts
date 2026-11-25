@@ -40,6 +40,30 @@ export interface InteractionAgentResultPort {
   readonly getInteractionAgentResult: (interactionId: string) => Promise<AgentResultProjection>;
 }
 
+export interface InteractionExecutionProgressEvent {
+  readonly eventId: string;
+  readonly sequence: number;
+  readonly eventCode: string;
+  readonly state: string;
+  readonly agentType: string | null;
+  readonly sourceRef: string | null;
+  readonly occurredAt: string;
+  readonly terminal: boolean;
+  readonly message: string;
+}
+
+export interface InteractionExecutionProgressPort {
+  readonly clientMode: "mock" | "fetch";
+  readonly getInteractionExecutionProgress: (
+    interactionId: string,
+    afterSequence?: number,
+  ) => Promise<{
+    readonly terminal: boolean;
+    readonly nextSequence: number;
+    readonly events: readonly InteractionExecutionProgressEvent[];
+  }>;
+}
+
 export interface AgentResultProjection {
   readonly interactionId: string;
   readonly executionState: string;
@@ -81,12 +105,16 @@ export async function executeWorkspaceDraft({
   sourceDocumentIds = [],
   generationClient,
   interactionResultClient,
+  interactionProgressClient = null,
   repairedResponseReviewClient = null,
   onUpdate = () => undefined,
+  onProgress = () => undefined,
   wait = waitForSeconds,
   maxGenerationPolls = 30,
   maxAgentPolls = 150,
+  maxProgressPolls = 300,
   agentPollSeconds = 2,
+  progressPollSeconds = 1,
   signal = null,
 }: {
   readonly draft: WorkspaceDraft;
@@ -95,12 +123,18 @@ export async function executeWorkspaceDraft({
   readonly sourceDocumentIds?: readonly string[];
   readonly generationClient: GroundedGenerationClientPort;
   readonly interactionResultClient: InteractionAgentResultPort;
+  readonly interactionProgressClient?: InteractionExecutionProgressPort | null;
   readonly repairedResponseReviewClient?: unknown;
   readonly onUpdate?: (update: WorkspaceExecutionUpdate) => void;
+  readonly onProgress?: (
+    events: readonly InteractionExecutionProgressEvent[],
+  ) => void;
   readonly wait?: (seconds: number) => Promise<void>;
   readonly maxGenerationPolls?: number;
   readonly maxAgentPolls?: number;
+  readonly maxProgressPolls?: number;
   readonly agentPollSeconds?: number;
+  readonly progressPollSeconds?: number;
   readonly signal?: AbortSignal | null;
 }): Promise<WorkspaceExecutionOutcome> {
   const interactionId = createInteractionId();
@@ -115,7 +149,21 @@ export async function executeWorkspaceDraft({
     documentScope: grounded ? { document_scope: { document_ids: documentIds } } : null,
     grounded,
   });
-  const workflow = await executeGroundedGeneration({
+  let stopProgress = false;
+  const progressTask = interactionProgressClient
+    ? pollInteractionExecutionProgress({
+        client: interactionProgressClient,
+        interactionId,
+        onProgress,
+        wait,
+        maxPolls: maxProgressPolls,
+        pollSeconds: progressPollSeconds,
+        signal,
+        shouldStop: () => stopProgress,
+      })
+    : Promise.resolve();
+  try {
+    const workflow = await executeGroundedGeneration({
     client: generationClient,
     request,
     maxPolls: maxGenerationPolls,
@@ -129,65 +177,109 @@ export async function executeWorkspaceDraft({
       });
     },
   });
-  assertNotAborted(signal);
+    assertNotAborted(signal);
 
-  if (workflow.agentExecutionAdmitted === true) {
-    onUpdate(update("PLANNING", interactionId));
-    return pollAgentResult({
-      client: interactionResultClient,
-      interactionId,
-      onUpdate,
-      wait,
-      maxPolls: maxAgentPolls,
-      pollSeconds: agentPollSeconds,
-      signal,
-    });
-  }
+    if (workflow.agentExecutionAdmitted === true) {
+      onUpdate(update("PLANNING", interactionId));
+      return await pollAgentResult({
+        client: interactionResultClient,
+        interactionId,
+        onUpdate,
+        wait,
+        maxPolls: maxAgentPolls,
+        pollSeconds: agentPollSeconds,
+        signal,
+      });
+    }
 
-  let presentation;
-  try {
-    presentation = await presentGroundedGeneration({
-      workflow,
-      repairedResponseReviewClient,
-    });
-  } catch (error) {
-    presentation = buildGroundedGenerationPresentationFailure(workflow, error);
-  }
-  if (workflow.status === "COMPLETED" && presentation.displayMode !== "PRESENTATION_UNAVAILABLE") {
-    const sources = groundedSources(workflow);
+    let presentation;
+    try {
+      presentation = await presentGroundedGeneration({
+        workflow,
+        repairedResponseReviewClient,
+      });
+    } catch (error) {
+      presentation = buildGroundedGenerationPresentationFailure(workflow, error);
+    }
+    if (workflow.status === "COMPLETED" && presentation.displayMode !== "PRESENTATION_UNAVAILABLE") {
+      const sources = groundedSources(workflow);
+      const outcome: WorkspaceExecutionOutcome = {
+        status: "COMPLETED",
+        workState: mapWorkState("SUCCEEDED"),
+        interactionId,
+        message: {
+          id: `assistant:${interactionId}`,
+          role: "assistant",
+          content: presentation.assistantText,
+        },
+        sources,
+        result: null,
+        issue: null,
+        repairedResponseReview: presentation.repairedResponseReview ?? null,
+      };
+      onUpdate(outcome);
+      return outcome;
+    }
+    const issue = issueFromStatus(workflow.state?.errorStatus, workflow.state?.retryable === true);
     const outcome: WorkspaceExecutionOutcome = {
-      status: "COMPLETED",
-      workState: mapWorkState("SUCCEEDED"),
+      status: workflow.status === "ACTIVE" ? "ACTIVE" : "FAILED",
+      workState: mapWorkState(workflow.status === "ACTIVE" ? "RUNNING" : "FAILED"),
       interactionId,
       message: {
         id: `assistant:${interactionId}`,
         role: "assistant",
         content: presentation.assistantText,
       },
-      sources,
       result: null,
-      issue: null,
+      issue,
       repairedResponseReview: presentation.repairedResponseReview ?? null,
     };
     onUpdate(outcome);
     return outcome;
+  } finally {
+    stopProgress = true;
+    await progressTask;
   }
-  const issue = issueFromStatus(workflow.state?.errorStatus, workflow.state?.retryable === true);
-  const outcome: WorkspaceExecutionOutcome = {
-    status: workflow.status === "ACTIVE" ? "ACTIVE" : "FAILED",
-    workState: mapWorkState(workflow.status === "ACTIVE" ? "RUNNING" : "FAILED"),
-    interactionId,
-    message: {
-      id: `assistant:${interactionId}`,
-      role: "assistant",
-      content: presentation.assistantText,
-    },
-    result: null,
-    issue,
-    repairedResponseReview: presentation.repairedResponseReview ?? null,
-  };
-  onUpdate(outcome);
-  return outcome;
+}
+
+export async function pollInteractionExecutionProgress({
+  client,
+  interactionId,
+  onProgress,
+  wait,
+  maxPolls,
+  pollSeconds,
+  signal,
+  shouldStop,
+}: {
+  readonly client: InteractionExecutionProgressPort;
+  readonly interactionId: string;
+  readonly onProgress: (
+    events: readonly InteractionExecutionProgressEvent[],
+  ) => void;
+  readonly wait: (seconds: number) => Promise<void>;
+  readonly maxPolls: number;
+  readonly pollSeconds: number;
+  readonly signal: AbortSignal | null;
+  readonly shouldStop: () => boolean;
+}) {
+  let cursor = 0;
+  for (let attempt = 1; attempt <= maxPolls; attempt += 1) {
+    assertNotAborted(signal);
+    try {
+      const projection = await client.getInteractionExecutionProgress(
+        interactionId,
+        cursor,
+      );
+      if (projection.events.length > 0) onProgress(projection.events);
+      cursor = Math.max(cursor, projection.nextSequence);
+      if (projection.terminal) return;
+    } catch (error) {
+      if (statusCodeOf(error) !== 404) return;
+    }
+    if (shouldStop()) return;
+    if (client.clientMode !== "mock") await wait(pollSeconds);
+  }
 }
 
 async function pollAgentResult({

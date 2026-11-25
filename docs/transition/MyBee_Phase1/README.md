@@ -138,6 +138,12 @@ retains the existing ApprovedDocumentEnvelope, Candidate review, accounting
 SoD, governed WRITE, immutable Journal, WA evidence, and allocation-independent
 contracts.
 
+W80-CA00G.0 precedes those business-document Slices with an owner-scoped Agent
+execution progress foundation. A browser-generated interaction identity binds
+concurrent Chat admission and ordered polling; deterministic Workspace activity
+events expose IA, WC, assigned Agent, runtime, and terminal boundaries without
+including raw prompts, plans, or private business payloads.
+
 The W30-CA01 pair is the source-backed post-W20 delta. It takes precedence
 only for W30 entry ordering, current migration-number reservations, the
 `MB3-01` wave label, and the scoped `DOCUMENT_SIGNOFF` finalization gap. It
