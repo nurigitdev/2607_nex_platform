@@ -99,9 +99,13 @@ def test_safe_payroll_aggregate_is_pinned_and_exact_replay_is_allowed() -> None:
     assert admission.authorization_decision_hash.startswith("sha256:")
 
 
-def test_privacy_migration_is_current_inventory_head_and_append_only() -> None:
+def test_privacy_migration_is_admitted_and_append_only() -> None:
     migrations = load_migrations("nex-eos")
-    assert migrations[-1].version == "2548_eos_pnl_privacy_guard"
+    versions = [migration.version for migration in migrations]
+    assert "2548_eos_pnl_privacy_guard" in versions
+    assert versions.index("2548_eos_pnl_privacy_guard") < versions.index(
+        "2549_eos_business_proposal_draft"
+    )
     migration = Path(
         "database/nex-eos/migrations/2548_eos_pnl_privacy_guard.sql"
     ).read_text(encoding="utf-8")
