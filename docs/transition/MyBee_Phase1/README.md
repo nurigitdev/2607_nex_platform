@@ -41,6 +41,7 @@ MyBee office-work AX Service Phase-1 program.
 34. `NeX_MyBee_W80_CA00F_5A_Accounting_Allocation_Product_Entry_and_Domain_Intent_Activation_Closure_v1.0.md`
 35. `NeX_MyBee_W80_CA00F_5B_Primary_Project_Code_Typed_Business_Context_Propagation_Closure_v1.0.md`
 36. `NeX_MyBee_W80_CA00F_5C_Installed_Journal_Business_Result_Summary_and_IA_Projection_Closure_v1.0.md`
+37. `NeX_MyBee_W80_CA00G_Business_Proposal_Draft_Review_Amount_Tiered_Approval_and_Voucher_Pre_Submission_Review_Boundary_v1.0.md`
 
 The Markdown Slice Plan and its Execution Matrix JSON are one planning set.
 The JSON is machine-readable traceability input, not runtime configuration or
@@ -126,6 +127,16 @@ accounting allocation as independent installed journeys, reconciled all 15
 acceptance requirements, recovered both results after restart, and completed
 zero-residue cleanup. The As-Built evidence index is
 [`mybee_phase1_w80_ca00f5_split_live_journeys_protected_closure.md`](../../slices/mybee_phase1_w80_ca00f5_split_live_journeys_protected_closure.md).
+
+W80-CA00G adds the user-controlled groupware boundaries deliberately compressed
+by the W80-CA00F technical acceptance. EOS owns a durable business-proposal
+draft and immutable revisions; amount, business scope, and fresh OA authority
+determine the mandatory approval ladder; and the user explicitly reviews and
+submits both the proposal and the later VoucherCandidate. Middle/final rejection
+creates no approved envelope or accounting mutation, while the successful path
+retains the existing ApprovedDocumentEnvelope, Candidate review, accounting
+SoD, governed WRITE, immutable Journal, WA evidence, and allocation-independent
+contracts.
 
 The W30-CA01 pair is the source-backed post-W20 delta. It takes precedence
 only for W30 entry ordering, current migration-number reservations, the
