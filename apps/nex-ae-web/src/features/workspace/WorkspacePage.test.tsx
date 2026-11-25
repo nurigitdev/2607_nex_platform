@@ -5,7 +5,11 @@ import { resolve } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 
 import { mapWorkState } from "../../ux/workState";
-import { WorkspacePage, type WorkspaceController } from "./WorkspacePage";
+import {
+  WorkspacePage,
+  splitMessagesAroundExecutionProgress,
+  type WorkspaceController,
+} from "./WorkspacePage";
 
 describe("WorkspacePage", () => {
   it("renders a Korean-default empty workspace without invented recent work", () => {
@@ -94,6 +98,50 @@ describe("WorkspacePage", () => {
     expect(screen.queryByText("지난 월간 현황")).not.toBeInTheDocument();
     await user.click(screen.getByRole("tab", { name: "출처 1건" }));
     expect(screen.getByText("출장 규정")).toBeVisible();
+  });
+
+  it("renders execution progress after the latest user prompt and before the IA response", () => {
+    render(
+      <WorkspacePage
+        messages={[
+          { id: "user-1", role: "user", content: "전표를 처리해 주세요." },
+          { id: "assistant-1", role: "assistant", content: "처리가 완료되었습니다." },
+        ]}
+        executionProgress={[
+          {
+            eventId: "progress-1",
+            sequence: 1,
+            eventCode: "CHAT_REQUEST_ACCEPTED",
+            state: "ACCEPTED",
+            agentType: "IA",
+            sourceRef: "AE_CHAT",
+            message: "IA가 요청을 접수했습니다.",
+            occurredAt: "2026-11-25T10:00:00Z",
+            terminal: false,
+          },
+        ]}
+      />,
+    );
+
+    const prompt = screen.getByText("전표를 처리해 주세요.").closest("li");
+    const progress = screen.getByLabelText("실행 진행 로그");
+    const response = screen.getByText("처리가 완료되었습니다.").closest("li");
+    expect(prompt).not.toBeNull();
+    expect(response).not.toBeNull();
+    expect(prompt!.compareDocumentPosition(progress) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(progress.compareDocumentPosition(response!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("anchors progress after the latest user message in a multi-turn conversation", () => {
+    const [before, after] = splitMessagesAroundExecutionProgress([
+      { id: "user-1", role: "user", content: "첫 요청" },
+      { id: "assistant-1", role: "assistant", content: "첫 응답" },
+      { id: "user-2", role: "user", content: "두 번째 요청" },
+      { id: "assistant-2", role: "assistant", content: "두 번째 응답" },
+    ]);
+
+    expect(before.map(item => item.id)).toEqual(["user-1", "assistant-1", "user-2"]);
+    expect(after.map(item => item.id)).toEqual(["assistant-2"]);
   });
 
   it("shows a safe retry message when submission fails", async () => {

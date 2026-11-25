@@ -119,6 +119,10 @@ export function WorkspacePage({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const workspaceTerm = mapBusinessTerm("WORKSPACE");
+  const [messagesBeforeProgress, messagesAfterProgress] = useMemo(
+    () => splitMessagesAroundExecutionProgress(messages),
+    [messages],
+  );
 
   const active = ["ACCEPTING", "PLANNING", "RUNNING", "RESUMING", "VERIFYING"].includes(
     workState.state,
@@ -264,6 +268,7 @@ export function WorkspacePage({
               </div>
             ) : (
               <div className={styles.resultFlow}>
+                <WorkspaceMessages messages={messagesBeforeProgress} />
                 {executionProgress.length > 0 ? (
                   <section className={styles.executionProgress} aria-label="실행 진행 로그">
                     <h2>실행 진행</h2>
@@ -279,16 +284,7 @@ export function WorkspacePage({
                     </ol>
                   </section>
                 ) : null}
-                {messages.length > 0 ? (
-                  <ol className={styles.messages}>
-                    {messages.map(item => (
-                      <li key={item.id} className={item.role === "user" ? styles.userMessage : styles.agentMessage}>
-                        <span>{item.role === "user" ? "나" : "IA"}</span>
-                        <p>{item.content}</p>
-                      </li>
-                    ))}
-                  </ol>
-                ) : null}
+                <WorkspaceMessages messages={messagesAfterProgress} />
                 {result ? <BusinessResultCard result={result} /> : null}
                 {issue ? <WorkspaceIssue issue={issue} /> : null}
                 <ResponseQualityActions
@@ -397,6 +393,34 @@ export function WorkspacePage({
       </div>
     </section>
   );
+}
+
+function WorkspaceMessages({ messages }: { readonly messages: readonly WorkspaceMessage[] }) {
+  if (messages.length === 0) return null;
+  return (
+    <ol className={styles.messages}>
+      {messages.map(item => (
+        <li key={item.id} className={item.role === "user" ? styles.userMessage : styles.agentMessage}>
+          <span>{item.role === "user" ? "나" : "IA"}</span>
+          <p>{item.content}</p>
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+export function splitMessagesAroundExecutionProgress(
+  messages: readonly WorkspaceMessage[],
+): readonly [readonly WorkspaceMessage[], readonly WorkspaceMessage[]] {
+  let lastUserIndex = -1;
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    if (messages[index]?.role === "user") {
+      lastUserIndex = index;
+      break;
+    }
+  }
+  if (lastUserIndex < 0) return [messages, []];
+  return [messages.slice(0, lastUserIndex + 1), messages.slice(lastUserIndex + 1)];
 }
 
 function debugTimePrefix(value: string) {
