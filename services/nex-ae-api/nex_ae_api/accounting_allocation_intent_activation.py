@@ -175,11 +175,11 @@ class AccountingAllocationContextResolver:
 
 def _candidate_parameters(
     candidate: Mapping[str, Any],
-) -> tuple[dict[str, str], tuple[dict[str, str], ...]]:
+) -> tuple[dict[str, object], tuple[dict[str, str], ...]]:
     values = candidate.get("parameter_candidates")
     if not isinstance(values, list):
         raise _invalid("Allocation parameter candidates are unavailable.")
-    parameters: dict[str, str] = {}
+    parameters: dict[str, object] = {}
     confidences: dict[str, float] = {}
     for item in values:
         if not isinstance(item, Mapping) or not isinstance(item.get("name"), str):
@@ -191,10 +191,27 @@ def _candidate_parameters(
             raise _invalid("Allocation candidate parameter is duplicated.")
         value = item.get("value")
         confidence = item.get("confidence")
+        is_ratio = name.startswith("allocation_ratio_")
         if (
-            not isinstance(value, str)
-            or not value.strip()
-            or value != value.strip()
+            (
+                is_ratio
+                and (
+                    isinstance(value, bool)
+                    or not isinstance(value, (str, int, float, Decimal))
+                    or (
+                        isinstance(value, str)
+                        and (not value.strip() or value != value.strip())
+                    )
+                )
+            )
+            or (
+                not is_ratio
+                and (
+                    not isinstance(value, str)
+                    or not value.strip()
+                    or value != value.strip()
+                )
+            )
             or isinstance(confidence, bool)
             or not isinstance(confidence, (int, float))
             or not 0.0 <= float(confidence) <= 1.0
@@ -213,8 +230,8 @@ def _candidate_parameters(
     return parameters, projects
 
 
-def _projects(parameters: Mapping[str, str]) -> tuple[dict[str, str], ...]:
-    indexed: dict[int, dict[str, str]] = {}
+def _projects(parameters: Mapping[str, object]) -> tuple[dict[str, str], ...]:
+    indexed: dict[int, dict[str, object]] = {}
     for name, value in parameters.items():
         match = _PAIR_NAME.fullmatch(name)
         if match is None:
@@ -236,7 +253,7 @@ def _projects(parameters: Mapping[str, str]) -> tuple[dict[str, str], ...]:
                 "ACCOUNTING_ALLOCATION_CLARIFICATION_REQUIRED",
                 "Every allocation Project requires one matching ratio.",
             )
-        project_code = pair["project_code"].upper()
+        project_code = str(pair["project_code"]).upper()
         if (
             _PROJECT_CODE.fullmatch(project_code) is None
             or project_code in project_codes
@@ -245,8 +262,8 @@ def _projects(parameters: Mapping[str, str]) -> tuple[dict[str, str], ...]:
                 "Allocation Project candidates must be unique canonical codes."
             )
         try:
-            ratio = Decimal(pair["ratio"])
-        except InvalidOperation as exc:
+            ratio = Decimal(str(pair["ratio"]))
+        except (InvalidOperation, ValueError) as exc:
             raise _invalid("Allocation ratio candidate is invalid.") from exc
         if not ratio.is_finite() or ratio <= 0:
             raise _invalid("Allocation ratio candidate must be positive.")

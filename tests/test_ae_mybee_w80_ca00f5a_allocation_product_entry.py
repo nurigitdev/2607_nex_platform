@@ -297,6 +297,23 @@ def test_ca00f5a_fails_closed_for_incomplete_duplicate_or_unbalanced_candidates(
     assert raised.value.error_code == error_code
 
 
+def test_ca00f5a_accepts_live_provider_numeric_ratio_candidates():
+    candidate = _candidate(ratios=(0.4, 0.6))
+
+    activated = AccountingAllocationIntentActivator().activate(
+        candidate=candidate,
+        work_intent=_work_intent(),
+        tenant_id=TENANT,
+        principal_id=SUBJECT,
+        resolved_at=NOW,
+    )
+
+    assert activated.work_intent["accounting_allocation_work_intent"]["projects"] == [
+        {"project_code": "VO00D260111", "allocation_ratio": "0.400000000000"},
+        {"project_code": "VO00O260112", "allocation_ratio": "0.600000000000"},
+    ]
+
+
 @pytest.mark.parametrize(
     "parameter_candidates",
     [
@@ -333,6 +350,7 @@ def test_ca00f5a_rejects_malformed_candidate_shapes(parameter_candidates):
         ("company_id", "59000000-0000-4000-8000-0000000000AB"),
         ("allocation_ratio_1", "not-a-number"),
         ("allocation_ratio_1", "0"),
+        ("allocation_ratio_1", True),
         ("allocation_project_code_2", "VO00D260111"),
     ],
 )

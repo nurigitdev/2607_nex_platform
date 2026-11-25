@@ -20,7 +20,11 @@
 - AE Web Workspace result rendering: `14 passed`.
 - Delegated-result/P5-StepResult settlement regression: `20 passed` across the
   CA00B, CA00F.5C, and P7 resilience boundary.
-- AE Slice Gate: PASS, `7,095 passed`, `55 skipped`, `6/6` commands; statement
+- Live-provider numeric allocation ratios are canonicalized without weakening
+  identity fields or the exact-total-one invariant.
+- Allocation admission and split-journey focused regression: `50 passed`,
+  `2 skipped` protected opt-in tests.
+- AE Slice Gate: PASS, `7,097 passed`, `55 skipped`, `6/6` commands; statement
   coverage `96.47%`, branch coverage `94.71%`.
 - Protected live journey and Repository Full Gate evidence follow on the
   exact-head deployment boundary.

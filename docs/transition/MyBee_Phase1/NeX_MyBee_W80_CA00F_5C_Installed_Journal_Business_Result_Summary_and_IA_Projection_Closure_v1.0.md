@@ -84,6 +84,14 @@ identity. The contract was corrected without changing persistence or public
 APIs, and focused regression now materializes the complete P5 StepResult rather
 than stopping at the intermediate executor outcome.
 
+The next protected run completed Journal posting and rendered the installed IA
+result, then exposed an older allocation-admission mismatch. The shared
+`p65.intent_candidate.v1` contract admits finite numeric parameter values, while
+the accounting-allocation activator accepted ratio candidates only as strings.
+The activator now accepts finite numeric or string ratios and canonicalizes them
+to decimal strings. UUID, Project, source, and other identity fields remain
+string-strict, and ratios must still be positive and total exactly one.
+
 ## 8. Non-Goals
 
 - per-user default Project or default PA lifecycle;
