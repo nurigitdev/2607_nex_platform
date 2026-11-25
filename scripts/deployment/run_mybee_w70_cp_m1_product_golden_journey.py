@@ -1115,6 +1115,7 @@ def _collect_live_journey_diagnostics(
     session_id: str,
     forbidden_values: set[str] | frozenset[str] = frozenset(),
     evidence_root: Path | None = None,
+    screen_source_root: Path | None = None,
     screen_manifest_names: Sequence[str] | None = None,
     screen_required_state_counts: Mapping[str, int] | None = None,
 ) -> dict[str, Any]:
@@ -1170,6 +1171,7 @@ def _collect_live_journey_diagnostics(
     screen_evidence = _collect_playwright_screen_evidence(
         root=root,
         session_root=session_root,
+        source_root=screen_source_root,
         manifest_names=screen_manifest_names,
         required_state_counts=screen_required_state_counts,
     )
@@ -1227,10 +1229,11 @@ def _collect_playwright_screen_evidence(
     *,
     root: Path,
     session_root: Path,
+    source_root: Path | None = None,
     manifest_names: Sequence[str] | None = None,
     required_state_counts: Mapping[str, int] | None = None,
 ) -> dict[str, Any]:
-    source_root = root / SCREENSHOT_DIR.relative_to(ROOT)
+    source_root = source_root or root / SCREENSHOT_DIR.relative_to(ROOT)
     if manifest_names is None:
         manifest_paths = sorted(source_root.glob("mybee-m1-*-screen-manifest.json"))
         expected_manifest_count = 2

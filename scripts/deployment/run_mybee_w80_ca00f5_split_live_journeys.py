@@ -342,6 +342,7 @@ def _execute(env: Mapping[str, str], *, root: Path) -> dict[str, Any]:
             root=values["root"],
             session_id=session_id,
             forbidden_values={requester_password, business_password, accounting_password},
+            screen_source_root=SCREENSHOT_DIR,
             screen_manifest_names=(
                 "mybee-m1-w80-journal-screen-manifest.json",
                 "mybee-m1-w80-allocation-screen-manifest.json",

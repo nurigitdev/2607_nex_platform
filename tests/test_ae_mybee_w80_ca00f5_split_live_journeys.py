@@ -110,12 +110,7 @@ def test_public_browser_evidence_removes_runtime_payload():
 
 
 def test_split_screen_evidence_admits_four_explicit_manifests(tmp_path):
-    screen_root = (
-        tmp_path
-        / acceptance.m1_acceptance.SCREENSHOT_DIR.relative_to(
-            acceptance.m1_acceptance.ROOT
-        )
-    )
+    screen_root = tmp_path / "w80-split-screens"
     screen_root.mkdir(parents=True)
     contracts = {
         "w80-journal": [
@@ -166,6 +161,7 @@ def test_split_screen_evidence_admits_four_explicit_manifests(tmp_path):
     result = acceptance.m1_acceptance._collect_playwright_screen_evidence(
         root=tmp_path,
         session_root=session_root,
+        source_root=screen_root,
         manifest_names=tuple(
             f"mybee-m1-{prefix}-screen-manifest.json" for prefix in contracts
         ),
