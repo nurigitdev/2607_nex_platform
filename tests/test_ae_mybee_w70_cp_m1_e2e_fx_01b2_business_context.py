@@ -229,6 +229,7 @@ def test_01b2_builds_contract_valid_hash_bound_work_intent_v1_2() -> None:
         "model_profile": "generation-default",
         "model_ref": "provider-neutral/revision-bound",
     }
+    assert record["business_request_context"]["primary_project_code"] == PROJECT_A
     assert "10000.00" not in record["goal"]
     assert record["parameter_candidates"][0]["source"] == "MODEL_CANDIDATE"
 
@@ -492,6 +493,8 @@ def test_01b2_rejects_allocation_shape_and_project_conflicts() -> None:
         lambda value: value.update(schema_version="unsupported"),
         lambda value: value["company_selector"].update(kind="AUTHORITY"),
         lambda value: value["company_selector"].update(value=""),
+        lambda value: value.update(primary_project_code="not-a-project"),
+        lambda value: value.update(primary_project_code=PROJECT_A.lower()),
         lambda value: value["document"].pop("subject_ref"),
         lambda value: value["document"].update(document_type="OTHER"),
         lambda value: value["document"].update(subject_revision=True),
@@ -535,10 +538,23 @@ def test_01b2_journal_context_allows_no_allocation_request() -> None:
     work_intent = _intent(candidate)
 
     assert work_intent["business_request_context"]["requested_allocation"] == []
+    assert (
+        work_intent["business_request_context"]["primary_project_code"] == PROJECT_A
+    )
     assert not any(
         str(item["name"]).startswith("allocation_")
         for item in work_intent["parameter_candidates"]
     )
+
+
+def test_01b2_legacy_business_context_without_primary_project_replays() -> None:
+    context = copy.deepcopy(_intent()["business_request_context"])
+    context.pop("primary_project_code")
+    _rehash_context(context)
+
+    admitted = validate_business_request_context(context)
+
+    assert "primary_project_code" not in admitted
 
 
 def test_01b2_context_validator_rejects_non_mapping_and_error_is_readable() -> None:

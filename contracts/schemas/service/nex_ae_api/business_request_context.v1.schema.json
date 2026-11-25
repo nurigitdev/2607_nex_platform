@@ -33,6 +33,10 @@
         "value": {"type": "string", "minLength": 1, "maxLength": 160}
       }
     },
+    "primary_project_code": {
+      "type": "string",
+      "pattern": "^[A-Z0-9]{4}[DMSOIG][0-9]{6}$"
+    },
     "document": {
       "type": "object",
       "additionalProperties": false,

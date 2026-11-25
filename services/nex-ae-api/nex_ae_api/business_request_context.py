@@ -125,6 +125,7 @@ def admit_business_request_context(
         "request_kind": BUSINESS_REQUEST_KIND,
         "source_prompt_ref": prompt_ref,
         "company_selector": {"kind": "CODE_OR_NAME", "value": company},
+        "primary_project_code": primary_project_code,
         "document": {
             "document_type": "BUSINESS_PROPOSAL",
             "subject_ref": subject,

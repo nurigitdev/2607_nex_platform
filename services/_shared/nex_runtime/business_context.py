@@ -23,7 +23,7 @@ _PROJECT_CODE = re.compile(r"^[A-Z0-9]{4}[DMSOIG][0-9]{6}$")
 _SOURCE_PROMPT_REF = re.compile(
     r"^AE:INTERACTION:[A-Za-z0-9][A-Za-z0-9_.:-]{0,159}$"
 )
-_CONTEXT_KEYS = frozenset(
+_LEGACY_CONTEXT_KEYS = frozenset(
     {
         "schema_version",
         "request_kind",
@@ -36,6 +36,7 @@ _CONTEXT_KEYS = frozenset(
         "context_hash",
     }
 )
+_CONTEXT_KEYS = _LEGACY_CONTEXT_KEYS | {"primary_project_code"}
 
 
 @dataclass(frozen=True)
@@ -54,7 +55,7 @@ def validate_business_request_context(value: object) -> dict[str, Any]:
         record = json.loads(canonical_json(dict(value)))
     except (TypeError, ValueError) as exc:
         raise _invalid("BusinessRequestContext must be canonical JSON.") from exc
-    if set(record) != _CONTEXT_KEYS:
+    if set(record) not in {_LEGACY_CONTEXT_KEYS, _CONTEXT_KEYS}:
         raise _invalid("BusinessRequestContext fields are invalid.")
     if (
         record.get("schema_version") != BUSINESS_REQUEST_CONTEXT_SCHEMA_VERSION
@@ -63,6 +64,13 @@ def validate_business_request_context(value: object) -> dict[str, Any]:
         raise _invalid("BusinessRequestContext version or request kind is invalid.")
     _source_prompt_ref(record.get("source_prompt_ref"))
     _validate_company(record.get("company_selector"))
+    if "primary_project_code" in record:
+        primary_project_code = _project_code(
+            record.get("primary_project_code"),
+            field_name="Primary Project Code",
+        )
+        if primary_project_code != record.get("primary_project_code"):
+            raise _invalid("Primary Project Code is not canonical.")
     _validate_document(record.get("document"))
     _validate_transaction(record.get("transaction"))
     _validate_allocation_records(record.get("requested_allocation"))
@@ -202,12 +210,14 @@ def _source_prompt_ref(value: object) -> str:
     return selected
 
 
-def _project_code(value: object) -> str:
+def _project_code(
+    value: object, *, field_name: str = "Allocation Project Code"
+) -> str:
     if not isinstance(value, str):
-        raise _invalid("Allocation Project Code is invalid.")
+        raise _invalid(f"{field_name} is invalid.")
     selected = value.strip().upper()
     if _PROJECT_CODE.fullmatch(selected) is None:
-        raise _invalid("Allocation Project Code is invalid.")
+        raise _invalid(f"{field_name} is invalid.")
     return selected
 
 

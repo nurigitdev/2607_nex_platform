@@ -91,6 +91,22 @@ def _inputs():
     }, coordinator
 
 
+def _rehash_work_intent(work_intent: dict) -> dict:
+    business_context = work_intent["business_request_context"]
+    business_context["context_hash"] = semantic_sha256_hash_ref(
+        {
+            key: value
+            for key, value in business_context.items()
+            if key != "context_hash"
+        }
+    )
+    work_intent["business_context_hash"] = business_context["context_hash"]
+    work_intent["intent_hash"] = semantic_sha256_hash_ref(
+        {key: value for key, value in work_intent.items() if key != "intent_hash"}
+    )
+    return work_intent
+
+
 def _source(*, opener=None):
     preparation, _capabilities, coordinator = _registrations()
     values = {
@@ -207,6 +223,64 @@ def test_installed_source_builds_release_bound_request_and_admits_authority() ->
         "VO00D260101",
         "VO00D260102",
     )
+
+
+def test_request_uses_typed_primary_project_when_allocation_is_absent() -> None:
+    source, _preparation = _source()
+    work_intent, context, snapshot, execution, _coordinator = _inputs()
+    work_intent["business_request_context"]["requested_allocation"] = []
+    work_intent["parameter_candidates"] = []
+    _rehash_work_intent(work_intent)
+
+    request = source.build_request(
+        work_intent=work_intent,
+        agent_context=context,
+        capability_snapshot=snapshot,
+        execution=execution,
+    )
+
+    assert request["project_codes"] == ["VO00D260101"]
+
+
+def test_request_replays_legacy_context_with_parameter_fallback() -> None:
+    source, _preparation = _source()
+    work_intent, context, snapshot, execution, _coordinator = _inputs()
+    business_context = work_intent["business_request_context"]
+    business_context["requested_allocation"] = []
+    business_context.pop("primary_project_code")
+    work_intent["parameter_candidates"] = [
+        {"name": "primary_project_code", "value": "VO00D260101"}
+    ]
+    _rehash_work_intent(work_intent)
+
+    request = source.build_request(
+        work_intent=work_intent,
+        agent_context=context,
+        capability_snapshot=snapshot,
+        execution=execution,
+    )
+
+    assert request["project_codes"] == ["VO00D260101"]
+
+
+def test_request_rejects_legacy_context_without_project_identity() -> None:
+    source, _preparation = _source()
+    work_intent, context, snapshot, execution, _coordinator = _inputs()
+    business_context = work_intent["business_request_context"]
+    business_context["requested_allocation"] = []
+    business_context.pop("primary_project_code")
+    work_intent["parameter_candidates"] = []
+    _rehash_work_intent(work_intent)
+
+    with pytest.raises(M1ProductPreparationCoordinatorError) as raised:
+        source.build_request(
+            work_intent=work_intent,
+            agent_context=context,
+            capability_snapshot=snapshot,
+            execution=execution,
+        )
+
+    assert raised.value.error_code == "M1_PREPARATION_AUTHORITY_REQUEST_INVALID"
 
 
 @pytest.mark.parametrize(

@@ -39,6 +39,7 @@ MyBee office-work AX Service Phase-1 program.
 32. `NeX_MyBee_W80_CA00E_Cross_Agent_Semantic_Handoff_Evidence_Reuse_and_Role_Scoped_Replanning_Boundary_v1.0.md`
 33. `NeX_MyBee_W80_CA00F_Sequential_Approval_Result_Publication_WA_Evidence_and_Allocation_Responsibility_Boundary_v1.0.md`
 34. `NeX_MyBee_W80_CA00F_5A_Accounting_Allocation_Product_Entry_and_Domain_Intent_Activation_Closure_v1.0.md`
+35. `NeX_MyBee_W80_CA00F_5B_Primary_Project_Code_Typed_Business_Context_Propagation_Closure_v1.0.md`
 
 The Markdown Slice Plan and its Execution Matrix JSON are one planning set.
 The JSON is machine-readable traceability input, not runtime configuration or
@@ -104,6 +105,13 @@ inside the common WorkIntent SoR, and enters the existing Product Coordinator,
 AgentPlan, ExecutablePlan, and RuntimeJob pipeline. Fresh OA/EOS authority remains
 an execution-time requirement; fixed tenants, ratios, Project counts, Plan IDs,
 and fixture-driven product branches are forbidden.
+
+W80-CA00F.5B closes the Project identity propagation gap exposed by the
+installed Journal journey. New Project-scoped business contexts preserve the
+canonical `primary_project_code` as typed, hash-bound input across IA, WC, and
+PA, while pre-amendment v1 replay remains compatible. General Chat/RAG remains
+Project-neutral; personal default scope and PA lifecycle are explicitly
+deferred to a separate design decision.
 
 The W30-CA01 pair is the source-backed post-W20 delta. It takes precedence
 only for W30 entry ordering, current migration-number reservations, the

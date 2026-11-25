@@ -326,7 +326,10 @@ Entry to this Slice is gated by
 `W80-CA00F.5A: Accounting Allocation Product Entry and Domain Intent Activation
 Closure`, which replaces direct harness construction with the admitted semantic
 candidate, DomainIntentActivator, Product Coordinator, and common RuntimeJob
-product path.
+product path. Installed Journal acceptance also requires
+`W80-CA00F.5B: Primary Project Code Typed Business Context Propagation Closure`,
+which preserves the canonical Project identity through claimed-work
+reconstruction without imposing Project scope on general queries.
 
 Replace the canonical combined acceptance with two journeys:
 

@@ -227,7 +227,11 @@ class HttpM1PreparationAuthoritySource:
             item["project_code"] for item in context["requested_allocation"]
         ]
         if not project_codes:
-            project_codes = [_primary_project_code(work_intent)]
+            primary_project_code = context.get("primary_project_code")
+            if not isinstance(primary_project_code, str):
+                # Historical v1 contexts predate the typed Project identity.
+                primary_project_code = _primary_project_code(work_intent)
+            project_codes = [primary_project_code]
         body = {
             "schema_version": TRANSACTION_PREPARATION_AUTHORITY_REQUEST_SCHEMA,
             "tenant_id": tenant_id,
