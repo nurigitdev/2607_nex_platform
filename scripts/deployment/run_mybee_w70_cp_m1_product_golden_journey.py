@@ -1115,6 +1115,8 @@ def _collect_live_journey_diagnostics(
     session_id: str,
     forbidden_values: set[str] | frozenset[str] = frozenset(),
     evidence_root: Path | None = None,
+    screen_manifest_names: Sequence[str] | None = None,
+    screen_required_state_counts: Mapping[str, int] | None = None,
 ) -> dict[str, Any]:
     evidence_root = evidence_root or (
         root / DEFAULT_DIAGNOSTIC_EVIDENCE_ROOT.relative_to(ROOT)
@@ -1168,6 +1170,8 @@ def _collect_live_journey_diagnostics(
     screen_evidence = _collect_playwright_screen_evidence(
         root=root,
         session_root=session_root,
+        manifest_names=screen_manifest_names,
+        required_state_counts=screen_required_state_counts,
     )
 
     policy = DiagnosticEvidencePolicy.from_environment(
@@ -1223,10 +1227,31 @@ def _collect_playwright_screen_evidence(
     *,
     root: Path,
     session_root: Path,
+    manifest_names: Sequence[str] | None = None,
+    required_state_counts: Mapping[str, int] | None = None,
 ) -> dict[str, Any]:
     source_root = root / SCREENSHOT_DIR.relative_to(ROOT)
-    manifest_paths = sorted(source_root.glob("mybee-m1-*-screen-manifest.json"))
-    if len(manifest_paths) != 2:
+    if manifest_names is None:
+        manifest_paths = sorted(source_root.glob("mybee-m1-*-screen-manifest.json"))
+        expected_manifest_count = 2
+    else:
+        safe_names = tuple(str(name) for name in manifest_names)
+        if any(
+            Path(name).name != name
+            or not name.startswith("mybee-m1-")
+            or not name.endswith("-screen-manifest.json")
+            for name in safe_names
+        ):
+            raise M1ProductGoldenJourneyError(
+                "Playwright screen manifest selection is invalid"
+            )
+        manifest_paths = [source_root / name for name in safe_names]
+        expected_manifest_count = len(safe_names)
+    if (
+        len(manifest_paths) != expected_manifest_count
+        or expected_manifest_count < 1
+        or any(not path.is_file() or path.is_symlink() for path in manifest_paths)
+    ):
         raise M1ProductGoldenJourneyError(
             "Playwright screen evidence requires journey and recovery manifests"
         )
@@ -1293,16 +1318,30 @@ def _collect_playwright_screen_evidence(
         os.chmod(manifest_target, 0o600)
         copied_files.append(manifest_path.name)
 
-    required_state_counts = {
-        "LOGIN_REQUIRED": 2,
-        "REQUESTER_WORKSPACE_READY": 1,
-        "BUSINESS_APPROVER_WORKSPACE_READY": 1,
-        "ACCOUNTING_APPROVER_WORKSPACE_READY": 1,
-        "REQUEST_ADMITTED": 2,
-        "APPROVAL_RECORDED": 6,
-        "RESULT_RENDERED": 2,
-        "RESULT_RECOVERED": 1,
-    }
+    required_state_counts = dict(
+        required_state_counts
+        or {
+            "LOGIN_REQUIRED": 2,
+            "REQUESTER_WORKSPACE_READY": 1,
+            "BUSINESS_APPROVER_WORKSPACE_READY": 1,
+            "ACCOUNTING_APPROVER_WORKSPACE_READY": 1,
+            "REQUEST_ADMITTED": 2,
+            "APPROVAL_RECORDED": 6,
+            "RESULT_RENDERED": 2,
+            "RESULT_RECOVERED": 1,
+        }
+    )
+    if any(
+        not isinstance(name, str)
+        or not name
+        or not isinstance(count, int)
+        or isinstance(count, bool)
+        or count < 1
+        for name, count in required_state_counts.items()
+    ):
+        raise M1ProductGoldenJourneyError(
+            "Playwright required screen state contract is invalid"
+        )
     missing = {
         name: count
         for name, count in required_state_counts.items()

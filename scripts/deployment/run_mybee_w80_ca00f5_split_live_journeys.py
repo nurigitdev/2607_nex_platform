@@ -342,6 +342,19 @@ def _execute(env: Mapping[str, str], *, root: Path) -> dict[str, Any]:
             root=values["root"],
             session_id=session_id,
             forbidden_values={requester_password, business_password, accounting_password},
+            screen_manifest_names=(
+                "mybee-m1-w80-journal-screen-manifest.json",
+                "mybee-m1-w80-allocation-screen-manifest.json",
+                "mybee-m1-w80-journal-recovery-screen-manifest.json",
+                "mybee-m1-w80-allocation-recovery-screen-manifest.json",
+            ),
+            screen_required_state_counts={
+                "SUBMITTER_WORKSPACE_READY": 2,
+                "REQUEST_ADMITTED": 2,
+                "APPROVAL_RECORDED": 3,
+                "RESULT_RENDERED": 2,
+                "RESULT_RECOVERED": 2,
+            },
         )
 
     execution_error: Exception | None = None

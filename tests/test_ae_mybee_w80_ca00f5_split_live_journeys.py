@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import sys
 from pathlib import Path
@@ -106,3 +107,78 @@ def test_public_browser_evidence_removes_runtime_payload():
         "allocation": {"status": "PASS", "checks": {"ok": True}},
     }
     assert "raw" not in json.dumps(acceptance._public_browser(value))
+
+
+def test_split_screen_evidence_admits_four_explicit_manifests(tmp_path):
+    screen_root = (
+        tmp_path
+        / acceptance.m1_acceptance.SCREENSHOT_DIR.relative_to(
+            acceptance.m1_acceptance.ROOT
+        )
+    )
+    screen_root.mkdir(parents=True)
+    contracts = {
+        "w80-journal": [
+            "SUBMITTER_WORKSPACE_READY",
+            "REQUEST_ADMITTED",
+            "APPROVAL_RECORDED",
+            "APPROVAL_RECORDED",
+            "APPROVAL_RECORDED",
+            "RESULT_RENDERED",
+        ],
+        "w80-allocation": [
+            "SUBMITTER_WORKSPACE_READY",
+            "REQUEST_ADMITTED",
+            "RESULT_RENDERED",
+        ],
+        "w80-journal-recovery": ["RESULT_RECOVERED"],
+        "w80-allocation-recovery": ["RESULT_RECOVERED"],
+    }
+    for prefix, states in contracts.items():
+        captures = []
+        for index, state in enumerate(states, start=1):
+            file_name = f"mybee-m1-{prefix}-{index:02d}.png"
+            content = f"{prefix}:{state}".encode()
+            (screen_root / file_name).write_bytes(content)
+            captures.append(
+                {
+                    "stage": state.lower(),
+                    "file": file_name,
+                    "size_bytes": len(content),
+                    "sha256": f"sha256:{hashlib.sha256(content).hexdigest()}",
+                    "expected_state": state,
+                    "assertion": "semantic-state-visible",
+                }
+            )
+        (screen_root / f"mybee-m1-{prefix}-screen-manifest.json").write_text(
+            json.dumps(
+                {
+                    "schema_version": acceptance.m1_acceptance.SCREEN_EVIDENCE_SCHEMA_VERSION,
+                    "capture_count": len(captures),
+                    "captures": captures,
+                }
+            ),
+            encoding="utf-8",
+        )
+
+    session_root = tmp_path / "diagnostics/session"
+    session_root.mkdir(parents=True)
+    result = acceptance.m1_acceptance._collect_playwright_screen_evidence(
+        root=tmp_path,
+        session_root=session_root,
+        manifest_names=tuple(
+            f"mybee-m1-{prefix}-screen-manifest.json" for prefix in contracts
+        ),
+        required_state_counts={
+            "SUBMITTER_WORKSPACE_READY": 2,
+            "REQUEST_ADMITTED": 2,
+            "APPROVAL_RECORDED": 3,
+            "RESULT_RENDERED": 2,
+            "RESULT_RECOVERED": 2,
+        },
+    )
+
+    assert result["status"] == "PASS"
+    assert result["manifest_count"] == 4
+    assert result["capture_count"] == 11
+    assert result["state_counts"]["RESULT_RECOVERED"] == 2
