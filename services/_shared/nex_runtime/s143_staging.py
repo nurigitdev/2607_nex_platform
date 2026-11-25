@@ -277,7 +277,7 @@ class OpenBaoAdminClient:
         address: str,
         *,
         ca_certificate_file: Path,
-        timeout_seconds: float = 10.0,
+        timeout_seconds: float = 30.0,
     ) -> None:
         if not address.startswith("https://") or timeout_seconds <= 0:
             raise S143StagingError("OpenBao admin endpoint is invalid")

@@ -20,6 +20,9 @@
   directive remains visible in the semantic projection without being
   misclassified as a blocked `409` response.
 - No migration, fixture, parallel result API, or allocation coupling was added.
+- Canonical OpenBao provisioning now gives the admin request a 30-second
+  transport budget, safely exceeding the observed single-node raft election
+  interval while preserving fail-closed initialization and credential handling.
 
 ## Verification
 
@@ -35,6 +38,7 @@
   `75 passed`, `1 skipped` protected opt-in test.
 - Product-coordination public admission regression: `79 passed`, `1 skipped`
   protected opt-in test.
+- OpenBao provisioning and canonical orchestration regression: `46 passed`.
 - AE Slice Gate: PASS, `7,100 passed`, `55 skipped`, `6/6` commands; statement
   coverage `96.46%`, branch coverage `94.70%`.
 - Protected live journey and Repository Full Gate evidence follow on the

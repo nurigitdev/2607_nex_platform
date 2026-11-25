@@ -475,13 +475,12 @@ def test_admin_client_constructor_and_transport_fail_closed(tmp_path, monkeypatc
     runtime = tmp_path / "runtime"
     prepare_staging_runtime_directory(runtime)
     ca_file = runtime / "tls/openbao-ca.crt"
-    assert isinstance(
-        OpenBaoAdminClient(
-            "https://openbao:8200",
-            ca_certificate_file=ca_file,
-        ),
-        OpenBaoAdminClient,
+    client_with_default = OpenBaoAdminClient(
+        "https://openbao:8200",
+        ca_certificate_file=ca_file,
     )
+    assert isinstance(client_with_default, OpenBaoAdminClient)
+    assert client_with_default._timeout_seconds == 30.0
     with pytest.raises(S143StagingError, match="endpoint"):
         OpenBaoAdminClient("http://openbao:8200", ca_certificate_file=ca_file)
     with pytest.raises(S143StagingError, match="endpoint"):
