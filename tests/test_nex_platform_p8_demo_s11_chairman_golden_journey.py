@@ -111,7 +111,9 @@ def test_s11_calibration_is_exact_for_all_three_semantic_stages() -> None:
         "PLAN",
     ]
     assert {policy["model_profile"] for policy in policies} == {"general-llm-default"}
-    assert {policy["model_ref"] for policy in policies} == {"Qwen3.5-9B"}
+    assert {policy["model_ref"] for policy in policies} == {
+        acceptance.DEFAULT_MODEL_REF
+    }
     assert {policy["minimum_confidence"] for policy in policies} == {0.5}
 
     overridden = json.loads(

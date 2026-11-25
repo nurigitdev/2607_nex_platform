@@ -42,9 +42,7 @@ def test_protected_live_rag_smoke_reports_configuration_issues() -> None:
 
     assert evidence["status"] == "FAIL"
     assert evidence["stage_status"]["configuration"] == "FAIL"
-    assert {
-        issue["error_code"] for issue in evidence["issues"]
-    } >= {
+    assert {issue["error_code"] for issue in evidence["issues"]} >= {
         "provider_endpoint_missing",
         "embedding_request_shape_not_compatible",
         "reranker_request_shape_not_compatible",
@@ -71,7 +69,10 @@ def test_protected_live_rag_smoke_runs_live_shape_and_redacts_values() -> None:
                         }
                         for index, _ in enumerate(inputs)
                     ],
-                    "usage": {"prompt_tokens": len(inputs), "total_tokens": len(inputs)},
+                    "usage": {
+                        "prompt_tokens": len(inputs),
+                        "total_tokens": len(inputs),
+                    },
                 },
             )
         if url.endswith("/v1/rerank"):
@@ -83,7 +84,10 @@ def test_protected_live_rag_smoke_runs_live_shape_and_redacts_values() -> None:
                     "usage": {"prompt_tokens": 4, "total_tokens": 4},
                 },
             )
-        assert payload["model"] == "Qwen3.5-9B"
+        assert (
+            payload["model"]
+            == smoke.protected_dgx_vllm_profile_defaults()["NEX_MO_VLLM_MODEL"]
+        )
         assert payload["messages"][0]["role"] == "system"
         assert "untrusted data" in payload["messages"][0]["content"]
         assert payload["messages"][1]["role"] == "user"
@@ -268,7 +272,9 @@ def test_assert_protected_live_rag_evidence_redaction_guard() -> None:
     assert "NEX_MO_REMOTE_EMBEDDING_URL" in str(exc_info.value)
 
 
-def test_protected_live_rag_smoke_main_summary_and_output(monkeypatch, capsys, tmp_path) -> None:
+def test_protected_live_rag_smoke_main_summary_and_output(
+    monkeypatch, capsys, tmp_path
+) -> None:
     monkeypatch.delenv("NEX_PROTECTED_LIVE_RAG_SMOKE", raising=False)
 
     assert smoke.main(["--summary"]) == 0

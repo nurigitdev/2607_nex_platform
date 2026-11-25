@@ -4,14 +4,21 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
+import sys
 from typing import Any, Callable, Mapping
 
+
+ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / "services" / "_shared"))
+
+from nex_runtime.canonical_generation_binding import (  # noqa: E402
+    CANONICAL_GENERATION_BINDING,
+)
 from run_cx_grounded_generation_runtime_boundary_audit import (
     run_cx_grounded_generation_runtime_boundary_audit as run_boundary,
 )
 
 
-ROOT = Path(__file__).resolve().parents[2]
 SCHEMA_VERSION = "s97_cx_grounded_generation_runtime_closure.v1"
 SLICE_RANGE = "0961-0970"
 QUALITY_GATE_PATH = "scripts/quality/run_quality_gate.sh"
@@ -50,9 +57,21 @@ REQUIRED_FILES = (
 )
 
 TOKEN_CHECKS = (
-    ("quality_boundary", QUALITY_GATE_PATH, "run_cx_grounded_generation_runtime_boundary_audit.py"),
-    ("quality_live", QUALITY_GATE_PATH, "run_cx_grounded_generation_live_postgres_smoke.py"),
-    ("quality_closure", QUALITY_GATE_PATH, "run_s97_cx_grounded_generation_runtime_closure.py"),
+    (
+        "quality_boundary",
+        QUALITY_GATE_PATH,
+        "run_cx_grounded_generation_runtime_boundary_audit.py",
+    ),
+    (
+        "quality_live",
+        QUALITY_GATE_PATH,
+        "run_cx_grounded_generation_live_postgres_smoke.py",
+    ),
+    (
+        "quality_closure",
+        QUALITY_GATE_PATH,
+        "run_s97_cx_grounded_generation_runtime_closure.py",
+    ),
     (
         "prompt_package",
         "services/nex-cx/nex_cx/grounded_prompt.py",
@@ -93,7 +112,11 @@ TOKEN_CHECKS = (
         "services/nex-cx/nex_cx/generation_runtime.py",
         "cx_generation_admission.v1",
     ),
-    ("reasoning_hash", "services/nex-cx/nex_cx/generation_runtime.py", '"reasoning_mode"'),
+    (
+        "reasoning_hash",
+        "services/nex-cx/nex_cx/generation_runtime.py",
+        '"reasoning_mode"',
+    ),
     (
         "read_model",
         "services/nex-cx/nex_cx/generation_read_model.py",
@@ -114,8 +137,16 @@ TOKEN_CHECKS = (
         "services/nex-cx/nex_cx/generation_observability.py",
         "cx.generation.replayed",
     ),
-    ("openapi_metadata", "contracts/openapi/nex-cx.openapi.yaml", "CxGenerationReadModel:"),
-    ("openapi_content", "contracts/openapi/nex-cx.openapi.yaml", "CxGenerationContent:"),
+    (
+        "openapi_metadata",
+        "contracts/openapi/nex-cx.openapi.yaml",
+        "CxGenerationReadModel:",
+    ),
+    (
+        "openapi_content",
+        "contracts/openapi/nex-cx.openapi.yaml",
+        "CxGenerationContent:",
+    ),
     (
         "live_check_count",
         "docs/slices/0969_cx_grounded_generation_live_postgresql_dgx_smoke.md",
@@ -151,7 +182,11 @@ TOKEN_CHECKS = (
         "docs/README.md",
         "0969_cx_grounded_generation_live_postgresql_dgx_smoke.md",
     ),
-    ("docs_closure_index", "docs/README.md", "0970_s97_cx_grounded_generation_runtime_closure.md"),
+    (
+        "docs_closure_index",
+        "docs/README.md",
+        "0970_s97_cx_grounded_generation_runtime_closure.md",
+    ),
 )
 
 COMPONENT_TOKEN_NAMES = {
@@ -159,7 +194,11 @@ COMPONENT_TOKEN_NAMES = {
     "provider_output_validation": ("output_validation",),
     "durable_private_output": ("private_output",),
     "sql_generation_repository": ("sql_runtime_table", "runtime_migration"),
-    "idempotent_execution_runtime": ("admission_table", "idempotent_admission", "reasoning_hash"),
+    "idempotent_execution_runtime": (
+        "admission_table",
+        "idempotent_admission",
+        "reasoning_hash",
+    ),
     "restart_safe_read_model": (
         "read_model",
         "content_model",
@@ -231,8 +270,10 @@ def run_s97_cx_grounded_generation_runtime_closure(
             == "citation_validated_structured_draft"
         ),
         "canonical_live_target_confirmed": (
-            boundary_decision.get("generation_model") == "Qwen3.5-9B"
-            and boundary_decision.get("generation_provider_port") == 9111
+            boundary_decision.get("generation_model")
+            == CANONICAL_GENERATION_BINDING.model_name
+            and boundary_decision.get("generation_provider_port")
+            == CANONICAL_GENERATION_BINDING.provider_port
             and decision["postgres_smoke_target"] == "nex_cx_user@nex_cx_test"
         ),
         "single_migration_history_preserved": (
@@ -260,9 +301,7 @@ def run_s97_cx_grounded_generation_runtime_closure(
         ),
         "closure_readiness": "READY_FOR_S98" if status == "PASS" else "BLOCKED",
         "feature_readiness": (
-            "CX_GROUNDED_GENERATION_RUNTIME_READY"
-            if status == "PASS"
-            else "INCOMPLETE"
+            "CX_GROUNDED_GENERATION_RUNTIME_READY" if status == "PASS" else "INCOMPLETE"
         ),
         "checks": checks,
         "failed_checks": failed_checks,
@@ -270,7 +309,9 @@ def run_s97_cx_grounded_generation_runtime_closure(
             "component_count": len(components),
             "closed_component_count": sum(components.values()),
             "resolved_gap_count": int(boundary_summary.get("resolved_gap_count") or 0),
-            "protected_live_check_count": 12 if components["protected_live_evidence"] else 0,
+            "protected_live_check_count": 12
+            if components["protected_live_evidence"]
+            else 0,
             "missing_file_count": sum(not item["present"] for item in required_files),
             "missing_token_count": sum(not item["present"] for item in token_checks),
         },
@@ -293,8 +334,8 @@ def _closure_decision() -> dict[str, Any]:
         "public_persistence_policy": "metadata_hashes_lineage_only",
         "private_output_policy": "durable_owner_scoped_payload_reference",
         "cross_owner_behavior": "not_found_without_disclosure",
-        "generation_model": "Qwen3.5-9B",
-        "generation_provider_port": 9111,
+        "generation_model": CANONICAL_GENERATION_BINDING.model_name,
+        "generation_provider_port": CANONICAL_GENERATION_BINDING.provider_port,
         "reasoning_mode": "request_bound_and_idempotency_hashed",
         "observability_policy": "metadata_only_best_effort",
         "postgres_smoke_target": "nex_cx_user@nex_cx_test",

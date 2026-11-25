@@ -9,7 +9,9 @@ from typing import Any, Mapping
 
 
 ROOT = Path(__file__).resolve().parents[2]
+SHARED_PATH = ROOT / "services" / "_shared"
 CX_PATH = ROOT / "services" / "nex-cx"
+sys.path.insert(0, str(SHARED_PATH))
 sys.path.insert(0, str(CX_PATH))
 
 from nex_cx.document_intelligence import (  # noqa: E402
@@ -19,6 +21,9 @@ from nex_cx.document_intelligence import (  # noqa: E402
     build_summary_source_snapshot,
     evaluate_summary_freshness,
     public_summary_manifest,
+)
+from nex_runtime.canonical_generation_binding import (  # noqa: E402
+    CANONICAL_GENERATION_BINDING,
 )
 
 
@@ -122,7 +127,7 @@ def _source(label: str) -> dict[str, Any]:
 def _profile(revision: str) -> dict[str, Any]:
     return build_summary_generation_profile(
         provider_alias="general-llm-default",
-        model_profile_id="Qwen3.5-9B",
+        model_profile_id=CANONICAL_GENERATION_BINDING.model_name,
         model_revision=revision,
         deployment_id="contract-local",
         prompt_template_version_id="prompt-v1",

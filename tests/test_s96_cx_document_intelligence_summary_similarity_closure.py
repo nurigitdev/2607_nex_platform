@@ -33,7 +33,9 @@ def test_s96_closure_freezes_models_privacy_and_storage_decisions() -> None:
     decision = closure._closure_decision()
 
     assert decision["summary_hard_limit_chars"] == 1000
-    assert decision["generation_model"] == "Qwen3.5-9B"
+    assert decision["generation_model"] == (
+        closure.CANONICAL_GENERATION_BINDING.model_name
+    )
     assert decision["generation_reasoning_mode"] == "disabled"
     assert decision["embedding_model"] == "Qwen3-Embedding-4B"
     assert decision["embedding_dimension"] == 2560

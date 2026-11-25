@@ -219,7 +219,9 @@ def test_product_runtime_deployment_audit_passes_and_detects_residue(
         target = lease_drift_root / relative
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_bytes((ROOT / relative).read_bytes())
-    lease_compose = lease_drift_root / "deployment/compose/canonical-platform.override.yaml"
+    lease_compose = (
+        lease_drift_root / "deployment/compose/canonical-platform.override.yaml"
+    )
     lease_compose.write_text(
         lease_compose.read_text(encoding="utf-8").replace(
             'NEX_AE_AGENT_WORKER_LEASE_SECONDS: "600"',
@@ -598,6 +600,34 @@ def test_product_bundle_and_http_authority_adapters(monkeypatch) -> None:
     )
     assert len(resolved["accounts"]) == 2
     assert len(calls) == 4
+
+
+def test_http_oa_authority_preserves_provider_evaluated_at(monkeypatch) -> None:
+    evaluated_at = "2026-11-25T06:00:00Z"
+
+    class Response:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {
+                "authorization": {
+                    "revision_hash": "revision-2",
+                    "evaluated_at": evaluated_at,
+                }
+            }
+
+    monkeypatch.setattr(controlled.httpx, "get", lambda *_args, **_kwargs: Response())
+    source = controlled._HttpOaAuthoritySource(
+        base_url="https://oa.example/", service_token="oa-token"
+    )
+
+    authorization = source.effective_authorization(
+        tenant_id="VO00", subject_id="employee-1001"
+    )
+
+    assert authorization["evaluated_at"] == evaluated_at
+    assert authorization["active"] is True
 
 
 def test_product_miscellaneous_fail_closed_helpers(tmp_path: Path) -> None:

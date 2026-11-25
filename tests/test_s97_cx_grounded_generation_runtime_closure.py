@@ -29,10 +29,16 @@ def test_repository_s97_closure_passes() -> None:
 def test_s97_closure_freezes_runtime_privacy_and_provider_decisions() -> None:
     decision = closure._closure_decision()
 
-    assert decision["execution_policy"] == "bounded_synchronous_idempotent_write_through"
+    assert (
+        decision["execution_policy"] == "bounded_synchronous_idempotent_write_through"
+    )
     assert decision["private_output_policy"] == "durable_owner_scoped_payload_reference"
-    assert decision["generation_model"] == "Qwen3.5-9B"
-    assert decision["generation_provider_port"] == 9111
+    assert decision["generation_model"] == (
+        closure.CANONICAL_GENERATION_BINDING.model_name
+    )
+    assert decision["generation_provider_port"] == (
+        closure.CANONICAL_GENERATION_BINDING.provider_port
+    )
     assert decision["reasoning_mode"] == "request_bound_and_idempotency_hashed"
     assert decision["protected_live_evidence_completed"] is True
     assert "streaming_generation_transport" in decision["deferred_scope"]

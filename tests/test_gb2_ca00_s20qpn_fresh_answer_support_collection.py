@@ -9,11 +9,14 @@ ENDPOINT = "http://provider.test:9116/v1/chat/completions"
 
 
 def _env() -> dict[str, str]:
+    binding = _binding()
     return {
         smoke.SMOKE_ENV: "1",
         "NEX_MO_VLLM_CHAT_COMPLETIONS_URL": ENDPOINT,
         "NEX_MO_VLLM_API_KEY": "test-key",
         "NEX_MO_VLLM_MODEL": "Qwen3.5-9B",
+        "NEX_MO_VLLM_MODEL_REVISION": binding["model_revision"],
+        "NEX_MO_VLLM_DEPLOYMENT_ID": binding["deployment_id"],
     }
 
 
@@ -62,9 +65,12 @@ def test_skip_profile_and_configuration_guards() -> None:
     assert smoke.run_gb2_s20qpn_fresh_answer_support_collection({})["status"] == (
         "SKIPPED"
     )
-    assert smoke.run_gb2_s20qpn_fresh_answer_support_collection(
-        {smoke.SMOKE_ENV: "1", smoke.PROFILE_ENV: "prod"}
-    )["failure_code"] == "profile_not_allowed"
+    assert (
+        smoke.run_gb2_s20qpn_fresh_answer_support_collection(
+            {smoke.SMOKE_ENV: "1", smoke.PROFILE_ENV: "prod"}
+        )["failure_code"]
+        == "profile_not_allowed"
+    )
     result = smoke.run_gb2_s20qpn_fresh_answer_support_collection(
         {smoke.SMOKE_ENV: "1"}
     )
@@ -140,13 +146,16 @@ def test_provider_binding_and_primitive_guards(tmp_path, monkeypatch, capsys) ->
     env["NEX_MO_VLLM_DEPLOYMENT_ID"] = "other"
     with pytest.raises(ValueError, match="deployment"):
         smoke._bind_effective_provider(env, binding, binding["model_revision"])
-    assert smoke._configuration_issues(
-        {
-            "NEX_MO_VLLM_BASE_URL": "http://provider.test:9116",
-            "NEX_MO_VLLM_API_KEY": "key",
-            "NEX_MO_VLLM_MODEL": "model",
-        }
-    ) == []
+    assert (
+        smoke._configuration_issues(
+            {
+                "NEX_MO_VLLM_BASE_URL": "http://provider.test:9116",
+                "NEX_MO_VLLM_API_KEY": "key",
+                "NEX_MO_VLLM_MODEL": "model",
+            }
+        )
+        == []
+    )
 
     guarded, counts = smoke._counting_requester(
         lambda *_args, **_kwargs: object(), environ=_env()
@@ -163,9 +172,7 @@ def test_provider_binding_and_primitive_guards(tmp_path, monkeypatch, capsys) ->
     with pytest.raises(ValueError, match="text"):
         smoke._required_text(" ", "text")
     assert "=skipped" in smoke.summary_line({"status": "SKIPPED"})
-    assert "bad" in smoke.summary_line(
-        {"status": "FAIL", "failure_code": "bad"}
-    )
+    assert "bad" in smoke.summary_line({"status": "FAIL", "failure_code": "bad"})
 
     output = tmp_path / "output.json"
     monkeypatch.setattr(

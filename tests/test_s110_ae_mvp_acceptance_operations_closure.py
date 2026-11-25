@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 
 import run_s110_ae_mvp_acceptance_operations_closure as closure
+from nex_runtime.canonical_generation_binding import CANONICAL_GENERATION_BINDING
 
 
 NOW = datetime(2026, 9, 29, 9, 0, tzinfo=UTC)
@@ -31,7 +32,7 @@ def _live() -> dict:
                 "provider_models": {
                     "embedding": "Qwen3-Embedding-4B",
                     "reranking": "Qwen3-Reranker-4B",
-                    "generation": "Qwen3.5-9B",
+                    "generation": CANONICAL_GENERATION_BINDING.model_name,
                 },
                 "failed_calls": 0,
                 "browser_engine": "chromium",
@@ -59,9 +60,7 @@ def _regression(**overrides) -> dict:
 
 
 def test_repository_closure_passes_with_final_evidence_pending() -> None:
-    result = closure.run_s110_ae_mvp_acceptance_operations_closure(
-        environ={}, now=NOW
-    )
+    result = closure.run_s110_ae_mvp_acceptance_operations_closure(environ={}, now=NOW)
 
     assert result["status"] == "PASS"
     assert all(result["checks"].values())
@@ -144,12 +143,18 @@ def test_json_and_regression_loaders_accept_fresh_files(tmp_path: Path) -> None:
         "9000 passed, 5 skipped, 1 warning in 10.00s\n", encoding="utf-8"
     )
 
-    assert closure._load_json_evidence(
-        str(live_path), label="live", now=datetime.now(UTC)
-    )["status"] == "PASS"
-    assert closure._load_regression_evidence(
-        str(coverage_path), str(log_path), now=datetime.now(UTC)
-    ) == _regression()
+    assert (
+        closure._load_json_evidence(
+            str(live_path), label="live", now=datetime.now(UTC)
+        )["status"]
+        == "PASS"
+    )
+    assert (
+        closure._load_regression_evidence(
+            str(coverage_path), str(log_path), now=datetime.now(UTC)
+        )
+        == _regression()
+    )
 
 
 @pytest.mark.parametrize(
@@ -162,14 +167,21 @@ def test_json_and_regression_loaders_accept_fresh_files(tmp_path: Path) -> None:
         ("failed_tests", "passing Full Gate"),
     ],
 )
-def test_evidence_loaders_fail_closed(tmp_path: Path, mutation: str, message: str) -> None:
+def test_evidence_loaders_fail_closed(
+    tmp_path: Path, mutation: str, message: str
+) -> None:
     live = tmp_path / "live.json"
     coverage = tmp_path / "coverage.json"
     log = tmp_path / "pytest.log"
     live.write_text(json.dumps(_live()), encoding="utf-8")
     coverage.write_text(
         json.dumps(
-            {"totals": {"percent_statements_covered": 98.8, "percent_branches_covered": 96.8}}
+            {
+                "totals": {
+                    "percent_statements_covered": 98.8,
+                    "percent_branches_covered": 96.8,
+                }
+            }
         ),
         encoding="utf-8",
     )
@@ -193,7 +205,14 @@ def test_evidence_loaders_fail_closed(tmp_path: Path, mutation: str, message: st
         return
     if mutation == "invalid_coverage":
         coverage.write_text(
-            json.dumps({"totals": {"percent_statements_covered": True, "percent_branches_covered": 96.8}}),
+            json.dumps(
+                {
+                    "totals": {
+                        "percent_statements_covered": True,
+                        "percent_branches_covered": 96.8,
+                    }
+                }
+            ),
             encoding="utf-8",
         )
     else:
@@ -241,10 +260,10 @@ def test_helpers_summary_and_main(monkeypatch, tmp_path, capsys) -> None:
     with pytest.raises(ValueError, match="timezone-aware"):
         closure._normalize_now(datetime(2026, 9, 29, 9, 0))
 
-    pending = closure.run_s110_ae_mvp_acceptance_operations_closure(
-        environ={}, now=NOW
+    pending = closure.run_s110_ae_mvp_acceptance_operations_closure(environ={}, now=NOW)
+    assert "acceptance=PENDING handoff=PENDING next=S111" in closure.summary_line(
+        pending
     )
-    assert "acceptance=PENDING handoff=PENDING next=S111" in closure.summary_line(pending)
     monkeypatch.setattr(
         closure,
         "run_s110_ae_mvp_acceptance_operations_closure",

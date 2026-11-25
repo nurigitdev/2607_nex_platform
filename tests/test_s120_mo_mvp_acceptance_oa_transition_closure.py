@@ -9,6 +9,7 @@ from types import SimpleNamespace
 import pytest
 
 import run_s120_mo_mvp_acceptance_oa_transition_closure as closure
+from nex_runtime.canonical_generation_binding import CANONICAL_GENERATION_BINDING
 
 
 NOW = datetime(2026, 10, 1, 13, 0, tzinfo=UTC)
@@ -32,7 +33,7 @@ def _live() -> dict:
                 "provider_models": {
                     "embedding": "Qwen3-Embedding-4B",
                     "reranking": "Qwen3-Reranker-4B",
-                    "generation": "Qwen3.5-9B",
+                    "generation": CANONICAL_GENERATION_BINDING.model_name,
                 },
                 "ready_capabilities": 3,
                 "failed_calls": 0,
@@ -65,9 +66,7 @@ def test_repository_closure_passes_with_final_evidence_pending() -> None:
 
     assert result["status"] == "PASS"
     assert all(result["checks"].values())
-    assert result["closure_readiness"] == (
-        "REPOSITORY_READY_FINAL_EVIDENCE_PENDING"
-    )
+    assert result["closure_readiness"] == ("REPOSITORY_READY_FINAL_EVIDENCE_PENDING")
     assert result["final_evidence"]["acceptance_status"] == "PENDING"
     assert result["summary"]["resolved_gap_count"] == 8
     assert result["summary"]["requirement_count"] == 9
@@ -183,9 +182,10 @@ def test_evidence_file_loaders_accept_fresh_full_gate_artifacts(
     for path in (live_path, coverage_path, log_path):
         os.utime(path, (timestamp, timestamp))
 
-    assert closure._load_json_evidence(
-        str(live_path), label="live", now=NOW
-    )["status"] == "PASS"
+    assert (
+        closure._load_json_evidence(str(live_path), label="live", now=NOW)["status"]
+        == "PASS"
+    )
     assert closure._load_regression_evidence(
         str(coverage_path), str(log_path), now=NOW
     ) == {
@@ -204,8 +204,7 @@ def test_evidence_file_loaders_reject_stale_invalid_or_failed_artifacts(
     log_path = tmp_path / "full.log"
     live_path.write_text('{"status":"FAIL"}', encoding="utf-8")
     coverage_path.write_text(
-        '{"totals":{"percent_statements_covered":101,'
-        '"percent_branches_covered":97}}',
+        '{"totals":{"percent_statements_covered":101,"percent_branches_covered":97}}',
         encoding="utf-8",
     )
     log_path.write_text("1 failed, 9300 passed in 1.00s\n", encoding="utf-8")
@@ -216,9 +215,7 @@ def test_evidence_file_loaders_reject_stale_invalid_or_failed_artifacts(
     with pytest.raises(ValueError, match="does not prove PASS"):
         closure._load_json_evidence(str(live_path), label="live", now=NOW)
     with pytest.raises(ValueError, match="percentages"):
-        closure._load_regression_evidence(
-            str(coverage_path), str(log_path), now=NOW
-        )
+        closure._load_regression_evidence(str(coverage_path), str(log_path), now=NOW)
 
     live_path.write_text(json.dumps(_live()), encoding="utf-8")
     stale = (NOW - timedelta(hours=25)).timestamp()
@@ -233,9 +230,7 @@ def test_regression_loader_and_contract_evidence_fail_closed(
     coverage_path = tmp_path / "coverage.json"
     log_path = tmp_path / "full.log"
     with pytest.raises(ValueError, match="missing"):
-        closure._load_regression_evidence(
-            str(coverage_path), str(log_path), now=NOW
-        )
+        closure._load_regression_evidence(str(coverage_path), str(log_path), now=NOW)
 
     coverage_path.write_text(
         json.dumps(
@@ -253,36 +248,33 @@ def test_regression_loader_and_contract_evidence_fail_closed(
     os.utime(coverage_path, (stale, stale))
     os.utime(log_path, (stale, stale))
     with pytest.raises(ValueError, match="stale"):
-        closure._load_regression_evidence(
-            str(coverage_path), str(log_path), now=NOW
-        )
+        closure._load_regression_evidence(str(coverage_path), str(log_path), now=NOW)
 
     current = NOW.timestamp()
     os.utime(coverage_path, (current, current))
     os.utime(log_path, (current, current))
     log_path.write_text("9300 collected in 1.00s\n", encoding="utf-8")
     with pytest.raises(ValueError, match="does not prove"):
-        closure._load_regression_evidence(
-            str(coverage_path), str(log_path), now=NOW
-        )
+        closure._load_regression_evidence(str(coverage_path), str(log_path), now=NOW)
 
     log_path.write_text(
         "mo_provider_catalog=pass compatibility=1 failed=0\n"
         "================ 9300 passed in 1.00s ================\n",
         encoding="utf-8",
     )
-    assert closure._load_regression_evidence(
-        str(coverage_path), str(log_path), now=NOW
-    )["passed_tests"] == 9300
+    assert (
+        closure._load_regression_evidence(str(coverage_path), str(log_path), now=NOW)[
+            "passed_tests"
+        ]
+        == 9300
+    )
 
     log_path.write_text(
         "================ 1 failed, 9299 passed in 1.00s ================\n",
         encoding="utf-8",
     )
     with pytest.raises(ValueError, match="does not prove"):
-        closure._load_regression_evidence(
-            str(coverage_path), str(log_path), now=NOW
-        )
+        closure._load_regression_evidence(str(coverage_path), str(log_path), now=NOW)
 
     monkeypatch.setattr(
         closure,

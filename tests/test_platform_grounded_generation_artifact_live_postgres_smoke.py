@@ -79,9 +79,7 @@ def _zero_residue(_env: dict[str, str]) -> dict[str, int]:
 
 
 def test_protected_smoke_is_opt_in_and_test_profile_only() -> None:
-    skipped = smoke.run_platform_grounded_generation_artifact_live_postgres_smoke(
-        {}
-    )
+    skipped = smoke.run_platform_grounded_generation_artifact_live_postgres_smoke({})
     blocked = smoke.run_platform_grounded_generation_artifact_live_postgres_smoke(
         _env(**{smoke.PROFILE_ENV: "dev"})
     )
@@ -116,7 +114,7 @@ def test_protected_smoke_composes_correlated_live_evidence() -> None:
     assert result["provider_observation"]["generation"]["success_count"] == 2
     assert calls[0][smoke.base.SMOKE_ENV] == "1"
     assert calls[0]["NEX_MO_PROVIDER_MODE"] == "live"
-    assert calls[0]["NEX_MO_VLLM_MODEL"] == "Qwen3.5-9B"
+    assert calls[0]["NEX_MO_VLLM_MODEL"] == smoke.CANONICAL_GENERATION_MODEL
     assert calls[0]["NEX_MO_VLLM_DEPLOYMENT_ID"] == (
         smoke.CANONICAL_GENERATION_DEPLOYMENT_ID
     )
@@ -124,14 +122,16 @@ def test_protected_smoke_composes_correlated_live_evidence() -> None:
 
 
 def test_protected_smoke_fails_closed_for_source_or_residue() -> None:
-    source_failure = smoke.run_platform_grounded_generation_artifact_live_postgres_smoke(
-        _env(),
-        source_runner=lambda _env: {
-            "status": "FAIL",
-            "failure_code": "provider-offline",
-            "failed_checks": ["live"],
-        },
-        residue_reader=_zero_residue,
+    source_failure = (
+        smoke.run_platform_grounded_generation_artifact_live_postgres_smoke(
+            _env(),
+            source_runner=lambda _env: {
+                "status": "FAIL",
+                "failure_code": "provider-offline",
+                "failed_checks": ["live"],
+            },
+            residue_reader=_zero_residue,
+        )
     )
     bad_residue = smoke.run_platform_grounded_generation_artifact_live_postgres_smoke(
         _env(),

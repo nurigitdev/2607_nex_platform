@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 
 import run_cx_document_intelligence_summary_contract as contract
+from nex_runtime.canonical_generation_binding import CANONICAL_GENERATION_BINDING
 
 
 def test_document_intelligence_summary_contract_passes() -> None:
@@ -12,7 +13,7 @@ def test_document_intelligence_summary_contract_passes() -> None:
     assert result["passed_checks"] == 10
     assert all(result["checks"].values())
     assert result["summary_hard_limit_chars"] == 1000
-    assert result["generation_model"] == "Qwen3.5-9B"
+    assert result["generation_model"] == CANONICAL_GENERATION_BINDING.model_name
     assert result["embedding_model"] == "Qwen3-Embedding-4B"
     assert result["postgres_required"] is False
     assert result["remote_provider_required"] is False

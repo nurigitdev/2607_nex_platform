@@ -10,8 +10,14 @@ from typing import Any, Callable, Mapping
 
 
 ROOT = Path(__file__).resolve().parents[2]
+SHARED_PATH = ROOT / "services" / "_shared"
 CX_PATH = ROOT / "services" / "nex-cx"
+sys.path.insert(0, str(SHARED_PATH))
 sys.path.insert(0, str(CX_PATH))
+
+from nex_runtime.canonical_generation_binding import (  # noqa: E402
+    CANONICAL_GENERATION_BINDING,
+)
 
 from run_cx_document_intelligence_contract_observability import (  # noqa: E402
     run_cx_document_intelligence_contract_observability as run_observability,
@@ -228,8 +234,7 @@ def run_s96_cx_document_intelligence_summary_similarity_closure(
     root: Path = ROOT,
 ) -> dict[str, Any]:
     required_files = [
-        {"path": path, "present": (root / path).is_file()}
-        for path in REQUIRED_FILES
+        {"path": path, "present": (root / path).is_file()} for path in REQUIRED_FILES
     ]
     token_checks = [
         {
@@ -293,7 +298,7 @@ def run_s96_cx_document_intelligence_summary_similarity_closure(
         "summary_contract_closed": (
             evidence["summary_contract"].get("summary_hard_limit_chars") == 1000
             and evidence["summary_contract"].get("generation_model")
-            == "Qwen3.5-9B"
+            == CANONICAL_GENERATION_BINDING.model_name
             and evidence["summary_contract"].get("embedding_model")
             == "Qwen3-Embedding-4B"
         ),
@@ -304,7 +309,8 @@ def run_s96_cx_document_intelligence_summary_similarity_closure(
             == "filesystem-text-v1"
         ),
         "generation_adapter_closed": (
-            evidence["generation"].get("model_profile_id") == "Qwen3.5-9B"
+            evidence["generation"].get("model_profile_id")
+            == CANONICAL_GENERATION_BINDING.model_name
             and evidence["generation"].get("passed_checks") == 10
         ),
         "summary_vector_freshness_closed": (
@@ -326,9 +332,9 @@ def run_s96_cx_document_intelligence_summary_similarity_closure(
         "actual_postgres_evidence_passed": all(postgres_tokens.values()),
         "actual_live_provider_evidence_passed": all(live_tokens.values()),
         "canonical_models_current": (
-            boundary_decision.get("summary_generation_model") == "Qwen3.5-9B"
-            and boundary_decision.get("summary_embedding_model")
-            == "Qwen3-Embedding-4B"
+            boundary_decision.get("summary_generation_model")
+            == CANONICAL_GENERATION_BINDING.model_name
+            and boundary_decision.get("summary_embedding_model") == "Qwen3-Embedding-4B"
             and decision["embedding_dimension"] == 2560
         ),
         "owner_private_boundary_preserved": (
@@ -340,13 +346,11 @@ def run_s96_cx_document_intelligence_summary_similarity_closure(
             == "metadata_hashes_scores_bounded_owner_preview"
         ),
         "single_migration_history_preserved": (
-            decision["migration_strategy"]
-            == "versioned_sql_schema_migrations_runner"
+            decision["migration_strategy"] == "versioned_sql_schema_migrations_runner"
         ),
         "deferred_scope_not_overclaimed": (
             "cross_owner_shared_acl_similarity" in decision["deferred_scope"]
-            and "multi_tenant_similarity_scale_tuning"
-            in decision["deferred_scope"]
+            and "multi_tenant_similarity_scale_tuning" in decision["deferred_scope"]
         ),
     }
     failed_checks = sorted(name for name, passed in checks.items() if not passed)
@@ -379,12 +383,8 @@ def run_s96_cx_document_intelligence_summary_similarity_closure(
             "protected_live_check_count": 15
             if all(postgres_tokens.values()) and all(live_tokens.values())
             else 0,
-            "missing_file_count": sum(
-                not item["present"] for item in required_files
-            ),
-            "missing_token_count": sum(
-                not item["present"] for item in token_checks
-            ),
+            "missing_file_count": sum(not item["present"] for item in required_files),
+            "missing_token_count": sum(not item["present"] for item in token_checks),
         },
         "evidence_statuses": {
             name: item.get("status") for name, item in evidence.items()
@@ -410,7 +410,7 @@ def _closure_decision() -> dict[str, Any]:
         "summary_source": "latest_ready_extracted_markdown",
         "summary_hard_limit_chars": 1000,
         "summary_storage_policy": "private_durable_payload_reference",
-        "generation_model": "Qwen3.5-9B",
+        "generation_model": CANONICAL_GENERATION_BINDING.model_name,
         "generation_reasoning_mode": "disabled",
         "embedding_model": "Qwen3-Embedding-4B",
         "embedding_dimension": 2560,

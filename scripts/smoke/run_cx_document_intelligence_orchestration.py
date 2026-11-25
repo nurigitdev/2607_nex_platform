@@ -26,6 +26,9 @@ from nex_cx.ingestion import (  # noqa: E402
 )
 from nex_cx.private_content import build_private_payload_receipt  # noqa: E402
 from nex_cx.private_text_store import FileSystemCxPrivateTextStore  # noqa: E402
+from nex_runtime.canonical_generation_binding import (  # noqa: E402
+    CANONICAL_GENERATION_BINDING,
+)
 
 
 REQUEST_ID = "request-0957-evidence"
@@ -39,7 +42,7 @@ class _GenerationClient:
         return {
             "mo_generation_id": "mo-summary-0957-evidence",
             "alias": "general-llm-default",
-            "model_revision": "Qwen3.5-9B",
+            "model_revision": CANONICAL_GENERATION_BINDING.model_revision,
             "deployment_id": "mock-generation-0957",
             "provider_type": "mock-generation",
             "output": {
@@ -58,9 +61,7 @@ class _EmbeddingClient:
             "alias": alias,
             "model_revision": "Qwen3-Embedding-4B",
             "deployment_id": "mock-embedding-0957",
-            "data": [
-                {"object": "embedding", "index": 0, "embedding": [0.1, 0.2, 0.3]}
-            ],
+            "data": [{"object": "embedding", "index": 0, "embedding": [0.1, 0.2, 0.3]}],
             "usage": {"input_tokens": 9, "output_tokens": 0, "total_tokens": 9},
         }
 
@@ -70,9 +71,7 @@ class _BoundVectorStore:
         self.parent = parent
         self.binding = binding
 
-    def put_vector(
-        self, *, access_context, key, vector, expected_sha256
-    ):
+    def put_vector(self, *, access_context, key, vector, expected_sha256):
         values = tuple(float(value) for value in vector)
         self.parent.vectors[str(self.binding.document_summary_id)] = values
         return build_private_payload_receipt(
@@ -218,14 +217,11 @@ def _run(work_root: Path) -> dict[str, object]:
         "summary_private_uri": str(
             run_result["summary"]["summary_storage_uri"]
         ).startswith("cx-private://filesystem-text-v1/"),
-        "generation_profile": run_result["summary"]["summarizer"][
-            "model_revision"
-        ]
-        == "Qwen3.5-9B",
+        "generation_profile": run_result["summary"]["summarizer"]["model_revision"]
+        == CANONICAL_GENERATION_BINDING.model_revision,
         "embedding_profile": run_result["summary_embedding"]["model_revision"]
         == "Qwen3-Embedding-4B",
-        "vector_fresh": run_result["summary_vector"]["freshness"]["usable"]
-        is True,
+        "vector_fresh": run_result["summary_vector"]["freshness"]["usable"] is True,
         "raw_payload_absent": run_result["raw_summary_included"] is False
         and run_result["raw_vector_included"] is False,
         "similar_candidate": similarity_result["result"]["candidate_count"] == 1,
@@ -260,7 +256,9 @@ def main() -> int:
     parser.add_argument("--summary", action="store_true")
     args = parser.parse_args()
     result = run_cx_document_intelligence_orchestration()
-    print(_format_summary(result) if args.summary else json.dumps(result, sort_keys=True))
+    print(
+        _format_summary(result) if args.summary else json.dumps(result, sort_keys=True)
+    )
     return 0 if result["status"] == "PASS" else 1
 
 
