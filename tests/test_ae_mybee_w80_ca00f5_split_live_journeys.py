@@ -50,7 +50,7 @@ def test_live_checks_require_one_journal_then_one_conserved_allocation():
         "execution_count": 2,
         "agent_result_count": 2,
         "acknowledged_delivery_count": 2,
-        "approval_decision_count": 4,
+        "approval_decision_count": 3,
         "voucher_candidate_count": 1,
         "journal_count": 1,
         "allocation_batch_count": 1,

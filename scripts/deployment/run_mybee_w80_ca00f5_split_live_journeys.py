@@ -558,8 +558,10 @@ def _live_checks(
             "acknowledged_delivery_count"
         ]
         == 2,
-        "four_sequential_approval_decisions": database["approval_decision_count"]
-        == 4,
+        "three_sequential_journal_approval_decisions": database[
+            "approval_decision_count"
+        ]
+        == 3,
         "one_voucher_candidate": database["voucher_candidate_count"] == 1,
         "one_immutable_journal": database["journal_count"] == 1,
         "one_allocation_batch": database["allocation_batch_count"] == 1,
