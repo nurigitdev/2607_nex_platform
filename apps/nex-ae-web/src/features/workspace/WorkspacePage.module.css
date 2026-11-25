@@ -106,8 +106,9 @@
 }
 .executionProgress li {
   align-items: baseline;
+  color: var(--nex-text-secondary);
   display: grid;
-  font: var(--nex-text-body-sm);
+  font: var(--nex-text-caption);
   gap: var(--nex-space-2);
   grid-template-columns: auto minmax(0, 1fr);
 }

@@ -144,6 +144,13 @@ describe("WorkspacePage", () => {
     expect(after.map(item => item.id)).toEqual(["assistant-2"]);
   });
 
+  it("styles execution progress as secondary caption text", () => {
+    const css = readFileSync(resolve(process.cwd(), "src/features/workspace/WorkspacePage.module.css"), "utf8");
+    expect(css).toMatch(
+      /\.executionProgress li\s*\{[^}]*color: var\(--nex-text-secondary\);[^}]*font: var\(--nex-text-caption\);[^}]*\}/s,
+    );
+  });
+
   it("shows a safe retry message when submission fails", async () => {
     const user = userEvent.setup();
     render(<WorkspacePage controller={{ submit: vi.fn().mockRejectedValue(new Error("secret")) }} />);
