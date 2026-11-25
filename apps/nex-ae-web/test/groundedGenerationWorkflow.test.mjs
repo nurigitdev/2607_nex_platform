@@ -5,6 +5,7 @@ import { createMockGroundedGenerationClient } from "../src/groundedGenerationCli
 import {
   GroundedGenerationWorkflowError,
   buildGroundedGenerationRequest,
+  isAgentExecutionAdmitted,
   runGroundedGenerationWorkflow
 } from "../src/groundedGenerationWorkflow.js";
 
@@ -153,6 +154,68 @@ test("hands a compiled semantic plan to AgentResult without generation polling",
     result.events.map(event => event.eventType),
     ["generation.web.admitting", "generation.request.accepted"]
   );
+});
+
+test("hands admitted Product coordination to AgentResult without generation polling", async () => {
+  let progressCalls = 0;
+  const semanticPlanning = {
+    status: "PRODUCT_COORDINATION_STARTED",
+    directive: "WAIT_FOR_PRODUCT_COORDINATION",
+    agent_execution_id: "execution-product-1",
+    product_planning_admission: {
+      ready: true,
+      coordinator_id: "PRODUCT.COORDINATOR"
+    },
+    stages: [
+      { semantic_stage: "INTENT" },
+      { semantic_stage: "CONTEXT" }
+    ]
+  };
+  const client = createMockGroundedGenerationClient({
+    responseFactories: {
+      admitInteraction: ({ payload }) => ({
+        interaction_schema_version: "ae_chat_interaction.v1",
+        interaction_id: payload.interaction_id,
+        workspace_id: payload.workspace_id,
+        chat_document_id: payload.chat_document_id,
+        status: "PENDING",
+        generation: {
+          async_generation: {
+            lifecycle_status: "PENDING",
+            attempt_count: 0,
+            max_attempts: 1,
+            cancellable: false
+          },
+          semantic_planning: semanticPlanning
+        },
+        retrieval: { cx_status: "NOT_REQUESTED" },
+        artifact_refs: []
+      }),
+      getProgress: () => {
+        progressCalls += 1;
+        throw new Error("generation polling must not run");
+      }
+    }
+  });
+
+  const result = await runGroundedGenerationWorkflow({
+    client,
+    request: request({ grounded: false, documentScope: null })
+  });
+
+  assert.equal(result.status, "ACTIVE");
+  assert.equal(result.agentExecutionAdmitted, true);
+  assert.equal(result.pollCount, 0);
+  assert.equal(progressCalls, 0);
+  assert.equal(isAgentExecutionAdmitted(semanticPlanning), true);
+  assert.equal(isAgentExecutionAdmitted({
+    ...semanticPlanning,
+    product_planning_admission: { ready: false }
+  }), false);
+  assert.equal(isAgentExecutionAdmitted({
+    ...semanticPlanning,
+    agent_execution_id: " "
+  }), false);
 });
 
 test("converts client failures into redacted workflow failure state", async () => {

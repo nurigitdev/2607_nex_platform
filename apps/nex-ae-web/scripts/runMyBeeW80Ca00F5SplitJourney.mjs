@@ -44,9 +44,7 @@ const MODES = Object.freeze({
   }),
   allocation: Object.freeze({
     resultHeading: "프로젝트 배부 결과",
-    approvalSequence: Object.freeze([
-      Object.freeze({ domain: "NSL_WRITE", role: "ACCOUNTING_APPROVER" })
-    ])
+    approvalSequence: Object.freeze([])
   })
 });
 

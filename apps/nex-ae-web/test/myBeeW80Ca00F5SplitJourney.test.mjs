@@ -27,10 +27,17 @@ test("journal contract enforces business then accounting approval", () => {
   );
 });
 
-test("allocation contract rejects a business approval stage", () => {
-  assert.deepEqual(splitJourneyContract("allocation").approvalSequence, [
-    { domain: "NSL_WRITE", role: "ACCOUNTING_APPROVER" }
-  ]);
+test("allocation contract has no human or NSL approval wait", () => {
+  assert.deepEqual(splitJourneyContract("allocation").approvalSequence, []);
+  assert.deepEqual(splitJourneyChecks({
+    mode: "allocation",
+    approvalDomains: [],
+    approvalActorRoles: []
+  }), {
+    exact_sequential_approval_observed: true,
+    journal_business_before_accounting: true,
+    allocation_independent_from_business_approval: true
+  });
   const checks = splitJourneyChecks({
     mode: "allocation",
     approvalDomains: ["BUSINESS_FORMAL", "NSL_WRITE"],

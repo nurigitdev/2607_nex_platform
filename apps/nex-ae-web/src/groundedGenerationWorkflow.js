@@ -104,8 +104,9 @@ export async function runGroundedGenerationWorkflow({
     admission = await client.admitInteraction(request);
     state = applyGenerationAdmission(state, admission);
     publish("generation.request.accepted");
-    const agentExecutionAdmitted =
-      admission.semanticPlanning?.status === "COMPILED";
+    const agentExecutionAdmitted = isAgentExecutionAdmitted(
+      admission.semanticPlanning
+    );
 
     while (!agentExecutionAdmitted && !state.terminal && pollCount < maxPolls) {
       assertNotAborted(signal);
@@ -146,8 +147,9 @@ export async function runGroundedGenerationWorkflow({
     state,
     readModel,
     admission,
-    agentExecutionAdmitted:
-      admission?.semanticPlanning?.status === "COMPILED",
+    agentExecutionAdmitted: isAgentExecutionAdmitted(
+      admission?.semanticPlanning
+    ),
     groundingRequested: request.retrieval?.enabled === true,
     pollCount,
     pollLimitReached: state.phase === "active" && pollCount === maxPolls,
@@ -159,6 +161,19 @@ export async function runGroundedGenerationWorkflow({
       groundingRequested: request.retrieval?.enabled === true
     })
   };
+}
+
+export function isAgentExecutionAdmitted(semanticPlanning) {
+  if (!semanticPlanning || typeof semanticPlanning !== "object") return false;
+  if (semanticPlanning.status === "COMPILED") return true;
+  const productAdmission = semanticPlanning.product_planning_admission;
+  return semanticPlanning.status === "PRODUCT_COORDINATION_STARTED" &&
+    semanticPlanning.directive === "WAIT_FOR_PRODUCT_COORDINATION" &&
+    typeof semanticPlanning.agent_execution_id === "string" &&
+    semanticPlanning.agent_execution_id.trim().length > 0 &&
+    productAdmission != null &&
+    typeof productAdmission === "object" &&
+    productAdmission.ready === true;
 }
 
 export function buildGroundedGenerationWorkflowSummary({
