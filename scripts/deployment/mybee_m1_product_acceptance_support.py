@@ -97,6 +97,7 @@ _OA_SCOPES = {
         "workspace:use",
         "approval:read",
         "approval:decide",
+        "finance:allocation:execute",
         "finance:report:read",
         "project:pnl:read",
     ),
@@ -197,6 +198,41 @@ def build_transaction_prompt(
         f"승인해줘. 주 Project는 {projects[0]['project_code']}이고 배부는 "
         f"{projects[0]['project_code']} 40%, {projects[1]['project_code']} 60%로 "
         f"해줘. 문서 제목은 {transaction['document_subject']}야."
+    )
+
+
+def build_journal_prompt(
+    baseline: Mapping[str, Any], *, transaction_index: int
+) -> str:
+    transaction = baseline["transactions"][transaction_index]
+    project = baseline["projects"][0]
+    return (
+        f"회사 코드 {baseline['company']['company_code']} 기준으로 "
+        f"{baseline['recognition_date']} 공급사 {transaction['counterparty']}의 "
+        f"{transaction['currency']} {transaction['amount']} 용역비를 "
+        f"Project {project['project_code']}의 전표로 처리하고 승인해줘. "
+        f"문서 제목은 {transaction['document_subject']}야. "
+        "이 요청에서는 Project 원가 배부를 수행하지 마."
+    )
+
+
+def build_accounting_allocation_prompt(
+    baseline: Mapping[str, Any],
+    *,
+    company_id: str,
+    journal_id: str,
+    source_record_line_ref: str,
+) -> str:
+    project_text = ", ".join(
+        f"{item['project_code']} {Decimal(str(item['allocation_ratio'])) * 100}%"
+        for item in baseline["projects"]
+    )
+    return (
+        "독립적인 회계 배부 업무로 처리해줘. "
+        f"company_id는 {company_id}, journal_id는 {journal_id}, "
+        f"source_record_line_ref는 {source_record_line_ref}, "
+        f"source_kind는 SERVICE이고 Project 배부 비율은 {project_text}야. "
+        "기존 전표를 수정하거나 새 전표를 생성하지 말고 배부와 Project P&L 갱신만 수행해줘."
     )
 
 

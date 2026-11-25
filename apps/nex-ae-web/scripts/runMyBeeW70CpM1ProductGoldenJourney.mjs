@@ -586,7 +586,7 @@ export async function runMyBeeM1ProductPostRestartRecovery({
   }
 }
 
-async function driveApprovalsUntilResult({
+export async function driveApprovalsUntilResult({
   requester,
   approvers,
   interactionId,
@@ -727,7 +727,7 @@ export async function prepareApprovalInbox(page, timeout) {
   return "REFRESH";
 }
 
-async function submitPrompt(page, prompt, timeout, { observeWorkspace = false } = {}) {
+export async function submitPrompt(page, prompt, timeout, { observeWorkspace = false } = {}) {
   const workspaceResponsePromise = observeWorkspace
     ? page.waitForResponse(response => {
         const route = new URL(response.url()).pathname;
@@ -754,7 +754,7 @@ async function submitPrompt(page, prompt, timeout, { observeWorkspace = false } 
   return { status: response.status(), payload: await response.json(), workspace };
 }
 
-async function readResult(page, interactionId) {
+export async function readResult(page, interactionId) {
   const route = `/ae-api/api/v1/chat/interactions/${encodeURIComponent(interactionId)}/agent-result`;
   const response = await browserJson(page, route);
   if (response.status === 200) return response.payload;
@@ -762,7 +762,7 @@ async function readResult(page, interactionId) {
   throw new Error(`AgentResultStatus${response.status}`);
 }
 
-async function waitForResult(page, interactionId, timeout) {
+export async function waitForResult(page, interactionId, timeout) {
   const deadline = Date.now() + timeout;
   while (Date.now() < deadline) {
     const result = await readResult(page, interactionId);
@@ -772,7 +772,7 @@ async function waitForResult(page, interactionId, timeout) {
   throw new Error("AgentResultTimeout");
 }
 
-async function waitForRenderedResult(page, prompt, timeout) {
+export async function waitForRenderedResult(page, prompt, timeout) {
   if (prompt) {
     await page.getByText(prompt, { exact: true }).waitFor({ timeout });
   }
@@ -784,7 +784,7 @@ async function waitForRenderedResult(page, prompt, timeout) {
   await result.getByText(/개 프로젝트 반영 완료/, { exact: false }).waitFor({ timeout });
 }
 
-async function login(page, { tenantId, employeeId, password, timeout }) {
+export async function login(page, { tenantId, employeeId, password, timeout }) {
   void tenantId;
   await page.locator(`input[name="${UI.employeeInputName}"]`).fill(employeeId);
   await page.locator(`input[name="${UI.passwordInputName}"]`).fill(password);
@@ -812,7 +812,7 @@ async function login(page, { tenantId, employeeId, password, timeout }) {
   await page.getByRole("heading", { name: UI.workspaceHeading, exact: true }).waitFor({ timeout });
 }
 
-async function logout(page, timeout) {
+export async function logout(page, timeout) {
   const responsePromise = page.waitForResponse(response =>
     response.request().method() === "POST" &&
     new URL(response.url()).pathname === "/ae-api/api/v1/auth/session/logout",
@@ -823,7 +823,7 @@ async function logout(page, timeout) {
   await page.getByRole("heading", { name: UI.loginHeading }).waitFor({ timeout });
 }
 
-async function launchBrowser(playwright, environ) {
+export async function launchBrowser(playwright, environ) {
   return playwright.chromium.launch({
     headless: true,
     args: ["--host-resolver-rules=MAP ae.nex-staging.test 127.0.0.1"],
@@ -833,11 +833,11 @@ async function launchBrowser(playwright, environ) {
   });
 }
 
-function contextOptions() {
+export function contextOptions() {
   return { ignoreHTTPSErrors: true, viewport: { width: 1440, height: 1000 } };
 }
 
-async function configuredPage(context) {
+export async function configuredPage(context) {
   const page = await context.newPage();
   await page.addInitScript(config => {
     globalThis.__NEX_AE_WEB_CONFIG__ = config;
@@ -845,7 +845,7 @@ async function configuredPage(context) {
   return page;
 }
 
-function observeResponses(page, responses) {
+export function observeResponses(page, responses) {
   page.on("response", response => {
     const route = new URL(response.url()).pathname;
     if (route.startsWith("/ae-api/api/v1/")) {
@@ -924,7 +924,7 @@ function boundedMetadata(value) {
   return /^[A-Za-z0-9_.:/-]{1,160}$/.test(normalized) ? normalized : null;
 }
 
-async function browserJson(page, route, { method = "GET", body = null } = {}) {
+export async function browserJson(page, route, { method = "GET", body = null } = {}) {
   return page.evaluate(async request => {
     const response = await fetch(request.route, {
       method: request.method,
