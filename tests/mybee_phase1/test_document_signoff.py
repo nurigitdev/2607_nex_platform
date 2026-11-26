@@ -202,6 +202,56 @@ def _envelope(proposal=None):
     }
 
 
+def _proposal_projection(
+    proposal=None,
+    *,
+    state="DRAFT",
+    approval_case_id=None,
+    approved_envelope_id=None,
+):
+    proposal = proposal or _proposal()
+    return {
+        "schema_version": "eos_business_proposal.v1",
+        "tenant_id": proposal.tenant_id,
+        "proposal_id": proposal.proposal_id,
+        "requester_subject_id": proposal.requester_subject_id,
+        "state": state,
+        "version": 1 if state == "DRAFT" else 2,
+        "current_revision_no": 1,
+        "submitted_revision_no": None if state == "DRAFT" else 1,
+        "approval_case_id": approval_case_id,
+        "approved_envelope_id": approved_envelope_id,
+        "current_revision": {
+            "revision_id": "26000000-0000-4000-8000-000000000009",
+            "revision_no": 1,
+            "document_type": proposal.document_type,
+            "work_code": proposal.work_code,
+            "title": proposal.title,
+            "purpose": proposal.purpose,
+            "business_justification": proposal.business_justification,
+            "transaction_type": "EXTERNAL_LABOR_COST",
+            "requested_amount": "1250000.0000",
+            "original_currency": proposal.currency,
+            "valid_from": "2026-11-12T06:00:00Z",
+            "valid_until": "2026-12-12T06:00:00Z",
+            "scope_type": proposal.scope_type,
+            "project_ids": list(proposal.project_ids),
+            "project_codes": list(proposal.project_codes),
+            "attachment_manifest": [
+                {
+                    "object_ref": item.object_ref,
+                    "size": item.size_bytes,
+                    "media_type": item.media_type,
+                    "content_hash": item.content_hash,
+                }
+                for item in proposal.attachments
+            ],
+            "attachment_manifest_hash": "sha256:" + "7" * 64,
+            "content_hash": "sha256:" + "8" * 64,
+        },
+    }
+
+
 class FakeTransport:
     def __init__(self, *responses) -> None:
         self.responses = list(responses)
@@ -414,6 +464,78 @@ def test_client_submits_to_eos_admits_wc_receipt_and_reads_bound_envelope() -> N
         "BUSINESS.DOCUMENT_APPROVED.GET",
     ]
     assert transport.requests[1].payload is None
+
+
+def test_client_creates_and_reads_owner_scoped_reviewable_proposal() -> None:
+    proposal = _proposal()
+    draft = _proposal_projection(proposal)
+    submitted = _proposal_projection(
+        proposal,
+        state="SUBMITTED",
+        approval_case_id=CASE_ID,
+    )
+    envelope = _envelope(proposal)
+    revision = submitted["current_revision"]
+    envelope.update(
+        document_content_hash=revision["content_hash"],
+        attachment_manifest_hash=revision["attachment_manifest_hash"],
+    )
+    transport = FakeTransport(draft, submitted, envelope)
+    client = NexBusinessApprovalClient(transport)
+
+    created = client.create_draft(
+        proposal,
+        revision_id=draft["current_revision"]["revision_id"],
+        transaction_type="EXTERNAL_LABOR_COST",
+    )
+    loaded = client.get_proposal(
+        tenant_id=TENANT,
+        subject_id=proposal.requester_subject_id,
+        proposal_id=proposal.proposal_id,
+        expected_states={"SUBMITTED", "APPROVED"},
+    )
+    approved = client.get_approved_document_for_proposal(
+        proposal=loaded,
+        envelope_id=ENVELOPE_ID,
+    )
+
+    assert created["state"] == "DRAFT"
+    assert loaded["approval_case_id"] == CASE_ID
+    assert approved["document_content_hash"] == revision["content_hash"]
+    assert [request.operation_id for request in transport.requests] == [
+        "BUSINESS.PROPOSAL.CREATE",
+        "BUSINESS.PROPOSAL.GET",
+        "BUSINESS.DOCUMENT_APPROVED.GET",
+    ]
+
+
+def test_client_rejects_reviewable_proposal_scope_and_envelope_drift() -> None:
+    proposal = _proposal()
+    drifted = _proposal_projection(proposal)
+    drifted["current_revision"]["attachment_manifest"] = []
+    with pytest.raises(BusinessApprovalConsumerError) as draft_error:
+        NexBusinessApprovalClient(FakeTransport(drifted)).create_draft(
+            proposal,
+            revision_id=drifted["current_revision"]["revision_id"],
+            transaction_type="EXTERNAL_LABOR_COST",
+        )
+    assert draft_error.value.code == "MYBEE_PROPOSAL_DRAFT_BINDING_MISMATCH"
+
+    submitted = _proposal_projection(
+        proposal,
+        state="APPROVED",
+        approval_case_id=CASE_ID,
+        approved_envelope_id=ENVELOPE_ID,
+    )
+    envelope = _envelope(proposal)
+    with pytest.raises(BusinessApprovalConsumerError) as envelope_error:
+        NexBusinessApprovalClient(
+            FakeTransport(envelope)
+        ).get_approved_document_for_proposal(
+            proposal=submitted,
+            envelope_id=ENVELOPE_ID,
+        )
+    assert envelope_error.value.code == "MYBEE_PROPOSAL_ENVELOPE_BINDING_MISMATCH"
 
 
 def test_client_rejects_receipt_and_envelope_semantic_drift() -> None:

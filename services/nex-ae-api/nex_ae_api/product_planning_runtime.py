@@ -22,6 +22,7 @@ from nex_ae_api.product_planning_proposals import (
     validate_product_planning_proposal,
 )
 from nex_ae_api.product_preparation_persistence import (
+    SqlAlchemyGeneralizedWaitEventRepository,
     SqlAlchemyProductPreparationCheckpointRepository,
 )
 from nex_ae_api.runtime_resume import ResumeRoute, SqlAlchemyResumeRouteSource
@@ -663,6 +664,112 @@ class InstalledProductPlanningEventAdmission:
         }
 
 
+class InstalledProductRequesterReviewAdmission:
+    """Match an authoritative browser submission to an existing Product wait."""
+
+    _KINDS = frozenset(
+        {"REQUESTER_PROPOSAL_REVIEW", "REQUESTER_VOUCHER_REVIEW"}
+    )
+
+    def __init__(
+        self,
+        *,
+        runtimes: InstalledProductCoordinatorRuntimeRegistry,
+        wait_events: SqlAlchemyGeneralizedWaitEventRepository,
+        resume_service: Any,
+        clock: Callable[[], datetime] | None = None,
+    ) -> None:
+        self._runtimes = runtimes
+        self._wait_events = wait_events
+        self._resume = resume_service
+        self._clock = clock or (lambda: datetime.now(UTC))
+
+    def ingest(
+        self,
+        *,
+        tenant_id: str,
+        requester_ref: str,
+        authority_kind: str,
+        authority_ref: str,
+        receipt: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        normalized_kind = _text(authority_kind, "authority_kind")
+        if normalized_kind not in self._KINDS:
+            raise _invalid("Requester review authority kind is invalid.")
+        normalized_tenant = _text(tenant_id, "tenant_id")
+        normalized_requester = _text(requester_ref, "requester_ref")
+        normalized_ref = _text(authority_ref, "authority_ref")
+        context = self._wait_events.resolve_product_wait_context(
+            tenant_id=normalized_tenant,
+            authority_kind=normalized_kind,
+            authority_ref=normalized_ref,
+        )
+        if context is None:
+            return {
+                "schema_version": "ae.product_requester_review_receipt.v1",
+                "matched": False,
+                "tenant_id": normalized_tenant,
+                "authority_kind": normalized_kind,
+                "authority_ref": normalized_ref,
+                "content_included": False,
+            }
+        checkpoint = context["checkpoint"]
+        binding = context["product_binding"]
+        if checkpoint.get("requester_ref") != normalized_requester:
+            raise _conflict("Requester review owner differs from the Product wait.")
+        runtime = self._runtimes.resolve_identity(
+            coordinator_id=binding["coordinator_id"],
+            coordinator_version=binding["coordinator_version"],
+            coordinator_registration_hash=binding[
+                "coordinator_registration_hash"
+            ],
+        )
+        receipt_hash = semantic_sha256_hash_ref(
+            {
+                "schema_version": "ae.product_requester_review_identity.v1",
+                "tenant_id": normalized_tenant,
+                "requester_ref": normalized_requester,
+                "authority_kind": normalized_kind,
+                "authority_ref": normalized_ref,
+                "receipt": dict(receipt),
+            }
+        )
+        notification_ref = (
+            f"product-review:{normalized_kind.lower()}:{receipt_hash}"
+        )
+        event_id = f"product-review:{receipt_hash.removeprefix('sha256:')}"
+        received_at = _datetime_timestamp(self._clock())
+        accepted = _invoke_product_boundary(
+            runtime.coordinator.accept_approval_notification,
+            tenant_id=normalized_tenant,
+            checkpoint_id=checkpoint["checkpoint_id"],
+            event_id=event_id,
+            notification_ref=notification_ref,
+            authority_evidence_ref=notification_ref,
+            authority_state="APPROVED",
+            received_at=received_at,
+        )
+        resumed = _invoke_product_boundary(
+            self._resume.reconcile,
+            tenant_id=normalized_tenant,
+            event_id=event_id,
+        )
+        return {
+            "schema_version": "ae.product_requester_review_receipt.v1",
+            "matched": True,
+            "tenant_id": normalized_tenant,
+            "authority_kind": normalized_kind,
+            "authority_ref": normalized_ref,
+            "event_id": event_id,
+            "event_state": resumed["event_state"],
+            "wait_state": resumed["wait_state"],
+            "resume_runtime_job_id": resumed["resume_runtime_job_id"],
+            "event_replayed": bool(accepted.get("replayed")),
+            "receipt_hash": receipt_hash,
+            "content_included": False,
+        }
+
+
 @dataclass(frozen=True)
 class InstalledProductPlanningComposition:
     coordinator_registry: ProductPlanningCoordinatorRegistry
@@ -670,6 +777,7 @@ class InstalledProductPlanningComposition:
     public_router: PublicProductPlanningRouter
     assignment_handler: InstalledProductCoordinatorAssignmentHandler | None
     event_admission: InstalledProductPlanningEventAdmission | None
+    requester_review_admission: InstalledProductRequesterReviewAdmission | None
 
 
 def build_installed_product_planning_composition(
@@ -696,15 +804,23 @@ def build_installed_product_planning_composition(
         else None
     )
     event_admission = None
+    requester_review_admission = None
     if runtime_registry.identities:
         from nex_ae_api.runtime_resume import SqlAlchemyProductPreparationResumeService
 
+        wait_events = SqlAlchemyGeneralizedWaitEventRepository(sessions)
+        resume_service = SqlAlchemyProductPreparationResumeService(
+            sessions,
+            runtime_jobs=runtime_jobs,
+        )
         event_admission = InstalledProductPlanningEventAdmission(
             runtimes=runtime_registry,
-            resume_service=SqlAlchemyProductPreparationResumeService(
-                sessions,
-                runtime_jobs=runtime_jobs,
-            ),
+            resume_service=resume_service,
+        )
+        requester_review_admission = InstalledProductRequesterReviewAdmission(
+            runtimes=runtime_registry,
+            wait_events=wait_events,
+            resume_service=resume_service,
         )
     return InstalledProductPlanningComposition(
         coordinator_registry=coordinator_registry,
@@ -712,6 +828,7 @@ def build_installed_product_planning_composition(
         public_router=router,
         assignment_handler=handler,
         event_admission=event_admission,
+        requester_review_admission=requester_review_admission,
     )
 
 
@@ -959,6 +1076,7 @@ __all__ = [
     "InstalledProductCoordinatorRuntimeRegistry",
     "InstalledProductPlanningComposition",
     "InstalledProductPlanningEventAdmission",
+    "InstalledProductRequesterReviewAdmission",
     "ProductPlanningRuntimeError",
     "PublicProductPlanningRouter",
     "SqlAlchemyProductPlanningLineageSource",

@@ -13,6 +13,7 @@ from nex_ae_api.business_voucher_facade import (
     HttpEosBusinessVoucherClient,
     register_business_voucher_facade_routes,
 )
+from nex_ae_api.product_planning_runtime import ProductPlanningRuntimeError
 from nex_runtime import issue_mock_user_token
 
 
@@ -29,15 +30,33 @@ class FakeEosClient:
         return {"schema_version": "test.v1", "items": []}, self.status_code
 
 
+@dataclass
+class FakeReviewAdmission:
+    error: ProductPlanningRuntimeError | None = None
+    calls: list[dict[str, Any]] = field(default_factory=list)
+
+    def ingest(self, **values):
+        self.calls.append(values)
+        if self.error is not None:
+            raise self.error
+        return {"matched": True}
+
+
 def _headers() -> dict[str, str]:
     token = issue_mock_user_token(tenant_id="VO00", user_id="employee-8101")
     return {"Authorization": f"Bearer {token.access_token}"}
 
 
-def _client(source: FakeEosClient | None = None) -> tuple[TestClient, FakeEosClient]:
+def _client(
+    source: FakeEosClient | None = None,
+    *,
+    review_admission: FakeReviewAdmission | None = None,
+) -> tuple[TestClient, FakeEosClient]:
     app = FastAPI()
     client = source or FakeEosClient()
     register_business_voucher_facade_routes(app, eos_client=client)
+    if review_admission is not None:
+        app.state.ae_product_review_events = review_admission
     return TestClient(app), client
 
 
@@ -85,6 +104,43 @@ def test_facade_rejects_unauthenticated_and_maps_eos_failure() -> None:
     assert failed.status_code == 409
     assert failed.json()["error_code"] == "EOS_BUSINESS_VOUCHER_DRAFT_CONFLICT"
     assert len(source.calls) == 1
+
+
+def test_accounting_submit_admits_owner_scoped_product_review_event() -> None:
+    review = FakeReviewAdmission()
+    client, _source = _client(review_admission=review)
+
+    submitted = client.post(
+        "/api/v1/business-voucher-drafts/candidate-1:submit-for-accounting",
+        headers=_headers(),
+        json={"confirmed": True},
+    )
+
+    assert submitted.status_code == 200
+    assert review.calls == [
+        {
+            "tenant_id": "VO00",
+            "requester_ref": "employee-8101",
+            "authority_kind": "REQUESTER_VOUCHER_REVIEW",
+            "authority_ref": "eos.voucher-candidate:candidate-1",
+            "receipt": {"schema_version": "test.v1", "items": []},
+        }
+    ]
+
+    denied = FakeReviewAdmission(
+        error=ProductPlanningRuntimeError(
+            "ae.product_planning_runtime_conflict",
+            "requester differs",
+        )
+    )
+    denied_client, _source = _client(review_admission=denied)
+    failed = denied_client.post(
+        "/api/v1/business-voucher-drafts/candidate-1:submit-for-accounting",
+        headers=_headers(),
+        json={"confirmed": True},
+    )
+    assert failed.status_code == 409
+    assert failed.json()["error_code"] == "ae.product_planning_runtime_conflict"
 
 
 def test_http_client_uses_service_trust_and_rejects_invalid_body(monkeypatch) -> None:

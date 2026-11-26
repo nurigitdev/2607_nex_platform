@@ -306,6 +306,11 @@ if (
     )
     app.state.ae_semantic_candidate_admission = AE_SEMANTIC_CANDIDATE_ADMISSION
 app.state.ae_product_planning = AE_PRODUCT_PLANNING
+app.state.ae_product_review_events = (
+    None
+    if AE_PRODUCT_PLANNING is None
+    else AE_PRODUCT_PLANNING.requester_review_admission
+)
 register_product_planning_event_routes(
     app,
     admission=(

@@ -21,7 +21,7 @@ from nex_ae_api.product_preparation_persistence import (
 from nex_ae_api.prompts import AE_PROJECT_DELEGATION_PLAN_BUILDER_BINDING
 
 M1_PRODUCT_COORDINATOR_ID = "MYBEE.M1.TRANSACTION_PREPARATION"
-M1_PRODUCT_COORDINATOR_VERSION = "1.1.0"
+M1_PRODUCT_COORDINATOR_VERSION = "1.2.0"
 M1_PRODUCT_COORDINATOR_REGISTRY_ID = "ae-product-coordinators-mybee-m1"
 M1_PRODUCT_COORDINATOR_IMPLEMENTATION_REF = "nex_ae_api.m1_product_preparation_coordinator:InstalledM1ProductPlanningCoordinator"
 M1_PLAN_MATERIALIZER_SOURCE_IDENTITY = (
@@ -82,7 +82,9 @@ def build_m1_product_planning_coordinator_registration(
         materializer_source_identity=M1_PLAN_MATERIALIZER_SOURCE_IDENTITY,
         initial_state="PREPARATION_PENDING",
         waiting_states=(
+            "WAITING_PROPOSAL_REVIEW",
             "WAITING_BUSINESS_APPROVAL",
+            "WAITING_VOUCHER_REVIEW",
             "WAITING_ACCOUNTING_APPROVAL",
         ),
         ready_state="READY_FOR_D04",
@@ -115,7 +117,7 @@ def build_m1_product_planning_coordinator_registry(
     registry = ProductPlanningCoordinatorRegistry(
         (registration,),
         registry_id=M1_PRODUCT_COORDINATOR_REGISTRY_ID,
-        registry_version=3,
+        registry_version=4,
     )
     registry.require_product_capabilities(product_capabilities)
     return registry

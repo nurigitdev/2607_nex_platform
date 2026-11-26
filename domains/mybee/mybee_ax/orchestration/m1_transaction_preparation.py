@@ -40,6 +40,8 @@ DEFAULT_M1_TRANSACTION_PREPARATION_REGISTRY = (
     / "config/m1_transaction_preparation_registry.v1.json"
 )
 _REQUIRED_OPERATIONS = (
+    "BUSINESS.PROPOSAL.CREATE",
+    "BUSINESS.PROPOSAL.GET",
     "BUSINESS.DOCUMENT_APPROVED.GET",
     "FINANCE.ACCOUNTING_APPROVAL.REQUEST",
     "FINANCE.VOUCHER_CANDIDATE.CREATE_V2",
@@ -164,6 +166,7 @@ class M1TransactionPreparationAdapter:
     registration: M1PreparationRegistration
     business_approvals: NexBusinessApprovalClient = field(repr=False)
     voucher_candidates: NexVoucherCandidateClient = field(repr=False)
+    review_boundaries_enabled: bool = False
 
     def begin_proposal(
         self,
@@ -185,6 +188,29 @@ class M1TransactionPreparationAdapter:
             parent_execution_id=parent_execution_id,
         )
         proposal = _proposal(context, authority, identities=identities)
+        if self.review_boundaries_enabled:
+            created = self.business_approvals.create_draft(
+                proposal,
+                revision_id=identities["proposal_revision_id"],
+                transaction_type=str(context["request_kind"]),
+            )
+            return _checkpoint(
+                stage="WAITING_PROPOSAL_REVIEW",
+                context=context,
+                authority=admitted_authority,
+                identities=identities,
+                references={
+                    "proposal_id": created["proposal_id"],
+                    "proposal_revision": created["current_revision_no"],
+                    "proposal_content_hash": created["current_revision"][
+                        "content_hash"
+                    ],
+                    "proposal_review_ref": (
+                        f"eos.business-proposal:{created['proposal_id']}"
+                    ),
+                },
+                adapter=self.registration,
+            )
         receipt = self.business_approvals.submit(
             proposal,
             business_operation_id=identities["proposal_operation_id"],
@@ -211,6 +237,54 @@ class M1TransactionPreparationAdapter:
             adapter=self.registration,
         )
 
+    def continue_after_proposal_review(
+        self,
+        *,
+        business_request_context: Mapping[str, Any],
+        business_context_hash: str,
+        authority: M1PreparationAuthority,
+        parent_execution_id: str,
+    ) -> Mapping[str, Any]:
+        if not self.review_boundaries_enabled:
+            raise _invalid("Requester proposal review is not enabled.")
+        context = _context(business_request_context, business_context_hash)
+        admitted_authority = _authority(
+            authority,
+            context=context,
+            registration=self.registration,
+        )
+        identities = _identities(
+            tenant_id=authority.tenant_id,
+            context_hash=context["context_hash"],
+            parent_execution_id=parent_execution_id,
+        )
+        proposal = self.business_approvals.get_proposal(
+            tenant_id=authority.tenant_id,
+            subject_id=authority.requester_subject_id,
+            proposal_id=identities["proposal_id"],
+            expected_states={"SUBMITTED", "APPROVED"},
+        )
+        case_id = str(proposal.get("approval_case_id") or "")
+        if not case_id or int(proposal.get("submitted_revision_no") or 0) <= 0:
+            raise _conflict("Submitted proposal lacks its approval lineage.")
+        return _checkpoint(
+            stage="WAITING_BUSINESS_APPROVAL",
+            context=context,
+            authority=admitted_authority,
+            identities=identities,
+            references={
+                "proposal_id": proposal["proposal_id"],
+                "proposal_revision": proposal["submitted_revision_no"],
+                "proposal_subject_ref": (
+                    f"mybee.business-proposal:{proposal['proposal_id']}:"
+                    f"revision:{proposal['submitted_revision_no']}"
+                ),
+                "proposal_subject_hash": proposal["current_revision"]["content_hash"],
+                "business_approval_case_id": case_id,
+            },
+            adapter=self.registration,
+        )
+
     def continue_after_business_approval(
         self,
         *,
@@ -233,6 +307,53 @@ class M1TransactionPreparationAdapter:
         )
         now = _aware(authority.authority_effective_at)
         proposal = _proposal(context, authority, identities=identities)
+        if self.review_boundaries_enabled:
+            proposal_projection = self.business_approvals.get_proposal(
+                tenant_id=authority.tenant_id,
+                subject_id=authority.requester_subject_id,
+                proposal_id=identities["proposal_id"],
+                expected_states={"APPROVED"},
+            )
+            envelope = self.business_approvals.get_approved_document_for_proposal(
+                proposal=proposal_projection,
+                envelope_id=envelope_id,
+            )
+            draft = _draft_from_approved_proposal(
+                context,
+                authority,
+                envelope=envelope,
+                proposal=proposal_projection,
+                identities=identities,
+                registration=self.registration,
+            )
+            created = self.voucher_candidates.create(
+                draft,
+                business_operation_id=identities["candidate_operation_id"],
+                idempotency_key=identities["candidate_idempotency_key"],
+                trace_id=parent_execution_id,
+                correlation_id=parent_execution_id,
+                causation_id=identities["proposal_case_id"],
+            )
+            return _checkpoint(
+                stage="WAITING_VOUCHER_REVIEW",
+                context=context,
+                authority=admitted_authority,
+                identities=identities,
+                references={
+                    "approved_document_envelope_id": envelope["envelope_id"],
+                    "business_approval_proof_id": envelope[
+                        "business_approval_proof_id"
+                    ],
+                    "candidate_id": created["candidate_ref"]["id"],
+                    "candidate_version": 1,
+                    "candidate_revision": created["revision_ref"]["revision_no"],
+                    "candidate_hash": created["revision_ref"]["hash"],
+                    "voucher_review_ref": (
+                        f"eos.voucher-candidate:{created['candidate_ref']['id']}"
+                    ),
+                },
+                adapter=self.registration,
+            )
         envelope = self.business_approvals.get_approved_document(
             proposal,
             envelope_id=envelope_id,
@@ -284,6 +405,60 @@ class M1TransactionPreparationAdapter:
                 "accounting_approval_work_item_id": review["wc_publication"][
                     "work_item"
                 ]["approval_work_item_id"],
+            },
+            adapter=self.registration,
+        )
+
+    def continue_after_voucher_review(
+        self,
+        *,
+        business_request_context: Mapping[str, Any],
+        business_context_hash: str,
+        authority: M1PreparationAuthority,
+        parent_execution_id: str,
+        candidate_id: str,
+    ) -> Mapping[str, Any]:
+        if not self.review_boundaries_enabled:
+            raise _invalid("Requester voucher review is not enabled.")
+        context = _context(business_request_context, business_context_hash)
+        admitted_authority = _authority(
+            authority,
+            context=context,
+            registration=self.registration,
+        )
+        identities = _identities(
+            tenant_id=authority.tenant_id,
+            context_hash=context["context_hash"],
+            parent_execution_id=parent_execution_id,
+        )
+        review = self.voucher_candidates.get_review(
+            tenant_id=authority.tenant_id,
+            subject_id=authority.requester_subject_id,
+            candidate_id=candidate_id,
+        )
+        submitted = next(
+            (
+                item
+                for item in review.get("events", ())
+                if isinstance(item, Mapping)
+                and item.get("transition_kind") == "SUBMIT"
+            ),
+            None,
+        )
+        if submitted is None or review.get("state") != "READY_FOR_REVIEW":
+            raise _conflict("VoucherCandidate is not submitted for accounting review.")
+        return _checkpoint(
+            stage="WAITING_ACCOUNTING_APPROVAL",
+            context=context,
+            authority=admitted_authority,
+            identities=identities,
+            references={
+                "candidate_id": candidate_id,
+                "candidate_version": review["candidate_version"],
+                "candidate_revision": review["current_revision_no"],
+                "candidate_hash": submitted["candidate_hash"],
+                "validation_hash": submitted["validation_hash"],
+                "accounting_approval_case_id": submitted["approval_case_id"],
             },
             adapter=self.registration,
         )
@@ -518,6 +693,7 @@ def _identities(*, tenant_id: str, context_hash: str, parent_execution_id: str):
 
     return {
         "proposal_id": identity("proposal"),
+        "proposal_revision_id": identity("proposal-revision"),
         "proposal_operation_id": identity("proposal-operation"),
         "proposal_case_id": identity("proposal-case"),
         "proposal_idempotency_key": f"m1-proposal:{parent_execution_id}",
@@ -591,6 +767,54 @@ def _draft(context, authority, *, envelope, identities, registration):
                 credit_original=amount,
                 source_record_line_ref="m1-payable-line",
                 description=str(transaction["counterparty_selector"]),
+                evidence_hash=authority.credit_account_evidence_hash,
+            ),
+        ),
+    )
+
+
+def _draft_from_approved_proposal(
+    context,
+    authority,
+    *,
+    envelope,
+    proposal,
+    identities,
+    registration,
+):
+    revision = proposal.get("current_revision")
+    if not isinstance(revision, Mapping):
+        raise _conflict("Approved proposal revision is unavailable.")
+    amount = Decimal(str(envelope["approved_amount"]))
+    return build_voucher_candidate_draft(
+        tenant_id=authority.tenant_id,
+        company_id=authority.company_id,
+        preparer_subject_id=authority.requester_subject_id,
+        project_id=authority.primary_project_id,
+        project_code=authority.primary_project_code,
+        approved_document=envelope,
+        source_kind=registration.source_kind,
+        source_record_ref=f"mybee.proposal:{proposal['proposal_id']}",
+        business_work_code=registration.business_work_code,
+        transaction_currency=str(envelope["approved_currency"]),
+        recognition_date=date.fromisoformat(
+            str(context["transaction"]["recognition_date"])
+        ),
+        lines=(
+            VoucherCandidateLine(
+                account_id=authority.debit_account_id,
+                debit_original=amount,
+                credit_original=Decimal(0),
+                source_record_line_ref=registration.allocation_source_record_line_ref,
+                description=str(revision["purpose"]),
+                evidence_hash=authority.debit_account_evidence_hash,
+            ),
+            VoucherCandidateLine(
+                account_id=authority.credit_account_id,
+                debit_original=Decimal(0),
+                credit_original=amount,
+                source_record_line_ref="m1-payable-line",
+                description=str(context["transaction"]["counterparty_selector"]),
                 evidence_hash=authority.credit_account_evidence_hash,
             ),
         ),

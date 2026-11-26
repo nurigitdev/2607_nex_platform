@@ -115,13 +115,15 @@ def test_verified_product_release_profile_is_fail_closed_and_ready(
             "status": "READY",
             "provider_service_id": "nex-eos",
             "adapter_id": "MYBEE.M1.AUTHORITATIVE_TRANSACTION_PREPARATION",
-            "adapter_version": "1.0.0",
+            "adapter_version": "1.1.0",
             "adapter_source_identity": (
                 "mybee:m1-preparation:"
-                "MYBEE.M1.AUTHORITATIVE_TRANSACTION_PREPARATION:1.0.0:"
-                    "sha256:5eef656e73f922c16c39c17808503fc5cae477b00f9c64f832215d7acda8e2fe"
+                "MYBEE.M1.AUTHORITATIVE_TRANSACTION_PREPARATION:1.1.0:"
+                    "sha256:b5bdc013559d09f0487311e62e9a630c66697e9103f3c6a15e23ebdae2b9ee62"
             ),
             "operations": [
+                "BUSINESS.PROPOSAL.CREATE",
+                "BUSINESS.PROPOSAL.GET",
                 "BUSINESS.DOCUMENT_APPROVED.GET",
                 "FINANCE.ACCOUNTING_APPROVAL.REQUEST",
                 "FINANCE.VOUCHER_CANDIDATE.CREATE_V2",
@@ -133,7 +135,7 @@ def test_verified_product_release_profile_is_fail_closed_and_ready(
             "content_included": False,
             "secret_included": False,
             "readiness_hash": (
-                "sha256:72fa3c033aecfdd6cf54118790b0086edcd67cb07ded89d67a50119179d03c6e"
+                "sha256:db71bf9df2ac84fa7dd967d838538c3ac2f31e333b75e8494e7e7a00fcd86b47"
             ),
         },
         "allocation_plan_resolution": {

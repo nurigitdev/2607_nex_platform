@@ -17,6 +17,10 @@ from nex_runtime import (
 )
 
 from nex_ae_api.oa_session_client import OaUserSessionClient
+from nex_ae_api.product_planning_runtime import ProductPlanningRuntimeError
+from nex_ae_api.product_preparation_persistence import (
+    ProductPreparationPersistenceError,
+)
 from nex_ae_api.route_auth import authorize_ae_facade_route_request
 from nex_ae_api.service_auth import (
     AeOutboundServiceTokenError,
@@ -227,6 +231,16 @@ def _register_command(
             payload=payload,
             oa_session_client=oa_session_client,
             session_mode=session_mode,
+            review_authority_kind=(
+                "REQUESTER_VOUCHER_REVIEW"
+                if suffix == "submit-for-accounting"
+                else None
+            ),
+            review_authority_ref=(
+                f"eos.voucher-candidate:{candidate_id}"
+                if suffix == "submit-for-accounting"
+                else None
+            ),
         )
 
     command.__name__ = f"business_voucher_{suffix.replace('-', '_')}"
@@ -244,6 +258,8 @@ def _forward(
     payload: Mapping[str, Any] | None = None,
     oa_session_client: OaUserSessionClient | None,
     session_mode: str | None,
+    review_authority_kind: str | None = None,
+    review_authority_ref: str | None = None,
 ):
     auth = authorize_ae_facade_route_request(
         request,
@@ -283,6 +299,32 @@ def _forward(
             detail=exc.detail,
             retryable=exc.retryable,
         )
+    if review_authority_kind is not None and review_authority_ref is not None:
+        admission = getattr(request.app.state, "ae_product_review_events", None)
+        if admission is not None:
+            try:
+                admission.ingest(
+                    tenant_id=auth.browser_context.tenant_id,
+                    requester_ref=auth.browser_context.user_id,
+                    authority_kind=review_authority_kind,
+                    authority_ref=review_authority_ref,
+                    receipt=body,
+                )
+            except (
+                ProductPlanningRuntimeError,
+                ProductPreparationPersistenceError,
+            ) as exc:
+                error_code = str(
+                    getattr(exc, "error_code", "ae.product_review_resume_failed")
+                )
+                return problem_response(
+                    request,
+                    status_code=503 if bool(getattr(exc, "retryable", False)) else 409,
+                    error_code=error_code,
+                    title="AE Product review resume failed",
+                    detail=str(getattr(exc, "detail", "Product review resume failed.")),
+                    retryable=bool(getattr(exc, "retryable", False)),
+                )
     return JSONResponse(dict(body), status_code=status_code)
 
 

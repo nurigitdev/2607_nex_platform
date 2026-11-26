@@ -95,6 +95,133 @@ class NexBusinessApprovalClient:
         _require_case_binding(receipt, proposal)
         return receipt
 
+    def create_draft(
+        self,
+        proposal: BusinessProposalForm,
+        *,
+        revision_id: str,
+        transaction_type: str,
+    ) -> Mapping[str, Any]:
+        response = self._transport.send(
+            BusinessApprovalProviderRequest(
+                method="POST",
+                path="/internal/v2/business-proposals",
+                operation_id="BUSINESS.PROPOSAL.CREATE",
+                tenant_id=proposal.tenant_id,
+                subject_id=proposal.requester_subject_id,
+                payload={
+                    "proposal_id": proposal.proposal_id,
+                    "revision_id": revision_id,
+                    "company_id": proposal.company_id,
+                    "document_type": proposal.document_type,
+                    "work_code": proposal.work_code,
+                    "title": proposal.title,
+                    "purpose": proposal.purpose,
+                    "business_justification": proposal.business_justification,
+                    "transaction_type": transaction_type,
+                    "requested_amount": _money_text(proposal.requested_amount),
+                    "original_currency": proposal.currency,
+                    "valid_from": _timestamp(proposal.valid_from),
+                    "valid_until": (
+                        _timestamp(proposal.valid_until)
+                        if proposal.valid_until is not None
+                        else None
+                    ),
+                    "scope_type": proposal.scope_type,
+                    "project_ids": list(proposal.project_ids),
+                    "project_codes": list(proposal.project_codes),
+                    "attachment_manifest": [
+                        {
+                            "object_ref": item.object_ref,
+                            "size": item.size_bytes,
+                            "media_type": item.media_type,
+                            "content_hash": item.content_hash,
+                        }
+                        for item in proposal.attachments
+                    ],
+                },
+            )
+        )
+        return _admit_proposal_projection(
+            response,
+            proposal=proposal,
+            expected_transaction_type=transaction_type,
+            expected_states={"DRAFT"},
+        )
+
+    def get_proposal(
+        self,
+        *,
+        tenant_id: str,
+        subject_id: str,
+        proposal_id: str,
+        expected_states: set[str] | frozenset[str],
+    ) -> Mapping[str, Any]:
+        response = self._transport.send(
+            BusinessApprovalProviderRequest(
+                method="GET",
+                path=f"/internal/v2/business-proposals/{proposal_id}",
+                operation_id="BUSINESS.PROPOSAL.GET",
+                tenant_id=tenant_id,
+                subject_id=subject_id,
+            )
+        )
+        return _admit_proposal_projection(
+            response,
+            tenant_id=tenant_id,
+            subject_id=subject_id,
+            proposal_id=proposal_id,
+            expected_states=expected_states,
+        )
+
+    def get_approved_document_for_proposal(
+        self,
+        *,
+        proposal: Mapping[str, Any],
+        envelope_id: str,
+    ) -> Mapping[str, Any]:
+        tenant_id = str(proposal.get("tenant_id") or "")
+        subject_id = str(proposal.get("requester_subject_id") or "")
+        proposal_id = str(proposal.get("proposal_id") or "")
+        response = self._transport.send(
+            BusinessApprovalProviderRequest(
+                method="GET",
+                path=f"/internal/v2/approved-documents/{envelope_id}",
+                operation_id="BUSINESS.DOCUMENT_APPROVED.GET",
+                tenant_id=tenant_id,
+                subject_id=subject_id,
+            )
+        )
+        envelope = admit_approved_document_envelope(
+            response,
+            tenant_id=tenant_id,
+            envelope_id=envelope_id,
+        )
+        revision = proposal.get("current_revision")
+        if not isinstance(revision, Mapping):
+            raise BusinessApprovalConsumerError(
+                "MYBEE_PROPOSAL_PROJECTION_INVALID",
+                "EOS proposal projection lacks its submitted revision",
+                status_code=502,
+            )
+        expected = {
+            "approved_document_id": proposal_id,
+            "document_revision": int(proposal.get("submitted_revision_no") or 0),
+            "document_type": revision.get("document_type"),
+            "work_code": revision.get("work_code"),
+            "document_content_hash": revision.get("content_hash"),
+            "attachment_manifest_hash": revision.get("attachment_manifest_hash"),
+            "approved_amount": str(revision.get("requested_amount")),
+            "approved_currency": revision.get("original_currency"),
+        }
+        if any(str(envelope.get(key)) != str(value) for key, value in expected.items()):
+            raise BusinessApprovalConsumerError(
+                "MYBEE_PROPOSAL_ENVELOPE_BINDING_MISMATCH",
+                "EOS approved document does not bind the submitted proposal revision",
+                status_code=409,
+            )
+        return envelope
+
     def get_approved_document(
         self,
         proposal: BusinessProposalForm,
@@ -310,6 +437,87 @@ def _require_envelope_binding(
             "EOS approved document does not bind the exact proposal revision",
             status_code=409,
         )
+
+
+def _admit_proposal_projection(
+    value: object,
+    *,
+    expected_states: set[str] | frozenset[str],
+    proposal: BusinessProposalForm | None = None,
+    expected_transaction_type: str | None = None,
+    tenant_id: str | None = None,
+    subject_id: str | None = None,
+    proposal_id: str | None = None,
+) -> Mapping[str, Any]:
+    if not isinstance(value, Mapping):
+        raise BusinessApprovalConsumerError(
+            "MYBEE_PROPOSAL_PROJECTION_INVALID",
+            "EOS returned an invalid proposal projection",
+            status_code=502,
+            retryable=True,
+        )
+    result = dict(value)
+    expected_tenant = proposal.tenant_id if proposal is not None else str(tenant_id or "")
+    expected_subject = (
+        proposal.requester_subject_id if proposal is not None else str(subject_id or "")
+    )
+    expected_proposal = (
+        proposal.proposal_id if proposal is not None else str(proposal_id or "")
+    )
+    revision = result.get("current_revision")
+    if (
+        result.get("tenant_id") != expected_tenant
+        or result.get("requester_subject_id") != expected_subject
+        or result.get("proposal_id") != expected_proposal
+        or result.get("state") not in expected_states
+        or not isinstance(revision, Mapping)
+        or int(result.get("current_revision_no") or 0) <= 0
+        or int(result.get("version") or 0) <= 0
+    ):
+        raise BusinessApprovalConsumerError(
+            "MYBEE_PROPOSAL_PROJECTION_BINDING_MISMATCH",
+            "EOS proposal projection differs from the requested owner scope",
+            status_code=409,
+        )
+    if proposal is not None:
+        expected = {
+            "document_type": proposal.document_type,
+            "work_code": proposal.work_code,
+            "title": proposal.title,
+            "purpose": proposal.purpose,
+            "business_justification": proposal.business_justification,
+            "transaction_type": expected_transaction_type,
+            "requested_amount": _money_text(proposal.requested_amount),
+            "original_currency": proposal.currency,
+            "valid_from": _timestamp(proposal.valid_from),
+            "valid_until": (
+                _timestamp(proposal.valid_until)
+                if proposal.valid_until is not None
+                else None
+            ),
+            "scope_type": proposal.scope_type,
+            "project_ids": sorted(proposal.project_ids),
+            "project_codes": sorted(proposal.project_codes),
+            "attachment_manifest": [
+                {
+                    "object_ref": item.object_ref,
+                    "size": item.size_bytes,
+                    "media_type": item.media_type,
+                    "content_hash": item.content_hash,
+                }
+                for item in proposal.attachments
+            ],
+        }
+        if any(
+            revision.get(field) != value
+            for field, value in expected.items()
+        ) or not str(revision.get("content_hash") or "").startswith("sha256:"):
+            raise BusinessApprovalConsumerError(
+                "MYBEE_PROPOSAL_DRAFT_BINDING_MISMATCH",
+                "EOS proposal draft differs from the submitted draft",
+                status_code=409,
+            )
+    return result
 
 
 def _money_text(value: object) -> str:

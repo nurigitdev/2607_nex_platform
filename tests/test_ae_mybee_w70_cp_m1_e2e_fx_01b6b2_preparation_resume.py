@@ -247,6 +247,46 @@ class _PreparationAdapter:
         )
 
 
+class _ReviewPreparationAdapter(_PreparationAdapter):
+    def begin_proposal(self, **values):
+        self.calls.append(("PROPOSAL_DRAFT", None))
+        return _preparation(
+            "WAITING_PROPOSAL_REVIEW",
+            values["business_context_hash"],
+            {"proposal_review_ref": "eos.business-proposal:proposal-100"},
+        )
+
+    def continue_after_proposal_review(self, **values):
+        self.calls.append(("PROPOSAL_SUBMIT", None))
+        return _preparation(
+            "WAITING_BUSINESS_APPROVAL",
+            values["business_context_hash"],
+            {"business_approval_case_id": "business-case-100"},
+        )
+
+    def continue_after_business_approval(self, **values):
+        self.calls.append(("BUSINESS", values["envelope_id"]))
+        return _preparation(
+            "WAITING_VOUCHER_REVIEW",
+            values["business_context_hash"],
+            {
+                "candidate_id": CANDIDATE_ID,
+                "voucher_review_ref": f"eos.voucher-candidate:{CANDIDATE_ID}",
+            },
+        )
+
+    def continue_after_voucher_review(self, **values):
+        self.calls.append(("VOUCHER_SUBMIT", values["candidate_id"]))
+        return _preparation(
+            "WAITING_ACCOUNTING_APPROVAL",
+            values["business_context_hash"],
+            {
+                "candidate_id": values["candidate_id"],
+                "accounting_approval_case_id": "accounting-case-100",
+            },
+        )
+
+
 def _preparation(stage: str, context_hash: str, references: dict) -> dict:
     value = {
         "schema_version": "nex.mybee.m1-transaction-preparation.v1",
@@ -340,7 +380,12 @@ def _inputs():
     return work_intent, context, snapshot, {"execution_id": EXECUTION_ID}
 
 
-def _coordinator(*, authority_source=None, planning_policy=DETERMINISTIC_POLICY):
+def _coordinator(
+    *,
+    authority_source=None,
+    planning_policy=DETERMINISTIC_POLICY,
+    adapter=None,
+):
     capabilities = load_product_capability_registry(
         {
             "NEX_AE_PRODUCT_CAPABILITY_REGISTRY_PATH": str(
@@ -349,10 +394,10 @@ def _coordinator(*, authority_source=None, planning_policy=DETERMINISTIC_POLICY)
             )
         }
     )
-    adapter = _PreparationAdapter()
+    selected_adapter = adapter or _PreparationAdapter()
     registration = build_m1_product_planning_coordinator_registration(
         product_capabilities=capabilities,
-        preparation_registration=adapter.registration,
+        preparation_registration=selected_adapter.registration,
         planning_policy=planning_policy,
     )
     checkpoints = _CheckpointRepository()
@@ -360,13 +405,13 @@ def _coordinator(*, authority_source=None, planning_policy=DETERMINISTIC_POLICY)
     source = authority_source or _AuthoritySource()
     coordinator = InstalledM1ProductPlanningCoordinator(
         registration=registration,
-        transaction_preparation=SimpleNamespace(adapter=adapter),
+        transaction_preparation=SimpleNamespace(adapter=selected_adapter),
         authority_source=source,
         checkpoints=checkpoints,
         wait_events=waits,
         clock=lambda: NOW,
     )
-    return coordinator, adapter, source, checkpoints, waits
+    return coordinator, selected_adapter, source, checkpoints, waits
 
 
 def _planning_proposal(registration, work_intent, context):
@@ -498,6 +543,104 @@ def test_6b2_reaches_ready_through_two_fresh_authority_resumes() -> None:
         ("BUSINESS", ENVELOPE_ID),
         ("ACCOUNTING", EVIDENCE_ID),
     ]
+
+
+def test_6a_review_aware_coordinator_stops_and_resumes_at_four_boundaries() -> None:
+    coordinator, adapter, source, checkpoints, waits = _coordinator(
+        adapter=_ReviewPreparationAdapter()
+    )
+    work_intent, context, snapshot, execution = _inputs()
+    values = {
+        "work_intent": work_intent,
+        "agent_context": context,
+        "capability_snapshot": snapshot,
+        "execution": execution,
+    }
+    current = coordinator.begin(**values)
+    assert current["checkpoint"]["stage"] == "WAITING_PROPOSAL_REVIEW"
+
+    transitions = (
+        (
+            "proposal-submitted-6a",
+            "eos.business-proposal:proposal-100",
+            "WAITING_BUSINESS_APPROVAL",
+        ),
+        ("business-approved-6a", ENVELOPE_ID, "WAITING_VOUCHER_REVIEW"),
+        (
+            "voucher-submitted-6a",
+            f"eos.voucher-candidate:{CANDIDATE_ID}",
+            "WAITING_ACCOUNTING_APPROVAL",
+        ),
+        ("accounting-approved-6a", EVIDENCE_ID, "READY_FOR_D04"),
+    )
+    for event_id, evidence_ref, expected_stage in transitions:
+        _notify(
+            coordinator,
+            current["checkpoint"],
+            event_id=event_id,
+            evidence_ref=evidence_ref,
+        )
+        runtime_job_id = _match(waits, event_id=event_id)
+        current = coordinator.resume_approval(
+            event_id=event_id,
+            runtime_job_id=runtime_job_id,
+            **values,
+        )
+        assert current["checkpoint"]["stage"] == expected_stage
+
+    assert current["ready"] is True
+    assert current["checkpoint"]["checkpoint_version"] == 5
+    assert len(checkpoints.records) == 5
+    assert len(waits.waits) == 4
+    assert source.calls == [
+        None,
+        "WAITING_PROPOSAL_REVIEW",
+        "WAITING_BUSINESS_APPROVAL",
+        "WAITING_VOUCHER_REVIEW",
+        "WAITING_ACCOUNTING_APPROVAL",
+    ]
+    assert adapter.calls == [
+        ("PROPOSAL_DRAFT", None),
+        ("PROPOSAL_SUBMIT", None),
+        ("BUSINESS", ENVELOPE_ID),
+        ("VOUCHER_SUBMIT", CANDIDATE_ID),
+        ("ACCOUNTING", EVIDENCE_ID),
+    ]
+
+
+def test_6a_requester_review_wait_rejects_rejected_authority_state() -> None:
+    coordinator, adapter, _source, checkpoints, waits = _coordinator(
+        adapter=_ReviewPreparationAdapter()
+    )
+    work_intent, context, snapshot, execution = _inputs()
+    values = {
+        "work_intent": work_intent,
+        "agent_context": context,
+        "capability_snapshot": snapshot,
+        "execution": execution,
+    }
+    waiting = coordinator.begin(**values)
+    _notify(
+        coordinator,
+        waiting["checkpoint"],
+        event_id="proposal-review-rejected-6a",
+        evidence_ref="eos.business-proposal:proposal-100",
+        authority_state="REJECTED",
+    )
+    runtime_job_id = _match(waits, event_id="proposal-review-rejected-6a")
+
+    with pytest.raises(
+        M1ProductPreparationCoordinatorError,
+        match="Requester review submission cannot be rejected",
+    ):
+        coordinator.resume_approval(
+            event_id="proposal-review-rejected-6a",
+            runtime_job_id=runtime_job_id,
+            **values,
+        )
+
+    assert len(checkpoints.records) == 1
+    assert adapter.calls == [("PROPOSAL_DRAFT", None)]
 
 
 def test_business_resume_requires_canonical_approved_document_envelope_ref() -> None:

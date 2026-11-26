@@ -47,10 +47,20 @@ _PREPARATION_REF_KIND = "M1_PREPARATION_CHECKPOINT"
 _PROPOSAL_REF_KIND = "PRODUCT_PLANNING_PROPOSAL"
 _FALLBACK_REF_KIND = "PRODUCT_PLANNING_FALLBACK"
 _STAGES = {
+    "WAITING_PROPOSAL_REVIEW": (
+        "REQUESTER_PROPOSAL_REVIEW",
+        "PROPOSAL_REVIEW_SUBMITTED",
+        "proposal_review_ref",
+    ),
     "WAITING_BUSINESS_APPROVAL": (
         "BUSINESS_FORMAL",
         "BUSINESS_APPROVAL_CHANGED",
         "business_approval_case_id",
+    ),
+    "WAITING_VOUCHER_REVIEW": (
+        "REQUESTER_VOUCHER_REVIEW",
+        "VOUCHER_REVIEW_SUBMITTED",
+        "voucher_review_ref",
     ),
     "WAITING_ACCOUNTING_APPROVAL": (
         "ACCOUNTING_REVIEW",
@@ -302,6 +312,11 @@ class InstalledM1ProductPlanningCoordinator:
         )
         authority_state = _authority_state(payload.get("authority_state", "APPROVED"))
         if authority_state == "REJECTED":
+            if previous["stage"] in {
+                "WAITING_PROPOSAL_REVIEW",
+                "WAITING_VOUCHER_REVIEW",
+            }:
+                raise _conflict("Requester review submission cannot be rejected.")
             advanced = _terminal_preparation(
                 preparation,
                 terminal_stage=_rejection_terminal_state(self.registration),
@@ -323,13 +338,33 @@ class InstalledM1ProductPlanningCoordinator:
             execution=execution,
             checkpoint=previous,
         )
-        if previous["stage"] == "WAITING_BUSINESS_APPROVAL":
+        if previous["stage"] == "WAITING_PROPOSAL_REVIEW":
+            advanced = self._preparation.adapter.continue_after_proposal_review(
+                business_request_context=work_intent["business_request_context"],
+                business_context_hash=work_intent["business_context_hash"],
+                authority=authority,
+                parent_execution_id=lineage["agent_execution_id"],
+            )
+        elif previous["stage"] == "WAITING_BUSINESS_APPROVAL":
             advanced = self._preparation.adapter.continue_after_business_approval(
                 business_request_context=work_intent["business_request_context"],
                 business_context_hash=work_intent["business_context_hash"],
                 authority=authority,
                 parent_execution_id=lineage["agent_execution_id"],
                 envelope_id=_approved_document_envelope_ref(evidence_ref),
+            )
+        elif previous["stage"] == "WAITING_VOUCHER_REVIEW":
+            candidate_id = _text(
+                preparation["references"].get("candidate_id"),
+                "candidate_id",
+                512,
+            )
+            advanced = self._preparation.adapter.continue_after_voucher_review(
+                business_request_context=work_intent["business_request_context"],
+                business_context_hash=work_intent["business_context_hash"],
+                authority=authority,
+                parent_execution_id=lineage["agent_execution_id"],
+                candidate_id=candidate_id,
             )
         else:
             candidate_id = _text(

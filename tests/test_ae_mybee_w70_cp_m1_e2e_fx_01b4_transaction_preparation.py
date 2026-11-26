@@ -120,6 +120,41 @@ class _BusinessApprovals:
     def __init__(self) -> None:
         self.semantics_by_key: dict[str, str] = {}
         self.proposals = []
+        self.review_proposal = None
+
+    def create_draft(self, proposal, *, revision_id, transaction_type):
+        self.review_proposal = {
+            "tenant_id": proposal.tenant_id,
+            "proposal_id": proposal.proposal_id,
+            "requester_subject_id": proposal.requester_subject_id,
+            "state": "DRAFT",
+            "version": 1,
+            "current_revision_no": 1,
+            "submitted_revision_no": None,
+            "approval_case_id": None,
+            "approved_envelope_id": None,
+            "current_revision": {
+                "revision_id": revision_id,
+                "revision_no": 1,
+                "document_type": proposal.document_type,
+                "work_code": proposal.work_code,
+                "purpose": proposal.purpose,
+                "transaction_type": transaction_type,
+                "requested_amount": "2450.0000",
+                "original_currency": "USD",
+                "content_hash": proposal.document_content_hash,
+                "attachment_manifest_hash": proposal.attachment_manifest_hash,
+            },
+        }
+        return copy.deepcopy(self.review_proposal)
+
+    def get_proposal(self, **kwargs):
+        assert self.review_proposal is not None
+        assert self.review_proposal["state"] in kwargs["expected_states"]
+        return copy.deepcopy(self.review_proposal)
+
+    def get_approved_document_for_proposal(self, *, proposal, envelope_id):
+        return self._approved_document(proposal, envelope_id=envelope_id)
 
     def submit(self, proposal, **kwargs):
         semantic = semantic_sha256_hash_ref(
@@ -186,6 +221,47 @@ class _BusinessApprovals:
             "created_at": (NOW + timedelta(hours=1)).isoformat(),
         }
 
+    def _approved_document(self, proposal, *, envelope_id):
+        revision = proposal["current_revision"]
+        return {
+            "schema_version": "eos_approved_document_envelope.v2",
+            "tenant_id": TENANT,
+            "envelope_id": envelope_id,
+            "company_id": COMPANY_ID,
+            "approved_document_id": proposal["proposal_id"],
+            "document_revision": proposal["submitted_revision_no"],
+            "document_type": revision["document_type"],
+            "work_code": revision["work_code"],
+            "document_content_hash": revision["content_hash"],
+            "attachment_manifest_hash": revision["attachment_manifest_hash"],
+            "business_approval_proof_id": str(uuid.uuid4()),
+            "business_proof_hash": HASH_C,
+            "approval_policy_id": BUSINESS_POLICY_ID,
+            "approval_policy_version": 3,
+            "approval_policy_hash": HASH_A,
+            "scope_type": "PROJECT_SET",
+            "project_set_hash": HASH_B,
+            "allowed_project_ids": [PROJECT_A_ID, PROJECT_B_ID],
+            "allowed_project_codes": ["VO00D260101", "VO00D260102"],
+            "approved_amount": revision["requested_amount"],
+            "approved_currency": revision["original_currency"],
+            "remaining_amount": revision["requested_amount"],
+            "tolerance_policy_hash": None,
+            "valid_from": NOW.isoformat(),
+            "valid_until": (NOW + timedelta(days=30)).isoformat(),
+            "state": "ACTIVE",
+            "usable": True,
+            "approved_at": (NOW + timedelta(hours=1)).isoformat(),
+            "approved_by_principal_ref": {
+                "type": "oa.user",
+                "id": "approver-business",
+            },
+            "source_work_item_ref": "wc.approval-work-item:m1-business",
+            "payload_hash": HASH_A,
+            "created_business_operation_id": str(uuid.uuid4()),
+            "created_at": (NOW + timedelta(hours=1)).isoformat(),
+        }
+
 
 class _VoucherCandidates:
     def __init__(self) -> None:
@@ -193,7 +269,10 @@ class _VoucherCandidates:
 
     def create(self, draft, **_kwargs):
         self.drafts.append(draft)
-        return {"candidate_ref": {"id": CANDIDATE_ID}}
+        return {
+            "candidate_ref": {"id": CANDIDATE_ID},
+            "revision_ref": {"revision_no": 1, "hash": HASH_A},
+        }
 
     def validate(self, _draft, _created, *, as_of):
         assert as_of == NOW
@@ -216,12 +295,15 @@ class _VoucherCandidates:
 
     def get_review(self, **_kwargs):
         return {
+            "state": "READY_FOR_REVIEW",
             "candidate_version": 2,
             "current_revision_no": 1,
             "events": [
                 {
                     "transition_kind": "SUBMIT",
                     "candidate_hash": HASH_A,
+                    "validation_hash": HASH_B,
+                    "approval_case_id": ACCOUNTING_POLICY_ID,
                 }
             ],
         }
@@ -251,6 +333,74 @@ def _adapter():
         vouchers,
     )
     return adapter, business, vouchers
+
+
+def _review_adapter():
+    business = _BusinessApprovals()
+    vouchers = _VoucherCandidates()
+    adapter = M1TransactionPreparationAdapter(
+        load_m1_transaction_preparation_registration(),
+        business,
+        vouchers,
+        review_boundaries_enabled=True,
+    )
+    return adapter, business, vouchers
+
+
+def test_6a_review_aware_adapter_stops_at_both_requester_boundaries() -> None:
+    adapter, business, vouchers = _review_adapter()
+    context = _context()
+    authority = _authority()
+
+    proposal_wait = adapter.begin_proposal(
+        business_request_context=context,
+        business_context_hash=context["context_hash"],
+        authority=authority,
+        parent_execution_id=EXECUTION_ID,
+    )
+    assert proposal_wait["stage"] == "WAITING_PROPOSAL_REVIEW"
+    assert proposal_wait["references"]["proposal_review_ref"].startswith(
+        "eos.business-proposal:"
+    )
+
+    business.review_proposal.update(
+        state="SUBMITTED",
+        submitted_revision_no=1,
+        approval_case_id=BUSINESS_POLICY_ID,
+    )
+    business_wait = adapter.continue_after_proposal_review(
+        business_request_context=context,
+        business_context_hash=context["context_hash"],
+        authority=authority,
+        parent_execution_id=EXECUTION_ID,
+    )
+    assert business_wait["stage"] == "WAITING_BUSINESS_APPROVAL"
+
+    business.review_proposal.update(
+        state="APPROVED",
+        approved_envelope_id=ENVELOPE_ID,
+    )
+    voucher_wait = adapter.continue_after_business_approval(
+        business_request_context=context,
+        business_context_hash=context["context_hash"],
+        authority=authority,
+        parent_execution_id=EXECUTION_ID,
+        envelope_id=ENVELOPE_ID,
+    )
+    assert voucher_wait["stage"] == "WAITING_VOUCHER_REVIEW"
+    assert len(vouchers.drafts) == 1
+
+    accounting_wait = adapter.continue_after_voucher_review(
+        business_request_context=context,
+        business_context_hash=context["context_hash"],
+        authority=authority,
+        parent_execution_id=EXECUTION_ID,
+        candidate_id=CANDIDATE_ID,
+    )
+    assert accounting_wait["stage"] == "WAITING_ACCOUNTING_APPROVAL"
+    assert accounting_wait["references"]["accounting_approval_case_id"] == (
+        ACCOUNTING_POLICY_ID
+    )
 
 
 def test_01b4_installed_registry_and_authority_back_exact_replay() -> None:

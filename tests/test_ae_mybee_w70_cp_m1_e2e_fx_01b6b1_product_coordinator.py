@@ -159,7 +159,9 @@ def test_m1_registration_is_exact_capability_bound_and_contract_only() -> None:
     assert first.activation_status == "CONTRACT_ONLY"
     assert first.initial_state == "PREPARATION_PENDING"
     assert first.waiting_states == (
+        "WAITING_PROPOSAL_REVIEW",
         "WAITING_BUSINESS_APPROVAL",
+        "WAITING_VOUCHER_REVIEW",
         "WAITING_ACCOUNTING_APPROVAL",
     )
     assert first.ready_state == "READY_FOR_D04"
@@ -185,7 +187,7 @@ def test_m1_registration_is_exact_capability_bound_and_contract_only() -> None:
         == "deployment-lock://ae-mybee-m1-signed-skill-checkpoint.v3"
         for item in first.installed_skill_bundle_locks
     )
-    assert registry.registry_version == 3
+    assert registry.registry_version == 4
     assert (
         registry.resolve(
             first.capability_id,

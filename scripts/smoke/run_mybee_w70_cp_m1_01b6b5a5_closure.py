@@ -41,7 +41,7 @@ DEFAULT_REPORT = Path(
 )
 SCHEMA_VERSION = "mybee.w70_cp_m1_01b6b5a5_protected_gate.v1"
 PRODUCT_CAPABILITY_REGISTRY = (
-    ROOT / "deployment/environments/ae-product-capability-registry.mybee-m1.v4.json"
+    ROOT / "deployment/environments/ae-product-capability-registry.mybee-m1.v5.json"
 )
 
 PROTECTED_TESTS = (
@@ -132,11 +132,11 @@ def run_gate(
         environ={
             "NEX_AE_PRODUCT_COORDINATOR_ACTIVATION_PATH": str(
                 repository_root / "deployment/locks/"
-                "ae-mybee-m1-product-coordinator-activation.v4.json"
+                "ae-mybee-m1-product-coordinator-activation.v5.json"
             ),
             "NEX_AE_PRODUCT_COORDINATOR_ROLLBACK_PATH": str(
                 repository_root / "deployment/locks/"
-                "ae-mybee-m1-product-coordinator-rollback.v4.json"
+                "ae-mybee-m1-product-coordinator-rollback.v5.json"
             ),
         },
         repository_root=repository_root,

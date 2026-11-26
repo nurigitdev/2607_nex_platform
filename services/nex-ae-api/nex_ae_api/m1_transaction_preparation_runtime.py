@@ -78,6 +78,7 @@ def build_installed_m1_transaction_preparation(
             registration=load_m1_transaction_preparation_registration(),
             business_approvals=business_approvals,
             voucher_candidates=voucher_candidates,
+            review_boundaries_enabled=True,
         )
     except Exception as exc:
         if isinstance(exc, InstalledM1TransactionPreparationError):

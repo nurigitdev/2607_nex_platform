@@ -16,6 +16,7 @@ from nex_ae_api.business_proposal_facade import (
     build_default_eos_business_proposal_client,
     register_business_proposal_facade_routes,
 )
+from nex_ae_api.product_planning_runtime import ProductPlanningRuntimeError
 from nex_runtime import issue_mock_user_token
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -34,15 +35,33 @@ class FakeEosClient:
         return {"schema_version": "test.v1", "items": []}, self.status_code
 
 
+@dataclass
+class FakeReviewAdmission:
+    error: ProductPlanningRuntimeError | None = None
+    calls: list[dict[str, Any]] = field(default_factory=list)
+
+    def ingest(self, **values):
+        self.calls.append(values)
+        if self.error is not None:
+            raise self.error
+        return {"matched": True}
+
+
 def _headers() -> dict[str, str]:
     token = issue_mock_user_token(tenant_id="VO00", user_id="employee-8101")
     return {"Authorization": f"Bearer {token.access_token}"}
 
 
-def _client(source: FakeEosClient | None = None) -> tuple[TestClient, FakeEosClient]:
+def _client(
+    source: FakeEosClient | None = None,
+    *,
+    review_admission: FakeReviewAdmission | None = None,
+) -> tuple[TestClient, FakeEosClient]:
     app = FastAPI()
     client = source or FakeEosClient()
     register_business_proposal_facade_routes(app, eos_client=client)
+    if review_admission is not None:
+        app.state.ae_product_review_events = review_admission
     return TestClient(app), client
 
 
@@ -83,6 +102,44 @@ def test_facade_forwards_filters_and_all_three_submission_commands() -> None:
         "select-approval-line",
         "submit",
     ]
+
+
+def test_submit_admits_owner_scoped_product_review_event_and_maps_ack_loss() -> None:
+    review = FakeReviewAdmission()
+    client, _source = _client(review_admission=review)
+
+    submitted = client.post(
+        "/api/v1/business-proposals/proposal-g3:submit",
+        headers=_headers(),
+        json={"effective_at": "2026-11-26T09:00:00Z"},
+    )
+
+    assert submitted.status_code == 200
+    assert review.calls == [
+        {
+            "tenant_id": "VO00",
+            "requester_ref": "employee-8101",
+            "authority_kind": "REQUESTER_PROPOSAL_REVIEW",
+            "authority_ref": "eos.business-proposal:proposal-g3",
+            "receipt": {"schema_version": "test.v1", "items": []},
+        }
+    ]
+
+    unavailable = FakeReviewAdmission(
+        error=ProductPlanningRuntimeError(
+            "ae.product_review_resume_unavailable",
+            "review resume is temporarily unavailable",
+            True,
+        )
+    )
+    retry_client, _source = _client(review_admission=unavailable)
+    failed = retry_client.post(
+        "/api/v1/business-proposals/proposal-g3:submit",
+        headers=_headers(),
+        json={"effective_at": "2026-11-26T09:00:00Z"},
+    )
+    assert failed.status_code == 503
+    assert failed.json()["error_code"] == "ae.product_review_resume_unavailable"
 
 
 def test_facade_rejects_unauthenticated_browser_and_maps_eos_failure() -> None:
