@@ -322,6 +322,31 @@ def test_project_set_case_commits_bindings_publishes_wc_and_replays() -> None:
     assert replay["created"] is False
     assert replay["scoped_approval_case"] == scoped_case
     assert replay["wc_publication"]["created"] is False
+    product_replay = service.replay_accounting_case(
+        tenant_id=TENANT,
+        case_id=CASE_ID,
+        business_operation_id=OPERATION_ID,
+        requester_subject_id="employee-requester",
+        subject_ref="mybee.voucher:voucher-2026-0001",
+        subject_revision=1,
+        subject_hash=SUBJECT_HASH,
+        caller=_caller(),
+    )
+    assert product_replay is not None
+    assert product_replay["created"] is False
+    assert product_replay["wc_publication"]["created"] is False
+    with pytest.raises(EosScopedApprovalError) as changed_replay:
+        service.replay_accounting_case(
+            tenant_id=TENANT,
+            case_id=CASE_ID,
+            business_operation_id=OPERATION_ID,
+            requester_subject_id="different-requester",
+            subject_ref="mybee.voucher:voucher-2026-0001",
+            subject_revision=1,
+            subject_hash=SUBJECT_HASH,
+            caller=_caller(),
+        )
+    assert changed_replay.value.status_code == 409
     assert len(wc.items) == 1
     with sessions() as session:
         assert (

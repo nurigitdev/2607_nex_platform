@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import time
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from datetime import UTC, date, datetime
 from decimal import Decimal
 from pathlib import Path
@@ -72,6 +72,11 @@ PROFILE_POLICY_REF = "policy://nex-platform/project-agent-lifecycle/v1"
 M1_BUSINESS_APPROVAL_POSITION_TYPE = "TEAM_LEAD"
 M1_ACCOUNTING_APPROVAL_POSITION_TYPE = "GROUP_LEAD"
 M1_NSL_WRITE_APPROVER_ROLE = "finance_approver"
+W80_CA00G7_BUSINESS_POSITION_TYPES = (
+    "TEAM_LEAD",
+    "GROUP_LEAD",
+    "CEO",
+)
 M1_APPROVAL_ORG_UNIT_KEYS = {
     "business": "org-business",
     "accounting": "org-accounting",
@@ -245,6 +250,7 @@ def seed_acceptance_authority(
     business_approver_password: str,
     accounting_approver_password: str,
     baseline: Mapping[str, Any] | None = None,
+    business_approver_position_types: Sequence[str] = (),
 ) -> dict[str, Any]:
     data = dict(baseline or load_acceptance_baseline())
     tenant_id = str(data["tenant"]["tenant_id"])
@@ -257,6 +263,7 @@ def seed_acceptance_authority(
             requester_password=requester_password,
             business_approver_password=business_approver_password,
             accounting_approver_password=accounting_approver_password,
+            business_approver_position_types=business_approver_position_types,
         )
         eos = _seed_eos(eos_engine, data)
         return {
@@ -277,6 +284,103 @@ def seed_acceptance_authority(
     finally:
         oa_engine.dispose()
         eos_engine.dispose()
+
+
+def seed_w80_ca00g7_approval_matrix(
+    urls: Mapping[str, str],
+    *,
+    baseline: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Install acceptance-only tier policies before a protected G7 request."""
+    data = dict(baseline or load_acceptance_baseline())
+    tenant_id = str(data["tenant"]["tenant_id"])
+    principal = data["principals"]["business_approver"]
+    oa_engine = create_engine(urls["nex-oa"], poolclass=NullPool)
+    eos_engine = create_engine(urls["nex-eos"], poolclass=NullPool)
+    try:
+        oa_factory = sessionmaker(bind=oa_engine, expire_on_commit=False)
+        subjects = SqlAlchemyOaSubjectRegistry(oa_factory)
+        memberships = SqlAlchemyOaTenantMembershipRegistry(
+            oa_factory, subject_registry=subjects
+        )
+        membership = memberships.get_membership(
+            tenant_id=tenant_id,
+            subject_id=str(principal["subject_id"]),
+        )
+        actual_roles = _membership_roles(membership)
+        missing_roles = set(W80_CA00G7_BUSINESS_POSITION_TYPES) - actual_roles
+        if missing_roles:
+            raise M1ProductAcceptanceSupportError(
+                "W80 CA00G7 business approver role admission is incomplete: "
+                + ",".join(sorted(missing_roles))
+            )
+
+        eos_factory = sessionmaker(bind=eos_engine, expire_on_commit=False)
+        policies = SqlAlchemyEosApprovalPolicyRepository(eos_factory)
+        effective_from = datetime(2026, 1, 1, tzinfo=UTC)
+        tiers = (
+            (
+                "low",
+                None,
+                Decimal("14000000.00"),
+                W80_CA00G7_BUSINESS_POSITION_TYPES[:1],
+            ),
+            (
+                "middle",
+                Decimal("14000000.00"),
+                Decimal("16000000.00"),
+                W80_CA00G7_BUSINESS_POSITION_TYPES[:2],
+            ),
+            (
+                "high",
+                Decimal("16000000.00"),
+                None,
+                W80_CA00G7_BUSINESS_POSITION_TYPES,
+            ),
+        )
+        projections = []
+        for key, minimum, maximum, positions in tiers:
+            projections.append(
+                policies.create_policy(
+                    ApprovalPolicyInput(
+                        tenant_id=tenant_id,
+                        approval_policy_id=_id(f"w80-ca00g7-{key}-policy"),
+                        policy_key=f"mybee.w80.ca00g7.{key}",
+                        name=f"W80 CA00G7 {key} tier approval",
+                        approval_domain="BUSINESS_FORMAL",
+                        effective_from=effective_from,
+                        stages=tuple(
+                            ApprovalPolicyStageInput(position) for position in positions
+                        ),
+                        minimum_amount=minimum,
+                        maximum_amount=maximum,
+                        transaction_type="DOCUMENT_SIGNOFF",
+                    )
+                )
+            )
+        return {
+            "schema_version": "mybee_w80_ca00g7_approval_matrix_seed.v1",
+            "tenant_id": tenant_id,
+            "policy_count": len(projections),
+            "stage_counts": [len(item["stages"]) for item in projections],
+            "thresholds_are_acceptance_data": True,
+            "post_request_mutations": 0,
+        }
+    finally:
+        oa_engine.dispose()
+        eos_engine.dispose()
+
+
+def _membership_roles(snapshot: Mapping[str, Any] | None) -> set[str]:
+    if snapshot is None:
+        return set()
+    membership = snapshot.get("membership")
+    if not isinstance(membership, Mapping):
+        return set()
+    roles = membership.get("roles")
+    if not isinstance(roles, list):
+        return set()
+    return {str(role) for role in roles}
 
 
 def wait_for_installed_authority(
@@ -346,6 +450,7 @@ def _seed_oa(
     requester_password: str,
     business_approver_password: str,
     accounting_approver_password: str,
+    business_approver_position_types: Sequence[str] = (),
 ) -> None:
     factory = sessionmaker(bind=engine, expire_on_commit=False)
     subjects = SqlAlchemyOaSubjectRegistry(factory)
@@ -361,8 +466,16 @@ def _seed_oa(
         "business_approver": business_approver_password,
         "accounting_approver": accounting_approver_password,
     }
+    business_roles = tuple(
+        dict.fromkeys(
+            (
+                M1_BUSINESS_APPROVAL_POSITION_TYPE,
+                *business_approver_position_types,
+            )
+        )
+    )
     approval_roles = {
-        "business_approver": (M1_BUSINESS_APPROVAL_POSITION_TYPE,),
+        "business_approver": business_roles,
         "accounting_approver": (
             M1_ACCOUNTING_APPROVAL_POSITION_TYPE,
             M1_NSL_WRITE_APPROVER_ROLE,

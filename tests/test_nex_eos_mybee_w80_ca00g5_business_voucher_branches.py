@@ -79,9 +79,12 @@ def _service(*, candidate=None, envelope=None, project=None, account=None):
     return drafts.EosBusinessVoucherDraftService(
         coordinator=SimpleNamespace(),
         candidates=SimpleNamespace(get=lambda **_kwargs: candidate),
+        candidate_reviews=SimpleNamespace(),
         create_service=SimpleNamespace(),
         validation_service=SimpleNamespace(),
-        scoped_approvals=SimpleNamespace(),
+        scoped_approvals=SimpleNamespace(
+            replay_accounting_case=lambda **_kwargs: None
+        ),
         approval_policies=SimpleNamespace(),
         approved_documents=SimpleNamespace(get=lambda **_kwargs: envelope),
         projects=SimpleNamespace(get_project_by_code=lambda **_kwargs: project),
@@ -191,6 +194,7 @@ def test_list_stale_submit_and_missing_policy_are_explicit() -> None:
             candidate_id=candidate_id,
             payload={
                 "confirmed": True,
+                "client_command_id": "00000000-0000-4000-8000-000000000003",
                 "expected_version": 1,
                 "expected_revision": 2,
                 "expected_candidate_hash": candidate_hash,
@@ -212,6 +216,7 @@ def test_list_stale_submit_and_missing_policy_are_explicit() -> None:
             candidate_id=candidate_id,
             payload={
                 "confirmed": True,
+                "client_command_id": "00000000-0000-4000-8000-000000000004",
                 "expected_version": 2,
                 "expected_revision": 2,
                 "expected_candidate_hash": candidate_hash,
@@ -251,3 +256,118 @@ def test_revision_requires_a_real_business_transaction() -> None:
             },
         )
     assert error.value.error_code == "EOS_BUSINESS_VOUCHER_TRANSACTION_REQUIRED"
+
+
+@pytest.mark.parametrize(
+    ("state", "expected_method", "expects_return_event"),
+    [
+        ("DRAFT", "append_draft_revision_in_session", False),
+        ("RETURNED_FOR_CORRECTION", "append_revision_in_session", True),
+    ],
+)
+def test_revision_uses_state_specific_immutable_append_path(
+    state, expected_method, expects_return_event
+) -> None:
+    candidate_id = "00000000-0000-4000-8000-000000000001"
+    envelope_id = "00000000-0000-4000-8000-000000000002"
+    candidate_hash = "sha256:" + "b" * 64
+    candidate = {
+        "preparer_subject_id": "employee-1",
+        "state": state,
+        "document_envelope_id": envelope_id,
+    }
+    service = _service(
+        candidate=candidate,
+        envelope={"usable": True, "remaining_amount": "1000"},
+        account={"account_id": "account-1"},
+    )
+    calls = []
+    service._coordinator = SimpleNamespace(
+        execute=lambda _request, mutation: mutation(object())
+    )
+    service._candidate_reviews = SimpleNamespace(
+        require_latest_return_event_in_session=lambda *_args, **kwargs: calls.append(
+            ("return_event", kwargs["candidate_revision"])
+        )
+    )
+
+    def append(method):
+        def invoke(_session, value):
+            calls.append((method, value.expected_revision_no))
+            return {
+                "revision": {
+                    "revision_no": 2,
+                    "candidate_hash": "sha256:" + "c" * 64,
+                }
+            }
+
+        return invoke
+
+    service._candidates.append_draft_revision_in_session = append(
+        "append_draft_revision_in_session"
+    )
+    service._candidates.append_revision_in_session = append(
+        "append_revision_in_session"
+    )
+    service.get_owner = lambda **_kwargs: {"state": "DRAFT"}
+
+    result = service.revise(
+        tenant_id="VO00",
+        subject_id="employee-1",
+        candidate_id=candidate_id,
+        payload={
+            "client_command_id": "00000000-0000-4000-8000-000000000003",
+            "expected_version": 3,
+            "expected_revision": 1,
+            "expected_candidate_hash": candidate_hash,
+            "recognition_date": "2026-11-26",
+            "lines": [_line(), _line(debit="0", credit="100")],
+        },
+    )
+
+    assert result == {"state": "DRAFT"}
+    assert (expected_method, 1) in calls
+    assert (("return_event", 1) in calls) is expects_return_event
+
+
+def test_returned_revision_requires_immutable_return_evidence() -> None:
+    candidate_id = "00000000-0000-4000-8000-000000000001"
+    service = _service(
+        candidate={
+            "preparer_subject_id": "employee-1",
+            "state": "RETURNED_FOR_CORRECTION",
+            "document_envelope_id": "00000000-0000-4000-8000-000000000002",
+        },
+        envelope={"usable": True, "remaining_amount": "1000"},
+        account={"account_id": "account-1"},
+    )
+    service._coordinator = SimpleNamespace(
+        execute=lambda _request, mutation: mutation(object())
+    )
+
+    def reject(*_args, **_kwargs):
+        raise drafts.EosCandidateReviewError(
+            "EOS_CANDIDATE_REVIEW_CONFLICT",
+            "Candidate correction requires an immutable return event.",
+            status_code=409,
+        )
+
+    service._candidate_reviews = SimpleNamespace(
+        require_latest_return_event_in_session=reject
+    )
+    with pytest.raises(drafts.EosBusinessVoucherDraftError) as error:
+        service.revise(
+            tenant_id="VO00",
+            subject_id="employee-1",
+            candidate_id=candidate_id,
+            payload={
+                "client_command_id": "00000000-0000-4000-8000-000000000003",
+                "expected_version": 3,
+                "expected_revision": 1,
+                "expected_candidate_hash": "sha256:" + "b" * 64,
+                "recognition_date": "2026-11-26",
+                "lines": [_line(), _line(debit="0", credit="100")],
+            },
+        )
+    assert error.value.error_code == "EOS_CANDIDATE_REVIEW_CONFLICT"
+    assert error.value.status_code == 409

@@ -23,6 +23,10 @@ from .business_transactions import (
     EosBusinessOperationRequest,
     EosBusinessTransactionCoordinator,
 )
+from .candidate_review import (
+    EosCandidateReviewError,
+    SqlAlchemyEosCandidateReviewRepository,
+)
 from .candidate_validation import EosCandidateValidationService
 from .projects import SqlAlchemyEosProjectRepository
 from .scoped_approvals import EosScopedApprovalService, scoped_approval_payload_hash
@@ -32,6 +36,7 @@ from .voucher_candidate_commands import (
     voucher_candidate_payload_hash,
 )
 from .voucher_candidates import (
+    EosVoucherCandidateError,
     SqlAlchemyEosVoucherCandidateRepository,
     VoucherCandidateLineInput,
     VoucherCandidateRevisionInput,
@@ -76,6 +81,7 @@ class EosBusinessVoucherDraftService:
         *,
         coordinator: EosBusinessTransactionCoordinator,
         candidates: SqlAlchemyEosVoucherCandidateRepository,
+        candidate_reviews: SqlAlchemyEosCandidateReviewRepository,
         create_service: EosCreateVoucherCandidateService,
         validation_service: EosCandidateValidationService,
         scoped_approvals: EosScopedApprovalService,
@@ -87,6 +93,7 @@ class EosBusinessVoucherDraftService:
     ) -> None:
         self._coordinator = coordinator
         self._candidates = candidates
+        self._candidate_reviews = candidate_reviews
         self._create_service = create_service
         self._validation_service = validation_service
         self._scoped_approvals = scoped_approvals
@@ -200,8 +207,11 @@ class EosBusinessVoucherDraftService:
         payload: Mapping[str, Any],
     ) -> dict[str, Any]:
         candidate = self._require_owner(tenant_id, subject_id, candidate_id)
-        if candidate["state"] != "DRAFT":
-            raise _conflict("Only an unsubmitted DRAFT may be revised.")
+        if candidate["state"] not in {"DRAFT", "RETURNED_FOR_CORRECTION"}:
+            raise _conflict(
+                "Only a DRAFT or returned VoucherCandidate may be revised."
+            )
+        correction_reentry = candidate["state"] == "RETURNED_FOR_CORRECTION"
         command_id = _uuid("client_command_id", payload.get("client_command_id"))
         expected_version = _positive_int("expected_version", payload.get("expected_version"))
         expected_revision = _positive_int(
@@ -235,22 +245,41 @@ class EosBusinessVoucherDraftService:
                     "Voucher draft revision requires a database transaction.",
                     status_code=500,
                 )
-            revised = self._candidates.append_draft_revision_in_session(
-                session,
-                VoucherCandidateRevisionInput(
-                    tenant_id=tenant_id,
-                    candidate_id=candidate_id,
-                    revision_id=str(
-                        uuid5(NAMESPACE_URL, f"{tenant_id}:{command_id}:revision")
-                    ),
-                    expected_candidate_version=expected_version,
-                    expected_revision_no=expected_revision,
-                    expected_candidate_hash=expected_hash,
-                    actor_subject_id=subject_id,
-                    recognition_date=recognition_date,
-                    lines=lines,
+            revision_input = VoucherCandidateRevisionInput(
+                tenant_id=tenant_id,
+                candidate_id=candidate_id,
+                revision_id=str(
+                    uuid5(NAMESPACE_URL, f"{tenant_id}:{command_id}:revision")
                 ),
+                expected_candidate_version=expected_version,
+                expected_revision_no=expected_revision,
+                expected_candidate_hash=expected_hash,
+                actor_subject_id=subject_id,
+                recognition_date=recognition_date,
+                lines=lines,
             )
+            try:
+                if correction_reentry:
+                    self._candidate_reviews.require_latest_return_event_in_session(
+                        session,
+                        tenant_id=tenant_id,
+                        candidate_id=candidate_id,
+                        candidate_revision=expected_revision,
+                    )
+                    revised = self._candidates.append_revision_in_session(
+                        session, revision_input
+                    )
+                else:
+                    revised = self._candidates.append_draft_revision_in_session(
+                        session, revision_input
+                    )
+            except (EosCandidateReviewError, EosVoucherCandidateError) as exc:
+                raise EosBusinessOperationError(
+                    exc.error_code,
+                    exc.detail,
+                    status_code=exc.status_code,
+                    retryable=exc.retryable,
+                ) from exc
             return {
                 "business_result_ref": f"eos.voucher_candidate:{candidate_id}",
                 "candidate_id": candidate_id,
@@ -321,6 +350,25 @@ class EosBusinessVoucherDraftService:
             "expected_revision", payload.get("expected_revision")
         )
         expected_hash = _hash_ref("expected_candidate_hash", payload.get("expected_candidate_hash"))
+        command_id = _uuid("client_command_id", payload.get("client_command_id"))
+        case_id = str(
+            uuid5(
+                NAMESPACE_URL,
+                f"{tenant_id}:{candidate_id}:{expected_revision}:accounting-case",
+            )
+        )
+        replay = self._scoped_approvals.replay_accounting_case(
+            tenant_id=tenant_id,
+            case_id=case_id,
+            business_operation_id=command_id,
+            requester_subject_id=subject_id,
+            subject_ref=f"eos.voucher-candidate:{candidate_id}",
+            subject_revision=expected_revision,
+            subject_hash=expected_hash,
+            caller=caller,
+        )
+        if replay is not None:
+            return replay
         if (
             int(candidate["version"]) != expected_version
             or int(candidate["current_revision_no"]) != expected_revision
@@ -354,8 +402,6 @@ class EosBusinessVoucherDraftService:
                 status_code=409,
             )
         envelope = self._require_envelope(tenant_id, str(candidate["document_envelope_id"]))
-        command_id = _uuid("client_command_id", payload.get("client_command_id"))
-        case_id = str(uuid5(NAMESPACE_URL, f"{tenant_id}:{candidate_id}:{expected_revision}:accounting-case"))
         fx = validation["fx_evidence"]
         review = {
             "schema_version": "eos_accounting_review_context.v3",

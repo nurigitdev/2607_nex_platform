@@ -61,7 +61,7 @@ export function VoucherDraftPage({
       : items.length === 0 ? <EmptyState title="전표 초안이 없습니다" description="승인된 품의서를 선택해 실제 지출 증빙 기반 전표를 작성할 수 있습니다." />
       : <div className={styles.workspace}>
         <aside className={styles.list} aria-label="전표 초안 목록"><h2>내 전표 <span>{items.length}건</span></h2><ul>
-          {items.map(item => <li key={item.candidate_id}><button type="button" aria-pressed={item.candidate_id === selectedId} onClick={() => setSelectedId(item.candidate_id)}>
+          {items.map(item => <li key={item.candidate_id}><button type="button" data-candidate-id={item.candidate_id} aria-pressed={item.candidate_id === selectedId} onClick={() => setSelectedId(item.candidate_id)}>
             <strong>{item.project_code}</strong><span>{stateLabel(item.state)} · revision {item.current_revision_no}</span><small>{Number(item.balance.debit).toLocaleString("ko-KR")} {item.transaction_currency}</small>
           </button></li>)}
         </ul></aside>

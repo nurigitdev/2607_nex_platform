@@ -5,6 +5,7 @@ import uuid
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from decimal import Decimal
 from typing import Any
 from uuid import NAMESPACE_URL, uuid5
 
@@ -767,6 +768,105 @@ class EosScopedApprovalService:
             receipt["candidate_review"] = candidate_review
         return receipt
 
+    def replay_accounting_case(
+        self,
+        *,
+        tenant_id: str,
+        case_id: str,
+        business_operation_id: str,
+        requester_subject_id: str,
+        subject_ref: str,
+        subject_revision: int,
+        subject_hash: str,
+        caller: EosServiceCaller,
+    ) -> dict[str, Any] | None:
+        _require_service_caller(caller)
+        scoped_case = self._repository.get_case(
+            tenant_id=tenant_id,
+            case_id=case_id,
+        )
+        if scoped_case is None:
+            return None
+        expected = {
+            "tenant_id": tenant_id,
+            "case_id": case_id,
+            "purpose": "ACCOUNTING_POSTING",
+            "subject_ref": subject_ref,
+            "subject_revision": subject_revision,
+            "subject_hash": subject_hash,
+            "requester_subject_id": requester_subject_id,
+            "business_operation_id": business_operation_id,
+        }
+        actual = {
+            "tenant_id": scoped_case["tenant_id"],
+            "case_id": scoped_case["case_id"],
+            "purpose": scoped_case["purpose"],
+            "subject_ref": scoped_case["subject_ref"],
+            "subject_revision": scoped_case["subject_revision"],
+            "subject_hash": scoped_case["subject_hash"],
+            "requester_subject_id": scoped_case["requester_ref"]["id"],
+            "business_operation_id": scoped_case[
+                "created_business_operation_id"
+            ],
+        }
+        if actual != expected:
+            raise _conflict(
+                "Accounting approval replay changed immutable request semantics"
+            )
+        accounting_review = (
+            self._accounting_review_repository.get(
+                tenant_id=tenant_id,
+                case_id=case_id,
+            )
+            if self._accounting_review_repository is not None
+            else None
+        )
+        project_scope_ref = self._repository.resolve_project_scope_ref(scoped_case)
+        work_item = scoped_approval_work_item(
+            scoped_case,
+            accounting_review=accounting_review,
+            project_scope_ref=project_scope_ref,
+        )
+        try:
+            publication = _wc_publication(self._wc_client.create_or_get(work_item))
+        except EosScopedApprovalError:
+            raise
+        except Exception as exc:
+            raise EosScopedApprovalError(
+                "EOS_SCOPED_APPROVAL_WC_UNAVAILABLE",
+                "WC approval publication is unavailable",
+                status_code=503,
+                retryable=True,
+            ) from exc
+        _require_wc_lineage(publication["work_item"], work_item)
+        receipt = {
+            "schema_version": "eos_scoped_approval_request_receipt.v2",
+            "created": False,
+            "tenant_id": tenant_id,
+            "business_operation_id": business_operation_id,
+            "commit_state": "COMMITTED",
+            "scoped_approval_case": scoped_case,
+            "wc_publication": publication,
+        }
+        if accounting_review is not None and self._candidate_review_repository is not None:
+            projection = self._candidate_review_repository.get(
+                tenant_id=tenant_id,
+                candidate_id=accounting_review["candidate_id"],
+            )
+            if projection is not None:
+                candidate_review = next(
+                    (
+                        event
+                        for event in projection["events"]
+                        if event["approval_case_id"] == case_id
+                        and event["transition_kind"] == "SUBMIT"
+                    ),
+                    None,
+                )
+                if candidate_review is not None:
+                    receipt["candidate_review"] = candidate_review
+        return receipt
+
     def _authorize(
         self,
         *,
@@ -921,7 +1021,16 @@ def scoped_approval_work_item(
     }
     if accounting_review is not None:
         display_summary["accounting_review"] = {
-            key: accounting_review[key]
+            key: (
+                _canonical_decimal_display(accounting_review[key])
+                if key
+                in {
+                    "original_amount",
+                    "market_base_rate",
+                    "functional_amount",
+                }
+                else accounting_review[key]
+            )
             for key in (
                 "candidate_id",
                 "candidate_revision",
@@ -986,6 +1095,10 @@ def scoped_approval_work_item(
         "expires_at": expires_at,
         "version": scoped_case["version"],
     }
+
+
+def _canonical_decimal_display(value: object) -> str:
+    return format(Decimal(str(value)).normalize(), "f")
 
 
 def deterministic_scoped_approval_work_item_id(

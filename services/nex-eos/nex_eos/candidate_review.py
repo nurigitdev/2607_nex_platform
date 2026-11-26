@@ -232,6 +232,43 @@ class SqlAlchemyEosCandidateReviewRepository:
             )
         return _event_projection(event)
 
+    def require_latest_return_event_in_session(
+        self,
+        session: Session,
+        *,
+        tenant_id: str,
+        candidate_id: str,
+        candidate_revision: int,
+    ) -> dict[str, Any]:
+        event = (
+            session.execute(
+                select(EOS_CANDIDATE_REVIEW_EVENT_TABLE)
+                .where(
+                    EOS_CANDIDATE_REVIEW_EVENT_TABLE.c.tenant_id == tenant_id,
+                    EOS_CANDIDATE_REVIEW_EVENT_TABLE.c.candidate_id
+                    == candidate_id,
+                    EOS_CANDIDATE_REVIEW_EVENT_TABLE.c.candidate_revision
+                    == candidate_revision,
+                    EOS_CANDIDATE_REVIEW_EVENT_TABLE.c.transition_kind.in_(
+                        ("RETURN", "INVALIDATE")
+                    ),
+                    EOS_CANDIDATE_REVIEW_EVENT_TABLE.c.to_state
+                    == "RETURNED_FOR_CORRECTION",
+                )
+                .order_by(
+                    EOS_CANDIDATE_REVIEW_EVENT_TABLE.c.resulting_version.desc()
+                )
+                .limit(1)
+            )
+            .mappings()
+            .one_or_none()
+        )
+        if event is None:
+            raise _conflict(
+                "Candidate correction requires an immutable return event."
+            )
+        return _event_projection(event)
+
     def return_from_rejection_in_session(
         self,
         session: Session,

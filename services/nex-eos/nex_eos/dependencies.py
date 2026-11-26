@@ -955,6 +955,7 @@ def build_eos_dependencies(
         EosBusinessVoucherDraftService(
             coordinator=business_transactions,
             candidates=voucher_candidates,
+            candidate_reviews=candidate_review_repository,
             create_service=voucher_candidate_command_service,
             validation_service=candidate_validation_service,
             scoped_approvals=scoped_approval_service,
@@ -965,6 +966,7 @@ def build_eos_dependencies(
         )
         if business_transactions is not None
         and voucher_candidates is not None
+        and candidate_review_repository is not None
         and voucher_candidate_command_service is not None
         and candidate_validation_service is not None
         and scoped_approval_service is not None

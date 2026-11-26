@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from collections.abc import Mapping
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any, Protocol
 from urllib.error import HTTPError, URLError
 from urllib.parse import urljoin, urlparse
@@ -15,6 +15,7 @@ from uuid import NAMESPACE_URL, uuid5
 from nex_runtime.semantic_hashes import canonical_json
 
 from ..domain.documents import (
+    GET_APPROVED_DOCUMENT_PATH,
     BusinessProposalForm,
     admit_approved_document_envelope,
     build_approved_document_request,
@@ -186,7 +187,7 @@ class NexBusinessApprovalClient:
         response = self._transport.send(
             BusinessApprovalProviderRequest(
                 method="GET",
-                path=f"/internal/v2/approved-documents/{envelope_id}",
+                path=GET_APPROVED_DOCUMENT_PATH.format(envelope_id=envelope_id),
                 operation_id="BUSINESS.DOCUMENT_APPROVED.GET",
                 tenant_id=tenant_id,
                 subject_id=subject_id,
@@ -304,11 +305,18 @@ class HttpBusinessApprovalProviderTransport:
                 return _json_object(response.read())
         except HTTPError as exc:
             problem = _optional_json_object(exc.read())
+            projection_not_ready = (
+                exc.code == 404
+                and request.operation_id == "BUSINESS.DOCUMENT_APPROVED.GET"
+            )
             raise BusinessApprovalConsumerError(
                 str(problem.get("error_code", "EOS_BUSINESS_APPROVAL_REJECTED")),
                 "EOS rejected the business approval request",
                 status_code=exc.code,
-                retryable=bool(problem.get("retryable", exc.code >= 500)),
+                retryable=(
+                    projection_not_ready
+                    or bool(problem.get("retryable", exc.code >= 500))
+                ),
             ) from exc
         except (URLError, TimeoutError, OSError) as exc:
             raise BusinessApprovalConsumerError(
@@ -508,10 +516,21 @@ def _admit_proposal_projection(
                 for item in proposal.attachments
             ],
         }
-        if any(
-            revision.get(field) != value
-            for field, value in expected.items()
-        ) or not str(revision.get("content_hash") or "").startswith("sha256:"):
+        timestamp_fields = {"valid_from", "valid_until"}
+        scalar_drifted = any(
+            revision.get(field) != expected_value
+            for field, expected_value in expected.items()
+            if field not in timestamp_fields
+        )
+        timestamp_drifted = any(
+            not _same_instant(revision.get(field), expected[field])
+            for field in timestamp_fields
+        )
+        if (
+            scalar_drifted
+            or timestamp_drifted
+            or not str(revision.get("content_hash") or "").startswith("sha256:")
+        ):
             raise BusinessApprovalConsumerError(
                 "MYBEE_PROPOSAL_DRAFT_BINDING_MISMATCH",
                 "EOS proposal draft differs from the submitted draft",
@@ -524,6 +543,21 @@ def _money_text(value: object) -> str:
     from decimal import Decimal
 
     return format(Decimal(str(value)).quantize(Decimal("0.0001")), "f")
+
+
+def _same_instant(actual: object, expected: object) -> bool:
+    if actual is None or expected is None:
+        return actual is expected
+    if not isinstance(actual, str) or not isinstance(expected, str):
+        return False
+    try:
+        actual_at = datetime.fromisoformat(actual.replace("Z", "+00:00"))
+        expected_at = datetime.fromisoformat(expected.replace("Z", "+00:00"))
+    except ValueError:
+        return False
+    if actual_at.utcoffset() is None or expected_at.utcoffset() is None:
+        return False
+    return actual_at.astimezone(UTC) == expected_at.astimezone(UTC)
 
 
 def _timestamp(value: datetime) -> str:

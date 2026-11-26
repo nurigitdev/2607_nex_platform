@@ -1182,11 +1182,19 @@ def test_business_voucher_product_composes_existing_candidate_engine() -> None:
 
     class ScopedApprovals:
         request = None
+        receipt = None
+
+        def replay_accounting_case(self, **_kwargs):
+            return self.receipt
 
         def request_case(self, payload, *, caller):
             self.request = payload
             assert caller == CALLER
-            return {"created": True, "candidate_review": {"to_state": "READY_FOR_REVIEW"}}
+            self.receipt = {
+                "created": True,
+                "candidate_review": {"to_state": "READY_FOR_REVIEW"},
+            }
+            return self.receipt
 
     scoped = ScopedApprovals()
     service = EosBusinessVoucherDraftService(
@@ -1194,6 +1202,9 @@ def test_business_voucher_product_composes_existing_candidate_engine() -> None:
             sessions, clock=lambda: NOW
         ),
         candidates=candidates,
+        candidate_reviews=SqlAlchemyEosCandidateReviewRepository(
+            sessions, clock=lambda: NOW
+        ),
         create_service=create_service,
         validation_service=Validation(),
         scoped_approvals=scoped,
@@ -1278,6 +1289,20 @@ def test_business_voucher_product_composes_existing_candidate_engine() -> None:
     assert receipt["created"] is True
     assert scoped.request["case"]["purpose"] == "ACCOUNTING_POSTING"
     assert scoped.request["case"]["accounting_review"]["candidate_version"] == 2
+    replayed = service.submit(
+        tenant_id=TENANT,
+        subject_id="employee-1001",
+        candidate_id=CANDIDATE_ID,
+        payload={
+            "client_command_id": scoped.request["business_operation_id"],
+            "expected_version": 2,
+            "expected_revision": 2,
+            "expected_candidate_hash": revised["candidate_hash"],
+            "confirmed": True,
+        },
+        caller=CALLER,
+    )
+    assert replayed == receipt
     engine.dispose()
 
 
@@ -1595,6 +1620,14 @@ def test_candidate_review_submit_replay_invalidate_and_stale_decision_guard() ->
         "SUBMIT",
         "INVALIDATE",
     ]
+    with sessions.begin() as session:
+        latest_return = reviews.require_latest_return_event_in_session(
+            session,
+            tenant_id=TENANT,
+            candidate_id=CANDIDATE_ID,
+            candidate_revision=1,
+        )
+    assert latest_return["event_id"] == invalidated["event_id"]
 
 
 def test_s3_03_migration_and_openapi_contract_are_additive() -> None:

@@ -364,6 +364,11 @@ def test_6a_review_aware_adapter_stops_at_both_requester_boundaries() -> None:
     assert proposal_wait["references"]["proposal_review_ref"].startswith(
         "eos.business-proposal:"
     )
+    assert context["request_kind"] == "FINANCE_VOUCHER_POSTING"
+    assert (
+        business.review_proposal["current_revision"]["transaction_type"]
+        == "DOCUMENT_SIGNOFF"
+    )
 
     business.review_proposal.update(
         state="SUBMITTED",

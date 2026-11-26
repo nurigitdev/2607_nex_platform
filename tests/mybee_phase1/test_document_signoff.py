@@ -507,6 +507,45 @@ def test_client_creates_and_reads_owner_scoped_reviewable_proposal() -> None:
         "BUSINESS.PROPOSAL.GET",
         "BUSINESS.DOCUMENT_APPROVED.GET",
     ]
+    assert transport.requests[-1].path == (
+        f"/internal/v2/finance/approved-documents/{ENVELOPE_ID}"
+    )
+
+
+def test_client_accepts_equivalent_utc_proposal_timestamp_projection() -> None:
+    proposal = _proposal()
+    draft = _proposal_projection(proposal)
+    draft["current_revision"].update(
+        valid_from="2026-11-12T06:00:00+00:00",
+        valid_until="2026-12-12T06:00:00+00:00",
+    )
+
+    created = NexBusinessApprovalClient(FakeTransport(draft)).create_draft(
+        proposal,
+        revision_id=draft["current_revision"]["revision_id"],
+        transaction_type="EXTERNAL_LABOR_COST",
+    )
+
+    assert created["state"] == "DRAFT"
+
+
+@pytest.mark.parametrize(
+    "valid_from",
+    ("2026-11-12T06:00:01+00:00", "2026-11-12T06:00:00"),
+)
+def test_client_rejects_drifted_or_naive_proposal_timestamp(valid_from) -> None:
+    proposal = _proposal()
+    drifted = _proposal_projection(proposal)
+    drifted["current_revision"]["valid_from"] = valid_from
+
+    with pytest.raises(BusinessApprovalConsumerError) as error:
+        NexBusinessApprovalClient(FakeTransport(drifted)).create_draft(
+            proposal,
+            revision_id=drifted["current_revision"]["revision_id"],
+            transaction_type="EXTERNAL_LABOR_COST",
+        )
+
+    assert error.value.code == "MYBEE_PROPOSAL_DRAFT_BINDING_MISMATCH"
 
 
 def test_client_rejects_reviewable_proposal_scope_and_envelope_drift() -> None:
@@ -669,6 +708,38 @@ def test_http_transport_redacts_rejection_unavailability_and_bad_response(
         transport.send(request)
     assert rejected_without_body.value.code == "EOS_BUSINESS_APPROVAL_REJECTED"
     assert rejected_without_body.value.retryable is True
+
+    def approved_document_not_visible(*_args, **_kwargs):
+        raise HTTPError(
+            "http://eos",
+            404,
+            "not found",
+            {},
+            BytesIO(b'{"error_code":"EOS_APPROVED_DOCUMENT_NOT_FOUND",'
+                    b'"retryable":false}'),
+        )
+
+    monkeypatch.setattr(
+        "mybee_ax.integrations.nex_business_approval_client.urlopen",
+        approved_document_not_visible,
+    )
+    document_request = BusinessApprovalProviderRequest(
+        method="GET",
+        path=f"/internal/v2/finance/approved-documents/{ENVELOPE_ID}",
+        operation_id="BUSINESS.DOCUMENT_APPROVED.GET",
+        tenant_id=TENANT,
+        subject_id="employee-1004",
+    )
+    with pytest.raises(BusinessApprovalConsumerError) as not_visible:
+        transport.send(document_request)
+    assert not_visible.value.code == "EOS_APPROVED_DOCUMENT_NOT_FOUND"
+    assert not_visible.value.status_code == 404
+    assert not_visible.value.retryable is True
+
+    with pytest.raises(BusinessApprovalConsumerError) as other_not_found:
+        transport.send(request)
+    assert other_not_found.value.status_code == 404
+    assert other_not_found.value.retryable is False
 
     def unavailable(*_args, **_kwargs):
         raise URLError("offline")

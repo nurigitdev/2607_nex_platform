@@ -109,6 +109,7 @@ class AuthorizationSource:
 class WcClient:
     def __init__(self) -> None:
         self.items: dict[str, dict] = {}
+        self.requests: list[dict] = []
         self.fail = False
         self.response_override = None
 
@@ -118,6 +119,7 @@ class WcClient:
         if self.response_override is not None:
             return self.response_override(work_item)
         item = dict(work_item)
+        self.requests.append(item)
         existing = self.items.get(item["approval_work_item_id"])
         created = existing is None
         if existing is None:
@@ -216,6 +218,7 @@ def _build_runtime(
         authorization_source=auth,
         wc_client=wc,
         accounting_review_repository=context_repository,
+        candidate_review_repository=candidate_review_repository,
         clock=lambda: NOW,
     )
     decision_service = EosAccountingApprovalService(
@@ -302,6 +305,161 @@ def _create_case(scoped_service):
     return scoped_service.request_case(_request().payload, caller=_caller())
 
 
+def test_accounting_case_product_replay_preserves_wc_semantics() -> None:
+    _sessions, scoped_service, _decision_service, _auth, wc = _build_runtime()
+    created = _create_case(scoped_service)
+
+    replayed = scoped_service.replay_accounting_case(
+        tenant_id=TENANT,
+        case_id=CASE_ID,
+        business_operation_id=OPERATION_ID,
+        requester_subject_id="employee-requester",
+        subject_ref=f"eos.voucher-candidate:{CANDIDATE_ID}",
+        subject_revision=1,
+        subject_hash=HASH_A,
+        caller=_caller(),
+    )
+
+    assert replayed is not None
+    assert replayed["created"] is False
+    assert replayed["scoped_approval_case"] == created["scoped_approval_case"]
+    assert replayed["wc_publication"]["created"] is False
+    assert len(wc.items) == 1
+    assert len(wc.requests) == 2
+    ignored = {"approval_work_item_id", "created_at", "state", "version"}
+    assert {
+        key: value for key, value in wc.requests[0].items() if key not in ignored
+    } == {key: value for key, value in wc.requests[1].items() if key not in ignored}
+
+
+def test_accounting_case_product_replay_is_fail_closed() -> None:
+    _sessions, scoped_service, _decision_service, _auth, wc = _build_runtime()
+    _create_case(scoped_service)
+
+    assert (
+        scoped_service.replay_accounting_case(
+            tenant_id=TENANT,
+            case_id=str(uuid.uuid4()),
+            business_operation_id=OPERATION_ID,
+            requester_subject_id="employee-requester",
+            subject_ref=f"eos.voucher-candidate:{CANDIDATE_ID}",
+            subject_revision=1,
+            subject_hash=HASH_A,
+            caller=_caller(),
+        )
+        is None
+    )
+    with pytest.raises(EosScopedApprovalError) as changed:
+        scoped_service.replay_accounting_case(
+            tenant_id=TENANT,
+            case_id=CASE_ID,
+            business_operation_id=OPERATION_ID,
+            requester_subject_id="other-requester",
+            subject_ref=f"eos.voucher-candidate:{CANDIDATE_ID}",
+            subject_revision=1,
+            subject_hash=HASH_A,
+            caller=_caller(),
+        )
+    assert changed.value.status_code == 409
+
+    wc.fail = True
+    with pytest.raises(EosScopedApprovalError) as unavailable:
+        scoped_service.replay_accounting_case(
+            tenant_id=TENANT,
+            case_id=CASE_ID,
+            business_operation_id=OPERATION_ID,
+            requester_subject_id="employee-requester",
+            subject_ref=f"eos.voucher-candidate:{CANDIDATE_ID}",
+            subject_revision=1,
+            subject_hash=HASH_A,
+            caller=_caller(),
+        )
+    assert unavailable.value.status_code == 503
+    assert unavailable.value.retryable is True
+
+    wc.fail = False
+    wc.response_override = lambda _item: (_ for _ in ()).throw(
+        EosScopedApprovalError("WC_DENIED", "denied", status_code=409)
+    )
+    with pytest.raises(EosScopedApprovalError) as typed:
+        scoped_service.replay_accounting_case(
+            tenant_id=TENANT,
+            case_id=CASE_ID,
+            business_operation_id=OPERATION_ID,
+            requester_subject_id="employee-requester",
+            subject_ref=f"eos.voucher-candidate:{CANDIDATE_ID}",
+            subject_revision=1,
+            subject_hash=HASH_A,
+            caller=_caller(),
+        )
+    assert typed.value.error_code == "WC_DENIED"
+
+
+@pytest.mark.parametrize("projection", (None, {"events": []}))
+def test_accounting_case_product_replay_handles_absent_candidate_review(
+    projection,
+) -> None:
+    class CandidateReviews:
+        def get(self, **_kwargs):
+            return projection
+
+    _sessions, scoped_service, _decision_service, _auth, _wc = _build_runtime(
+        candidate_review_repository=CandidateReviews()
+    )
+    _create_case(scoped_service)
+
+    replayed = scoped_service.replay_accounting_case(
+        tenant_id=TENANT,
+        case_id=CASE_ID,
+        business_operation_id=OPERATION_ID,
+        requester_subject_id="employee-requester",
+        subject_ref=f"eos.voucher-candidate:{CANDIDATE_ID}",
+        subject_revision=1,
+        subject_hash=HASH_A,
+        caller=_caller(),
+    )
+
+    assert replayed is not None
+    assert "candidate_review" not in replayed
+
+
+def test_accounting_case_product_replay_restores_candidate_review() -> None:
+    candidate_event = {
+        "approval_case_id": CASE_ID,
+        "transition_kind": "SUBMIT",
+        "event_id": str(uuid.uuid4()),
+    }
+
+    class CandidateReviews:
+        def get(self, **_kwargs):
+            return {
+                "events": [
+                    {"approval_case_id": str(uuid.uuid4()), "transition_kind": "SUBMIT"},
+                    {"approval_case_id": CASE_ID, "transition_kind": "RETURN"},
+                    candidate_event,
+                ]
+            }
+
+    _sessions, scoped_service, _decision_service, _auth, _wc = _build_runtime(
+        candidate_review_repository=CandidateReviews()
+    )
+    _create_case(scoped_service)
+
+    replayed = scoped_service.replay_accounting_case(
+        tenant_id=TENANT,
+        case_id=CASE_ID,
+        business_operation_id=OPERATION_ID,
+        requester_subject_id="employee-requester",
+        subject_ref=f"eos.voucher-candidate:{CANDIDATE_ID}",
+        subject_revision=1,
+        subject_hash=HASH_A,
+        caller=_caller(),
+    )
+
+    assert replayed is not None
+    assert replayed["candidate_review"] == candidate_event
+
+
 def test_s2_03_migration_contract_and_review_identity() -> None:
     migration = next(
         item
@@ -342,8 +500,8 @@ def test_two_stage_human_decision_creates_exact_evidence_and_replays() -> None:
     assert first_item["resume_target_ref"].endswith(":stage:1")
     assert first_item["target_project_scope_ref"] == "PROJECT-S203"
     summary = first_item["display_safe_summary"]
-    assert '"market_base_rate":"1350.20"' in summary
-    assert '"functional_amount":"13502000.00"' in summary
+    assert '"market_base_rate":"1350.2"' in summary
+    assert '"functional_amount":"13502000"' in summary
 
     first_delivery = _delivery(first_item, decided_by="accountant-lead", suffix="1")
     first = decisions.ingest_wc_delivery(first_delivery)
@@ -1096,10 +1254,25 @@ def test_actual_postgres_human_approval_evidence_and_immutability() -> None:
     run_service_migrations("nex-eos", database_url=scoped_url, profile="test")
     engine = create_engine(scoped_url, pool_pre_ping=True)
     try:
-        sessions, scoped, decisions, _auth, _wc = _build_runtime(
+        sessions, scoped, decisions, _auth, wc = _build_runtime(
             engine=engine, stages=("TEAM_LEAD",)
         )
         item = _create_case(scoped)["wc_publication"]["work_item"]
+        replayed = scoped.replay_accounting_case(
+            tenant_id=TENANT,
+            case_id=CASE_ID,
+            business_operation_id=OPERATION_ID,
+            requester_subject_id="employee-requester",
+            subject_ref=f"eos.voucher-candidate:{CANDIDATE_ID}",
+            subject_revision=1,
+            subject_hash=HASH_A,
+            caller=_caller(),
+        )
+        assert replayed is not None
+        assert replayed["wc_publication"]["created"] is False
+        assert wc.requests[0]["display_safe_summary"] == wc.requests[1][
+            "display_safe_summary"
+        ]
         receipt = decisions.ingest_wc_delivery(
             _delivery(item, decided_by="accountant-lead")
         )

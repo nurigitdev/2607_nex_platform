@@ -261,6 +261,20 @@ class SqlAlchemyAccountingReviewContextRepository:
             ) from exc
         return _review_projection(record)
 
+    def get(self, *, tenant_id: str, case_id: str) -> dict[str, Any] | None:
+        tenant_id = _scoped_id("tenant_id", tenant_id, 128)
+        case_id = _uuid("case_id", case_id)
+        try:
+            with self._session_factory() as session:
+                review = _load_review(
+                    session,
+                    tenant_id=tenant_id,
+                    case_id=case_id,
+                )
+        except SQLAlchemyError as exc:
+            raise _unavailable("Accounting review persistence is unavailable") from exc
+        return _review_projection(review) if review is not None else None
+
 
 class EosAccountingApprovalService:
     def __init__(

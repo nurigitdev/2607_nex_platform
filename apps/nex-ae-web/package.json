@@ -41,6 +41,7 @@
     "smoke:canonical-platform-s11-chairman-golden-journey": "node scripts/runCanonicalPlatformGoldenJourney.mjs",
     "smoke:mybee-m1-product-golden-journey": "node scripts/runMyBeeW70CpM1ProductGoldenJourney.mjs",
     "smoke:mybee-w80-ca00f5-split-journey": "node scripts/runMyBeeW80Ca00F5SplitJourney.mjs",
+    "smoke:mybee-w80-ca00g7-protected-matrix": "node scripts/runMyBeeW80Ca00G7ProtectedMatrix.mjs",
     "smoke:voucher-attachment-playwright": "node scripts/runVoucherAttachmentPlaywrightSmoke.mjs --summary",
     "smoke:playwright-readiness": "node scripts/runCredentialLoginPlaywrightReadiness.mjs --summary",
     "test": "node --test test/*.test.mjs",

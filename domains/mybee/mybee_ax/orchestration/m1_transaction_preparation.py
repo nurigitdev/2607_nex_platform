@@ -35,6 +35,7 @@ M1_PREPARATION_REGISTRY_SCHEMA_VERSION = (
     "nex.mybee.m1-transaction-preparation-registry.v1"
 )
 M1_PREPARATION_ADAPTER_ID = "MYBEE.M1.AUTHORITATIVE_TRANSACTION_PREPARATION"
+BUSINESS_PROPOSAL_APPROVAL_PURPOSE = "DOCUMENT_SIGNOFF"
 ACCOUNTING_CORRECTION_HISTORY_MODE = "APPEND_ONLY_AUDIT"
 ACCOUNTING_CORRECTION_ACTIVE_SELECTION = "LATEST_CHECKPOINT_ONLY"
 ACCOUNTING_CORRECTION_ARCHIVE_POLICY = "TERMINAL_POLICY_CONTROLLED"
@@ -195,7 +196,7 @@ class M1TransactionPreparationAdapter:
             created = self.business_approvals.create_draft(
                 proposal,
                 revision_id=identities["proposal_revision_id"],
-                transaction_type=str(context["request_kind"]),
+                transaction_type=BUSINESS_PROPOSAL_APPROVAL_PURPOSE,
             )
             return _checkpoint(
                 stage="WAITING_PROPOSAL_REVIEW",

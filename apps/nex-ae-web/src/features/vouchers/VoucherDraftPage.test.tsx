@@ -15,6 +15,10 @@ describe("voucher draft review workspace", () => {
     const submit = vi.fn(async () => ({ state: "READY_FOR_REVIEW" }));
     renderPage(voucherClient({ submit }));
     expect(await screen.findByRole("heading", { name: "VO00D260001" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /VO00D260001초안/ })).toHaveAttribute(
+      "data-candidate-id",
+      DRAFT.candidate_id,
+    );
     expect(screen.getByLabelText("1번 계정과목")).toHaveValue("510100");
     expect(screen.getByRole("navigation", { name: "업무 진행 단계" })).toHaveTextContent("전표 검토진행 중");
     await user.click(screen.getByRole("button", { name: "회계 상신" }));
