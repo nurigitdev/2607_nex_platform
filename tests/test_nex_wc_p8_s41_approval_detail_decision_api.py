@@ -271,6 +271,50 @@ def test_decision_commits_terminal_state_and_outbox_only(
     ]
 
 
+@pytest.mark.parametrize("comment", (None, "", "   "))
+def test_business_formal_rejection_requires_a_reason_without_residue(comment) -> None:
+    repository = InMemoryApprovalWorkItemRepository()
+    repository.insert(_work_item(
+        approval_domain="BUSINESS_FORMAL",
+        approval_provider_type="EOS",
+    ))
+    _, _, service, _ = _services(repository)
+
+    with pytest.raises(ApprovalDecisionError) as invalid:
+        service.decide(
+            tenant_id="tenant-p8",
+            approval_work_item_id=WORK_ID,
+            decision="REJECT",
+            decided_by="approver-s41",
+            decision_comment=comment,
+        )
+
+    assert invalid.value.error_code == "wc.approval_decision_invalid"
+    assert repository.get_decision(
+        tenant_id="tenant-p8", approval_work_item_id=WORK_ID
+    ) is None
+    assert repository.list_pending_approval_events(limit=10) == []
+
+
+def test_business_formal_rejection_trims_and_persists_the_reason() -> None:
+    repository = InMemoryApprovalWorkItemRepository()
+    repository.insert(_work_item(
+        approval_domain="BUSINESS_FORMAL",
+        approval_provider_type="EOS",
+    ))
+    _, _, service, _ = _services(repository)
+
+    result = service.decide(
+        tenant_id="tenant-p8",
+        approval_work_item_id=WORK_ID,
+        decision="REJECT",
+        decided_by="approver-s41",
+        decision_comment="  예산 근거를 보완해 주세요.  ",
+    )
+
+    assert result["decision"]["decision_comment"] == "예산 근거를 보완해 주세요."
+
+
 def test_exact_decision_replay_is_freshly_authorized_and_conflict_is_denied() -> None:
     repository = InMemoryApprovalWorkItemRepository()
     repository.insert(_work_item())

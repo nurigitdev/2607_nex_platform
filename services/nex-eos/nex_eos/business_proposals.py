@@ -29,6 +29,7 @@ from sqlalchemy import (
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
 
+from .accounting_approval import EOS_SCOPED_APPROVAL_DECISION_TABLE
 from .business_journeys import project_proposal_journey
 from .business_transactions import EOS_METADATA
 
@@ -730,9 +731,29 @@ class SqlAlchemyEosBusinessProposalRepository:
         projection = {
             **_wire_aggregate(aggregate),
             "current_revision": _wire_revision(revision),
+            "rejection_reason": _proposal_rejection_reason(session, aggregate),
         }
         projection["journey"] = project_proposal_journey(projection)
         return projection
+
+
+def _proposal_rejection_reason(
+    session: Session, aggregate: Mapping[str, Any]
+) -> str | None:
+    if aggregate.get("state") != "REJECTED" or aggregate.get("approval_case_id") is None:
+        return None
+    return session.execute(
+        select(EOS_SCOPED_APPROVAL_DECISION_TABLE.c.decision_comment)
+        .where(
+            EOS_SCOPED_APPROVAL_DECISION_TABLE.c.tenant_id
+            == aggregate["tenant_id"],
+            EOS_SCOPED_APPROVAL_DECISION_TABLE.c.case_id
+            == aggregate["approval_case_id"],
+            EOS_SCOPED_APPROVAL_DECISION_TABLE.c.decision == "REJECT",
+        )
+        .order_by(EOS_SCOPED_APPROVAL_DECISION_TABLE.c.stage_order.desc())
+        .limit(1)
+    ).scalar_one_or_none()
 
 
 class EosBusinessProposalSignoffObserver:

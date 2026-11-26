@@ -12,6 +12,7 @@ import pytest
 from nex_eos import (
     EOS_BUSINESS_PROPOSAL_REVISION_TABLE,
     EOS_METADATA,
+    EOS_SCOPED_APPROVAL_DECISION_TABLE,
     BusinessProposalRevisionInput,
     BusinessProposalSubmissionInput,
     EosBusinessProposalError,
@@ -212,6 +213,59 @@ def test_revision_is_owner_scoped_and_optimistically_locked(repository) -> None:
             actor_subject_id=REQUESTER,
         )
     assert missing.value.error_code == "BUSINESS_PROPOSAL_NOT_FOUND"
+
+
+def test_rejected_proposal_projects_existing_scoped_decision_reason(repository) -> None:
+    proposals, factory = repository
+    proposals.create_draft(_draft(), created_at=NOW)
+    case_id = "d6000000-0000-4000-8000-000000000001"
+    with factory.begin() as session:
+        session.execute(
+            update(proposals_table())
+            .where(proposals_table().c.proposal_id == PROPOSAL_ID)
+            .values(
+                state="REJECTED",
+                approval_case_id=case_id,
+                decided_at=NOW,
+                updated_at=NOW,
+                version=2,
+            )
+        )
+        session.execute(
+            EOS_SCOPED_APPROVAL_DECISION_TABLE.insert().values(
+                tenant_id=TENANT,
+                case_id=case_id,
+                stage_order=2,
+                wc_work_item_id="d6100000-0000-4000-8000-000000000001",
+                wc_decision_id="d6200000-0000-4000-8000-000000000001",
+                wc_event_id="d6300000-0000-4000-8000-000000000001",
+                wc_outbox_id="d6400000-0000-4000-8000-000000000001",
+                decision="REJECT",
+                decision_version=1,
+                decided_by="approver-group",
+                decision_comment="계약 금액과 첨부 견적을 다시 확인해 주세요.",
+                wc_oa_decision_ref="oa-wc-decision-ca00h1",
+                wc_authorization_revision_hash="sha256:" + "1" * 64,
+                oa_decision_ref="oa-eos-decision-ca00h1",
+                authorization_revision_hash="sha256:" + "2" * 64,
+                authorization_checked_at=NOW,
+                decided_at=NOW,
+                decision_hash="sha256:" + "3" * 64,
+                recorded_at=NOW,
+            )
+        )
+
+    projected = proposals.get(
+        tenant_id=TENANT,
+        proposal_id=PROPOSAL_ID,
+        requester_subject_id=REQUESTER,
+    )
+
+    assert projected is not None
+    assert projected["state"] == "REJECTED"
+    assert projected["rejection_reason"] == (
+        "계약 금액과 첨부 견적을 다시 확인해 주세요."
+    )
 
 
 def test_revision_rejects_submitted_state_and_immutable_identity(repository) -> None:

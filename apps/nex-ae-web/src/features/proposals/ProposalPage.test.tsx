@@ -37,6 +37,31 @@ describe("proposal review workspace", () => {
     await waitFor(() => expect(submit).toHaveBeenCalledTimes(1));
     expect(await screen.findByText("품의서를 상신했습니다.")).toBeInTheDocument();
   });
+
+  it("places the approval line before the editable body and invalidates stale previews", async () => {
+    const user = userEvent.setup();
+    const view = renderPage(client());
+    await screen.findByRole("heading", { name: "외부 용역비 사용 품의" });
+    const approval = screen.getByRole("heading", { name: "결재선" });
+    const title = screen.getByLabelText(/제목/);
+    expect(approval.compareDocumentPosition(title) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+
+    await user.click(screen.getByRole("button", { name: "결재선 미리보기" }));
+    expect(await screen.findByLabelText("1단계 · TEAM_LEAD")).toBeInTheDocument();
+    await user.type(screen.getByLabelText(/업무 필요성/), " 추가 검토");
+    expect(screen.queryByLabelText("1단계 · TEAM_LEAD")).not.toBeInTheDocument();
+    expect(screen.getByText(/결재선 미리보기를 실행하면/)).toBeInTheDocument();
+  });
+
+  it("shows the admitted rejection reason to the requester", async () => {
+    renderPage(client({ list: async () => [{
+      ...PROPOSAL,
+      state: "REJECTED",
+      rejection_reason: "계약 금액과 첨부 견적을 다시 확인해 주세요.",
+    }] }));
+    expect(await screen.findByRole("heading", { name: "반려 사유" })).toBeInTheDocument();
+    expect(screen.getByText("계약 금액과 첨부 견적을 다시 확인해 주세요.")).toBeInTheDocument();
+  });
 });
 
 function renderPage(source: BusinessProposalClientPort) {
@@ -66,6 +91,7 @@ const PROPOSAL: BusinessProposal = {
   version: 1,
   current_revision_no: 1,
   approved_envelope_id: null,
+  rejection_reason: null,
   journey: {
     schema_version: "eos_business_journey.v1",
     journey_kind: "BUSINESS_PROPOSAL",

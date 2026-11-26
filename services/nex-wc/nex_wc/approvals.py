@@ -773,6 +773,12 @@ class ApprovalDecisionService:
             raise _decision_not_found()
         decision_value = _decision_value(decision)
         comment = _decision_comment(decision_comment)
+        if decision_value == "REJECT" and item.get("approval_domain") == "BUSINESS_FORMAL":
+            if comment is None or not comment.strip():
+                raise _decision_invalid(
+                    "BUSINESS_FORMAL rejection requires a decision comment."
+                )
+            comment = comment.strip()
         decision_id = _decision_uuid("decision_id", self._id_factory())
         existing = self._repository.get_decision(
             tenant_id=tenant_id,

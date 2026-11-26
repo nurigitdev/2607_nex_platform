@@ -126,6 +126,13 @@ function ProposalEditor({ client, proposal, onChanged }: {
   })) ?? [], [preview, approvers]);
   const allSelected = selections.length > 0 && selections.every(item => item.subject_id);
 
+  function updateForm(next: typeof form) {
+    setForm(next);
+    setPreview(null);
+    setApprovers({});
+    setConfirming(false);
+  }
+
   async function save() {
     setPending("save"); setMessage(null); setPreview(null); setApprovers({});
     try {
@@ -165,33 +172,45 @@ function ProposalEditor({ client, proposal, onChanged }: {
       <span>{revision.project_codes.join(", ") || "회사 공통"}</span>
     </div>
     <BusinessJourney value={proposal.journey} />
+    <section className={styles.approvalLine} aria-labelledby="approval-line-title">
+      <div>
+        <div>
+          <h3 id="approval-line-title">결재선</h3>
+          <span>현재 revision에 적용할 필수 결재 단계를 확인합니다.</span>
+        </div>
+        {editable ? <Button variant="secondary" loading={pending === "preview"} onClick={() => void loadPreview()}>결재선 미리보기</Button> : null}
+      </div>
+      {preview ? <>
+        <p className={styles.approvalAmount}>{preview.normalized_amount_evidence.normalized_amount} {preview.normalized_amount_evidence.functional_currency} 기준</p>
+        {preview.required_stages.map(stage => <Select
+          key={stage.stage_order}
+          label={`${stage.stage_order}단계 · ${stage.position_type}`}
+          value={approvers[stage.stage_order] ?? ""}
+          onChange={event => setApprovers({ ...approvers, [stage.stage_order]: event.target.value })}
+        >
+          <option value="">결재자 선택</option>
+          {stage.candidates.map(candidate => <option key={candidate.subject_id} value={candidate.subject_id}>{candidate.display_name}</option>)}
+        </Select>)}
+        {!confirming ? <Button leadingIcon={<FileCheck2 aria-hidden="true" size={16} />} disabled={!allSelected} onClick={() => setConfirming(true)}>상신</Button> : (
+          <div className={styles.confirm} role="alert"><p>현재 revision과 결재선을 잠그고 상신합니다.</p><div><Button variant="ghost" onClick={() => setConfirming(false)}>취소</Button><Button loading={pending === "submit"} onClick={() => void submit()}>상신 확인</Button></div></div>
+        )}
+      </> : <p className={styles.approvalHint}>결재선 미리보기를 실행하면 금액과 업무 범위에 맞는 결재 단계가 표시됩니다.</p>}
+    </section>
+    {proposal.state === "REJECTED" ? <section className={styles.rejection} aria-labelledby="proposal-rejection-title">
+      <h3 id="proposal-rejection-title">반려 사유</h3>
+      <p>{proposal.rejection_reason ?? "반려 사유를 확인할 수 없습니다."}</p>
+    </section> : null}
     <div className={styles.formGrid}>
-      <Input label="제목" required value={form.title} disabled={!editable} onChange={event => setForm({ ...form, title: event.target.value })} />
-      <Input label="금액" required inputMode="decimal" value={form.requestedAmount} disabled={!editable} onChange={event => setForm({ ...form, requestedAmount: event.target.value })} />
-      <Input label="통화" required value={form.originalCurrency} disabled={!editable} onChange={event => setForm({ ...form, originalCurrency: event.target.value.toUpperCase() })} />
-      <Input label="유효 종료일" type="date" value={form.validUntil} disabled={!editable} onChange={event => setForm({ ...form, validUntil: event.target.value })} />
-      <div className={styles.full}><Textarea label="목적" required rows={3} value={form.purpose} disabled={!editable} onChange={event => setForm({ ...form, purpose: event.target.value })} /></div>
-      <div className={styles.full}><Textarea label="업무 필요성" required rows={5} value={form.businessJustification} disabled={!editable} onChange={event => setForm({ ...form, businessJustification: event.target.value })} /></div>
+      <Input label="제목" required value={form.title} disabled={!editable} onChange={event => updateForm({ ...form, title: event.target.value })} />
+      <Input label="금액" required inputMode="decimal" value={form.requestedAmount} disabled={!editable} onChange={event => updateForm({ ...form, requestedAmount: event.target.value })} />
+      <Input label="통화" required value={form.originalCurrency} disabled={!editable} onChange={event => updateForm({ ...form, originalCurrency: event.target.value.toUpperCase() })} />
+      <Input label="유효 종료일" type="date" value={form.validUntil} disabled={!editable} onChange={event => updateForm({ ...form, validUntil: event.target.value })} />
+      <div className={styles.full}><Textarea label="목적" required rows={3} value={form.purpose} disabled={!editable} onChange={event => updateForm({ ...form, purpose: event.target.value })} /></div>
+      <div className={styles.full}><Textarea label="업무 필요성" required rows={5} value={form.businessJustification} disabled={!editable} onChange={event => updateForm({ ...form, businessJustification: event.target.value })} /></div>
     </div>
     {editable ? <div className={styles.actions}>
       <Button variant="secondary" leadingIcon={<Save aria-hidden="true" size={16} />} loading={pending === "save"} onClick={() => void save()}>revision 저장</Button>
-      <Button variant="secondary" loading={pending === "preview"} onClick={() => void loadPreview()}>결재선 미리보기</Button>
     </div> : null}
-    {preview ? <section className={styles.approvalLine} aria-labelledby="approval-line-title">
-      <div><h3 id="approval-line-title">결재선</h3><span>{preview.normalized_amount_evidence.normalized_amount} {preview.normalized_amount_evidence.functional_currency}</span></div>
-      {preview.required_stages.map(stage => <Select
-        key={stage.stage_order}
-        label={`${stage.stage_order}단계 · ${stage.position_type}`}
-        value={approvers[stage.stage_order] ?? ""}
-        onChange={event => setApprovers({ ...approvers, [stage.stage_order]: event.target.value })}
-      >
-        <option value="">결재자 선택</option>
-        {stage.candidates.map(candidate => <option key={candidate.subject_id} value={candidate.subject_id}>{candidate.display_name}</option>)}
-      </Select>)}
-      {!confirming ? <Button leadingIcon={<FileCheck2 aria-hidden="true" size={16} />} disabled={!allSelected} onClick={() => setConfirming(true)}>상신</Button> : (
-        <div className={styles.confirm} role="alert"><p>현재 revision과 결재선을 잠그고 상신합니다.</p><div><Button variant="ghost" onClick={() => setConfirming(false)}>취소</Button><Button loading={pending === "submit"} onClick={() => void submit()}>상신 확인</Button></div></div>
-      )}
-    </section> : null}
     {message ? <p className={styles.message} role="status">{message}</p> : null}
   </article>;
 }

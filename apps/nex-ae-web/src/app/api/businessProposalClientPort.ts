@@ -35,6 +35,7 @@ export interface BusinessProposal {
   readonly version: number;
   readonly current_revision_no: number;
   readonly approved_envelope_id: string | null;
+  readonly rejection_reason: string | null;
   readonly journey: BusinessJourney;
   readonly current_revision: BusinessProposalRevision;
 }
@@ -265,6 +266,7 @@ function projectProposal(value: unknown): BusinessProposal {
     version: integer(value.version),
     current_revision_no: integer(value.current_revision_no),
     approved_envelope_id: typeof value.approved_envelope_id === "string" ? value.approved_envelope_id : null,
+    rejection_reason: typeof value.rejection_reason === "string" ? value.rejection_reason : null,
     journey: projectBusinessJourney(value.journey),
     current_revision: Object.freeze({
       revision_no: integer(revision.revision_no),
@@ -329,6 +331,7 @@ function proposalFromCommand(command: ProposalRevisionCommand, version: number, 
     version,
     current_revision_no: revisionNo,
     approved_envelope_id: null,
+    rejection_reason: null,
     journey: projectBusinessJourney({
       schema_version: "eos_business_journey.v1",
       journey_kind: "BUSINESS_PROPOSAL",

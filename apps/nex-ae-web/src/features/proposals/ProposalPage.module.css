@@ -22,13 +22,18 @@
 .formGrid { display: grid; gap: var(--nex-space-4); grid-template-columns: 2fr 1fr 1fr 1fr; }
 .full { grid-column: 1 / -1; }
 .actions { display: flex; gap: var(--nex-space-2); justify-content: flex-end; }
-.approvalLine { border-top: 1px solid var(--nex-border-default); display: grid; gap: var(--nex-space-4); padding-top: var(--nex-space-4); }
-.approvalLine > div:first-child { align-items: baseline; display: flex; justify-content: space-between; }
+.approvalLine { border: 1px solid var(--nex-border-default); border-radius: var(--nex-radius-md); display: grid; gap: var(--nex-space-3); padding: var(--nex-space-4); }
+.approvalLine > div:first-child { align-items: center; display: flex; gap: var(--nex-space-3); justify-content: space-between; }
+.approvalLine > div:first-child > div { display: grid; gap: var(--nex-space-1); }
 .approvalLine h3 { font: var(--nex-text-subtitle); margin: 0; }
 .approvalLine > div:first-child span { color: var(--nex-text-secondary); font: var(--nex-text-caption); }
+.approvalAmount, .approvalHint { color: var(--nex-text-secondary); font: var(--nex-text-caption); margin: 0; }
+.rejection { background: var(--nex-danger-bg); border: 1px solid var(--nex-danger-border); border-radius: var(--nex-radius-md); color: var(--nex-danger-fg); display: grid; gap: var(--nex-space-2); padding: var(--nex-space-4); }
+.rejection h3 { font: var(--nex-text-subtitle); margin: 0; }
+.rejection p { margin: 0; white-space: pre-wrap; }
 .confirm { background: var(--nex-warning-bg); border: 1px solid var(--nex-warning-border); border-radius: var(--nex-radius-sm); display: flex; justify-content: space-between; padding: var(--nex-space-3); }
 .confirm p { margin: 0; }
 .confirm div { display: flex; gap: var(--nex-space-2); }
 .message { background: var(--nex-accent-subtle); border-radius: var(--nex-radius-sm); margin: 0; padding: var(--nex-space-3); }
 @media (max-width: 900px) { .workspace { grid-template-columns: 1fr; } .list { border-bottom: 1px solid var(--nex-border-default); border-right: 0; } .formGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-@media (max-width: 560px) { .formGrid { grid-template-columns: 1fr; } .full { grid-column: auto; } .editorHeader, .confirm { gap: var(--nex-space-3); flex-direction: column; } }
+@media (max-width: 560px) { .formGrid { grid-template-columns: 1fr; } .full { grid-column: auto; } .editorHeader, .approvalLine > div:first-child, .confirm { align-items: stretch; gap: var(--nex-space-3); flex-direction: column; } }
