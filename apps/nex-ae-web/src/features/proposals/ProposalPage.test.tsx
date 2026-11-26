@@ -18,6 +18,7 @@ describe("proposal review workspace", () => {
     expect(await screen.findByRole("heading", { name: "외부 용역비 사용 품의" })).toBeInTheDocument();
     expect(screen.getAllByText("VO00D260001")).toHaveLength(2);
     expect(screen.getByLabelText(/금액/)).toHaveValue("1000000.0000");
+    expect(screen.getByRole("navigation", { name: "업무 진행 단계" })).toHaveTextContent("품의서 작성진행 중");
     expect(view.container.textContent).not.toContain(PROPOSAL.company_id);
     expect(view.container.textContent).not.toContain(PROPOSAL.current_revision.project_ids[0]);
   });
@@ -65,6 +66,18 @@ const PROPOSAL: BusinessProposal = {
   version: 1,
   current_revision_no: 1,
   approved_envelope_id: null,
+  journey: {
+    schema_version: "eos_business_journey.v1",
+    journey_kind: "BUSINESS_PROPOSAL",
+    current_stage: "PROPOSAL_DRAFT",
+    terminal: false,
+    approval_stage_count: 0,
+    steps: [
+      { order: 1, code: "PROPOSAL_DRAFT", label: "품의서 작성", status: "CURRENT" },
+      { order: 2, code: "BUSINESS_APPROVAL", label: "품의 결재", status: "UPCOMING" },
+      { order: 3, code: "VOUCHER_PREPARATION", label: "전표 작성", status: "UPCOMING" },
+    ],
+  },
   current_revision: {
     revision_no: 1,
     revision_id: "d5000000-0000-4000-8000-000000000031",

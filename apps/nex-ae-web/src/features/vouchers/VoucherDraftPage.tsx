@@ -9,6 +9,7 @@ import type {
   BusinessVoucherLine,
 } from "../../app/api/businessVoucherClientPort";
 import { Button, EmptyState, Input, Select } from "../../design-system/components";
+import { BusinessJourney } from "../business/BusinessJourney";
 import styles from "./VoucherDraftPage.module.css";
 
 export function VoucherDraftPage({
@@ -103,6 +104,7 @@ function DraftEditor({ client, draft, onChanged }: {
 
   return <article className={styles.editor}>
     <div className={styles.editorHeader}><div><span>{stateLabel(draft.state)} · revision {draft.current_revision_no}</span><h2>{draft.project_code}</h2></div><strong>{draft.approved_document?.remaining_amount ?? "-"} {draft.transaction_currency} 잔여</strong></div>
+    <BusinessJourney value={draft.journey} />
     <Input label="회계 인식일" type="date" value={recognitionDate} disabled={!editable} onChange={event => setRecognitionDate(event.target.value)} />
     <div className={styles.lineTable} role="table" aria-label="전표 라인">
       <div className={styles.lineHeader} role="row"><span>계정과목</span><span>적요</span><span>차변</span><span>대변</span></div>

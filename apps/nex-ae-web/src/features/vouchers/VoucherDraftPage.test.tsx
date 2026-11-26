@@ -16,6 +16,7 @@ describe("voucher draft review workspace", () => {
     renderPage(voucherClient({ submit }));
     expect(await screen.findByRole("heading", { name: "VO00D260001" })).toBeInTheDocument();
     expect(screen.getByLabelText("1번 계정과목")).toHaveValue("510100");
+    expect(screen.getByRole("navigation", { name: "업무 진행 단계" })).toHaveTextContent("전표 검토진행 중");
     await user.click(screen.getByRole("button", { name: "회계 상신" }));
     expect(screen.getByText("현재 revision을 잠그고 회계 결재를 요청합니다.")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "상신 확인" }));
@@ -79,6 +80,18 @@ const DRAFT: BusinessVoucherDraft = {
   source_record_ref: "expense:51",
   business_work_code: "FL0004011",
   document_envelope_id: "d2000000-0000-4000-8000-000000000051",
+  journey: {
+    schema_version: "eos_business_journey.v1",
+    journey_kind: "ACCOUNTING_VOUCHER",
+    current_stage: "VOUCHER_REVIEW",
+    terminal: false,
+    approval_stage_count: null,
+    steps: [
+      { order: 1, code: "VOUCHER_REVIEW", label: "전표 검토", status: "CURRENT" },
+      { order: 2, code: "ACCOUNTING_APPROVAL", label: "회계 결재", status: "UPCOMING" },
+      { order: 3, code: "JOURNAL_POSTING", label: "총계정원장 반영", status: "UPCOMING" },
+    ],
+  },
   approved_document: { approved_document_id: "proposal-51", approved_amount: "1000.0000", remaining_amount: "1000.0000", attachment_manifest_hash: "sha256:" + "b".repeat(64) },
   lines: [
     { line_no: 1, account_code: "510100", account_name: "외주비", debit_original: "1000.0000", credit_original: "0.0000", source_record_line_ref: "expense:51:1", description: "외주비", evidence_hash: "sha256:" + "c".repeat(64) },

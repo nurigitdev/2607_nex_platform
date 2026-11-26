@@ -17,6 +17,7 @@ from .approval_policies import (
     SqlAlchemyEosApprovalPolicyRepository,
 )
 from .approved_documents import SqlAlchemyEosApprovedDocumentRepository
+from .business_journeys import project_voucher_journey
 from .business_transactions import (
     EosBusinessOperationError,
     EosBusinessOperationRequest,
@@ -493,7 +494,7 @@ class EosBusinessVoucherDraftService:
             tenant_id=str(candidate["tenant_id"]),
             envelope_id=str(candidate["document_envelope_id"]),
         )
-        return {
+        projection = {
             "schema_version": "eos_business_voucher_draft.v1",
             "candidate_id": str(candidate["candidate_id"]),
             "state": str(candidate["state"]),
@@ -526,6 +527,8 @@ class EosBusinessVoucherDraftService:
             "created_at": _timestamp(candidate["created_at"]),
             "updated_at": _timestamp(candidate["updated_at"]),
         }
+        projection["journey"] = project_voucher_journey(projection)
+        return projection
 
     def _project_revision(
         self, tenant_id: str, revision: Mapping[str, Any]

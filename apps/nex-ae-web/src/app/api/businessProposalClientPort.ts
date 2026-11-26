@@ -1,3 +1,5 @@
+import { projectBusinessJourney, type BusinessJourney } from "./businessJourney";
+
 export type BusinessProposalState =
   | "DRAFT"
   | "SUBMITTED"
@@ -33,6 +35,7 @@ export interface BusinessProposal {
   readonly version: number;
   readonly current_revision_no: number;
   readonly approved_envelope_id: string | null;
+  readonly journey: BusinessJourney;
   readonly current_revision: BusinessProposalRevision;
 }
 
@@ -262,6 +265,7 @@ function projectProposal(value: unknown): BusinessProposal {
     version: integer(value.version),
     current_revision_no: integer(value.current_revision_no),
     approved_envelope_id: typeof value.approved_envelope_id === "string" ? value.approved_envelope_id : null,
+    journey: projectBusinessJourney(value.journey),
     current_revision: Object.freeze({
       revision_no: integer(revision.revision_no),
       revision_id: text(revision.revision_id),
@@ -325,6 +329,18 @@ function proposalFromCommand(command: ProposalRevisionCommand, version: number, 
     version,
     current_revision_no: revisionNo,
     approved_envelope_id: null,
+    journey: projectBusinessJourney({
+      schema_version: "eos_business_journey.v1",
+      journey_kind: "BUSINESS_PROPOSAL",
+      current_stage: "PROPOSAL_DRAFT",
+      terminal: false,
+      approval_stage_count: 0,
+      steps: [
+        { order: 1, code: "PROPOSAL_DRAFT", label: "품의서 작성", status: "CURRENT" },
+        { order: 2, code: "BUSINESS_APPROVAL", label: "품의 결재", status: "UPCOMING" },
+        { order: 3, code: "VOUCHER_PREPARATION", label: "전표 작성", status: "UPCOMING" },
+      ],
+    }),
     current_revision: {
       ...command,
       revision_no: revisionNo,

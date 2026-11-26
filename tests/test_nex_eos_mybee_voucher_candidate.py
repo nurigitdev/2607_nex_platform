@@ -88,6 +88,7 @@ from nex_eos import (
 from nex_eos import candidate_review as candidate_review_module
 from nex_eos import journal_posting as journal_posting_module
 from nex_eos.approved_documents import SqlAlchemyEosApprovedDocumentRepository
+from nex_eos.business_journeys import project_voucher_journey
 from nex_eos.business_voucher_drafts import EosBusinessVoucherDraftService
 from nex_eos.finance_v2_api import register_finance_v2_routes
 from nex_eos.project_authorization import EosProjectAuthorizationEvidence
@@ -1312,6 +1313,7 @@ def test_actual_postgres_business_voucher_draft_revision_and_zero_residue() -> N
         command.execute(_payload(), caller=CALLER)
         original = candidates.get(tenant_id=TENANT, candidate_id=CANDIDATE_ID)
         assert original is not None
+        assert project_voucher_journey(original)["current_stage"] == "VOUCHER_REVIEW"
         revised = candidates.append_draft_revision(
             voucher_candidates.VoucherCandidateRevisionInput(
                 tenant_id=TENANT,

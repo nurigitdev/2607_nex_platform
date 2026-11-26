@@ -1,3 +1,5 @@
+import { projectBusinessJourney, type BusinessJourney } from "./businessJourney";
+
 export type BusinessVoucherState =
   | "DRAFT"
   | "READY_FOR_REVIEW"
@@ -30,6 +32,7 @@ export interface BusinessVoucherDraft {
   readonly source_record_ref: string;
   readonly business_work_code: string;
   readonly document_envelope_id: string;
+  readonly journey: BusinessJourney;
   readonly approved_document: {
     readonly approved_document_id: string;
     readonly approved_amount: string;
@@ -212,6 +215,7 @@ function projectDraft(value: unknown): BusinessVoucherDraft {
     source_record_ref: text(value.source_record_ref),
     business_work_code: text(value.business_work_code),
     document_envelope_id: text(value.document_envelope_id),
+    journey: projectBusinessJourney(value.journey),
     approved_document: isObject(value.approved_document) ? {
       approved_document_id: text(value.approved_document.approved_document_id),
       approved_amount: text(value.approved_document.approved_amount),

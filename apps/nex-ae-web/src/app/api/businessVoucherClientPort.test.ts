@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { createBusinessVoucherClient } from "./businessVoucherClientPort";
+import { createBusinessVoucherClient, type BusinessVoucherDraft } from "./businessVoucherClientPort";
 
 describe("business voucher client port", () => {
   it("sends exact revision identity for explicit validation and accounting submit", async () => {
@@ -33,7 +33,7 @@ describe("business voucher client port", () => {
   });
 });
 
-const DRAFT = {
+const DRAFT: BusinessVoucherDraft = {
   candidate_id: "d1000000-0000-4000-8000-000000000051",
   state: "DRAFT" as const,
   version: 2,
@@ -46,6 +46,18 @@ const DRAFT = {
   source_record_ref: "expense:51",
   business_work_code: "FL0004011",
   document_envelope_id: "d2000000-0000-4000-8000-000000000051",
+  journey: {
+    schema_version: "eos_business_journey.v1",
+    journey_kind: "ACCOUNTING_VOUCHER",
+    current_stage: "VOUCHER_REVIEW",
+    terminal: false,
+    approval_stage_count: null,
+    steps: [
+      { order: 1, code: "VOUCHER_REVIEW", label: "전표 검토", status: "CURRENT" },
+      { order: 2, code: "ACCOUNTING_APPROVAL", label: "회계 결재", status: "UPCOMING" },
+      { order: 3, code: "JOURNAL_POSTING", label: "총계정원장 반영", status: "UPCOMING" },
+    ],
+  },
   approved_document: null,
   lines: [],
   balance: { debit: "1000.0000", credit: "1000.0000", balanced: true },

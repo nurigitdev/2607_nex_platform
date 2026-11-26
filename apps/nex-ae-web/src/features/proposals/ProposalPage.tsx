@@ -10,6 +10,7 @@ import type {
   ProposalRevisionCommand,
 } from "../../app/api/businessProposalClientPort";
 import { Button, EmptyState, Input, Select, Textarea } from "../../design-system/components";
+import { BusinessJourney } from "../business/BusinessJourney";
 import styles from "./ProposalPage.module.css";
 
 const FILTERS: readonly { value: BusinessProposalState | "ALL"; label: string }[] = [
@@ -163,6 +164,7 @@ function ProposalEditor({ client, proposal, onChanged }: {
       <div><span>{stateLabel(proposal.state)} · revision {proposal.current_revision_no}</span><h2>{revision.title}</h2></div>
       <span>{revision.project_codes.join(", ") || "회사 공통"}</span>
     </div>
+    <BusinessJourney value={proposal.journey} />
     <div className={styles.formGrid}>
       <Input label="제목" required value={form.title} disabled={!editable} onChange={event => setForm({ ...form, title: event.target.value })} />
       <Input label="금액" required inputMode="decimal" value={form.requestedAmount} disabled={!editable} onChange={event => setForm({ ...form, requestedAmount: event.target.value })} />

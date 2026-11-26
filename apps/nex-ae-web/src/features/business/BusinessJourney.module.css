@@ -1,0 +1,11 @@
+.journey { border-bottom: 1px solid var(--color-border); padding-bottom: 12px; }
+.journey ol { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); list-style: none; margin: 0; padding: 0; }
+.journey li { border-top: 2px solid var(--color-border); display: grid; gap: 3px; min-width: 0; padding: 8px 8px 0 0; }
+.journey li + li { padding-left: 8px; }
+.journey strong { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.journey span { color: var(--color-text-muted); font-size: 11px; }
+.journey li[data-status="COMPLETED"] { border-top-color: var(--color-success-text); }
+.journey li[data-status="CURRENT"], .journey li[data-status="AVAILABLE"] { border-top-color: var(--nex-accent); }
+.journey li[data-status="REJECTED"], .journey li[data-status="RETURNED"] { border-top-color: var(--color-danger-text); }
+.journey li[data-status="CANCELLED"], .journey li[data-status="BLOCKED"] { opacity: .66; }
+@media (max-width: 560px) { .journey ol { grid-template-columns: 1fr; gap: 8px; } .journey li + li { padding-left: 0; } }

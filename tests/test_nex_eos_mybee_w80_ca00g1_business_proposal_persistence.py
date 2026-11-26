@@ -510,6 +510,7 @@ def test_actual_postgres_migration_revision_replay_and_zero_residue() -> None:
             submitted_at=NOW,
         )
         assert submitted["state"] == "SUBMITTED"
+        assert submitted["journey"]["current_stage"] == "BUSINESS_APPROVAL"
         assert submitted["submitted_revision_no"] == 2
         assert submitted["approval_preview_hash"] == "sha256:" + "c" * 64
         runtime.dispose()

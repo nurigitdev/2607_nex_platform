@@ -29,6 +29,7 @@ from sqlalchemy import (
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
 
+from .business_journeys import project_proposal_journey
 from .business_transactions import EOS_METADATA
 
 BUSINESS_PROPOSAL_STATES = frozenset(
@@ -726,10 +727,12 @@ class SqlAlchemyEosBusinessProposalRepository:
             .mappings()
             .one()
         )
-        return {
+        projection = {
             **_wire_aggregate(aggregate),
             "current_revision": _wire_revision(revision),
         }
+        projection["journey"] = project_proposal_journey(projection)
+        return projection
 
 
 class EosBusinessProposalSignoffObserver:
