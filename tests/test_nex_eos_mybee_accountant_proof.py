@@ -167,6 +167,7 @@ def _seed(sessions) -> None:
                 revision_no=1,
                 revision_id=REVISION_ID,
                 candidate_hash=HASH_A,
+                recognition_date=NOW.date(),
                 source_evidence_hash=HASH_B,
                 approved_document_hash=HASH_B,
                 attachment_manifest_hash=HASH_C,

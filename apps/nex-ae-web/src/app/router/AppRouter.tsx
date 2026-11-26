@@ -7,6 +7,7 @@ import { DocumentRuntimeRoute } from "../../features/documents/DocumentRuntimeRo
 import { WorkspaceRuntimeRoute } from "../../features/workspace/WorkspaceRuntimeRoute";
 import { OperationsRuntimeRoute } from "../../features/operations/OperationsRuntimeRoute";
 import { ProposalPage } from "../../features/proposals/ProposalPage";
+import { VoucherDraftPage } from "../../features/vouchers/VoucherDraftPage";
 import { LoginPage } from "../auth/LoginPage";
 import { projectApplicationShell } from "../legacyAdapters/applicationShellAdapter";
 import { useOptionalInstalledRuntime } from "../providers/RuntimeProvider";
@@ -18,6 +19,7 @@ const pageLabels: Readonly<Record<string, string>> = Object.freeze({
   workspace: "워크스페이스",
   approvals: "승인함",
   proposals: "품의서",
+  vouchers: "전표 검토",
   upload: "업로드",
   documents: "문서",
   retrieval: "검색",
@@ -59,6 +61,14 @@ function ProposalRoute() {
   return <ProposalPage client={runtime?.clients.businessProposal ?? null} />;
 }
 
+function VoucherRoute() {
+  const runtime = useOptionalInstalledRuntime();
+  return <VoucherDraftPage
+    client={runtime?.clients.businessVoucher ?? null}
+    proposalClient={runtime?.clients.businessProposal ?? null}
+  />;
+}
+
 export function AppRouter() {
   return (
     <Routes>
@@ -67,12 +77,13 @@ export function AppRouter() {
         <Route path="/workspace" element={<WorkspaceRuntimeRoute />} />
         <Route path="/approvals" element={<ApprovalRoute />} />
         <Route path="/proposals" element={<ProposalRoute />} />
+        <Route path="/vouchers" element={<VoucherRoute />} />
         <Route path="/documents" element={<DocumentRuntimeRoute />} />
         <Route path="/upload" element={<DocumentRuntimeRoute initialTab="upload" />} />
         <Route path="/retrieval" element={<DocumentRuntimeRoute initialTab="retrieval" />} />
         <Route path="/artifacts" element={<ArtifactRuntimeRoute />} />
         <Route path="/operations" element={<OperationsRuntimeRoute />} />
-        {Object.keys(pageLabels).filter(routeId => !["workspace", "approvals", "proposals", "documents", "upload", "retrieval", "artifacts", "operations"].includes(routeId)).map(routeId => (
+        {Object.keys(pageLabels).filter(routeId => !["workspace", "approvals", "proposals", "vouchers", "documents", "upload", "retrieval", "artifacts", "operations"].includes(routeId)).map(routeId => (
           <Route key={routeId} path={`/${routeId}`} element={<RoutePage routeId={routeId} />} />
         ))}
       </Route>

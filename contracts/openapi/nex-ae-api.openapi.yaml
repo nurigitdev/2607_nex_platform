@@ -2810,6 +2810,91 @@ paths:
         "409": {description: "Proposal, preview, authority, or revision is stale."}
         "422": {description: Submit command is invalid.}
         "503": {description: EOS or OA authority is unavailable.}
+  /api/v1/business-voucher-drafts:
+    get:
+      operationId: listAeBusinessVoucherDrafts
+      tags: [Business Voucher Drafts]
+      security: [{userBearer: []}]
+      x-nex-required-scopes: [user:access]
+      parameters:
+        - name: state
+          in: query
+          required: false
+          schema: {type: array, items: {type: string}}
+      responses:
+        "200": {description: Owner-scoped pre-submission VoucherCandidate list.}
+        "401": {description: User session is missing or invalid.}
+        "403": {description: Browser user scope is denied.}
+        "503": {description: EOS voucher draft service is unavailable.}
+    post:
+      operationId: createAeBusinessVoucherDraft
+      tags: [Business Voucher Drafts]
+      security: [{userBearer: []}]
+      x-nex-required-scopes: [user:access]
+      requestBody: {required: true, content: {application/json: {schema: {type: object}}}}
+      responses:
+        "201": {description: Owner-scoped VoucherCandidate draft created in EOS.}
+        "401": {description: User session is missing or invalid.}
+        "403": {description: Browser user scope is denied.}
+        "409": {description: Candidate identity or approved-document allowance conflicts.}
+        "422": {description: Draft command is invalid.}
+        "503": {description: EOS voucher draft service is unavailable.}
+  /api/v1/business-voucher-drafts/{candidate_id}:
+    get:
+      operationId: getAeBusinessVoucherDraft
+      tags: [Business Voucher Drafts]
+      security: [{userBearer: []}]
+      x-nex-required-scopes: [user:access]
+      parameters: [{$ref: "#/components/parameters/BusinessVoucherCandidateId"}]
+      responses:
+        "200": {description: Owner-scoped draft and immutable revision history.}
+        "401": {description: User session is missing or invalid.}
+        "403": {description: Browser user scope is denied.}
+        "404": {description: Voucher draft is absent from the owner scope.}
+        "503": {description: EOS voucher draft service is unavailable.}
+    patch:
+      operationId: reviseAeBusinessVoucherDraft
+      tags: [Business Voucher Drafts]
+      security: [{userBearer: []}]
+      x-nex-required-scopes: [user:access]
+      parameters: [{$ref: "#/components/parameters/BusinessVoucherCandidateId"}]
+      requestBody: {required: true, content: {application/json: {schema: {type: object}}}}
+      responses:
+        "200": {description: Immutable DRAFT revision appended in EOS.}
+        "401": {description: User session is missing or invalid.}
+        "403": {description: Browser user scope is denied.}
+        "409": {description: "Draft state, revision, or version is stale."}
+        "422": {description: Revision command is invalid.}
+        "503": {description: EOS voucher draft service is unavailable.}
+  /api/v1/business-voucher-drafts/{candidate_id}:validate:
+    post:
+      operationId: validateAeBusinessVoucherDraft
+      tags: [Business Voucher Drafts]
+      security: [{userBearer: []}]
+      x-nex-required-scopes: [user:access]
+      parameters: [{$ref: "#/components/parameters/BusinessVoucherCandidateId"}]
+      requestBody: {required: true, content: {application/json: {schema: {type: object}}}}
+      responses:
+        "200": {description: Fresh EOS accounting validation result.}
+        "401": {description: User session is missing or invalid.}
+        "403": {description: Browser user scope is denied.}
+        "409": {description: Draft is not validatable in its current state.}
+        "503": {description: EOS voucher draft service is unavailable.}
+  /api/v1/business-voucher-drafts/{candidate_id}:submit-for-accounting:
+    post:
+      operationId: submitAeBusinessVoucherDraftForAccounting
+      tags: [Business Voucher Drafts]
+      security: [{userBearer: []}]
+      x-nex-required-scopes: [user:access]
+      parameters: [{$ref: "#/components/parameters/BusinessVoucherCandidateId"}]
+      requestBody: {required: true, content: {application/json: {schema: {type: object}}}}
+      responses:
+        "200": {description: Exact reviewed revision submitted to the existing accounting approval runtime.}
+        "401": {description: User session is missing or invalid.}
+        "403": {description: Browser user scope is denied.}
+        "409": {description: "Confirmation, revision, validation, policy, or authority binding is stale."}
+        "422": {description: Submit command is invalid.}
+        "503": {description: "EOS, OA, or WC authority is unavailable."}
 components:
   securitySchemes:
     serviceBearer:
@@ -2817,6 +2902,11 @@ components:
       scheme: bearer
       bearerFormat: RS256 at+jwt
   parameters:
+    BusinessVoucherCandidateId:
+      name: candidate_id
+      in: path
+      required: true
+      schema: {type: string, format: uuid}
     BusinessProposalId:
       name: proposal_id
       in: path

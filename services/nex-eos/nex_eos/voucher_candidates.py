@@ -133,6 +133,7 @@ EOS_VOUCHER_CANDIDATE_REVISION_TABLE = Table(
     Column("source_evidence_hash", String(71), nullable=False),
     Column("approved_document_hash", String(71), nullable=False),
     Column("attachment_manifest_hash", String(71), nullable=False),
+    Column("recognition_date", Date, nullable=False),
     Column("fx_rate_set_hash", String(71), nullable=True),
     Column("posting_rule_release_hash", String(71), nullable=True),
     Column("account_policy_release_hash", String(71), nullable=True),
@@ -253,6 +254,7 @@ class VoucherCandidateRevisionInput:
     expected_candidate_hash: str
     actor_subject_id: str
     lines: Sequence[VoucherCandidateLineInput]
+    recognition_date: date | None = None
 
 
 class SqlAlchemyEosVoucherCandidateRepository:
@@ -332,6 +334,7 @@ class SqlAlchemyEosVoucherCandidateRepository:
             "source_evidence_hash": source_evidence_hash,
             "approved_document_hash": semantics["approved_document_hash"],
             "attachment_manifest_hash": semantics["attachment_manifest_hash"],
+            "recognition_date": semantics["recognition_date"],
             "fx_rate_set_hash": None,
             "posting_rule_release_hash": None,
             "account_policy_release_hash": None,
@@ -414,6 +417,105 @@ class SqlAlchemyEosVoucherCandidateRepository:
             raise _persistence_error() from exc
         return _projection(candidate, revision, lines)
 
+    def list_preparer(
+        self,
+        *,
+        tenant_id: str,
+        preparer_subject_id: str,
+        states: Sequence[str] = (),
+    ) -> list[dict[str, Any]]:
+        tenant = _scoped_id("tenant_id", tenant_id, 128)
+        preparer = _scoped_id("preparer_subject_id", preparer_subject_id, 128)
+        admitted_states = tuple(str(value).strip().upper() for value in states)
+        if any(value not in EOS_VOUCHER_CANDIDATE_STATES for value in admitted_states):
+            raise _invalid("states contain an unsupported VoucherCandidate state.")
+        try:
+            with self._session_factory() as session:
+                statement = select(EOS_VOUCHER_CANDIDATE_TABLE).where(
+                    EOS_VOUCHER_CANDIDATE_TABLE.c.tenant_id == tenant,
+                    EOS_VOUCHER_CANDIDATE_TABLE.c.preparer_subject_id == preparer,
+                )
+                if admitted_states:
+                    statement = statement.where(
+                        EOS_VOUCHER_CANDIDATE_TABLE.c.state.in_(admitted_states)
+                    )
+                candidates = session.execute(
+                    statement.order_by(
+                        EOS_VOUCHER_CANDIDATE_TABLE.c.updated_at.desc(),
+                        EOS_VOUCHER_CANDIDATE_TABLE.c.candidate_id,
+                    )
+                ).mappings()
+                result = []
+                for candidate in candidates:
+                    revision = session.execute(
+                        select(EOS_VOUCHER_CANDIDATE_REVISION_TABLE).where(
+                            EOS_VOUCHER_CANDIDATE_REVISION_TABLE.c.tenant_id == tenant,
+                            EOS_VOUCHER_CANDIDATE_REVISION_TABLE.c.candidate_id
+                            == candidate["candidate_id"],
+                            EOS_VOUCHER_CANDIDATE_REVISION_TABLE.c.revision_no
+                            == candidate["current_revision_no"],
+                        )
+                    ).mappings().one()
+                    lines = session.execute(
+                        select(EOS_VOUCHER_CANDIDATE_LINE_TABLE)
+                        .where(
+                            EOS_VOUCHER_CANDIDATE_LINE_TABLE.c.tenant_id == tenant,
+                            EOS_VOUCHER_CANDIDATE_LINE_TABLE.c.candidate_id
+                            == candidate["candidate_id"],
+                            EOS_VOUCHER_CANDIDATE_LINE_TABLE.c.revision_no
+                            == candidate["current_revision_no"],
+                        )
+                        .order_by(EOS_VOUCHER_CANDIDATE_LINE_TABLE.c.line_no)
+                    ).mappings()
+                    result.append(_projection(candidate, revision, list(lines)))
+                return result
+        except EosVoucherCandidateError:
+            raise
+        except SQLAlchemyError as exc:
+            raise _persistence_error() from exc
+
+    def list_revisions(
+        self,
+        *,
+        tenant_id: str,
+        candidate_id: str,
+    ) -> list[dict[str, Any]]:
+        tenant = _scoped_id("tenant_id", tenant_id, 128)
+        candidate = _uuid("candidate_id", candidate_id)
+        try:
+            with self._session_factory() as session:
+                revisions = session.execute(
+                    select(EOS_VOUCHER_CANDIDATE_REVISION_TABLE)
+                    .where(
+                        EOS_VOUCHER_CANDIDATE_REVISION_TABLE.c.tenant_id == tenant,
+                        EOS_VOUCHER_CANDIDATE_REVISION_TABLE.c.candidate_id
+                        == candidate,
+                    )
+                    .order_by(EOS_VOUCHER_CANDIDATE_REVISION_TABLE.c.revision_no)
+                ).mappings()
+                result = []
+                for revision in revisions:
+                    lines = session.execute(
+                        select(EOS_VOUCHER_CANDIDATE_LINE_TABLE)
+                        .where(
+                            EOS_VOUCHER_CANDIDATE_LINE_TABLE.c.tenant_id == tenant,
+                            EOS_VOUCHER_CANDIDATE_LINE_TABLE.c.candidate_id
+                            == candidate,
+                            EOS_VOUCHER_CANDIDATE_LINE_TABLE.c.revision_no
+                            == revision["revision_no"],
+                        )
+                        .order_by(EOS_VOUCHER_CANDIDATE_LINE_TABLE.c.line_no)
+                    ).mappings()
+                    result.append(
+                        {
+                            **dict(revision),
+                            "lines": [dict(line) for line in lines],
+                        }
+                    )
+                return result
+        except SQLAlchemyError as exc:
+            raise _persistence_error() from exc
+
     def append_revision(self, value: VoucherCandidateRevisionInput) -> dict[str, Any]:
         try:
             with build_unit_of_work(self._session_factory) as transaction:
@@ -429,10 +531,55 @@ class SqlAlchemyEosVoucherCandidateRepository:
         except SQLAlchemyError as exc:
             raise _persistence_error() from exc
 
+    def append_draft_revision(
+        self, value: VoucherCandidateRevisionInput
+    ) -> dict[str, Any]:
+        try:
+            with build_unit_of_work(self._session_factory) as transaction:
+                return self._append_revision_in_session(
+                    transaction.db,
+                    value,
+                    required_state="DRAFT",
+                )
+        except EosVoucherCandidateError:
+            raise
+        except IntegrityError as exc:
+            raise EosVoucherCandidateError(
+                "EOS_VOUCHER_CANDIDATE_REVISION_CONFLICT",
+                "VoucherCandidate revision identity already exists.",
+                status_code=409,
+            ) from exc
+        except SQLAlchemyError as exc:
+            raise _persistence_error() from exc
+
+    def append_draft_revision_in_session(
+        self,
+        session: Session,
+        value: VoucherCandidateRevisionInput,
+    ) -> dict[str, Any]:
+        return self._append_revision_in_session(
+            session,
+            value,
+            required_state="DRAFT",
+        )
+
     def append_revision_in_session(
         self,
         session: Session,
         value: VoucherCandidateRevisionInput,
+    ) -> dict[str, Any]:
+        return self._append_revision_in_session(
+            session,
+            value,
+            required_state="RETURNED_FOR_CORRECTION",
+        )
+
+    def _append_revision_in_session(
+        self,
+        session: Session,
+        value: VoucherCandidateRevisionInput,
+        *,
+        required_state: str,
     ) -> dict[str, Any]:
         if not isinstance(value, VoucherCandidateRevisionInput):
             raise _invalid("value must be VoucherCandidateRevisionInput.")
@@ -470,7 +617,7 @@ class SqlAlchemyEosVoucherCandidateRepository:
                 status_code=404,
             )
         if (
-            candidate["state"] != "RETURNED_FOR_CORRECTION"
+            candidate["state"] != required_state
             or int(candidate["version"]) != expected_version
             or int(candidate["current_revision_no"]) != expected_revision_no
         ):
@@ -532,7 +679,10 @@ class SqlAlchemyEosVoucherCandidateRepository:
             "business_work_code": str(candidate["business_work_code"]),
             "transaction_currency": str(candidate["transaction_currency"]),
             "recognition_date": _date(
-                "recognition_date", candidate["recognition_date"]
+                "recognition_date",
+                value.recognition_date
+                if value.recognition_date is not None
+                else candidate["recognition_date"],
             ),
             "lines": lines,
             "created_business_operation_id": str(
@@ -575,6 +725,7 @@ class SqlAlchemyEosVoucherCandidateRepository:
             "source_evidence_hash": source_evidence_hash,
             "approved_document_hash": semantics["approved_document_hash"],
             "attachment_manifest_hash": semantics["attachment_manifest_hash"],
+            "recognition_date": semantics["recognition_date"],
             "fx_rate_set_hash": None,
             "posting_rule_release_hash": None,
             "account_policy_release_hash": None,
@@ -609,13 +760,14 @@ class SqlAlchemyEosVoucherCandidateRepository:
             .where(
                 EOS_VOUCHER_CANDIDATE_TABLE.c.tenant_id == tenant_id,
                 EOS_VOUCHER_CANDIDATE_TABLE.c.candidate_id == candidate_id,
-                EOS_VOUCHER_CANDIDATE_TABLE.c.state == "RETURNED_FOR_CORRECTION",
+                EOS_VOUCHER_CANDIDATE_TABLE.c.state == required_state,
                 EOS_VOUCHER_CANDIDATE_TABLE.c.version == expected_version,
                 EOS_VOUCHER_CANDIDATE_TABLE.c.current_revision_no
                 == expected_revision_no,
             )
             .values(
                 state="DRAFT",
+                recognition_date=semantics["recognition_date"],
                 current_revision_no=revision_no,
                 version=expected_version + 1,
                 updated_at=now,
@@ -630,6 +782,7 @@ class SqlAlchemyEosVoucherCandidateRepository:
         projected_candidate = {
             **dict(candidate),
             "state": "DRAFT",
+            "recognition_date": semantics["recognition_date"],
             "current_revision_no": revision_no,
             "version": expected_version + 1,
             "updated_at": now,

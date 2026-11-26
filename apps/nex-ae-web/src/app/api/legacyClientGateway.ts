@@ -13,6 +13,10 @@ import {
   type BusinessProposalClientPort,
 } from "./businessProposalClientPort";
 import {
+  createBusinessVoucherClient,
+  type BusinessVoucherClientPort,
+} from "./businessVoucherClientPort";
+import {
   createDocumentLibraryClient,
   type DocumentLibraryClientPort,
 } from "./documentLibraryClientPort";
@@ -30,6 +34,7 @@ export interface LegacyClientGateway {
   readonly documentLibrary: DocumentLibraryClientPort;
   readonly approval: ApprovalClientPort;
   readonly businessProposal: BusinessProposalClientPort;
+  readonly businessVoucher: BusinessVoucherClientPort;
   readonly operations: OperationsClientPort;
   readonly artifact: unknown;
   readonly documentDetail: unknown;
@@ -64,6 +69,7 @@ export function createLegacyClientGateway({
     documentLibrary: createDocumentLibraryClient({ mode, baseUrl, fetchImpl }),
     approval: registry.approvalClient as unknown as ApprovalClientPort,
     businessProposal: createBusinessProposalClient({ mode, baseUrl, fetchImpl }),
+    businessVoucher: createBusinessVoucherClient({ mode, baseUrl, fetchImpl }),
     operations: createOperationsClient({ mode, baseUrl, fetchImpl }),
     artifact: registry.artifactClient,
     documentDetail: registry.documentDetailClient,

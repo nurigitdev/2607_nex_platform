@@ -64,6 +64,7 @@ const PROPOSAL: BusinessProposal = {
   state: "DRAFT",
   version: 1,
   current_revision_no: 1,
+  approved_envelope_id: null,
   current_revision: {
     revision_no: 1,
     revision_id: "d5000000-0000-4000-8000-000000000031",

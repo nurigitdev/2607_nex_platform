@@ -32,6 +32,7 @@ export interface BusinessProposal {
   readonly state: BusinessProposalState;
   readonly version: number;
   readonly current_revision_no: number;
+  readonly approved_envelope_id: string | null;
   readonly current_revision: BusinessProposalRevision;
 }
 
@@ -260,6 +261,7 @@ function projectProposal(value: unknown): BusinessProposal {
     state: text(value.state) as BusinessProposalState,
     version: integer(value.version),
     current_revision_no: integer(value.current_revision_no),
+    approved_envelope_id: typeof value.approved_envelope_id === "string" ? value.approved_envelope_id : null,
     current_revision: Object.freeze({
       revision_no: integer(revision.revision_no),
       revision_id: text(revision.revision_id),
@@ -322,6 +324,7 @@ function proposalFromCommand(command: ProposalRevisionCommand, version: number, 
     state: "DRAFT",
     version,
     current_revision_no: revisionNo,
+    approved_envelope_id: null,
     current_revision: {
       ...command,
       revision_no: revisionNo,

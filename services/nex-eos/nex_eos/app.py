@@ -14,6 +14,7 @@ from .approval_decision_api import register_approval_decision_routes
 from .approved_document_api import register_approved_document_routes
 from .budget_api import register_budget_routes
 from .business_proposal_api import register_business_proposal_routes
+from .business_voucher_api import register_business_voucher_routes
 from .coa_api import register_coa_routes
 from .coa_release_admin_api import register_coa_release_admin_routes
 from .config import EosSettings, load_eos_settings
@@ -177,6 +178,9 @@ def create_eos_app(
         dependencies.candidate_validation_service
     )
     app.state.eos_candidate_review_repository = dependencies.candidate_review_repository
+    app.state.eos_business_voucher_drafts = (
+        dependencies.business_voucher_draft_service
+    )
     app.state.eos_transaction_preparation_authority_service = (
         dependencies.transaction_preparation_authority_service
     )
@@ -191,6 +195,7 @@ def create_eos_app(
     register_approval_decision_routes(app)
     register_approved_document_routes(app)
     register_business_proposal_routes(app)
+    register_business_voucher_routes(app)
     register_scoped_approval_routes(app)
     register_organization_routes(app)
     register_project_application_routes(app)

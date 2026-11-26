@@ -61,6 +61,7 @@ from .business_transactions import (
     EosBusinessTransactionCoordinator,
     SqlAlchemyEosBusinessTransactionCoordinator,
 )
+from .business_voucher_drafts import EosBusinessVoucherDraftService
 from .candidate_review import SqlAlchemyEosCandidateReviewRepository
 from .candidate_validation import EosCandidateValidationService
 from .coa_operations import (
@@ -228,6 +229,7 @@ class EosDependencies:
     approval_instances: SqlAlchemyEosApprovalInstanceRepository | None
     approval_transition_service: EosBusinessApprovalTransitionService | None
     approved_document_service: EosApprovedDocumentService | None
+    approved_documents: SqlAlchemyEosApprovedDocumentRepository | None
     scoped_approval_service: EosScopedApprovalService | None
     business_formal_wc_adapter: EosBusinessFormalWcAdapter | None
     business_proposals: SqlAlchemyEosBusinessProposalRepository | None
@@ -244,6 +246,7 @@ class EosDependencies:
     voucher_candidate_revision_service: EosReviseVoucherCandidateService | None
     candidate_validation_service: EosCandidateValidationService | None
     candidate_review_repository: SqlAlchemyEosCandidateReviewRepository | None
+    business_voucher_draft_service: EosBusinessVoucherDraftService | None
     transaction_preparation_authority_service: (
         EosTransactionPreparationAuthorityService | None
     )
@@ -465,12 +468,17 @@ def build_eos_dependencies(
         and environ.get("NEX_EOS_PROJECT_AGENT_PROFILE_POLICY_REF", "").strip()
         else None
     )
+    approved_documents = (
+        SqlAlchemyEosApprovedDocumentRepository(database_runtime.session_factory)
+        if database_runtime is not None
+        else None
+    )
     approved_document_service = (
         EosApprovedDocumentService(
-            SqlAlchemyEosApprovedDocumentRepository(database_runtime.session_factory),
+            approved_documents,
             authorization_source,
         )
-        if database_runtime is not None and authorization_source is not None
+        if approved_documents is not None and authorization_source is not None
         else None
     )
     scoped_approval_service = (
@@ -943,6 +951,29 @@ def build_eos_dependencies(
         and authorization_source is not None
         else None
     )
+    business_voucher_draft_service = (
+        EosBusinessVoucherDraftService(
+            coordinator=business_transactions,
+            candidates=voucher_candidates,
+            create_service=voucher_candidate_command_service,
+            validation_service=candidate_validation_service,
+            scoped_approvals=scoped_approval_service,
+            approval_policies=approval_policies,
+            approved_documents=approved_documents,
+            projects=projects,
+            accounts=accounts,
+        )
+        if business_transactions is not None
+        and voucher_candidates is not None
+        and voucher_candidate_command_service is not None
+        and candidate_validation_service is not None
+        and scoped_approval_service is not None
+        and approval_policies is not None
+        and approved_documents is not None
+        and projects is not None
+        and accounts is not None
+        else None
+    )
     business_operation_query = (
         SqlAlchemyEosBusinessOperationQuery(database_runtime.session_factory)
         if database_runtime is not None
@@ -1009,6 +1040,7 @@ def build_eos_dependencies(
         approval_instances=approval_instances,
         approval_transition_service=approval_transition_service,
         approved_document_service=approved_document_service,
+        approved_documents=approved_documents,
         scoped_approval_service=scoped_approval_service,
         business_formal_wc_adapter=business_formal_wc_adapter,
         business_proposals=business_proposals,
@@ -1025,6 +1057,7 @@ def build_eos_dependencies(
         voucher_candidate_revision_service=voucher_candidate_revision_service,
         candidate_validation_service=candidate_validation_service,
         candidate_review_repository=candidate_review_repository,
+        business_voucher_draft_service=business_voucher_draft_service,
         transaction_preparation_authority_service=(
             transaction_preparation_authority_service
         ),

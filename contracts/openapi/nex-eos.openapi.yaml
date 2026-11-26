@@ -2266,7 +2266,7 @@ paths:
         "503": {description: "Authorization, persistence, or immutable verification failed."}
   /internal/v1/finance/voucher-drafts:
     get:
-      operationId: FINANCE.VOUCHER_DRAFT.LIST
+      operationId: FINANCE.VOUCHER_PRE_SUBMISSION.LIST
       tags: [Finance]
       security:
         - serviceBearer: []
@@ -2643,12 +2643,114 @@ paths:
         "409": {description: "Proposal, preview, authority, or revision is stale."}
         "422": {description: Submit command is invalid.}
         "503": {description: EOS or OA authority is unavailable.}
+  /internal/v2/business-voucher-drafts:
+    get:
+      operationId: FINANCE.VOUCHER_DRAFT.LIST
+      tags: [Business Voucher Draft]
+      security: [{serviceBearer: []}]
+      x-nex-required-scopes: [service:call]
+      parameters:
+        - {name: X-NeX-Tenant-Id, in: header, required: true, schema: {type: string}}
+        - {name: X-NeX-Subject-Id, in: header, required: true, schema: {type: string}}
+        - name: states
+          in: query
+          required: false
+          schema: {type: array, items: {type: string, enum: [DRAFT, RETURNED_FOR_CORRECTION, SUBMITTED_FOR_ACCOUNTING_REVIEW, INVALIDATED]}}
+      responses:
+        "200": {description: Owner-scoped pre-submission VoucherCandidate list.}
+        "401": {description: Service token is missing or invalid.}
+        "503": {description: Voucher draft persistence is unavailable.}
+    post:
+      operationId: FINANCE.VOUCHER_PRE_SUBMISSION.CREATE
+      tags: [Business Voucher Draft]
+      security: [{serviceBearer: []}]
+      x-nex-required-scopes: [service:call]
+      parameters:
+        - {name: X-NeX-Tenant-Id, in: header, required: true, schema: {type: string}}
+        - {name: X-NeX-Subject-Id, in: header, required: true, schema: {type: string}}
+      requestBody: {required: true, content: {application/json: {schema: {type: object}}}}
+      responses:
+        "201": {description: Owner-scoped VoucherCandidate draft created through the canonical accounting engine.}
+        "401": {description: Service token is missing or invalid.}
+        "409": {description: Candidate identity or approved-document allowance conflicts.}
+        "422": {description: Draft command is invalid or unbalanced.}
+        "503": {description: EOS accounting authority is unavailable.}
+  /internal/v2/business-voucher-drafts/{candidate_id}:
+    get:
+      operationId: FINANCE.VOUCHER_PRE_SUBMISSION.GET
+      tags: [Business Voucher Draft]
+      security: [{serviceBearer: []}]
+      x-nex-required-scopes: [service:call]
+      parameters:
+        - {$ref: "#/components/parameters/BusinessVoucherCandidateId"}
+        - {name: X-NeX-Tenant-Id, in: header, required: true, schema: {type: string}}
+        - {name: X-NeX-Subject-Id, in: header, required: true, schema: {type: string}}
+      responses:
+        "200": {description: "Owner-scoped draft, immutable revision history, and user-facing account projection."}
+        "401": {description: Service token is missing or invalid.}
+        "404": {description: Voucher draft is absent from the owner scope.}
+        "503": {description: Voucher draft persistence is unavailable.}
+    patch:
+      operationId: FINANCE.VOUCHER_PRE_SUBMISSION.REVISE
+      tags: [Business Voucher Draft]
+      security: [{serviceBearer: []}]
+      x-nex-required-scopes: [service:call]
+      parameters:
+        - {$ref: "#/components/parameters/BusinessVoucherCandidateId"}
+        - {name: X-NeX-Tenant-Id, in: header, required: true, schema: {type: string}}
+        - {name: X-NeX-Subject-Id, in: header, required: true, schema: {type: string}}
+      requestBody: {required: true, content: {application/json: {schema: {type: object}}}}
+      responses:
+        "200": {description: Immutable DRAFT revision appended with optimistic version binding.}
+        "401": {description: Service token is missing or invalid.}
+        "409": {description: "Draft state, revision, or version is stale."}
+        "422": {description: Revision command is invalid or unbalanced.}
+        "503": {description: EOS accounting authority is unavailable.}
+  /internal/v2/business-voucher-drafts/{candidate_id}:validate:
+    post:
+      operationId: FINANCE.VOUCHER_PRE_SUBMISSION.VALIDATE
+      tags: [Business Voucher Draft]
+      security: [{serviceBearer: []}]
+      x-nex-required-scopes: [service:call]
+      parameters:
+        - {$ref: "#/components/parameters/BusinessVoucherCandidateId"}
+        - {name: X-NeX-Tenant-Id, in: header, required: true, schema: {type: string}}
+        - {name: X-NeX-Subject-Id, in: header, required: true, schema: {type: string}}
+      requestBody: {required: true, content: {application/json: {schema: {type: object}}}}
+      responses:
+        "200": {description: "Fresh accounting, FX, period, balance, and approved-document validation result."}
+        "401": {description: Service token is missing or invalid.}
+        "404": {description: Voucher draft is absent from the owner scope.}
+        "409": {description: Draft is not validatable in its current state.}
+        "503": {description: EOS accounting authority is unavailable.}
+  /internal/v2/business-voucher-drafts/{candidate_id}:submit-for-accounting:
+    post:
+      operationId: FINANCE.VOUCHER_PRE_SUBMISSION.SUBMIT_FOR_ACCOUNTING
+      tags: [Business Voucher Draft]
+      security: [{serviceBearer: []}]
+      x-nex-required-scopes: [service:call]
+      parameters:
+        - {$ref: "#/components/parameters/BusinessVoucherCandidateId"}
+        - {name: X-NeX-Tenant-Id, in: header, required: true, schema: {type: string}}
+        - {name: X-NeX-Subject-Id, in: header, required: true, schema: {type: string}}
+      requestBody: {required: true, content: {application/json: {schema: {type: object}}}}
+      responses:
+        "200": {description: Exact reviewed revision explicitly submitted to the existing accounting approval runtime.}
+        "401": {description: Service token is missing or invalid.}
+        "409": {description: "Confirmation, revision, validation, policy, or authority binding is stale."}
+        "422": {description: Submit command is invalid.}
+        "503": {description: "EOS, OA, or WC authority is unavailable."}
 components:
   securitySchemes:
     serviceBearer:
       type: http
       scheme: bearer
   parameters:
+    BusinessVoucherCandidateId:
+      name: candidate_id
+      in: path
+      required: true
+      schema: {type: string, format: uuid}
     BusinessProposalId:
       name: proposal_id
       in: path

@@ -324,6 +324,8 @@ def _review_receipt(request=None, **overrides):
         "active_stage_order": 1,
         "stage_count": 1,
         "target_role_ref": "ACCOUNTING_REVIEWER",
+        "target_approver_ref": None,
+        "stage_nominations": [],
         "version": 1,
         "case_hash": HASH_E,
         "created_business_operation_id": REVIEW_OPERATION_ID,

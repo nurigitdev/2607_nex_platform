@@ -121,6 +121,8 @@ def _receipt(request=None):
         "active_stage_order": 1,
         "stage_count": 1,
         "target_role_ref": "TEAM_LEAD",
+        "target_approver_ref": None,
+        "stage_nominations": [],
         "version": 1,
         "case_hash": "sha256:" + "d" * 64,
         "created_business_operation_id": OPERATION_ID,

@@ -8,8 +8,8 @@
     "pack_id": "MYBEE.D04.ACCOUNTING",
     "pack_version": "1.0.0",
     "manifest_ref": "domains/mybee/skills/d04_accounting/manifest.v1.json",
-    "manifest_sha256": "sha256:dbfd63da5cbfa028e6abb5885589b3cec8ac23f71b41b24817328d7b9377b6d7",
-    "manifest_content_digest": "sha256:2026968d7b2860306e91faadd09d34b11804f0cc7375c5eec0480c0062ae13d6",
+    "manifest_sha256": "sha256:acd0dba10421c8225758f5d7fd27951eb8d9ba836857254c1ab1bae5eeb83d7f",
+    "manifest_content_digest": "sha256:60263d7bc8707b40f975010e9b7c75f0935139bdff7123913951bc4d260de312",
     "binding_catalog_ref": "domains/mybee/skills/d04_accounting/tool_bindings.v1.json",
     "binding_catalog_sha256": "sha256:52804f9a720086117bbe40c2d966504d511e2b47998ec57fe854278fc3d7f352",
     "binding_catalog_content_digest": "sha256:d4900b8c98e521994c15671fd0fe368332d98af57adaa6c2d4a6161c266dd636"
@@ -27,5 +27,5 @@
     "compile_state": "PENDING_S8_01E",
     "activation_requires": "S8_01E_GATE"
   },
-  "content_hash": "sha256:292ecf5c7def1f28e8dbca225f5225d635cf27d67a426235f846511ae451a58c"
+  "content_hash": "sha256:f09e75a30eefe197b01277a606452f055570be0f351e5a856558e841f0309c98"
 }

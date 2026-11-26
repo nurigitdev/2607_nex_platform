@@ -68,7 +68,7 @@ test("shell summary contains routing metadata but no roles or identity", () => {
     application_shell_schema_version: "ae_web_application_shell.p8_s42a.v1",
     authenticated: true,
     active_view: "operations",
-    allowed_view_count: 7,
+    allowed_view_count: 9,
     operations_visible: true,
     session_status: "authenticated"
   });

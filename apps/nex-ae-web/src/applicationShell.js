@@ -6,6 +6,7 @@ export const AE_WEB_AUTHENTICATED_VIEWS = Object.freeze([
   "workspace",
   "approvals",
   "proposals",
+  "vouchers",
   "upload",
   "documents",
   "retrieval",
