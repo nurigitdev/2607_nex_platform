@@ -42,6 +42,7 @@ MyBee office-work AX Service Phase-1 program.
 35. `NeX_MyBee_W80_CA00F_5B_Primary_Project_Code_Typed_Business_Context_Propagation_Closure_v1.0.md`
 36. `NeX_MyBee_W80_CA00F_5C_Installed_Journal_Business_Result_Summary_and_IA_Projection_Closure_v1.0.md`
 37. `NeX_MyBee_W80_CA00G_Business_Proposal_Draft_Review_Amount_Tiered_Approval_and_Voucher_Pre_Submission_Review_Boundary_v1.0.md`
+38. `NeX_MyBee_W80_CA00H_Proposal_Voucher_Review_Usability_and_Accounting_Presentation_Boundary_v1.0.md`
 
 The Markdown Slice Plan and its Execution Matrix JSON are one planning set.
 The JSON is machine-readable traceability input, not runtime configuration or
@@ -146,6 +147,16 @@ including raw prompts, plans, or private business payloads.
 W80-CA00G.0A proves that boundary on the installed Journal and independent
 Allocation journeys with actual PostgreSQL, the canonical generation provider,
 Playwright change captures, restart recovery, and zero-residue cleanup.
+
+W80-CA00H is the presentation and authority-projection amendment after the
+W80-CA00G workflow closure. It moves approval-line review ahead of the proposal
+body, makes BUSINESS_FORMAL rejection reasons a protected end-to-end contract,
+and makes VoucherCandidate Project attribution explicit. Account choices come
+from the effective EOS company catalog and are displayed as account name plus
+code while preserving code-only canonical writes. Accounting BUSINESS_FORMAL
+and related NSL WRITE reviews render a versioned, voucher-shaped projection
+from the exact authoritative Candidate revision; raw NSL payloads, browser-side
+account truth, first-Project fallback, and new business tables are forbidden.
 
 The W30-CA01 pair is the source-backed post-W20 delta. It takes precedence
 only for W30 entry ordering, current migration-number reservations, the
