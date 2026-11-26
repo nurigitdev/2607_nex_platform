@@ -50,6 +50,7 @@ from .business_transactions import EOS_METADATA
 from .projects import EOS_PROJECT_TABLE
 from .scoped_approvals import (
     EOS_SCOPED_APPROVAL_CASE_TABLE,
+    EOS_SCOPED_APPROVAL_NOMINATION_TABLE,
     scoped_approval_case_projection,
     scoped_approval_work_item,
 )
@@ -193,12 +194,14 @@ class EosDocumentSignoffService:
         authorization_source: AuthorizationSource,
         wc_client: WcApprovalWorkItemClient,
         document_repository: SqlAlchemyEosApprovedDocumentRepository,
+        terminal_observer=None,
         clock=None,
     ) -> None:
         self._session_factory = session_factory
         self._authorization_source = authorization_source
         self._wc_client = wc_client
         self._document_repository = document_repository
+        self._terminal_observer = terminal_observer
         self._clock = clock or (lambda: datetime.now(UTC))
 
     def ingest_wc_delivery(self, delivery: Mapping[str, Any]) -> dict[str, Any]:
@@ -377,9 +380,19 @@ class EosDocumentSignoffService:
             ).scalar_one_or_none()
             if next_role is None:
                 raise _conflict("Document approval policy next stage is unavailable")
+            next_approver = session.scalar(
+                select(EOS_SCOPED_APPROVAL_NOMINATION_TABLE.c.subject_id).where(
+                    EOS_SCOPED_APPROVAL_NOMINATION_TABLE.c.tenant_id
+                    == case["tenant_id"],
+                    EOS_SCOPED_APPROVAL_NOMINATION_TABLE.c.case_id
+                    == case["case_id"],
+                    EOS_SCOPED_APPROVAL_NOMINATION_TABLE.c.stage_order == next_order,
+                )
+            )
             values = {
                 "active_stage_order": next_order,
                 "target_role_ref": next_role,
+                "target_approver_ref": next_approver,
                 "version": int(case["version"]) + 1,
                 "updated_at": recorded_at,
             }
@@ -423,6 +436,26 @@ class EosDocumentSignoffService:
         )
         if result.rowcount != 1:
             raise _conflict("Document approval case changed concurrently")
+        if "state" in values and self._terminal_observer is not None:
+            try:
+                self._terminal_observer.apply_in_session(
+                    session,
+                    case=case,
+                    context=context,
+                    state=values["state"],
+                    envelope_id=(
+                        str(context["envelope_id"])
+                        if values["state"] == "APPROVED"
+                        else None
+                    ),
+                    decided_at=admitted["decided_at"],
+                )
+            except EosDocumentSignoffError:
+                raise
+            except Exception as exc:
+                raise _conflict(
+                    "Document signoff terminal projection failed"
+                ) from exc
 
     def _receipt(
         self,
@@ -667,6 +700,7 @@ def _require_document_boundary(case, bindings, context, admitted) -> None:
         "semantic_hash",
         "approval_provider_type",
         "approval_target_ref",
+        "target_approver_ref",
         "target_role_ref",
         "target_org_scope_ref",
         "target_project_scope_ref",
@@ -696,6 +730,8 @@ def _require_current_authorization(value, *, case, decided_by) -> None:
     roles = {item.lower() for item in _string_set("roles", value.get("roles"))}
     if str(case["target_role_ref"]).lower() not in roles:
         raise _denied("Current OA role does not match the document policy stage")
+    if case.get("target_approver_ref") not in (None, decided_by):
+        raise _denied("Current approver does not match the nominated principal")
     company_ids = value.get("company_ids")
     if company_ids is not None and str(case["company_id"]) not in _string_set(
         "company_ids", company_ids
@@ -825,6 +861,7 @@ def _terminal_values(case, state, admitted, recorded_at):
         "state": state,
         "active_stage_order": None,
         "target_role_ref": None,
+        "target_approver_ref": None,
         "version": int(case["version"]) + 1,
         "updated_at": recorded_at,
         "decided_at": admitted["decided_at"],

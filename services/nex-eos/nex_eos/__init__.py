@@ -199,6 +199,7 @@ from .business_proposal_approval import (
     EosBusinessProposalApprovalService,
     HttpOaApprovalCandidateAuthoritySource,
 )
+from .business_proposal_lifecycle import EosBusinessProposalLifecycleService
 from .business_proposals import (
     BUSINESS_PROPOSAL_SCOPE_TYPES,
     BUSINESS_PROPOSAL_STATES,
@@ -206,6 +207,7 @@ from .business_proposals import (
     EOS_BUSINESS_PROPOSAL_TABLE,
     BusinessProposalRevisionInput,
     BusinessProposalSubmissionInput,
+    EosBusinessProposalSignoffObserver,
     EosBusinessProposalError,
     SqlAlchemyEosBusinessProposalRepository,
 )
@@ -670,6 +672,7 @@ from .scoped_approvals import (
     ACCOUNTING_APPROVAL_REQUEST_SCOPE,
     EOS_SCOPED_APPROVAL_BINDING_TABLE,
     EOS_SCOPED_APPROVAL_CASE_TABLE,
+    EOS_SCOPED_APPROVAL_NOMINATION_TABLE,
     EosScopedApprovalError,
     EosScopedApprovalService,
     ScopedApprovalCaseInput,
@@ -1143,6 +1146,8 @@ __all__ = (
     "EosBusinessProposalApprovalError",
     "EosBusinessProposalApprovalService",
     "EosBusinessProposalError",
+    "EosBusinessProposalLifecycleService",
+    "EosBusinessProposalSignoffObserver",
     "EosBusinessQueryError",
     "EosBusinessTransactionCoordinator",
     "EosBusinessTransactionResult",

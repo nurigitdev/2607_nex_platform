@@ -157,6 +157,9 @@ def create_eos_app(
     app.state.eos_business_proposal_approval = (
         dependencies.business_proposal_approval
     )
+    app.state.eos_business_proposal_lifecycle = (
+        dependencies.business_proposal_lifecycle
+    )
     app.state.eos_vouchers = dependencies.vouchers
     app.state.eos_attachments = dependencies.attachments
     app.state.eos_voucher_command_service = dependencies.voucher_command_service

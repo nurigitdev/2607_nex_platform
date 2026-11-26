@@ -60,6 +60,7 @@ EOS_BUSINESS_PROPOSAL_TABLE = Table(
     Column("approval_preview_hash", String(71), nullable=True),
     Column("candidate_evidence_hash", String(71), nullable=True),
     Column("approval_line_hash", String(71), nullable=True),
+    Column("approval_line", JSON, nullable=True),
     Column("normalized_amount", Numeric(20, 4), nullable=True),
     Column("functional_currency", String(3), nullable=True),
     Column("normalization_hash", String(71), nullable=True),
@@ -203,6 +204,7 @@ class BusinessProposalSubmissionInput:
     normalized_amount: Decimal
     functional_currency: str
     normalization_hash: str
+    approval_line: Sequence[Mapping[str, Any]] = ()
 
 
 class SqlAlchemyEosBusinessProposalRepository:
@@ -251,6 +253,7 @@ class SqlAlchemyEosBusinessProposalRepository:
                     "approval_preview_hash": None,
                     "candidate_evidence_hash": None,
                     "approval_line_hash": None,
+                    "approval_line": None,
                     "normalized_amount": None,
                     "functional_currency": None,
                     "normalization_hash": None,
@@ -334,6 +337,7 @@ class SqlAlchemyEosBusinessProposalRepository:
                     "approval_preview_hash": None,
                     "candidate_evidence_hash": None,
                     "approval_line_hash": None,
+                    "approval_line": None,
                     "normalized_amount": None,
                     "functional_currency": None,
                     "normalization_hash": None,
@@ -425,6 +429,7 @@ class SqlAlchemyEosBusinessProposalRepository:
                     "approval_preview_hash": submission["approval_preview_hash"],
                     "candidate_evidence_hash": submission["candidate_evidence_hash"],
                     "approval_line_hash": submission["approval_line_hash"],
+                    "approval_line": submission["approval_line"],
                     "normalized_amount": submission["normalized_amount"],
                     "functional_currency": submission["functional_currency"],
                     "normalization_hash": submission["normalization_hash"],
@@ -448,6 +453,121 @@ class SqlAlchemyEosBusinessProposalRepository:
             raise _conflict("Business proposal submission conflicts") from exc
         except SQLAlchemyError as exc:
             raise _unavailable() from exc
+
+    def bind_approval_case(
+        self,
+        *,
+        tenant_id: str,
+        proposal_id: str,
+        revision_no: int,
+        approval_case_id: str,
+    ) -> dict[str, Any]:
+        tenant = _scoped_id("tenant_id", tenant_id)
+        proposal = _uuid("proposal_id", proposal_id)
+        revision = _positive_int("revision_no", revision_no)
+        case_id = _uuid("approval_case_id", approval_case_id)
+        try:
+            with self._session_factory.begin() as session:
+                aggregate = self._required_proposal(
+                    session,
+                    tenant_id=tenant,
+                    proposal_id=proposal,
+                    for_update=True,
+                )
+                if aggregate["approval_case_id"] is not None:
+                    if str(aggregate["approval_case_id"]) != case_id:
+                        raise _conflict("Business proposal approval case conflicts")
+                    return self._projection(session, aggregate)
+                if (
+                    aggregate["state"] != "SUBMITTED"
+                    or int(aggregate["submitted_revision_no"] or 0) != revision
+                ):
+                    raise _conflict(
+                        "Business proposal is not awaiting this approval case"
+                    )
+                now = datetime.now(UTC)
+                values = {
+                    "approval_case_id": case_id,
+                    "version": int(aggregate["version"]) + 1,
+                    "updated_at": now,
+                }
+                session.execute(
+                    update(EOS_BUSINESS_PROPOSAL_TABLE)
+                    .where(
+                        EOS_BUSINESS_PROPOSAL_TABLE.c.tenant_id == tenant,
+                        EOS_BUSINESS_PROPOSAL_TABLE.c.proposal_id == proposal,
+                    )
+                    .values(**values)
+                )
+                return self._projection(session, {**aggregate, **values})
+        except EosBusinessProposalError:
+            raise
+        except SQLAlchemyError as exc:
+            raise _unavailable() from exc
+
+    def apply_signoff_outcome_in_session(
+        self,
+        session: Session,
+        *,
+        tenant_id: str,
+        proposal_id: str,
+        revision_no: int,
+        approval_case_id: str,
+        state: str,
+        envelope_id: str | None,
+        decided_at: datetime,
+    ) -> dict[str, Any]:
+        tenant = _scoped_id("tenant_id", tenant_id)
+        proposal = _uuid("proposal_id", proposal_id)
+        revision = _positive_int("revision_no", revision_no)
+        case_id = _uuid("approval_case_id", approval_case_id)
+        terminal = str(state).strip().upper()
+        if terminal not in {"APPROVED", "REJECTED"}:
+            raise _invalid("state is not a signoff terminal state")
+        envelope = _uuid("envelope_id", envelope_id) if envelope_id else None
+        if (terminal == "APPROVED") != (envelope is not None):
+            raise _conflict("Approved proposal outcome requires one envelope")
+        aggregate = self._required_proposal(
+            session,
+            tenant_id=tenant,
+            proposal_id=proposal,
+            for_update=True,
+        )
+        if aggregate["state"] == terminal:
+            if (
+                str(aggregate["approval_case_id"]) != case_id
+                or int(aggregate["submitted_revision_no"] or 0) != revision
+                or (
+                    str(aggregate["approved_envelope_id"])
+                    if aggregate["approved_envelope_id"] is not None
+                    else None
+                )
+                != envelope
+            ):
+                raise _conflict("Business proposal terminal replay conflicts")
+            return self._projection(session, aggregate)
+        if (
+            aggregate["state"] != "SUBMITTED"
+            or str(aggregate["approval_case_id"]) != case_id
+            or int(aggregate["submitted_revision_no"] or 0) != revision
+        ):
+            raise _conflict("Business proposal signoff lineage conflicts")
+        values = {
+            "state": terminal,
+            "approved_envelope_id": envelope,
+            "version": int(aggregate["version"]) + 1,
+            "updated_at": _instant(decided_at),
+            "decided_at": _instant(decided_at),
+        }
+        session.execute(
+            update(EOS_BUSINESS_PROPOSAL_TABLE)
+            .where(
+                EOS_BUSINESS_PROPOSAL_TABLE.c.tenant_id == tenant,
+                EOS_BUSINESS_PROPOSAL_TABLE.c.proposal_id == proposal,
+            )
+            .values(**values)
+        )
+        return self._projection(session, {**aggregate, **values})
 
     def get(
         self,
@@ -612,6 +732,44 @@ class SqlAlchemyEosBusinessProposalRepository:
         }
 
 
+class EosBusinessProposalSignoffObserver:
+    """Project terminal document-signoff outcomes into their proposal aggregate."""
+
+    _SUBJECT_PREFIX = "mybee.business-proposal:"
+
+    def __init__(self, repository: SqlAlchemyEosBusinessProposalRepository) -> None:
+        self._repository = repository
+
+    def apply_in_session(
+        self,
+        session: Session,
+        *,
+        case: Mapping[str, Any],
+        context: Mapping[str, Any],
+        state: str,
+        envelope_id: str | None,
+        decided_at: datetime,
+    ) -> dict[str, Any] | None:
+        subject_ref = str(case.get("subject_ref", ""))
+        if not subject_ref.startswith(self._SUBJECT_PREFIX):
+            return None
+        proposal_id = str(context.get("approved_document_id", ""))
+        revision_no = int(context.get("document_revision", 0))
+        expected = f"{self._SUBJECT_PREFIX}{proposal_id}:revision:{revision_no}"
+        if subject_ref != expected:
+            raise _conflict("Business proposal signoff subject reference conflicts")
+        return self._repository.apply_signoff_outcome_in_session(
+            session,
+            tenant_id=str(case["tenant_id"]),
+            proposal_id=proposal_id,
+            revision_no=revision_no,
+            approval_case_id=str(case["case_id"]),
+            state=state,
+            envelope_id=envelope_id,
+            decided_at=decided_at,
+        )
+
+
 def _revision_payload(value: BusinessProposalRevisionInput) -> dict[str, Any]:
     if not isinstance(value, BusinessProposalRevisionInput):
         raise _invalid("value must be BusinessProposalRevisionInput")
@@ -723,6 +881,11 @@ def _submission(value: BusinessProposalSubmissionInput) -> dict[str, Any]:
         "approval_line_hash": _hash_ref(
             "approval_line_hash", value.approval_line_hash
         ),
+        "approval_line": (
+            _approval_line(value.approval_line)
+            if value.approval_line
+            else None
+        ),
         "normalized_amount": _money(value.normalized_amount),
         "functional_currency": currency,
         "normalization_hash": _hash_ref(
@@ -734,7 +897,7 @@ def _submission(value: BusinessProposalSubmissionInput) -> dict[str, Any]:
 def _same_submission(
     aggregate: Mapping[str, Any], submission: Mapping[str, Any]
 ) -> bool:
-    return all(
+    return aggregate.get("approval_line") == submission["approval_line"] and all(
         str(aggregate[field]) == str(submission[field])
         for field in (
             "approval_policy_id",
@@ -748,6 +911,44 @@ def _same_submission(
     ) and Decimal(str(aggregate["normalized_amount"])) == submission[
         "normalized_amount"
     ]
+
+
+def _approval_line(values: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
+    if isinstance(values, (str, bytes)) or not isinstance(values, Sequence):
+        raise _invalid("approval_line must be an array")
+    result: list[dict[str, Any]] = []
+    for expected, value in enumerate(values, start=1):
+        if not isinstance(value, Mapping) or set(value) != {
+            "stage_order",
+            "position_type",
+            "subject_id",
+            "display_name",
+            "authority_hash",
+        }:
+            raise _invalid("approval_line fields do not match the contract")
+        stage_order = _positive_int("approval_line.stage_order", value["stage_order"])
+        if stage_order != expected:
+            raise _invalid("approval_line stages must be contiguous and ordered")
+        result.append(
+            {
+                "stage_order": stage_order,
+                "position_type": _scoped_id(
+                    "approval_line.position_type", value["position_type"]
+                ),
+                "subject_id": _scoped_id(
+                    "approval_line.subject_id", value["subject_id"]
+                ),
+                "display_name": _bounded(
+                    "approval_line.display_name", value["display_name"], 256
+                ),
+                "authority_hash": _hash_ref(
+                    "approval_line.authority_hash", value["authority_hash"]
+                ),
+            }
+        )
+    if not result or len(result) > 5:
+        raise _invalid("approval_line must contain one to five stages")
+    return result
 
 
 def _attachment_manifest(

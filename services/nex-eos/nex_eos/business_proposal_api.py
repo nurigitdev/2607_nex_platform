@@ -22,6 +22,7 @@ from .business_proposals import (
     BusinessProposalSubmissionInput,
     EosBusinessProposalError,
 )
+from .scoped_approvals import EosScopedApprovalError
 
 
 def register_business_proposal_routes(app: FastAPI) -> None:
@@ -211,10 +212,48 @@ def register_business_proposal_routes(app: FastAPI) -> None:
             return admitted
         repository = getattr(request.app.state, "eos_business_proposals", None)
         service = getattr(request.app.state, "eos_business_proposal_approval", None)
-        if repository is None or service is None:
+        lifecycle = getattr(request.app.state, "eos_business_proposal_lifecycle", None)
+        if repository is None or service is None or lifecycle is None:
             return _unavailable(request)
         try:
             at = _instant(payload.get("effective_at"))
+            expected_revision = _positive_int(
+                "expected_revision", payload.get("expected_revision")
+            )
+            selected_approvers = _object_list(
+                "selected_approvers", payload.get("selected_approvers")
+            )
+            existing = repository.get(
+                tenant_id=tenant_id,
+                proposal_id=proposal_id,
+                requester_subject_id=requester_subject_id,
+            )
+            if existing is not None and existing.get("state") in {
+                "SUBMITTED",
+                "APPROVED",
+                "REJECTED",
+            }:
+                result = lifecycle.resume(
+                    tenant_id=tenant_id,
+                    proposal_id=proposal_id,
+                    requester_subject_id=requester_subject_id,
+                    expected_revision=expected_revision,
+                    expected_preview_hash=str(payload.get("preview_hash", "")),
+                    selected_approvers=selected_approvers,
+                )
+                return JSONResponse(
+                    {
+                        **result,
+                        "approval_line": {
+                            "approval_line_hash": result["approval_line_hash"],
+                            "approvers": result["approval_line"],
+                        },
+                        "approval_preview": {
+                            "preview_hash": result["approval_preview_hash"]
+                        },
+                    },
+                    status_code=200,
+                )
             preview = service.preview(
                 tenant_id=tenant_id,
                 proposal_id=proposal_id,
@@ -227,16 +266,12 @@ def register_business_proposal_routes(app: FastAPI) -> None:
                 selection=ApprovalLineSelectionInput(
                     preview_hash=str(payload.get("preview_hash", "")),
                     proposal_id=proposal_id,
-                    revision_no=_positive_int(
-                        "expected_revision", payload.get("expected_revision")
-                    ),
-                    selected_approvers=_object_list(
-                        "selected_approvers", payload.get("selected_approvers")
-                    ),
+                    revision_no=expected_revision,
+                    selected_approvers=selected_approvers,
                 ),
             )
             normalization = preview["normalized_amount_evidence"]
-            result = repository.submit(
+            result = lifecycle.submit(
                 BusinessProposalSubmissionInput(
                     tenant_id=tenant_id,
                     proposal_id=proposal_id,
@@ -244,9 +279,7 @@ def register_business_proposal_routes(app: FastAPI) -> None:
                     expected_version=_positive_int(
                         "expected_version", payload.get("expected_version")
                     ),
-                    expected_revision=_positive_int(
-                        "expected_revision", payload.get("expected_revision")
-                    ),
+                    expected_revision=expected_revision,
                     content_hash=str(preview["content_hash"]),
                     approval_policy_id=str(preview["approval_policy_id"]),
                     approval_policy_hash=str(preview["approval_policy_hash"]),
@@ -255,6 +288,7 @@ def register_business_proposal_routes(app: FastAPI) -> None:
                         preview["candidate_evidence_hash"]
                     ),
                     approval_line_hash=str(line["approval_line_hash"]),
+                    approval_line=line["approvers"],
                     normalized_amount=Decimal(
                         str(normalization["normalized_amount"])
                     ),
@@ -263,7 +297,11 @@ def register_business_proposal_routes(app: FastAPI) -> None:
                 ),
                 submitted_at=at,
             )
-        except (EosBusinessProposalError, EosBusinessProposalApprovalError) as exc:
+        except (
+            EosBusinessProposalError,
+            EosBusinessProposalApprovalError,
+            EosScopedApprovalError,
+        ) as exc:
             return _problem(request, exc)
         return JSONResponse(
             {**result, "approval_line": line, "approval_preview": preview},

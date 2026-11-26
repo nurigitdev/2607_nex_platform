@@ -51,7 +51,11 @@ from .business_proposal_approval import (
     EosBusinessProposalApprovalService,
     HttpOaApprovalCandidateAuthoritySource,
 )
-from .business_proposals import SqlAlchemyEosBusinessProposalRepository
+from .business_proposal_lifecycle import EosBusinessProposalLifecycleService
+from .business_proposals import (
+    EosBusinessProposalSignoffObserver,
+    SqlAlchemyEosBusinessProposalRepository,
+)
 from .business_queries import SqlAlchemyEosBusinessOperationQuery
 from .business_transactions import (
     EosBusinessTransactionCoordinator,
@@ -228,6 +232,7 @@ class EosDependencies:
     business_formal_wc_adapter: EosBusinessFormalWcAdapter | None
     business_proposals: SqlAlchemyEosBusinessProposalRepository | None
     business_proposal_approval: EosBusinessProposalApprovalService | None
+    business_proposal_lifecycle: EosBusinessProposalLifecycleService | None
     vouchers: SqlAlchemyEosVoucherRepository | None
     attachments: SqlAlchemyEosAttachmentRepository | None
     voucher_command_service: EosCreateVoucherDraftService | None
@@ -499,6 +504,14 @@ def build_eos_dependencies(
         and wc_token
         else None
     )
+    business_proposal_lifecycle = (
+        EosBusinessProposalLifecycleService(
+            proposals=business_proposals,
+            scoped_approvals=scoped_approval_service,
+        )
+        if business_proposals is not None and scoped_approval_service is not None
+        else None
+    )
     accounting_approval_service = (
         EosAccountingApprovalService(
             session_factory=database_runtime.session_factory,
@@ -718,6 +731,11 @@ def build_eos_dependencies(
             ),
             document_repository=SqlAlchemyEosApprovedDocumentRepository(
                 database_runtime.session_factory
+            ),
+            terminal_observer=(
+                EosBusinessProposalSignoffObserver(business_proposals)
+                if business_proposals is not None
+                else None
             ),
         )
         if database_runtime is not None
@@ -995,6 +1013,7 @@ def build_eos_dependencies(
         business_formal_wc_adapter=business_formal_wc_adapter,
         business_proposals=business_proposals,
         business_proposal_approval=business_proposal_approval,
+        business_proposal_lifecycle=business_proposal_lifecycle,
         vouchers=vouchers,
         attachments=attachments,
         voucher_command_service=voucher_command_service,

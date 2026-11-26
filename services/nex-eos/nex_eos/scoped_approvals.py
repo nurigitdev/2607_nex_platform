@@ -92,6 +92,7 @@ EOS_SCOPED_APPROVAL_CASE_TABLE = Table(
     Column("active_stage_order", Integer, nullable=True),
     Column("stage_count", Integer, nullable=False),
     Column("target_role_ref", String(32), nullable=True),
+    Column("target_approver_ref", String(128), nullable=True),
     Column("version", Integer, nullable=False),
     Column("case_hash", String(71), nullable=False),
     Column("created_business_operation_id", Uuid(as_uuid=False), nullable=False),
@@ -198,6 +199,28 @@ EOS_SCOPED_APPROVAL_BINDING_TABLE = Table(
         name="ux_eos_scoped_binding_scope_hash",
     ),
 )
+
+EOS_SCOPED_APPROVAL_NOMINATION_TABLE = Table(
+    "eos_scoped_approval_nomination",
+    EOS_METADATA,
+    Column("tenant_id", String(128), primary_key=True),
+    Column("case_id", Uuid(as_uuid=False), primary_key=True),
+    Column("stage_order", Integer, primary_key=True),
+    Column("position_type", String(32), nullable=False),
+    Column("subject_id", String(128), nullable=False),
+    Column("authority_hash", String(71), nullable=False),
+    Column("approval_line_hash", String(71), nullable=False),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+    ForeignKeyConstraint(
+        ("tenant_id", "case_id"),
+        ("eos_scoped_approval_case.tenant_id", "eos_scoped_approval_case.case_id"),
+        name="fk_eos_scoped_nomination_case",
+        ondelete="RESTRICT",
+    ),
+    CheckConstraint(
+        "stage_order BETWEEN 1 AND 5", name="ck_eos_scoped_nomination_stage"
+    ),
+)
 Index(
     "ix_eos_scoped_binding_project",
     EOS_SCOPED_APPROVAL_BINDING_TABLE.c.tenant_id,
@@ -243,6 +266,7 @@ class ScopedApprovalCaseInput:
     correlation_id: str
     causation_id: str
     expires_at: datetime | None = None
+    stage_nominations: Sequence[Mapping[str, Any]] = ()
 
 
 class SqlAlchemyEosScopedApprovalRepository:
@@ -269,6 +293,12 @@ class SqlAlchemyEosScopedApprovalRepository:
             policy=policy,
             effective_at=now,
         )
+        nominations = _stage_nominations(
+            request.get("stage_nominations", ()),
+            stages=stages,
+            requester_id=request["requester_subject_id"],
+        )
+        request = {**request, "stage_nominations": nominations}
         record = _case_record(request, policy=policy, stages=stages, now=now)
         existing = self._load_existing(session, request)
         if existing is not None:
@@ -276,15 +306,20 @@ class SqlAlchemyEosScopedApprovalRepository:
                 raise _conflict("Scoped approval replay has different semantics")
             return self._projection(session, existing), False
         bindings = _binding_records(record, request["project_ids"], now=now)
+        nomination_records = _nomination_records(record, nominations, now=now)
         try:
             session.execute(EOS_SCOPED_APPROVAL_CASE_TABLE.insert().values(**record))
             if bindings:
                 session.execute(EOS_SCOPED_APPROVAL_BINDING_TABLE.insert(), bindings)
+            if nomination_records:
+                session.execute(
+                    EOS_SCOPED_APPROVAL_NOMINATION_TABLE.insert(), nomination_records
+                )
         except IntegrityError as exc:
             raise _conflict(
                 "Scoped approval identity or subject revision conflicts"
             ) from exc
-        return _projection(record, bindings), True
+        return _projection(record, bindings, nomination_records), True
 
     def create(self, value: ScopedApprovalCaseInput) -> tuple[dict[str, Any], bool]:
         try:
@@ -476,7 +511,20 @@ class SqlAlchemyEosScopedApprovalRepository:
                 .order_by(EOS_SCOPED_APPROVAL_BINDING_TABLE.c.project_id)
             ).mappings()
         ]
-        return _projection(value, bindings)
+        nominations = [
+            dict(row)
+            for row in session.execute(
+                select(EOS_SCOPED_APPROVAL_NOMINATION_TABLE)
+                .where(
+                    EOS_SCOPED_APPROVAL_NOMINATION_TABLE.c.tenant_id
+                    == value["tenant_id"],
+                    EOS_SCOPED_APPROVAL_NOMINATION_TABLE.c.case_id
+                    == value["case_id"],
+                )
+                .order_by(EOS_SCOPED_APPROVAL_NOMINATION_TABLE.c.stage_order)
+            ).mappings()
+        ]
+        return _projection(value, bindings, nominations)
 
 
 class EosScopedApprovalService:
@@ -851,6 +899,7 @@ def scoped_approval_work_item(
         "active_stage_order": stage_order,
         "stage_count": scoped_case["stage_count"],
         "target_role_ref": scoped_case["target_role_ref"],
+        "target_approver_ref": scoped_case.get("target_approver_ref"),
         "target_project_scope_ref": target_project_scope_ref,
         "authorization_revision_hash": scoped_case["authorization_revision_hash"],
     }
@@ -919,7 +968,7 @@ def scoped_approval_work_item(
         "display_safe_summary": canonical_json(display_summary),
         "approval_provider_type": "EOS",
         "approval_target_ref": f"eos.scoped-approval-case:{scoped_case['case_id']}",
-        "target_approver_ref": None,
+        "target_approver_ref": scoped_case.get("target_approver_ref"),
         "target_role_ref": scoped_case["target_role_ref"],
         "target_org_scope_ref": None,
         # EOS persists internal UUID lineage, while OA authorization is keyed
@@ -1001,7 +1050,11 @@ def _case_payload(value: object) -> dict[str, Any]:
         "causation_id",
         "expires_at",
     }
-    optional_fields = {"accounting_review", "document_signoff_context"}
+    optional_fields = {
+        "accounting_review",
+        "document_signoff_context",
+        "stage_nominations",
+    }
     if not fields.issubset(value) or set(value) - fields - optional_fields:
         raise _invalid("case fields do not match the admitted v2 contract")
     scope_type = _choice(
@@ -1043,6 +1096,15 @@ def _case_payload(value: object) -> dict[str, Any]:
         if not isinstance(context, Mapping):
             raise _invalid("document_signoff_context must be an object")
         result["document_signoff_context"] = dict(context)
+    if "stage_nominations" in value:
+        nominations = value.get("stage_nominations")
+        if isinstance(nominations, (str, bytes)) or not isinstance(
+            nominations, Sequence
+        ):
+            raise _invalid("stage_nominations must be an array")
+        result["stage_nominations"] = [
+            dict(item) if isinstance(item, Mapping) else item for item in nominations
+        ]
     if result["purpose"] == "DOCUMENT_SIGNOFF":
         if "document_signoff_context" not in result or "accounting_review" in result:
             raise _invalid("DOCUMENT_SIGNOFF requires only document_signoff_context")
@@ -1085,6 +1147,7 @@ def _case_request(value: ScopedApprovalCaseInput) -> dict[str, Any]:
         "correlation_id": _scoped_id("correlation_id", value.correlation_id, 128),
         "causation_id": _scoped_id("causation_id", value.causation_id, 128),
         "expires_at": _optional_datetime("expires_at", value.expires_at),
+        "stage_nominations": list(value.stage_nominations),
     }
 
 
@@ -1125,6 +1188,7 @@ def _case_record(
         "approval_policy_version": policy["version"],
         "approval_policy_hash": policy["policy_hash"],
         "authorization_revision_hash": request["authorization_revision_hash"],
+        "stage_nominations": request.get("stage_nominations", []),
         "expires_at": _timestamp(request["expires_at"]),
     }
     return {
@@ -1150,6 +1214,11 @@ def _case_record(
         "active_stage_order": 1,
         "stage_count": len(stages),
         "target_role_ref": stages[0]["position_type"],
+        "target_approver_ref": (
+            request["stage_nominations"][0]["subject_id"]
+            if request.get("stage_nominations")
+            else None
+        ),
         "version": 1,
         "case_hash": semantic_sha256_hash_ref(semantics),
         "created_business_operation_id": request["created_business_operation_id"],
@@ -1188,8 +1257,31 @@ def _binding_records(
     ]
 
 
+def _nomination_records(
+    case: Mapping[str, Any],
+    nominations: Sequence[Mapping[str, Any]],
+    *,
+    now: datetime,
+) -> list[dict[str, Any]]:
+    return [
+        {
+            "tenant_id": case["tenant_id"],
+            "case_id": case["case_id"],
+            "stage_order": item["stage_order"],
+            "position_type": item["position_type"],
+            "subject_id": item["subject_id"],
+            "authority_hash": item["authority_hash"],
+            "approval_line_hash": item["approval_line_hash"],
+            "created_at": now,
+        }
+        for item in nominations
+    ]
+
+
 def _projection(
-    value: Mapping[str, Any], bindings: Sequence[Mapping[str, Any]]
+    value: Mapping[str, Any],
+    bindings: Sequence[Mapping[str, Any]],
+    nominations: Sequence[Mapping[str, Any]] = (),
 ) -> dict[str, Any]:
     project_ids = sorted(str(item["project_id"]) for item in bindings)
     return {
@@ -1220,6 +1312,7 @@ def _projection(
         "active_stage_order": value["active_stage_order"],
         "stage_count": value["stage_count"],
         "target_role_ref": value["target_role_ref"],
+        "target_approver_ref": value.get("target_approver_ref"),
         "version": value["version"],
         "case_hash": value["case_hash"],
         "created_business_operation_id": str(value["created_business_operation_id"]),
@@ -1237,15 +1330,27 @@ def _projection(
             }
             for item in sorted(bindings, key=lambda item: str(item["project_id"]))
         ],
+        "stage_nominations": [
+            {
+                "stage_order": int(item["stage_order"]),
+                "position_type": item["position_type"],
+                "subject_id": item["subject_id"],
+                "authority_hash": item["authority_hash"],
+                "approval_line_hash": item["approval_line_hash"],
+            }
+            for item in sorted(nominations, key=lambda item: int(item["stage_order"]))
+        ],
     }
 
 
 def scoped_approval_case_projection(
-    value: Mapping[str, Any], bindings: Sequence[Mapping[str, Any]]
+    value: Mapping[str, Any],
+    bindings: Sequence[Mapping[str, Any]],
+    nominations: Sequence[Mapping[str, Any]] = (),
 ) -> dict[str, Any]:
     """Project one scoped case without exposing repository internals."""
 
-    return _projection(value, bindings)
+    return _projection(value, bindings, nominations)
 
 
 def scoped_approval_project_scope_ref(
@@ -1281,6 +1386,60 @@ def _project_ids(value: object) -> list[str]:
     if len(admitted) != len(set(admitted)):
         raise _invalid("project_ids must be unique")
     return sorted(admitted)
+
+
+def _stage_nominations(
+    value: object,
+    *,
+    stages: Sequence[Mapping[str, Any]],
+    requester_id: str,
+) -> list[dict[str, Any]]:
+    if value is None or value == () or value == []:
+        return []
+    if isinstance(value, (str, bytes)) or not isinstance(value, Sequence):
+        raise _invalid("stage_nominations must be an array")
+    if len(value) != len(stages):
+        raise _invalid("stage_nominations must cover every approval stage")
+    admitted: list[dict[str, Any]] = []
+    line_hashes: set[str] = set()
+    for expected, (item, stage) in enumerate(zip(value, stages), start=1):
+        if not isinstance(item, Mapping):
+            raise _invalid("stage_nominations entries must be objects")
+        if set(item) != {
+            "stage_order",
+            "position_type",
+            "subject_id",
+            "authority_hash",
+            "approval_line_hash",
+        }:
+            raise _invalid("stage_nominations fields do not match the contract")
+        stage_order = _positive_int("stage_order", item.get("stage_order"))
+        position_type = _scoped_id(
+            "position_type", item.get("position_type"), 32
+        )
+        subject_id = _scoped_id("subject_id", item.get("subject_id"), 128)
+        if stage_order != expected or position_type != stage["position_type"]:
+            raise _invalid("stage_nominations do not match the approval policy")
+        if subject_id == requester_id:
+            raise _denied("Document requester cannot nominate self as approver")
+        line_hash = _hash_ref(
+            "approval_line_hash", item.get("approval_line_hash")
+        )
+        line_hashes.add(line_hash)
+        admitted.append(
+            {
+                "stage_order": stage_order,
+                "position_type": position_type,
+                "subject_id": subject_id,
+                "authority_hash": _hash_ref(
+                    "authority_hash", item.get("authority_hash")
+                ),
+                "approval_line_hash": line_hash,
+            }
+        )
+    if len(line_hashes) != 1:
+        raise _invalid("stage_nominations must bind one approval line hash")
+    return admitted
 
 
 def _require_scope_shape(scope_type: str, project_ids: Sequence[str]) -> None:

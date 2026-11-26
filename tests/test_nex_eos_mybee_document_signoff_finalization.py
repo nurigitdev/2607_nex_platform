@@ -550,6 +550,47 @@ def test_two_stage_signoff_publishes_next_stage_then_materializes():
     assert final["approved_document_envelope"]["usable"] is False
 
 
+def test_selected_approvers_are_bound_to_each_sequential_wc_stage():
+    _sessions, scoped, _finalizer, router, _auth, _wc, _accounting = _runtime(
+        stages=("TEAM_LEAD", "CEO")
+    )
+    payload = copy.deepcopy(dict(_request().payload))
+    payload["case"]["stage_nominations"] = [
+        {
+            "stage_order": 1,
+            "position_type": "TEAM_LEAD",
+            "subject_id": "approver-2001",
+            "authority_hash": "sha256:" + "d" * 64,
+            "approval_line_hash": "sha256:" + "e" * 64,
+        },
+        {
+            "stage_order": 2,
+            "position_type": "CEO",
+            "subject_id": "approver-ceo",
+            "authority_hash": "sha256:" + "f" * 64,
+            "approval_line_hash": "sha256:" + "e" * 64,
+        },
+    ]
+    payload["payload_hash"] = scoped_approval_payload_hash(payload)
+
+    receipt = scoped.request_case(
+        payload,
+        caller=EosServiceCaller("nex-ae-api", "nex-eos", ("service:call",)),
+    )
+    first = receipt["wc_publication"]["work_item"]
+    assert first["target_approver_ref"] == "approver-2001"
+
+    stage_one = router.ingest_wc_delivery(
+        _delivery(first, principal="approver-2001", suffix="1")
+    )
+    second = stage_one["next_stage_publication"]["work_item"]
+    assert second["target_approver_ref"] == "approver-ceo"
+    terminal = router.ingest_wc_delivery(
+        _delivery(second, principal="approver-ceo", suffix="2")
+    )
+    assert terminal["case_state"] == "APPROVED"
+
+
 def test_context_replay_is_stable_and_semantic_drift_conflicts():
     sessions, scoped, _finalizer, _router, _auth, _wc, _accounting = _runtime()
     _create_case(scoped)

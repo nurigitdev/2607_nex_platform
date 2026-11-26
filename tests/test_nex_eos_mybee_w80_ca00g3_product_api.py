@@ -175,6 +175,17 @@ class FakeApprovalService:
         return {"approval_line_hash": "sha256:" + "d" * 64, "approvers": []}
 
 
+class FakeLifecycleService:
+    def __init__(self, repository):
+        self._repository = repository
+
+    def submit(self, value, **kwargs):
+        return self._repository.submit(value, **kwargs)
+
+    def resume(self, **kwargs):
+        return self._repository.result
+
+
 def _api_client() -> tuple[TestClient, FakeRepository]:
     aggregate = {
         "proposal_id": PROPOSAL_ID,
@@ -192,6 +203,7 @@ def _api_client() -> tuple[TestClient, FakeRepository]:
     app = FastAPI()
     app.state.eos_business_proposals = repository
     app.state.eos_business_proposal_approval = FakeApprovalService()
+    app.state.eos_business_proposal_lifecycle = FakeLifecycleService(repository)
     register_business_proposal_routes(app)
     return TestClient(app), repository
 
@@ -230,6 +242,44 @@ def test_product_api_exposes_owner_scoped_lifecycle_and_submit_binding() -> None
     assert submitted.status_code == 200
     assert repository.submitted is not None
     assert repository.submitted.approval_line_hash == "sha256:" + "d" * 64
+
+
+def test_product_api_resumes_an_exact_admitted_submission_without_repreview() -> None:
+    client, repository = _api_client()
+    repository.result.update(
+        {
+            "state": "SUBMITTED",
+            "submitted_revision_no": 1,
+            "approval_preview_hash": "sha256:" + "b" * 64,
+            "approval_line_hash": "sha256:" + "d" * 64,
+            "approval_line": [
+                {
+                    "stage_order": 1,
+                    "subject_id": "approver-team",
+                }
+            ],
+        }
+    )
+
+    replay = client.post(
+        f"/internal/v2/business-proposals/{PROPOSAL_ID}:submit",
+        headers=_headers(),
+        json={
+            "effective_at": NOW.isoformat(),
+            "expected_version": 1,
+            "expected_revision": 1,
+            "preview_hash": "sha256:" + "b" * 64,
+            "selected_approvers": [
+                {"stage_order": 1, "subject_id": "approver-team"}
+            ],
+        },
+    )
+
+    assert replay.status_code == 200
+    assert replay.json()["state"] == "SUBMITTED"
+    assert replay.json()["approval_preview"]["preview_hash"] == (
+        "sha256:" + "b" * 64
+    )
 
 
 def test_product_api_fails_closed_for_missing_trust_and_dependencies() -> None:

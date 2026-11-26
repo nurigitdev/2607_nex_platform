@@ -64,6 +64,7 @@ _CASE_PROJECTION_FIELDS = frozenset(
         "active_stage_order",
         "stage_count",
         "target_role_ref",
+        "target_approver_ref",
         "version",
         "case_hash",
         "created_business_operation_id",
@@ -74,6 +75,7 @@ _CASE_PROJECTION_FIELDS = frozenset(
         "updated_at",
         "decided_at",
         "project_bindings",
+        "stage_nominations",
     }
 )
 _CANDIDATE_REVIEW_EVENT_FIELDS = frozenset(
@@ -367,6 +369,43 @@ def _admit_case(value: object, *, tenant_id: str, case_id: str) -> Mapping[str, 
     _uuid("approval_policy_ref.id", policy["id"])
     _positive_int("approval_policy_ref.version", policy["version"])
     _hash_ref("approval_policy_ref.hash", policy["hash"])
+    target_approver = case["target_approver_ref"]
+    if target_approver is not None:
+        _scoped_id("target_approver_ref", target_approver, 128)
+    nominations = case["stage_nominations"]
+    if not isinstance(nominations, list) or len(nominations) not in {
+        0,
+        case["stage_count"],
+    }:
+        raise _error("MYBEE_APPROVAL_CASE_INVALID", "nomination count drifted")
+    line_hashes: set[str] = set()
+    for expected, nomination in enumerate(nominations, start=1):
+        if not isinstance(nomination, Mapping) or set(nomination) != {
+            "stage_order",
+            "position_type",
+            "subject_id",
+            "authority_hash",
+            "approval_line_hash",
+        }:
+            raise _error("MYBEE_APPROVAL_CASE_INVALID", "nomination drifted")
+        if nomination["stage_order"] != expected:
+            raise _error("MYBEE_APPROVAL_CASE_INVALID", "nomination order drifted")
+        _scoped_id("nomination.position_type", nomination["position_type"], 32)
+        _scoped_id("nomination.subject_id", nomination["subject_id"], 128)
+        _hash_ref("nomination.authority_hash", nomination["authority_hash"])
+        line_hashes.add(
+            _hash_ref(
+                "nomination.approval_line_hash", nomination["approval_line_hash"]
+            )
+        )
+    if len(line_hashes) > 1:
+        raise _error("MYBEE_APPROVAL_CASE_INVALID", "nomination line drifted")
+    if nominations and case["active_stage_order"] is not None:
+        active = nominations[int(case["active_stage_order"]) - 1]
+        if target_approver != active["subject_id"]:
+            raise _error("MYBEE_APPROVAL_CASE_INVALID", "active nominee drifted")
+    elif case["active_stage_order"] is None and target_approver is not None:
+        raise _error("MYBEE_APPROVAL_CASE_INVALID", "terminal nominee drifted")
     bindings = case["project_bindings"]
     if not isinstance(bindings, list) or len(bindings) != len(project_ids):
         raise _error("MYBEE_APPROVAL_CASE_INVALID", "binding count drifted")
