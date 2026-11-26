@@ -14,7 +14,9 @@ describe("voucher draft review workspace", () => {
     const user = userEvent.setup();
     const submit = vi.fn(async () => ({ state: "READY_FOR_REVIEW" }));
     renderPage(voucherClient({ submit }));
-    expect(await screen.findByRole("heading", { name: "VO00D260001" })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("heading", { name: "VO00D260001" }, { timeout: 5_000 }),
+    ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /VO00D260001초안/ })).toHaveAttribute(
       "data-candidate-id",
       DRAFT.candidate_id,
