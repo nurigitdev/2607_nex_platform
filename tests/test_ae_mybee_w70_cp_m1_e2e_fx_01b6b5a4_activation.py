@@ -63,7 +63,7 @@ def test_activation_and_rollback_locks_match_current_source_inventory() -> None:
     activation, rollback = committed
     assert activation["activation_state"] == "ACTIVE"
     assert activation["migration_inventory"]["head"] == (
-        "2518_ae_product_requester_review_resume"
+        "2519_ae_product_wait_active_authority"
     )
     assert activation["runtime_assignment_handlers"] == [
         "EXECUTABLE_STEP",

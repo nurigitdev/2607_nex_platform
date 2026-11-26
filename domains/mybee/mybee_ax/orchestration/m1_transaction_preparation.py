@@ -35,6 +35,9 @@ M1_PREPARATION_REGISTRY_SCHEMA_VERSION = (
     "nex.mybee.m1-transaction-preparation-registry.v1"
 )
 M1_PREPARATION_ADAPTER_ID = "MYBEE.M1.AUTHORITATIVE_TRANSACTION_PREPARATION"
+ACCOUNTING_CORRECTION_HISTORY_MODE = "APPEND_ONLY_AUDIT"
+ACCOUNTING_CORRECTION_ACTIVE_SELECTION = "LATEST_CHECKPOINT_ONLY"
+ACCOUNTING_CORRECTION_ARCHIVE_POLICY = "TERMINAL_POLICY_CONTROLLED"
 DEFAULT_M1_TRANSACTION_PREPARATION_REGISTRY = (
     Path(__file__).resolve().parents[2]
     / "config/m1_transaction_preparation_registry.v1.json"
@@ -417,6 +420,7 @@ class M1TransactionPreparationAdapter:
         authority: M1PreparationAuthority,
         parent_execution_id: str,
         candidate_id: str,
+        previous_correction_cycle: int = 0,
     ) -> Mapping[str, Any]:
         if not self.review_boundaries_enabled:
             raise _invalid("Requester voucher review is not enabled.")
@@ -436,19 +440,74 @@ class M1TransactionPreparationAdapter:
             subject_id=authority.requester_subject_id,
             candidate_id=candidate_id,
         )
-        submitted = next(
-            (
-                item
-                for item in review.get("events", ())
-                if isinstance(item, Mapping)
-                and item.get("transition_kind") == "SUBMIT"
-            ),
-            None,
+        submitted = _latest_review_event(
+            review,
+            transition_kind="SUBMIT",
+            required_state="READY_FOR_REVIEW",
         )
-        if submitted is None or review.get("state") != "READY_FOR_REVIEW":
+        if submitted is None:
             raise _conflict("VoucherCandidate is not submitted for accounting review.")
+        correction_cycle = _correction_cycle(previous_correction_cycle)
+        references = {
+            "candidate_id": candidate_id,
+            "candidate_version": review["candidate_version"],
+            "candidate_revision": review["current_revision_no"],
+            "candidate_hash": submitted["candidate_hash"],
+            "validation_hash": submitted["validation_hash"],
+            "accounting_approval_case_id": submitted["approval_case_id"],
+        }
+        _add_correction_policy(references, correction_cycle)
         return _checkpoint(
             stage="WAITING_ACCOUNTING_APPROVAL",
+            context=context,
+            authority=admitted_authority,
+            identities=identities,
+            references=references,
+            adapter=self.registration,
+        )
+
+    def continue_after_accounting_rejection(
+        self,
+        *,
+        business_request_context: Mapping[str, Any],
+        business_context_hash: str,
+        authority: M1PreparationAuthority,
+        parent_execution_id: str,
+        candidate_id: str,
+        accounting_approval_case_id: str,
+        previous_correction_cycle: int,
+    ) -> Mapping[str, Any]:
+        if not self.review_boundaries_enabled:
+            raise _invalid("Accounting correction re-entry is not enabled.")
+        context = _context(business_request_context, business_context_hash)
+        admitted_authority = _authority(
+            authority,
+            context=context,
+            registration=self.registration,
+        )
+        identities = _identities(
+            tenant_id=authority.tenant_id,
+            context_hash=context["context_hash"],
+            parent_execution_id=parent_execution_id,
+        )
+        review = self.voucher_candidates.get_review(
+            tenant_id=authority.tenant_id,
+            subject_id=authority.requester_subject_id,
+            candidate_id=candidate_id,
+        )
+        returned = _latest_review_event(
+            review,
+            transition_kind="RETURN",
+            required_state="RETURNED_FOR_CORRECTION",
+            approval_case_id=accounting_approval_case_id,
+        )
+        if returned is None:
+            raise _conflict(
+                "VoucherCandidate lacks its authoritative accounting return event."
+            )
+        correction_cycle = _correction_cycle(previous_correction_cycle) + 1
+        return _checkpoint(
+            stage="WAITING_VOUCHER_REVIEW",
             context=context,
             authority=admitted_authority,
             identities=identities,
@@ -456,9 +515,16 @@ class M1TransactionPreparationAdapter:
                 "candidate_id": candidate_id,
                 "candidate_version": review["candidate_version"],
                 "candidate_revision": review["current_revision_no"],
-                "candidate_hash": submitted["candidate_hash"],
-                "validation_hash": submitted["validation_hash"],
-                "accounting_approval_case_id": submitted["approval_case_id"],
+                "candidate_hash": returned["candidate_hash"],
+                "voucher_review_ref": f"eos.voucher-candidate:{candidate_id}",
+                "accounting_return_event_id": returned["event_id"],
+                "accounting_return_event_hash": returned["event_hash"],
+                "accounting_correction_cycle": correction_cycle,
+                "correction_history_mode": ACCOUNTING_CORRECTION_HISTORY_MODE,
+                "correction_active_selection": (
+                    ACCOUNTING_CORRECTION_ACTIVE_SELECTION
+                ),
+                "correction_archive_policy": ACCOUNTING_CORRECTION_ARCHIVE_POLICY,
             },
             adapter=self.registration,
         )
@@ -472,6 +538,7 @@ class M1TransactionPreparationAdapter:
         parent_execution_id: str,
         candidate_id: str,
         accounting_approval_evidence_id: str,
+        previous_correction_cycle: int = 0,
     ) -> Mapping[str, Any]:
         context = _context(business_request_context, business_context_hash)
         admitted_authority = _authority(
@@ -489,14 +556,10 @@ class M1TransactionPreparationAdapter:
             subject_id=authority.requester_subject_id,
             candidate_id=candidate_id,
         )
-        events = review.get("events", ())
-        submitted = next(
-            (
-                item
-                for item in events
-                if isinstance(item, Mapping) and item.get("transition_kind") == "SUBMIT"
-            ),
-            None,
+        submitted = _latest_review_event(
+            review,
+            transition_kind="SUBMIT",
+            required_state="READY_FOR_REVIEW",
         )
         if submitted is None:
             raise M1PreparationError(
@@ -514,26 +577,73 @@ class M1TransactionPreparationAdapter:
             accounting_approval_evidence_id=accounting_approval_evidence_id,
             correlation_id=parent_execution_id,
         )
+        references = {
+            "candidate_id": admission["candidate_id"],
+            "candidate_version": admission["candidate_version"],
+            "candidate_revision": admission["candidate_revision"],
+            "candidate_hash": admission["candidate_hash"],
+            "accounting_approval_evidence_id": admission[
+                "accounting_approval_evidence_id"
+            ],
+            "accounting_proof_hash": admission["accounting_proof_hash"],
+            "posting_admission_id": admission["admission_id"],
+            "posting_admission_hash": admission["admission_hash"],
+            "posting_admission_expires_at": admission["expires_at"],
+        }
+        _add_correction_policy(
+            references, _correction_cycle(previous_correction_cycle)
+        )
         return _checkpoint(
             stage="READY_FOR_D04",
             context=context,
             authority=admitted_authority,
             identities=identities,
-            references={
-                "candidate_id": admission["candidate_id"],
-                "candidate_version": admission["candidate_version"],
-                "candidate_revision": admission["candidate_revision"],
-                "candidate_hash": admission["candidate_hash"],
-                "accounting_approval_evidence_id": admission[
-                    "accounting_approval_evidence_id"
-                ],
-                "accounting_proof_hash": admission["accounting_proof_hash"],
-                "posting_admission_id": admission["admission_id"],
-                "posting_admission_hash": admission["admission_hash"],
-                "posting_admission_expires_at": admission["expires_at"],
-            },
+            references=references,
             adapter=self.registration,
         )
+
+
+def _latest_review_event(
+    review: Mapping[str, Any],
+    *,
+    transition_kind: str,
+    required_state: str,
+    approval_case_id: str | None = None,
+) -> Mapping[str, Any] | None:
+    if review.get("state") != required_state:
+        return None
+    current_revision = review.get("current_revision_no")
+    candidates = [
+        item
+        for item in review.get("events", ())
+        if isinstance(item, Mapping)
+        and item.get("transition_kind") == transition_kind
+        and item.get("candidate_revision") == current_revision
+        and (
+            approval_case_id is None
+            or item.get("approval_case_id") == approval_case_id
+        )
+    ]
+    if not candidates:
+        return None
+    return max(candidates, key=lambda item: int(item.get("resulting_version") or 0))
+
+
+def _correction_cycle(value: object) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise _conflict("Accounting correction cycle is invalid.")
+    return value
+
+
+def _add_correction_policy(references: dict[str, Any], correction_cycle: int) -> None:
+    if correction_cycle == 0:
+        return
+    references.update(
+        accounting_correction_cycle=correction_cycle,
+        correction_history_mode=ACCOUNTING_CORRECTION_HISTORY_MODE,
+        correction_active_selection=ACCOUNTING_CORRECTION_ACTIVE_SELECTION,
+        correction_archive_policy=ACCOUNTING_CORRECTION_ARCHIVE_POLICY,
+    )
 
 
 def load_m1_transaction_preparation_registration(

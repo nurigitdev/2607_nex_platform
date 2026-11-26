@@ -1,7 +1,7 @@
 {
   "schema_version": "nex.mybee.m1-transaction-preparation-registry.v1",
   "adapter_id": "MYBEE.M1.AUTHORITATIVE_TRANSACTION_PREPARATION",
-  "adapter_version": "1.1.0",
+  "adapter_version": "1.2.0",
   "implementation_ref": "mybee_ax.orchestration.m1_transaction_preparation:M1TransactionPreparationAdapter",
   "operations": [
     "BUSINESS.PROPOSAL.CREATE",
@@ -24,5 +24,5 @@
   },
   "source_kind": "EXPENSE_CLAIM",
   "business_work_code": "FL0004011",
-  "registry_hash": "sha256:b5bdc013559d09f0487311e62e9a630c66697e9103f3c6a15e23ebdae2b9ee62"
+  "registry_hash": "sha256:7f0f6406f519885c23c5f9b372d5a11f4ce5bd080e27ff2daf545a5e78716253"
 }

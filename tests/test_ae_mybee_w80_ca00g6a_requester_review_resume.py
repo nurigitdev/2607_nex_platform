@@ -29,10 +29,16 @@ class _WaitEvents:
     def __init__(self, context):
         self.context = context
         self.calls = []
+        self.event_context = None
+        self.event_calls = []
 
     def resolve_product_wait_context(self, **values):
         self.calls.append(values)
         return copy.deepcopy(self.context)
+
+    def load_product_event_context(self, **values):
+        self.event_calls.append(values)
+        return copy.deepcopy(self.event_context)
 
 
 class _Coordinator:
@@ -75,7 +81,7 @@ def _context(*, requester_ref=REQUESTER, authority_kind="REQUESTER_PROPOSAL_REVI
         "wait": {"state": "PENDING"},
         "product_binding": {
             "coordinator_id": "mybee.finance.transaction-preparation",
-            "coordinator_version": "1.2.0",
+            "coordinator_version": "1.3.0",
             "coordinator_registration_hash": HASH,
             "authority_kind": authority_kind,
         },
@@ -142,7 +148,7 @@ def test_requester_review_admission_rejects_owner_and_kind_drift() -> None:
 
 
 def test_requester_review_admission_is_domain_bound_and_ack_loss_safe() -> None:
-    admission, coordinator, _waits, resume = _admission(_context())
+    admission, coordinator, waits, resume = _admission(_context())
     values = {
         "tenant_id": TENANT,
         "requester_ref": REQUESTER,
@@ -157,6 +163,17 @@ def test_requester_review_admission_is_domain_bound_and_ack_loss_safe() -> None:
     }
 
     first = admission.ingest(**values)
+    waits.event_context = {
+        "event": {
+            "event_id": first["event_id"],
+            "external_ref": values["authority_ref"],
+        },
+        "event_binding": {
+            **_context()["product_binding"],
+            "authority_kind": values["authority_kind"],
+        },
+        "checkpoint": _context()["checkpoint"],
+    }
     replay = admission.ingest(**values)
 
     assert first["matched"] is True
@@ -164,12 +181,75 @@ def test_requester_review_admission_is_domain_bound_and_ack_loss_safe() -> None:
     assert replay["receipt_hash"] == first["receipt_hash"]
     assert first["event_replayed"] is False
     assert replay["event_replayed"] is True
-    assert coordinator.calls[0] == coordinator.calls[1]
+    assert len(coordinator.calls) == 1
     assert coordinator.calls[0]["received_at"] == "2026-11-26T01:02:03Z"
+    assert len(waits.calls) == 1
+    assert waits.event_calls == [
+        {"tenant_id": TENANT, "event_id": first["event_id"]},
+        {"tenant_id": TENANT, "event_id": first["event_id"]},
+    ]
     assert resume.calls == [
         {"tenant_id": TENANT, "event_id": first["event_id"]},
         {"tenant_id": TENANT, "event_id": first["event_id"]},
     ]
+
+
+def test_requester_review_admission_rejects_non_pending_authority_wait() -> None:
+    context = _context()
+    context["wait"]["state"] = "RESUME_QUEUED"
+    admission, coordinator, _waits, resume = _admission(context)
+
+    with pytest.raises(ProductPlanningRuntimeError, match="not pending or compatible"):
+        admission.ingest(
+            tenant_id=TENANT,
+            requester_ref=REQUESTER,
+            authority_kind="REQUESTER_PROPOSAL_REVIEW",
+            authority_ref="eos.business-proposal:proposal-6b",
+            receipt={"state": "SUBMITTED"},
+        )
+
+    assert coordinator.calls == []
+    assert resume.calls == []
+
+
+@pytest.mark.parametrize(
+    ("target", "field", "value"),
+    (
+        ("event", "external_ref", "eos.business-proposal:other"),
+        ("event_binding", "authority_kind", "REQUESTER_VOUCHER_REVIEW"),
+        ("checkpoint", "requester_ref", "employee-other"),
+    ),
+)
+def test_requester_review_exact_replay_rejects_persisted_lineage_drift(
+    target, field, value
+) -> None:
+    admission, coordinator, waits, resume = _admission(_context())
+    values = {
+        "tenant_id": TENANT,
+        "requester_ref": REQUESTER,
+        "authority_kind": "REQUESTER_PROPOSAL_REVIEW",
+        "authority_ref": "eos.business-proposal:proposal-replay-drift",
+        "receipt": {"state": "SUBMITTED"},
+    }
+    first = admission.ingest(**values)
+    waits.event_context = {
+        "event": {
+            "event_id": first["event_id"],
+            "external_ref": values["authority_ref"],
+        },
+        "event_binding": {
+            **_context()["product_binding"],
+            "authority_kind": values["authority_kind"],
+        },
+        "checkpoint": _context()["checkpoint"],
+    }
+    waits.event_context[target][field] = value
+
+    with pytest.raises(ProductPlanningRuntimeError, match="persisted Product event"):
+        admission.ingest(**values)
+
+    assert len(coordinator.calls) == 1
+    assert resume.calls == [{"tenant_id": TENANT, "event_id": first["event_id"]}]
 
 
 @pytest.mark.parametrize(
@@ -189,7 +269,7 @@ def test_requester_review_wait_and_event_contracts_are_admitted(
             "checkpoint_id": CHECKPOINT_ID,
             "checkpoint_hash": HASH,
             "coordinator_id": "mybee.finance.transaction-preparation",
-            "coordinator_version": "1.2.0",
+            "coordinator_version": "1.3.0",
             "coordinator_registration_hash": HASH,
             "expected_event_type": event_type,
             "authority_kind": authority_kind,

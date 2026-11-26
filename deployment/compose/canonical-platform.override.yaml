@@ -181,8 +181,8 @@ services:
       NEX_AE_PLANNING_MODE: required
       NEX_AE_M1_SIGNED_SKILL_LOCK: /app/deployment/product/repository/deployment/locks/ae-mybee-m1-signed-skill-checkpoint.v4.json
       NEX_AE_PRODUCT_CAPABILITY_REGISTRY_PATH: /app/deployment/product/repository/deployment/environments/ae-product-capability-registry.mybee-m1.v5.json
-      NEX_AE_PRODUCT_COORDINATOR_ACTIVATION_PATH: /app/deployment/product/repository/deployment/locks/ae-mybee-m1-product-coordinator-activation.v5.json
-      NEX_AE_PRODUCT_COORDINATOR_ROLLBACK_PATH: /app/deployment/product/repository/deployment/locks/ae-mybee-m1-product-coordinator-rollback.v5.json
+      NEX_AE_PRODUCT_COORDINATOR_ACTIVATION_PATH: /app/deployment/product/repository/deployment/locks/ae-mybee-m1-product-coordinator-activation.v6.json
+      NEX_AE_PRODUCT_COORDINATOR_ROLLBACK_PATH: /app/deployment/product/repository/deployment/locks/ae-mybee-m1-product-coordinator-rollback.v6.json
       NEX_AE_ACCOUNTING_ALLOCATION_COORDINATOR_ACTIVATION_PATH: /app/deployment/product/repository/deployment/locks/ae-accounting-allocation-product-coordinator-activation.v1.json
       NEX_AE_ACCOUNTING_ALLOCATION_COORDINATOR_ROLLBACK_PATH: /app/deployment/product/repository/deployment/locks/ae-accounting-allocation-product-coordinator-rollback.v1.json
       NEX_AE_PRODUCT_RUNTIME_PROFILE: VERIFIED_PRODUCT_RELEASE
@@ -367,8 +367,8 @@ services:
       NEX_AE_M1_SIGNED_SKILL_LOCK: /app/deployment/product/repository/deployment/locks/ae-mybee-m1-signed-skill-checkpoint.v4.json
       NEX_AE_PRODUCT_RUNTIME_ADMISSION_PATH: /app/deployment/product/repository/deployment/locks/ae-mybee-m1-runtime-admission.v5.json
       NEX_AE_PRODUCT_RUNTIME_ACTIVATION_PATH: /app/deployment/product/repository/deployment/locks/ae-mybee-m1-runtime-activation.v5.json
-      NEX_AE_PRODUCT_COORDINATOR_ACTIVATION_PATH: /app/deployment/product/repository/deployment/locks/ae-mybee-m1-product-coordinator-activation.v5.json
-      NEX_AE_PRODUCT_COORDINATOR_ROLLBACK_PATH: /app/deployment/product/repository/deployment/locks/ae-mybee-m1-product-coordinator-rollback.v5.json
+      NEX_AE_PRODUCT_COORDINATOR_ACTIVATION_PATH: /app/deployment/product/repository/deployment/locks/ae-mybee-m1-product-coordinator-activation.v6.json
+      NEX_AE_PRODUCT_COORDINATOR_ROLLBACK_PATH: /app/deployment/product/repository/deployment/locks/ae-mybee-m1-product-coordinator-rollback.v6.json
       NEX_AE_ACCOUNTING_ALLOCATION_COORDINATOR_ACTIVATION_PATH: /app/deployment/product/repository/deployment/locks/ae-accounting-allocation-product-coordinator-activation.v1.json
       NEX_AE_ACCOUNTING_ALLOCATION_COORDINATOR_ROLLBACK_PATH: /app/deployment/product/repository/deployment/locks/ae-accounting-allocation-product-coordinator-rollback.v1.json
       NEX_AE_PRODUCT_CAPABILITY_REGISTRY_PATH: /app/deployment/product/repository/deployment/environments/ae-product-capability-registry.mybee-m1.v5.json

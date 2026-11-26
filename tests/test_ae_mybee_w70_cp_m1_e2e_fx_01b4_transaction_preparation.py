@@ -301,9 +301,11 @@ class _VoucherCandidates:
             "events": [
                 {
                     "transition_kind": "SUBMIT",
+                    "candidate_revision": 1,
                     "candidate_hash": HASH_A,
                     "validation_hash": HASH_B,
                     "approval_case_id": ACCOUNTING_POLICY_ID,
+                    "resulting_version": 2,
                 }
             ],
         }
@@ -401,6 +403,146 @@ def test_6a_review_aware_adapter_stops_at_both_requester_boundaries() -> None:
     assert accounting_wait["references"]["accounting_approval_case_id"] == (
         ACCOUNTING_POLICY_ID
     )
+
+
+def test_6b_accounting_return_reenters_only_from_latest_candidate_revision() -> None:
+    adapter, _business, vouchers = _review_adapter()
+    context = _context()
+    authority = _authority()
+    returned_event = {
+        "event_id": "41000000-0000-4000-8000-000000000020",
+        "event_hash": HASH_C,
+        "transition_kind": "RETURN",
+        "candidate_revision": 1,
+        "candidate_hash": HASH_A,
+        "approval_case_id": ACCOUNTING_POLICY_ID,
+        "resulting_version": 3,
+    }
+    projection = {
+        "state": "RETURNED_FOR_CORRECTION",
+        "candidate_version": 3,
+        "current_revision_no": 1,
+        "events": [
+            {
+                "transition_kind": "SUBMIT",
+                "candidate_revision": 1,
+                "candidate_hash": HASH_A,
+                "validation_hash": HASH_B,
+                "approval_case_id": ACCOUNTING_POLICY_ID,
+                "resulting_version": 2,
+            },
+            returned_event,
+        ],
+    }
+    vouchers.get_review = lambda **_values: copy.deepcopy(projection)
+
+    correction = adapter.continue_after_accounting_rejection(
+        business_request_context=context,
+        business_context_hash=context["context_hash"],
+        authority=authority,
+        parent_execution_id=EXECUTION_ID,
+        candidate_id=CANDIDATE_ID,
+        accounting_approval_case_id=ACCOUNTING_POLICY_ID,
+        previous_correction_cycle=0,
+    )
+
+    assert correction["stage"] == "WAITING_VOUCHER_REVIEW"
+    assert correction["references"]["accounting_correction_cycle"] == 1
+    assert correction["references"]["correction_history_mode"] == (
+        "APPEND_ONLY_AUDIT"
+    )
+    assert correction["references"]["correction_active_selection"] == (
+        "LATEST_CHECKPOINT_ONLY"
+    )
+    assert correction["references"]["correction_archive_policy"] == (
+        "TERMINAL_POLICY_CONTROLLED"
+    )
+
+    projection.update(
+        state="READY_FOR_REVIEW",
+        candidate_version=5,
+        current_revision_no=2,
+    )
+    projection["events"].append(
+        {
+            "transition_kind": "SUBMIT",
+            "candidate_revision": 2,
+            "candidate_hash": HASH_B,
+            "validation_hash": HASH_C,
+            "approval_case_id": BUSINESS_POLICY_ID,
+            "resulting_version": 5,
+        }
+    )
+    accounting = adapter.continue_after_voucher_review(
+        business_request_context=context,
+        business_context_hash=context["context_hash"],
+        authority=authority,
+        parent_execution_id=EXECUTION_ID,
+        candidate_id=CANDIDATE_ID,
+        previous_correction_cycle=1,
+    )
+    ready = adapter.continue_after_accounting_approval(
+        business_request_context=context,
+        business_context_hash=context["context_hash"],
+        authority=authority,
+        parent_execution_id=EXECUTION_ID,
+        candidate_id=CANDIDATE_ID,
+        accounting_approval_evidence_id=EVIDENCE_ID,
+        previous_correction_cycle=1,
+    )
+
+    assert accounting["references"]["candidate_revision"] == 2
+    assert accounting["references"]["candidate_hash"] == HASH_B
+    assert accounting["references"]["accounting_approval_case_id"] == (
+        BUSINESS_POLICY_ID
+    )
+    assert accounting["references"]["accounting_correction_cycle"] == 1
+    assert ready["references"]["candidate_revision"] == 2
+    assert ready["references"]["accounting_correction_cycle"] == 1
+
+
+def test_6b_accounting_return_rejects_stale_case_and_invalid_cycle() -> None:
+    adapter, _business, vouchers = _review_adapter()
+    context = _context()
+    projection = {
+        "state": "RETURNED_FOR_CORRECTION",
+        "candidate_version": 3,
+        "current_revision_no": 2,
+        "events": [
+            {
+                "event_id": "41000000-0000-4000-8000-000000000021",
+                "event_hash": HASH_C,
+                "transition_kind": "RETURN",
+                "candidate_revision": 1,
+                "candidate_hash": HASH_A,
+                "approval_case_id": ACCOUNTING_POLICY_ID,
+                "resulting_version": 3,
+            }
+        ],
+    }
+    vouchers.get_review = lambda **_values: copy.deepcopy(projection)
+    values = {
+        "business_request_context": context,
+        "business_context_hash": context["context_hash"],
+        "authority": _authority(),
+        "parent_execution_id": EXECUTION_ID,
+        "candidate_id": CANDIDATE_ID,
+        "accounting_approval_case_id": ACCOUNTING_POLICY_ID,
+        "previous_correction_cycle": 0,
+    }
+
+    with pytest.raises(M1PreparationError, match="authoritative accounting return"):
+        adapter.continue_after_accounting_rejection(**values)
+
+    projection["current_revision_no"] = 1
+    values["accounting_approval_case_id"] = BUSINESS_POLICY_ID
+    with pytest.raises(M1PreparationError, match="authoritative accounting return"):
+        adapter.continue_after_accounting_rejection(**values)
+
+    values["accounting_approval_case_id"] = ACCOUNTING_POLICY_ID
+    values["previous_correction_cycle"] = -1
+    with pytest.raises(M1PreparationError, match="correction cycle is invalid"):
+        adapter.continue_after_accounting_rejection(**values)
 
 
 def test_01b4_installed_registry_and_authority_back_exact_replay() -> None:

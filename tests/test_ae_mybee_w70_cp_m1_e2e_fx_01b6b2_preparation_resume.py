@@ -20,6 +20,7 @@ from nex_ae_api.m1_product_planning_coordinator import (
 from nex_ae_api.m1_product_preparation_coordinator import (
     InstalledM1ProductPlanningCoordinator,
     M1ProductPreparationCoordinatorError,
+    m1_preparation_projection,
     m1_product_planning_fallback_ref,
     m1_product_planning_proposal_ref,
 )
@@ -228,22 +229,27 @@ class _PreparationAdapter:
     def continue_after_accounting_approval(self, **values):
         self.calls.append(("ACCOUNTING", values["accounting_approval_evidence_id"]))
         assert values["candidate_id"] == CANDIDATE_ID
+        references = {
+            "candidate_id": CANDIDATE_ID,
+            "candidate_version": 2,
+            "candidate_revision": 1,
+            "candidate_hash": HASH_A,
+            "accounting_approval_evidence_id": values[
+                "accounting_approval_evidence_id"
+            ],
+            "accounting_proof_hash": HASH_B,
+            "posting_admission_id": "posting-admission-100",
+            "posting_admission_hash": HASH_C,
+            "posting_admission_expires_at": "2026-11-17T01:05:00Z",
+        }
+        if values.get("previous_correction_cycle", 0):
+            references["accounting_correction_cycle"] = values[
+                "previous_correction_cycle"
+            ]
         return _preparation(
             "READY_FOR_D04",
             values["business_context_hash"],
-            {
-                "candidate_id": CANDIDATE_ID,
-                "candidate_version": 2,
-                "candidate_revision": 1,
-                "candidate_hash": HASH_A,
-                "accounting_approval_evidence_id": values[
-                    "accounting_approval_evidence_id"
-                ],
-                "accounting_proof_hash": HASH_B,
-                "posting_admission_id": "posting-admission-100",
-                "posting_admission_hash": HASH_C,
-                "posting_admission_expires_at": "2026-11-17T01:05:00Z",
-            },
+            references,
         )
 
 
@@ -277,12 +283,30 @@ class _ReviewPreparationAdapter(_PreparationAdapter):
 
     def continue_after_voucher_review(self, **values):
         self.calls.append(("VOUCHER_SUBMIT", values["candidate_id"]))
+        cycle = values.get("previous_correction_cycle", 0)
         return _preparation(
             "WAITING_ACCOUNTING_APPROVAL",
             values["business_context_hash"],
             {
                 "candidate_id": values["candidate_id"],
-                "accounting_approval_case_id": "accounting-case-100",
+                "accounting_approval_case_id": f"accounting-case-{100 + cycle}",
+                "accounting_correction_cycle": cycle,
+            },
+        )
+
+    def continue_after_accounting_rejection(self, **values):
+        cycle = values["previous_correction_cycle"] + 1
+        self.calls.append(("ACCOUNTING_RETURN", values["accounting_approval_case_id"]))
+        return _preparation(
+            "WAITING_VOUCHER_REVIEW",
+            values["business_context_hash"],
+            {
+                "candidate_id": values["candidate_id"],
+                "voucher_review_ref": f"eos.voucher-candidate:{values['candidate_id']}",
+                "accounting_correction_cycle": cycle,
+                "correction_history_mode": "APPEND_ONLY_AUDIT",
+                "correction_active_selection": "LATEST_CHECKPOINT_ONLY",
+                "correction_archive_policy": "TERMINAL_POLICY_CONTROLLED",
             },
         )
 
@@ -603,6 +627,120 @@ def test_6a_review_aware_coordinator_stops_and_resumes_at_four_boundaries() -> N
         ("PROPOSAL_DRAFT", None),
         ("PROPOSAL_SUBMIT", None),
         ("BUSINESS", ENVELOPE_ID),
+        ("VOUCHER_SUBMIT", CANDIDATE_ID),
+        ("ACCOUNTING", EVIDENCE_ID),
+    ]
+
+
+def test_6b_accounting_rejection_appends_correction_wait_and_resumes_latest() -> None:
+    coordinator, adapter, source, checkpoints, waits = _coordinator(
+        adapter=_ReviewPreparationAdapter()
+    )
+    work_intent, context, snapshot, execution = _inputs()
+    values = {
+        "work_intent": work_intent,
+        "agent_context": context,
+        "capability_snapshot": snapshot,
+        "execution": execution,
+    }
+    current = coordinator.begin(**values)
+    for event_id, evidence_ref in (
+        ("proposal-submitted-6b", "eos.business-proposal:proposal-100"),
+        ("business-approved-6b", ENVELOPE_ID),
+        ("voucher-submitted-6b", f"eos.voucher-candidate:{CANDIDATE_ID}"),
+    ):
+        _notify(
+            coordinator,
+            current["checkpoint"],
+            event_id=event_id,
+            evidence_ref=evidence_ref,
+        )
+        current = coordinator.resume_approval(
+            event_id=event_id,
+            runtime_job_id=_match(waits, event_id=event_id),
+            **values,
+        )
+    rejected_wait_id = current["wait"]["wait"]["wait_id"]
+    _notify(
+        coordinator,
+        current["checkpoint"],
+        event_id="accounting-rejected-6b",
+        evidence_ref="eos.scoped-approval-decision:accounting-rejected-6b",
+        authority_state="REJECTED",
+    )
+    rejected_job_id = _match(waits, event_id="accounting-rejected-6b")
+    correction = coordinator.resume_approval(
+        event_id="accounting-rejected-6b",
+        runtime_job_id=rejected_job_id,
+        **values,
+    )
+    replay = coordinator.resume_approval(
+        event_id="accounting-rejected-6b",
+        runtime_job_id=rejected_job_id,
+        **values,
+    )
+
+    assert correction["checkpoint"]["stage"] == "WAITING_VOUCHER_REVIEW"
+    assert correction["checkpoint"]["checkpoint_version"] == 5
+    assert correction["checkpoint"]["checkpoint_id"] != current["checkpoint"][
+        "checkpoint_id"
+    ]
+    assert correction["wait"]["wait"]["wait_id"] != rejected_wait_id
+    assert waits.waits[rejected_wait_id]["state"] == "RESUME_QUEUED"
+    assert waits.waits[correction["wait"]["wait"]["wait_id"]]["state"] == (
+        "PENDING"
+    )
+    references = m1_preparation_projection(correction["checkpoint"])["references"]
+    assert references["accounting_correction_cycle"] == 1
+    assert references["correction_active_selection"] == "LATEST_CHECKPOINT_ONLY"
+    assert replay["replayed"] is True
+    assert replay["checkpoint"] == correction["checkpoint"]
+
+    _notify(
+        coordinator,
+        correction["checkpoint"],
+        event_id="voucher-resubmitted-6b",
+        evidence_ref=f"eos.voucher-candidate:{CANDIDATE_ID}",
+    )
+    accounting = coordinator.resume_approval(
+        event_id="voucher-resubmitted-6b",
+        runtime_job_id=_match(waits, event_id="voucher-resubmitted-6b"),
+        **values,
+    )
+    assert accounting["checkpoint"]["stage"] == "WAITING_ACCOUNTING_APPROVAL"
+    accounting_refs = m1_preparation_projection(accounting["checkpoint"])["references"]
+    assert accounting_refs["accounting_correction_cycle"] == 1
+    assert accounting_refs["accounting_approval_case_id"] == "accounting-case-101"
+
+    _notify(
+        coordinator,
+        accounting["checkpoint"],
+        event_id="accounting-approved-after-correction-6b",
+        evidence_ref=EVIDENCE_ID,
+    )
+    ready = coordinator.resume_approval(
+        event_id="accounting-approved-after-correction-6b",
+        runtime_job_id=_match(
+            waits, event_id="accounting-approved-after-correction-6b"
+        ),
+        **values,
+    )
+
+    assert ready["ready"] is True
+    assert ready["checkpoint"]["stage"] == "READY_FOR_D04"
+    assert ready["checkpoint"]["checkpoint_version"] == 7
+    assert m1_preparation_projection(ready["checkpoint"])["references"][
+        "accounting_correction_cycle"
+    ] == 1
+    assert len(checkpoints.records) == 7
+    assert len(waits.waits) == 6
+    assert source.calls[-3:] == [
+        "WAITING_ACCOUNTING_APPROVAL",
+        "WAITING_VOUCHER_REVIEW",
+        "WAITING_ACCOUNTING_APPROVAL",
+    ]
+    assert adapter.calls[-3:] == [
+        ("ACCOUNTING_RETURN", "accounting-case-100"),
         ("VOUCHER_SUBMIT", CANDIDATE_ID),
         ("ACCOUNTING", EVIDENCE_ID),
     ]

@@ -699,6 +699,64 @@ class InstalledProductRequesterReviewAdmission:
         normalized_tenant = _text(tenant_id, "tenant_id")
         normalized_requester = _text(requester_ref, "requester_ref")
         normalized_ref = _text(authority_ref, "authority_ref")
+        receipt_hash = semantic_sha256_hash_ref(
+            {
+                "schema_version": "ae.product_requester_review_identity.v1",
+                "tenant_id": normalized_tenant,
+                "requester_ref": normalized_requester,
+                "authority_kind": normalized_kind,
+                "authority_ref": normalized_ref,
+                "receipt": dict(receipt),
+            }
+        )
+        notification_ref = (
+            f"product-review:{normalized_kind.lower()}:{receipt_hash}"
+        )
+        event_id = f"product-review:{receipt_hash.removeprefix('sha256:')}"
+        load_event = getattr(self._wait_events, "load_product_event_context", None)
+        existing = (
+            load_event(tenant_id=normalized_tenant, event_id=event_id)
+            if callable(load_event)
+            else None
+        )
+        if existing is not None:
+            event = existing["event"]
+            binding = existing["event_binding"]
+            checkpoint = existing["checkpoint"]
+            if (
+                event.get("external_ref") != normalized_ref
+                or binding.get("authority_kind") != normalized_kind
+                or checkpoint.get("requester_ref") != normalized_requester
+            ):
+                raise _conflict(
+                    "Requester review replay differs from its persisted Product event."
+                )
+            self._runtimes.resolve_identity(
+                coordinator_id=binding["coordinator_id"],
+                coordinator_version=binding["coordinator_version"],
+                coordinator_registration_hash=binding[
+                    "coordinator_registration_hash"
+                ],
+            )
+            resumed = _invoke_product_boundary(
+                self._resume.reconcile,
+                tenant_id=normalized_tenant,
+                event_id=event_id,
+            )
+            return {
+                "schema_version": "ae.product_requester_review_receipt.v1",
+                "matched": True,
+                "tenant_id": normalized_tenant,
+                "authority_kind": normalized_kind,
+                "authority_ref": normalized_ref,
+                "event_id": event_id,
+                "event_state": resumed["event_state"],
+                "wait_state": resumed["wait_state"],
+                "resume_runtime_job_id": resumed["resume_runtime_job_id"],
+                "event_replayed": True,
+                "receipt_hash": receipt_hash,
+                "content_included": False,
+            }
         context = self._wait_events.resolve_product_wait_context(
             tenant_id=normalized_tenant,
             authority_kind=normalized_kind,
@@ -715,6 +773,11 @@ class InstalledProductRequesterReviewAdmission:
             }
         checkpoint = context["checkpoint"]
         binding = context["product_binding"]
+        if (
+            context["wait"].get("state") != "PENDING"
+            or binding.get("authority_kind") != normalized_kind
+        ):
+            raise _conflict("Requester review Product wait is not pending or compatible.")
         if checkpoint.get("requester_ref") != normalized_requester:
             raise _conflict("Requester review owner differs from the Product wait.")
         runtime = self._runtimes.resolve_identity(
@@ -724,20 +787,6 @@ class InstalledProductRequesterReviewAdmission:
                 "coordinator_registration_hash"
             ],
         )
-        receipt_hash = semantic_sha256_hash_ref(
-            {
-                "schema_version": "ae.product_requester_review_identity.v1",
-                "tenant_id": normalized_tenant,
-                "requester_ref": normalized_requester,
-                "authority_kind": normalized_kind,
-                "authority_ref": normalized_ref,
-                "receipt": dict(receipt),
-            }
-        )
-        notification_ref = (
-            f"product-review:{normalized_kind.lower()}:{receipt_hash}"
-        )
-        event_id = f"product-review:{receipt_hash.removeprefix('sha256:')}"
         received_at = _datetime_timestamp(self._clock())
         accepted = _invoke_product_boundary(
             runtime.coordinator.accept_approval_notification,

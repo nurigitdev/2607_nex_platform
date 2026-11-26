@@ -1640,6 +1640,7 @@ WHERE wait.tenant_id = :tenant_id AND wait.wait_id = :wait_id
 _PRODUCT_WAIT_BY_AUTHORITY_SQL = f"""
 {_PRODUCT_WAIT_CONTEXT_SQL.partition("WHERE wait.tenant_id")[0]}
 WHERE wait.tenant_id = :tenant_id
+  AND wait.state = 'PENDING'
   AND binding.authority_kind = :authority_kind
   AND binding.authority_ref = :authority_ref
 ORDER BY wait.created_at, wait.wait_id

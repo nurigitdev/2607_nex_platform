@@ -317,6 +317,41 @@ class InstalledM1ProductPlanningCoordinator:
                 "WAITING_VOUCHER_REVIEW",
             }:
                 raise _conflict("Requester review submission cannot be rejected.")
+            if previous["stage"] == "WAITING_ACCOUNTING_APPROVAL":
+                authority = self._resolve_authority(
+                    work_intent=work_intent,
+                    agent_context=agent_context,
+                    capability_snapshot=capability_snapshot,
+                    execution=execution,
+                    checkpoint=previous,
+                )
+                references = preparation["references"]
+                advanced = self._preparation.adapter.continue_after_accounting_rejection(
+                    business_request_context=work_intent["business_request_context"],
+                    business_context_hash=work_intent["business_context_hash"],
+                    authority=authority,
+                    parent_execution_id=lineage["agent_execution_id"],
+                    candidate_id=_text(
+                        references.get("candidate_id"), "candidate_id", 512
+                    ),
+                    accounting_approval_case_id=_text(
+                        references.get("accounting_approval_case_id"),
+                        "accounting_approval_case_id",
+                        512,
+                    ),
+                    previous_correction_cycle=references.get(
+                        "accounting_correction_cycle", 0
+                    ),
+                )
+                checkpoint = self._persist_checkpoint(
+                    lineage=lineage,
+                    preparation=advanced,
+                    previous=previous,
+                    causation_id=event_id,
+                    proposal_ref=m1_product_planning_proposal_ref(previous),
+                    fallback_ref=m1_product_planning_fallback_ref(previous),
+                )
+                return self._result(checkpoint, replayed=False)
             advanced = _terminal_preparation(
                 preparation,
                 terminal_stage=_rejection_terminal_state(self.registration),
@@ -365,6 +400,9 @@ class InstalledM1ProductPlanningCoordinator:
                 authority=authority,
                 parent_execution_id=lineage["agent_execution_id"],
                 candidate_id=candidate_id,
+                previous_correction_cycle=preparation["references"].get(
+                    "accounting_correction_cycle", 0
+                ),
             )
         else:
             candidate_id = _text(
@@ -379,6 +417,9 @@ class InstalledM1ProductPlanningCoordinator:
                 parent_execution_id=lineage["agent_execution_id"],
                 candidate_id=candidate_id,
                 accounting_approval_evidence_id=evidence_ref,
+                previous_correction_cycle=preparation["references"].get(
+                    "accounting_correction_cycle", 0
+                ),
             )
         checkpoint = self._persist_checkpoint(
             lineage=lineage,

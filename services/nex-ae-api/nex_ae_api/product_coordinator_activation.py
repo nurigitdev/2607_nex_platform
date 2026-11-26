@@ -32,10 +32,10 @@ ROOT = Path(__file__).resolve().parents[3]
 ACTIVATION_SCHEMA_VERSION = "ae.product_coordinator_activation.v1"
 ROLLBACK_SCHEMA_VERSION = "ae.product_coordinator_rollback_receipt.v1"
 DEFAULT_ACTIVATION_PATH = (
-    ROOT / "deployment/locks/ae-mybee-m1-product-coordinator-activation.v5.json"
+    ROOT / "deployment/locks/ae-mybee-m1-product-coordinator-activation.v6.json"
 )
 DEFAULT_ROLLBACK_PATH = (
-    ROOT / "deployment/locks/ae-mybee-m1-product-coordinator-rollback.v5.json"
+    ROOT / "deployment/locks/ae-mybee-m1-product-coordinator-rollback.v6.json"
 )
 AUTHORITY_IMPLEMENTATION_REF = (
     "nex_ae_api.m1_preparation_authority_source:HttpM1PreparationAuthoritySource"
@@ -89,7 +89,7 @@ def build_product_coordinator_activation_documents(
     rollback = {
         "schema_version": ROLLBACK_SCHEMA_VERSION,
         "receipt_id": "mybee-m1-product-coordinator-contract-only",
-        "receipt_version": 5,
+        "receipt_version": 6,
         "rollback_state": "CONTRACT_ONLY",
         "coordinator_registry_hash": contract.registry_hash,
         "coordinator_registration_hash": contract_registration.registration_hash,
@@ -103,7 +103,7 @@ def build_product_coordinator_activation_documents(
     rollback["content_hash"] = semantic_sha256_hash_ref(rollback)
     activation = {
         "schema_version": ACTIVATION_SCHEMA_VERSION,
-        "activation_id": "mybee-m1-product-coordinator-active-v5",
+        "activation_id": "mybee-m1-product-coordinator-active-v6",
         "activation_state": "ACTIVE",
         "coordinator_registry": {
             "registry_id": active.registry_id,
@@ -140,7 +140,7 @@ def build_product_coordinator_activation_documents(
         "process_identities": list(PROCESS_IDENTITIES),
         "rollback_receipt": {
             "receipt_ref": (
-                "deployment/locks/ae-mybee-m1-product-coordinator-rollback.v5.json"
+                "deployment/locks/ae-mybee-m1-product-coordinator-rollback.v6.json"
             ),
             "receipt_hash": rollback["content_hash"],
         },

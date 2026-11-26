@@ -132,11 +132,11 @@ def run_gate(
         environ={
             "NEX_AE_PRODUCT_COORDINATOR_ACTIVATION_PATH": str(
                 repository_root / "deployment/locks/"
-                "ae-mybee-m1-product-coordinator-activation.v5.json"
+                "ae-mybee-m1-product-coordinator-activation.v6.json"
             ),
             "NEX_AE_PRODUCT_COORDINATOR_ROLLBACK_PATH": str(
                 repository_root / "deployment/locks/"
-                "ae-mybee-m1-product-coordinator-rollback.v5.json"
+                "ae-mybee-m1-product-coordinator-rollback.v6.json"
             ),
         },
         repository_root=repository_root,

@@ -187,7 +187,7 @@ def test_m1_registration_is_exact_capability_bound_and_contract_only() -> None:
         == "deployment-lock://ae-mybee-m1-signed-skill-checkpoint.v3"
         for item in first.installed_skill_bundle_locks
     )
-    assert registry.registry_version == 4
+    assert registry.registry_version == 5
     assert (
         registry.resolve(
             first.capability_id,

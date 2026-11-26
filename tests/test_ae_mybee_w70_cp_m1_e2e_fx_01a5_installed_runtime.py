@@ -115,11 +115,11 @@ def test_verified_product_release_profile_is_fail_closed_and_ready(
             "status": "READY",
             "provider_service_id": "nex-eos",
             "adapter_id": "MYBEE.M1.AUTHORITATIVE_TRANSACTION_PREPARATION",
-            "adapter_version": "1.1.0",
+            "adapter_version": "1.2.0",
             "adapter_source_identity": (
                 "mybee:m1-preparation:"
-                "MYBEE.M1.AUTHORITATIVE_TRANSACTION_PREPARATION:1.1.0:"
-                    "sha256:b5bdc013559d09f0487311e62e9a630c66697e9103f3c6a15e23ebdae2b9ee62"
+                    "MYBEE.M1.AUTHORITATIVE_TRANSACTION_PREPARATION:1.2.0:"
+                    "sha256:7f0f6406f519885c23c5f9b372d5a11f4ce5bd080e27ff2daf545a5e78716253"
             ),
             "operations": [
                 "BUSINESS.PROPOSAL.CREATE",
@@ -135,7 +135,7 @@ def test_verified_product_release_profile_is_fail_closed_and_ready(
             "content_included": False,
             "secret_included": False,
             "readiness_hash": (
-                "sha256:db71bf9df2ac84fa7dd967d838538c3ac2f31e333b75e8494e7e7a00fcd86b47"
+                    "sha256:96d9480649b0a9a51b374b205cafd47662c334d7caae845231eb709e80a9b9a6"
             ),
         },
         "allocation_plan_resolution": {
