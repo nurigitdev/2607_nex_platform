@@ -57,7 +57,12 @@ EOS_BUSINESS_PROPOSAL_TABLE = Table(
     Column("submitted_revision_no", Integer, nullable=True),
     Column("approval_policy_id", Uuid(as_uuid=False), nullable=True),
     Column("approval_policy_hash", String(71), nullable=True),
+    Column("approval_preview_hash", String(71), nullable=True),
+    Column("candidate_evidence_hash", String(71), nullable=True),
     Column("approval_line_hash", String(71), nullable=True),
+    Column("normalized_amount", Numeric(20, 4), nullable=True),
+    Column("functional_currency", String(3), nullable=True),
+    Column("normalization_hash", String(71), nullable=True),
     Column("approval_case_id", Uuid(as_uuid=False), nullable=True),
     Column("approved_envelope_id", Uuid(as_uuid=False), nullable=True),
     Column("created_at", DateTime(timezone=True), nullable=False),
@@ -182,6 +187,24 @@ class BusinessProposalRevisionInput:
     valid_until: datetime | None = None
 
 
+@dataclass(frozen=True)
+class BusinessProposalSubmissionInput:
+    tenant_id: str
+    proposal_id: str
+    requester_subject_id: str
+    expected_version: int
+    expected_revision: int
+    content_hash: str
+    approval_policy_id: str
+    approval_policy_hash: str
+    approval_preview_hash: str
+    candidate_evidence_hash: str
+    approval_line_hash: str
+    normalized_amount: Decimal
+    functional_currency: str
+    normalization_hash: str
+
+
 class SqlAlchemyEosBusinessProposalRepository:
     def __init__(self, session_factory: sessionmaker[Session]) -> None:
         self._session_factory = session_factory
@@ -225,7 +248,12 @@ class SqlAlchemyEosBusinessProposalRepository:
                     "submitted_revision_no": None,
                     "approval_policy_id": None,
                     "approval_policy_hash": None,
+                    "approval_preview_hash": None,
+                    "candidate_evidence_hash": None,
                     "approval_line_hash": None,
+                    "normalized_amount": None,
+                    "functional_currency": None,
+                    "normalization_hash": None,
                     "approval_case_id": None,
                     "approved_envelope_id": None,
                     "created_at": now,
@@ -303,7 +331,12 @@ class SqlAlchemyEosBusinessProposalRepository:
                     "submitted_revision_no": None,
                     "approval_policy_id": None,
                     "approval_policy_hash": None,
+                    "approval_preview_hash": None,
+                    "candidate_evidence_hash": None,
                     "approval_line_hash": None,
+                    "normalized_amount": None,
+                    "functional_currency": None,
+                    "normalization_hash": None,
                     "approval_case_id": None,
                     "approved_envelope_id": None,
                     "updated_at": now,
@@ -339,6 +372,80 @@ class SqlAlchemyEosBusinessProposalRepository:
             raise
         except IntegrityError as exc:
             raise _conflict("Business proposal revision conflicts") from exc
+        except SQLAlchemyError as exc:
+            raise _unavailable() from exc
+
+    def submit(
+        self,
+        value: BusinessProposalSubmissionInput,
+        *,
+        submitted_at: datetime | None = None,
+    ) -> dict[str, Any]:
+        submission = _submission(value)
+        now = _instant(submitted_at)
+        try:
+            with self._session_factory.begin() as session:
+                aggregate = self._required_proposal(
+                    session,
+                    tenant_id=submission["tenant_id"],
+                    proposal_id=submission["proposal_id"],
+                    for_update=True,
+                )
+                self._require_owner(aggregate, submission["requester_subject_id"])
+                if aggregate["state"] == "SUBMITTED":
+                    if _same_submission(aggregate, submission):
+                        return self._projection(session, aggregate)
+                    raise _conflict("Business proposal was submitted differently")
+                if aggregate["state"] != "DRAFT":
+                    raise _conflict("Only a DRAFT business proposal can be submitted")
+                if (
+                    int(aggregate["version"]) != submission["expected_version"]
+                    or int(aggregate["current_revision_no"])
+                    != submission["expected_revision"]
+                ):
+                    raise _stale("Business proposal submit version is stale")
+                revision = session.execute(
+                    select(EOS_BUSINESS_PROPOSAL_REVISION_TABLE).where(
+                        EOS_BUSINESS_PROPOSAL_REVISION_TABLE.c.tenant_id
+                        == submission["tenant_id"],
+                        EOS_BUSINESS_PROPOSAL_REVISION_TABLE.c.proposal_id
+                        == submission["proposal_id"],
+                        EOS_BUSINESS_PROPOSAL_REVISION_TABLE.c.revision_no
+                        == submission["expected_revision"],
+                    )
+                ).mappings().one()
+                if revision["content_hash"] != submission["content_hash"]:
+                    raise _stale("Business proposal content hash is stale")
+                values = {
+                    "state": "SUBMITTED",
+                    "version": int(aggregate["version"]) + 1,
+                    "submitted_revision_no": submission["expected_revision"],
+                    "approval_policy_id": submission["approval_policy_id"],
+                    "approval_policy_hash": submission["approval_policy_hash"],
+                    "approval_preview_hash": submission["approval_preview_hash"],
+                    "candidate_evidence_hash": submission["candidate_evidence_hash"],
+                    "approval_line_hash": submission["approval_line_hash"],
+                    "normalized_amount": submission["normalized_amount"],
+                    "functional_currency": submission["functional_currency"],
+                    "normalization_hash": submission["normalization_hash"],
+                    "submitted_at": now,
+                    "updated_at": now,
+                }
+                session.execute(
+                    update(EOS_BUSINESS_PROPOSAL_TABLE)
+                    .where(
+                        EOS_BUSINESS_PROPOSAL_TABLE.c.tenant_id
+                        == submission["tenant_id"],
+                        EOS_BUSINESS_PROPOSAL_TABLE.c.proposal_id
+                        == submission["proposal_id"],
+                    )
+                    .values(**values)
+                )
+                return self._projection(session, {**aggregate, **values})
+        except EosBusinessProposalError:
+            raise
+        except IntegrityError as exc:
+            raise _conflict("Business proposal submission conflicts") from exc
         except SQLAlchemyError as exc:
             raise _unavailable() from exc
 
@@ -584,6 +691,65 @@ def _revision_payload(value: BusinessProposalRevisionInput) -> dict[str, Any]:
     }
 
 
+def _submission(value: BusinessProposalSubmissionInput) -> dict[str, Any]:
+    if not isinstance(value, BusinessProposalSubmissionInput):
+        raise _invalid("value must be BusinessProposalSubmissionInput")
+    currency = str(value.functional_currency).strip().upper()
+    if not _CURRENCY.fullmatch(currency):
+        raise _invalid("functional_currency must be an ISO currency code")
+    return {
+        "tenant_id": _scoped_id("tenant_id", value.tenant_id),
+        "proposal_id": _uuid("proposal_id", value.proposal_id),
+        "requester_subject_id": _scoped_id(
+            "requester_subject_id", value.requester_subject_id
+        ),
+        "expected_version": _positive_int("expected_version", value.expected_version),
+        "expected_revision": _positive_int(
+            "expected_revision", value.expected_revision
+        ),
+        "content_hash": _hash_ref("content_hash", value.content_hash),
+        "approval_policy_id": _uuid(
+            "approval_policy_id", value.approval_policy_id
+        ),
+        "approval_policy_hash": _hash_ref(
+            "approval_policy_hash", value.approval_policy_hash
+        ),
+        "approval_preview_hash": _hash_ref(
+            "approval_preview_hash", value.approval_preview_hash
+        ),
+        "candidate_evidence_hash": _hash_ref(
+            "candidate_evidence_hash", value.candidate_evidence_hash
+        ),
+        "approval_line_hash": _hash_ref(
+            "approval_line_hash", value.approval_line_hash
+        ),
+        "normalized_amount": _money(value.normalized_amount),
+        "functional_currency": currency,
+        "normalization_hash": _hash_ref(
+            "normalization_hash", value.normalization_hash
+        ),
+    }
+
+
+def _same_submission(
+    aggregate: Mapping[str, Any], submission: Mapping[str, Any]
+) -> bool:
+    return all(
+        str(aggregate[field]) == str(submission[field])
+        for field in (
+            "approval_policy_id",
+            "approval_policy_hash",
+            "approval_preview_hash",
+            "candidate_evidence_hash",
+            "approval_line_hash",
+            "functional_currency",
+            "normalization_hash",
+        )
+    ) and Decimal(str(aggregate["normalized_amount"])) == submission[
+        "normalized_amount"
+    ]
+
+
 def _attachment_manifest(
     values: Sequence[Mapping[str, Any]],
 ) -> list[dict[str, Any]]:
@@ -634,6 +800,8 @@ def _wire_aggregate(value: Mapping[str, Any]) -> dict[str, Any]:
             if isinstance(item, datetime)
             else str(item)
             if isinstance(item, uuid.UUID)
+            else format(item, "f")
+            if isinstance(item, Decimal)
             else item
         )
         for key, item in dict(value).items()
@@ -710,6 +878,13 @@ def _positive_int(field: str, value: object) -> int:
     return result
 
 
+def _hash_ref(field: str, value: object) -> str:
+    try:
+        return validate_hash_ref(value)
+    except ValueError as exc:
+        raise _invalid(f"{field} is invalid") from exc
+
+
 def _non_negative_int(field: str, value: object) -> int:
     if isinstance(value, bool):
         raise _invalid(f"{field} must be non-negative")
@@ -738,6 +913,12 @@ def _invalid(detail: str) -> EosBusinessProposalError:
 def _conflict(detail: str) -> EosBusinessProposalError:
     return EosBusinessProposalError(
         "BUSINESS_PROPOSAL_CONFLICT", detail, status_code=409
+    )
+
+
+def _stale(detail: str) -> EosBusinessProposalError:
+    return EosBusinessProposalError(
+        "BUSINESS_PROPOSAL_STALE", detail, status_code=409
     )
 
 

@@ -5,6 +5,7 @@ export const AE_WEB_DEFAULT_VIEW = "workspace";
 export const AE_WEB_AUTHENTICATED_VIEWS = Object.freeze([
   "workspace",
   "approvals",
+  "proposals",
   "upload",
   "documents",
   "retrieval",

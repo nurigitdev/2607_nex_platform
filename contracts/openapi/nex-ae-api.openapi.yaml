@@ -2711,6 +2711,105 @@ paths:
         "409": {description: "Lifecycle, version, or profile-policy binding conflicts."}
         "422": {description: Event envelope or payload is invalid.}
         "503": {description: Project Agent lifecycle persistence or policy is unavailable.}
+  /api/v1/business-proposals:
+    get:
+      operationId: listAeBusinessProposals
+      tags: [Business Proposals]
+      security: [{userBearer: []}]
+      x-nex-required-scopes: [user:access]
+      parameters:
+        - name: state
+          in: query
+          required: false
+          schema: {type: array, items: {type: string, enum: [DRAFT, SUBMITTED, APPROVED, REJECTED, WITHDRAWN]}}
+      responses:
+        "200": {description: Owner-scoped business proposal list.}
+        "401": {description: User session is missing or invalid.}
+        "403": {description: Browser user scope is denied.}
+        "503": {description: EOS proposal service is unavailable.}
+    post:
+      operationId: createAeBusinessProposal
+      tags: [Business Proposals]
+      security: [{userBearer: []}]
+      x-nex-required-scopes: [user:access]
+      requestBody: {required: true, content: {application/json: {schema: {type: object}}}}
+      responses:
+        "201": {description: Owner-scoped proposal draft created in EOS.}
+        "401": {description: User session is missing or invalid.}
+        "403": {description: Browser user scope is denied.}
+        "409": {description: Proposal identity conflicts.}
+        "422": {description: Draft command is invalid.}
+        "503": {description: EOS proposal service is unavailable.}
+  /api/v1/business-proposals/{proposal_id}:
+    get:
+      operationId: getAeBusinessProposal
+      tags: [Business Proposals]
+      security: [{userBearer: []}]
+      x-nex-required-scopes: [user:access]
+      parameters: [{$ref: "#/components/parameters/BusinessProposalId"}]
+      responses:
+        "200": {description: Owner-scoped proposal projection.}
+        "401": {description: User session is missing or invalid.}
+        "403": {description: Browser user scope is denied.}
+        "404": {description: Proposal is absent from the owner scope.}
+        "503": {description: EOS proposal service is unavailable.}
+    patch:
+      operationId: reviseAeBusinessProposal
+      tags: [Business Proposals]
+      security: [{userBearer: []}]
+      x-nex-required-scopes: [user:access]
+      parameters: [{$ref: "#/components/parameters/BusinessProposalId"}]
+      requestBody: {required: true, content: {application/json: {schema: {type: object}}}}
+      responses:
+        "200": {description: Immutable proposal revision appended in EOS.}
+        "401": {description: User session is missing or invalid.}
+        "403": {description: Browser user scope is denied.}
+        "409": {description: Proposal version or revision is stale.}
+        "422": {description: Revision command is invalid.}
+        "503": {description: EOS proposal service is unavailable.}
+  /api/v1/business-proposals/{proposal_id}:preview-approval:
+    post:
+      operationId: previewAeBusinessProposalApproval
+      tags: [Business Proposals]
+      security: [{userBearer: []}]
+      x-nex-required-scopes: [user:access]
+      parameters: [{$ref: "#/components/parameters/BusinessProposalId"}]
+      requestBody: {required: true, content: {application/json: {schema: {type: object}}}}
+      responses:
+        "200": {description: Fresh EOS policy and OA approver candidate preview.}
+        "401": {description: User session is missing or invalid.}
+        "403": {description: Browser user scope is denied.}
+        "409": {description: Proposal or authority state is not admissible.}
+        "503": {description: EOS or OA authority is unavailable.}
+  /api/v1/business-proposals/{proposal_id}:select-approval-line:
+    post:
+      operationId: selectAeBusinessProposalApprovalLine
+      tags: [Business Proposals]
+      security: [{userBearer: []}]
+      x-nex-required-scopes: [user:access]
+      parameters: [{$ref: "#/components/parameters/BusinessProposalId"}]
+      requestBody: {required: true, content: {application/json: {schema: {type: object}}}}
+      responses:
+        "200": {description: Hash-bound approval line selection admitted.}
+        "401": {description: User session is missing or invalid.}
+        "403": {description: Browser user scope is denied.}
+        "409": {description: Preview or candidate evidence is stale.}
+        "503": {description: EOS or OA authority is unavailable.}
+  /api/v1/business-proposals/{proposal_id}:submit:
+    post:
+      operationId: submitAeBusinessProposal
+      tags: [Business Proposals]
+      security: [{userBearer: []}]
+      x-nex-required-scopes: [user:access]
+      parameters: [{$ref: "#/components/parameters/BusinessProposalId"}]
+      requestBody: {required: true, content: {application/json: {schema: {type: object}}}}
+      responses:
+        "200": {description: Exact proposal revision and approval line submitted.}
+        "401": {description: User session is missing or invalid.}
+        "403": {description: Browser user scope is denied.}
+        "409": {description: "Proposal, preview, authority, or revision is stale."}
+        "422": {description: Submit command is invalid.}
+        "503": {description: EOS or OA authority is unavailable.}
 components:
   securitySchemes:
     serviceBearer:
@@ -2718,6 +2817,11 @@ components:
       scheme: bearer
       bearerFormat: RS256 at+jwt
   parameters:
+    BusinessProposalId:
+      name: proposal_id
+      in: path
+      required: true
+      schema: {type: string, format: uuid}
     WaSourceTenant:
       name: X-NeX-Tenant-Id
       in: header

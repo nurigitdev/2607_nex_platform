@@ -594,6 +594,47 @@ paths:
           description: Identity bootstrap scope is missing.
         "503":
           description: Membership persistence is unavailable.
+  /internal/v1/identity/memberships/tenants/{tenant_id}/approver-candidates:
+    get:
+      operationId: listOaApproverCandidates
+      tags:
+        - Authorization
+      security:
+        - serviceBearer: []
+      x-nex-required-scopes:
+        - service:call
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - name: position_type
+          in: query
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 64
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 100
+      responses:
+        "200":
+          description: Active tenant approver candidates for the requested position.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApproverCandidateList"
+        "400":
+          description: Approver role is invalid.
+        "401":
+          description: Service claim is missing or invalid.
+        "422":
+          description: Candidate limit or query parameters are invalid.
+        "503":
+          description: Membership or subject persistence is unavailable.
   /internal/v1/identity/tenants/{tenant_id}/subjects/{subject_id}/lifecycle:
     patch:
       operationId: transitionOaSubjectLifecycle
@@ -1064,6 +1105,56 @@ components:
       scheme: bearer
       bearerFormat: RS256 at+jwt
   schemas:
+    ApproverCandidateList:
+      type: object
+      additionalProperties: false
+      required:
+        - schema_version
+        - tenant_id
+        - position_type
+        - items
+        - count
+        - request_id
+        - trace_id
+      properties:
+        schema_version:
+          const: oa_approver_candidate_list.v1
+        tenant_id:
+          type: string
+        position_type:
+          type: string
+        items:
+          type: array
+          maxItems: 100
+          items:
+            type: object
+            additionalProperties: false
+            required:
+              - subject_id
+              - display_name
+              - position_type
+              - active
+              - authority_hash
+            properties:
+              subject_id:
+                type: string
+              display_name:
+                type: string
+              position_type:
+                type: string
+              active:
+                const: true
+              authority_hash:
+                type: string
+                pattern: "^[0-9a-f]{64}$"
+        count:
+          type: integer
+          minimum: 0
+          maximum: 100
+        request_id:
+          type: string
+        trace_id:
+          type: string
     OaServiceId:
       type: string
       enum: [nex-oa, nex-ag, nex-ae-api, nex-cx, nex-mo]

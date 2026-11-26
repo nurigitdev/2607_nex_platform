@@ -47,6 +47,11 @@ from .business_formal_wc import (
     EosBusinessFormalWcAdapter,
     HttpWcApprovalWorkItemClient,
 )
+from .business_proposal_approval import (
+    EosBusinessProposalApprovalService,
+    HttpOaApprovalCandidateAuthoritySource,
+)
+from .business_proposals import SqlAlchemyEosBusinessProposalRepository
 from .business_queries import SqlAlchemyEosBusinessOperationQuery
 from .business_transactions import (
     EosBusinessTransactionCoordinator,
@@ -221,6 +226,8 @@ class EosDependencies:
     approved_document_service: EosApprovedDocumentService | None
     scoped_approval_service: EosScopedApprovalService | None
     business_formal_wc_adapter: EosBusinessFormalWcAdapter | None
+    business_proposals: SqlAlchemyEosBusinessProposalRepository | None
+    business_proposal_approval: EosBusinessProposalApprovalService | None
     vouchers: SqlAlchemyEosVoucherRepository | None
     attachments: SqlAlchemyEosAttachmentRepository | None
     voucher_command_service: EosCreateVoucherDraftService | None
@@ -318,6 +325,11 @@ def build_eos_dependencies(
         if database_runtime is not None
         else None
     )
+    business_proposals = (
+        SqlAlchemyEosBusinessProposalRepository(database_runtime.session_factory)
+        if database_runtime is not None
+        else None
+    )
     approval_instances = (
         SqlAlchemyEosApprovalInstanceRepository(database_runtime.session_factory)
         if database_runtime is not None
@@ -380,6 +392,27 @@ def build_eos_dependencies(
             service_token=oa_token,
         )
         if oa_token
+        else None
+    )
+    business_proposal_approval = (
+        EosBusinessProposalApprovalService(
+            business_proposals,
+            legal_entities,
+            SqlAlchemyEosFxRateRepository(database_runtime.session_factory),
+            approval_policies,
+            HttpOaApprovalCandidateAuthoritySource(
+                base_url=environ.get("NEX_OA_BASE_URL", "http://127.0.0.1:8101"),
+                service_token=oa_token,
+                timeout_seconds=float(
+                    environ.get("NEX_EOS_OA_CANDIDATE_TIMEOUT_SECONDS", "10")
+                ),
+            ),
+        )
+        if database_runtime is not None
+        and business_proposals is not None
+        and legal_entities is not None
+        and approval_policies is not None
+        and oa_token
         else None
     )
     project_authorizer = (
@@ -960,6 +993,8 @@ def build_eos_dependencies(
         approved_document_service=approved_document_service,
         scoped_approval_service=scoped_approval_service,
         business_formal_wc_adapter=business_formal_wc_adapter,
+        business_proposals=business_proposals,
+        business_proposal_approval=business_proposal_approval,
         vouchers=vouchers,
         attachments=attachments,
         voucher_command_service=voucher_command_service,

@@ -197,6 +197,7 @@ from .business_proposal_approval import (
     ApprovalLineSelectionInput,
     EosBusinessProposalApprovalError,
     EosBusinessProposalApprovalService,
+    HttpOaApprovalCandidateAuthoritySource,
 )
 from .business_proposals import (
     BUSINESS_PROPOSAL_SCOPE_TYPES,
@@ -204,6 +205,7 @@ from .business_proposals import (
     EOS_BUSINESS_PROPOSAL_REVISION_TABLE,
     EOS_BUSINESS_PROPOSAL_TABLE,
     BusinessProposalRevisionInput,
+    BusinessProposalSubmissionInput,
     EosBusinessProposalError,
     SqlAlchemyEosBusinessProposalRepository,
 )
@@ -1092,6 +1094,7 @@ __all__ = (
     "AuthorizationSubjectDenied",
     "BudgetCommitCommand",
     "BusinessProposalRevisionInput",
+    "BusinessProposalSubmissionInput",
     "CoaAdoptionCommand",
     "CoaBindingCommand",
     "CoaDefinitionReleaseInput",
@@ -1234,6 +1237,7 @@ __all__ = (
     "FxRatePolicyInput",
     "FxRateSnapshotInput",
     "HttpAeVoucherAttachmentResolver",
+    "HttpOaApprovalCandidateAuthoritySource",
     "HttpOaAuthorizationSource",
     "HttpWcApprovalWorkItemClient",
     "InMemoryEosBusinessTransactionCoordinator",

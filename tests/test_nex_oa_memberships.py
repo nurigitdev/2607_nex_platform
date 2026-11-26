@@ -181,6 +181,75 @@ def test_membership_record_and_snapshot_are_safe() -> None:
     assert "raw_token" not in serialized
 
 
+def test_active_approver_candidates_are_role_scoped_and_safe() -> None:
+    registry = InMemoryOaTenantMembershipRegistry()
+    for subject_id, display_name, roles, status in (
+        ("lead-a", "김 팀장", ["TEAM_LEAD"], "ACTIVE"),
+        ("lead-b", "이 팀장", ["TEAM_LEAD", "GROUP_LEAD"], "ACTIVE"),
+        ("inactive", "퇴직 사용자", ["TEAM_LEAD"], "DISABLED"),
+    ):
+        registry.ensure_membership(
+            {
+                "tenant_id": "tenant-a",
+                "tenant_display_name": "Tenant A",
+                "subject_id": subject_id,
+                "subject_display_name": display_name,
+                "roles": roles,
+                "scopes": ["workspace:use"],
+                "membership_status": status,
+            }
+        )
+
+    candidates = registry.list_active_by_role(
+        tenant_id="tenant-a", role="TEAM_LEAD", limit=10
+    )
+
+    assert [candidate["subject_id"] for candidate in candidates] == [
+        "lead-a",
+        "lead-b",
+    ]
+    assert candidates[0]["display_name"] == "김 팀장"
+    assert candidates[0]["authority_hash"].startswith("sha256:")
+    assert "roles" not in candidates[0]
+
+
+def test_approver_candidate_route_requires_service_trust() -> None:
+    registry = InMemoryOaTenantMembershipRegistry()
+    registry.ensure_membership(
+        {
+            "tenant_id": "tenant-a",
+            "tenant_display_name": "Tenant A",
+            "subject_id": "lead-a",
+            "subject_display_name": "김 팀장",
+            "roles": ["TEAM_LEAD"],
+            "scopes": ["workspace:use"],
+        }
+    )
+    client = build_client(registry)
+    denied = client.get(
+        "/internal/v1/identity/memberships/tenants/tenant-a/approver-candidates",
+        params={"position_type": "TEAM_LEAD"},
+    )
+    allowed = client.get(
+        "/internal/v1/identity/memberships/tenants/tenant-a/approver-candidates",
+        params={"position_type": "TEAM_LEAD"},
+        headers=auth_headers(bootstrap_scope=False),
+    )
+
+    assert denied.status_code == 401
+    assert allowed.status_code == 200
+    assert allowed.json()["count"] == 1
+    assert allowed.json()["items"][0]["subject_id"] == "lead-a"
+
+
+@pytest.mark.parametrize("role,limit", (("bad role", 10), ("TEAM_LEAD", 0)))
+def test_approver_candidate_registry_rejects_invalid_selectors(role, limit) -> None:
+    with pytest.raises(OaMembershipError):
+        InMemoryOaTenantMembershipRegistry().list_active_by_role(
+            tenant_id="tenant-a", role=role, limit=limit
+        )
+
+
 def test_in_memory_membership_registry_is_idempotent_and_readable() -> None:
     registry = InMemoryOaTenantMembershipRegistry()
     first = registry.ensure_membership(

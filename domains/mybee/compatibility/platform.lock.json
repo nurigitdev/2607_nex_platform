@@ -10,11 +10,11 @@
   "openapi": {
     "nex-oa": {
       "path": "contracts/openapi/nex-oa.openapi.yaml",
-      "sha256": "sha256:810a70f1ce6f872d098c8596c7ff41a9e4a23695db9c19b68c2c47826db90005"
+      "sha256": "sha256:76068448f1a0c9553c615cff5bbfe6dacc49093176e391e0c76c7da9976f06f0"
     },
     "nex-ae-api": {
       "path": "contracts/openapi/nex-ae-api.openapi.yaml",
-      "sha256": "sha256:170aeeca6b375484dcf7e49a568139a8a54e20d9bc9c26b599c5db042a23573c"
+      "sha256": "sha256:0b45c5b62e7374bbd83d7bb4d3cd5a1fa59eda8585d2ccec5e986d12c9fe761a"
     },
     "nex-wc": {
       "path": "contracts/openapi/nex-wc.openapi.yaml",
@@ -22,7 +22,7 @@
     },
     "nex-eos": {
       "path": "contracts/openapi/nex-eos.openapi.yaml",
-      "sha256": "sha256:03cd28bb04a2d83cb6a1848590dd7202e9b1cea92e0fac7d890d0f8d4fc29b96"
+      "sha256": "sha256:e656c5310caa2e6d8e580507b2b3324994dadb1d9bb1da59c1061c0758f5e286"
     },
     "nex-wa": {
       "path": "contracts/openapi/nex-wa.openapi.yaml",

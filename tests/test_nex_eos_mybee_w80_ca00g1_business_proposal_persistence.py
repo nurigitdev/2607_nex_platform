@@ -13,6 +13,7 @@ from nex_eos import (
     EOS_BUSINESS_PROPOSAL_REVISION_TABLE,
     EOS_METADATA,
     BusinessProposalRevisionInput,
+    BusinessProposalSubmissionInput,
     EosBusinessProposalError,
     LegalEntityInput,
     SqlAlchemyEosBusinessProposalRepository,
@@ -489,6 +490,28 @@ def test_actual_postgres_migration_revision_replay_and_zero_residue() -> None:
             actor_subject_id=REQUESTER,
         )
         assert revised["current_revision_no"] == 2
+        submitted = proposals.submit(
+            BusinessProposalSubmissionInput(
+                tenant_id=TENANT,
+                proposal_id=PROPOSAL_ID,
+                requester_subject_id=REQUESTER,
+                expected_version=2,
+                expected_revision=2,
+                content_hash=revised["current_revision"]["content_hash"],
+                approval_policy_id="d4000000-0000-4000-8000-000000000001",
+                approval_policy_hash="sha256:" + "b" * 64,
+                approval_preview_hash="sha256:" + "c" * 64,
+                candidate_evidence_hash="sha256:" + "d" * 64,
+                approval_line_hash="sha256:" + "e" * 64,
+                normalized_amount=Decimal("10000"),
+                functional_currency="KRW",
+                normalization_hash="sha256:" + "f" * 64,
+            ),
+            submitted_at=NOW,
+        )
+        assert submitted["state"] == "SUBMITTED"
+        assert submitted["submitted_revision_no"] == 2
+        assert submitted["approval_preview_hash"] == "sha256:" + "c" * 64
         runtime.dispose()
     finally:
         with (

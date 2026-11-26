@@ -35,6 +35,9 @@ from nex_ae_api.approval_decision_event_api import (
     register_approval_decision_event_routes,
 )
 from nex_ae_api.approval_facade import register_approval_facade_routes
+from nex_ae_api.business_proposal_facade import (
+    register_business_proposal_facade_routes,
+)
 from nex_ae_api.artifacts import (
     SqlAlchemyArtifactRecordStore,
     register_artifact_handoff_routes,
@@ -143,6 +146,7 @@ register_service_log_retention_routes(
 )
 register_auth_session_routes(app)
 register_approval_facade_routes(app)
+register_business_proposal_facade_routes(app)
 register_workspace_routes(app)
 register_upload_routes(app)
 register_upload_progress_routes(app)

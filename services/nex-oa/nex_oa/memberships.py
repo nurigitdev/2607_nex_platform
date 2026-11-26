@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any, Protocol
 
-from fastapi import FastAPI, Header, Request
+from fastapi import FastAPI, Header, Query, Request
 from fastapi.responses import JSONResponse
 from nex_runtime import (
     DEFAULT_USER_SCOPE,
@@ -17,6 +17,7 @@ from nex_runtime import (
     request_id_from_headers,
     trace_id_from_headers,
 )
+from nex_runtime.semantic_hashes import semantic_sha256_hash_ref
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
@@ -105,6 +106,14 @@ class OaTenantMembershipRegistry(Protocol):
     ) -> dict[str, Any]:
         ...
 
+    def list_active_by_role(
+        self,
+        *,
+        tenant_id: str,
+        role: str,
+        limit: int = 100,
+    ) -> list[dict[str, Any]]: ...
+
 
 @dataclass
 class InMemoryOaTenantMembershipRegistry:
@@ -187,6 +196,40 @@ class InMemoryOaTenantMembershipRegistry:
             membership=record,
             subject_snapshot=subject_snapshot,
         )
+
+    def list_active_by_role(
+        self,
+        *,
+        tenant_id: str,
+        role: str,
+        limit: int = 100,
+    ) -> list[dict[str, Any]]:
+        tenant = _normalize_ref_id(tenant_id, field_name="tenant_id")
+        normalized_role = _authority_role(role)
+        maximum = _candidate_limit(limit)
+        selected: list[dict[str, Any]] = []
+        for (item_tenant, subject_id), record in sorted(self.memberships.items()):
+            if (
+                item_tenant != tenant
+                or record["status"] != "ACTIVE"
+                or normalized_role not in record["roles"]
+            ):
+                continue
+            subject = _get_subject_snapshot(
+                self.subject_registry, tenant_id=tenant, subject_id=subject_id
+            )
+            if subject is None:
+                continue
+            subject_record = subject.get("subject")
+            if (
+                not isinstance(subject_record, Mapping)
+                or subject_record.get("status") != "ACTIVE"
+            ):
+                continue
+            selected.append(_approver_candidate(record, subject, normalized_role))
+            if len(selected) >= maximum:
+                break
+        return selected
 
 
 class SqlAlchemyOaTenantMembershipRegistry:
@@ -300,6 +343,51 @@ class SqlAlchemyOaTenantMembershipRegistry:
             membership=stored,
             subject_snapshot=subject_snapshot,
         )
+
+    def list_active_by_role(
+        self,
+        *,
+        tenant_id: str,
+        role: str,
+        limit: int = 100,
+    ) -> list[dict[str, Any]]:
+        tenant = _normalize_ref_id(tenant_id, field_name="tenant_id")
+        normalized_role = _authority_role(role)
+        maximum = _candidate_limit(limit)
+        try:
+            with self._session_factory() as session:
+                rows = session.execute(
+                    text(
+                        """
+                        SELECT tenant_id, subject_ref_type, subject_id,
+                               membership_schema_version, status, revision,
+                               roles, scopes, metadata, created_at, updated_at
+                        FROM oa_tenant_memberships
+                        WHERE tenant_id = :tenant_id
+                          AND subject_ref_type = :subject_ref_type
+                          AND status = 'ACTIVE'
+                        ORDER BY subject_id
+                        """
+                    ),
+                    {"tenant_id": tenant, "subject_ref_type": OA_USER_REF_TYPE},
+                ).mappings()
+                records = [_membership_from_row(row) for row in rows]
+        except SQLAlchemyError as exc:
+            raise _membership_unavailable() from exc
+        selected: list[dict[str, Any]] = []
+        for record in records:
+            if normalized_role not in record["roles"]:
+                continue
+            subject_id = str(record["subject_ref"]["id"])
+            subject = _get_subject_snapshot(
+                self._subject_registry, tenant_id=tenant, subject_id=subject_id
+            )
+            if subject is None:
+                continue
+            selected.append(_approver_candidate(record, subject, normalized_role))
+            if len(selected) >= maximum:
+                break
+        return selected
 
     def _run_in_transaction(self, operation: Any) -> Any:
         session = self._session_factory()
@@ -602,6 +690,39 @@ def register_identity_membership_routes(
             return _membership_problem_response(request, exc)
         return _attach_request_context(snapshot, request)
 
+    @app.get(
+        "/internal/v1/identity/memberships/tenants/{tenant_id}/approver-candidates",
+        response_model=None,
+    )
+    def list_approver_candidates(
+        tenant_id: str,
+        request: Request,
+        position_type: str = Query(min_length=1, max_length=64),
+        limit: int = Query(default=100, ge=1, le=100),
+        authorization: str | None = Header(default=None),
+    ) -> dict[str, Any] | JSONResponse:
+        auth_problem = _authorize_oa_membership_request(request, authorization)
+        if auth_problem is not None:
+            return auth_problem
+        try:
+            candidates = membership_registry.list_active_by_role(
+                tenant_id=tenant_id,
+                role=position_type,
+                limit=limit,
+            )
+        except OaMembershipError as exc:
+            return _membership_problem_response(request, exc)
+        return _attach_request_context(
+            {
+                "schema_version": "oa_approver_candidate_list.v1",
+                "tenant_id": tenant_id,
+                "position_type": position_type,
+                "items": candidates,
+                "count": len(candidates),
+            },
+            request,
+        )
+
 
 def build_membership_record(
     payload: Mapping[str, Any],
@@ -685,6 +806,65 @@ def build_membership_snapshot(
         "private_payload_policy": _private_payload_policy(),
         "next_slice": "1212_oa_identity_trust_hardening_boundary",
     }
+
+
+def _approver_candidate(
+    membership: Mapping[str, Any],
+    subject_snapshot: Mapping[str, Any],
+    role: str,
+) -> dict[str, Any]:
+    subject_id = str(membership["subject_ref"]["id"])
+    authority = {
+        "schema_version": "oa_approver_candidate_authority.v1",
+        "tenant_id": str(membership["tenant_ref"]["id"]),
+        "subject_id": subject_id,
+        "position_type": role,
+        "membership_revision": int(membership["revision"]),
+        "roles": sorted(str(item) for item in membership["roles"]),
+        "status": str(membership["status"]),
+    }
+    return {
+        "subject_id": subject_id,
+        "display_name": str(subject_snapshot["subject"]["display_name"]),
+        "position_type": role,
+        "active": True,
+        "authority_hash": semantic_sha256_hash_ref(authority),
+    }
+
+
+def _authority_role(value: object) -> str:
+    role = str(value or "").strip()
+    if not role or len(role) > 64 or any(character.isspace() for character in role):
+        raise OaMembershipError(
+            status_code=422,
+            error_code="oa.membership_role_invalid",
+            detail="Approver role is invalid.",
+        )
+    return role
+
+
+def _candidate_limit(value: object) -> int:
+    if isinstance(value, bool):
+        raise OaMembershipError(
+            status_code=422,
+            error_code="oa.membership_limit_invalid",
+            detail="Candidate limit is invalid.",
+        )
+    try:
+        limit = int(value)
+    except (TypeError, ValueError) as exc:
+        raise OaMembershipError(
+            status_code=422,
+            error_code="oa.membership_limit_invalid",
+            detail="Candidate limit is invalid.",
+        ) from exc
+    if not 1 <= limit <= 100:
+        raise OaMembershipError(
+            status_code=422,
+            error_code="oa.membership_limit_invalid",
+            detail="Candidate limit is invalid.",
+        )
+    return limit
 
 
 def normalize_membership_status(value: object) -> str:

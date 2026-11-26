@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+import json
 import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from typing import Any, Protocol
+from urllib.error import HTTPError, URLError
+from urllib.parse import quote, urlencode
+from urllib.request import Request, urlopen
 
 from nex_runtime.semantic_hashes import semantic_sha256_hash_ref, validate_hash_ref
 
@@ -67,6 +71,52 @@ class ApprovalCandidateAuthoritySource(Protocol):
         position_type: str,
         effective_at: datetime,
     ) -> Sequence[Mapping[str, Any]]: ...
+
+
+class HttpOaApprovalCandidateAuthoritySource:
+    def __init__(
+        self,
+        *,
+        base_url: str,
+        service_token: str,
+        timeout_seconds: float = 10.0,
+    ) -> None:
+        self._base_url = base_url.rstrip("/")
+        self._service_token = service_token.strip()
+        self._timeout_seconds = timeout_seconds
+
+    def list_eligible_candidates(
+        self,
+        *,
+        tenant_id: str,
+        company_id: str,
+        project_ids: Sequence[str],
+        position_type: str,
+        effective_at: datetime,
+    ) -> Sequence[Mapping[str, Any]]:
+        del company_id, project_ids, effective_at
+        if not self._service_token:
+            raise RuntimeError("OA service token is not configured")
+        query = urlencode({"position_type": position_type, "limit": 100})
+        request = Request(
+            f"{self._base_url}/internal/v1/identity/memberships/tenants/"
+            f"{quote(tenant_id, safe='')}/approver-candidates?{query}",
+            method="GET",
+            headers={
+                "Authorization": f"Bearer {self._service_token}",
+                "Accept": "application/json",
+                "Cache-Control": "no-store, max-age=0",
+                "Pragma": "no-cache",
+            },
+        )
+        try:
+            with urlopen(request, timeout=self._timeout_seconds) as response:
+                payload = json.loads(response.read().decode("utf-8"))
+        except (HTTPError, URLError, TimeoutError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise RuntimeError("OA approver candidate request failed") from exc
+        if not isinstance(payload, Mapping) or not isinstance(payload.get("items"), list):
+            raise TypeError("OA approver candidate response is malformed")
+        return payload["items"]
 
 
 class EosBusinessProposalApprovalError(RuntimeError):

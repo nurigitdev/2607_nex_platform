@@ -2527,12 +2527,133 @@ paths:
           description: Verification identity is invalid.
         "503":
           description: Persisted business state is unavailable or inconsistent.
+  /internal/v2/business-proposals:
+    get:
+      operationId: BUSINESS.PROPOSAL.LIST
+      tags: [Business Proposal]
+      security: [{serviceBearer: []}]
+      x-nex-required-scopes: [service:call]
+      parameters:
+        - {name: X-NeX-Tenant-Id, in: header, required: true, schema: {type: string}}
+        - {name: X-NeX-Subject-Id, in: header, required: true, schema: {type: string}}
+        - name: states
+          in: query
+          required: false
+          schema: {type: array, items: {type: string, enum: [DRAFT, SUBMITTED, APPROVED, REJECTED, WITHDRAWN]}}
+      responses:
+        "200": {description: Owner-scoped business proposal list, content: {application/json: {schema: {$ref: "#/components/schemas/BusinessProposalList"}}}}
+        "401": {description: Service token is missing or invalid.}
+        "503": {description: Proposal persistence is unavailable.}
+    post:
+      operationId: BUSINESS.PROPOSAL.CREATE
+      tags: [Business Proposal]
+      security: [{serviceBearer: []}]
+      x-nex-required-scopes: [service:call]
+      parameters:
+        - {name: X-NeX-Tenant-Id, in: header, required: true, schema: {type: string}}
+        - {name: X-NeX-Subject-Id, in: header, required: true, schema: {type: string}}
+      requestBody:
+        required: true
+        content: {application/json: {schema: {$ref: "#/components/schemas/BusinessProposalDraftCommand"}}}
+      responses:
+        "201": {description: Durable owner-scoped proposal draft, content: {application/json: {schema: {$ref: "#/components/schemas/BusinessProposalProjection"}}}}
+        "401": {description: Service token is missing or invalid.}
+        "409": {description: Proposal identity is already bound to different semantics.}
+        "422": {description: Draft command is invalid.}
+        "503": {description: Proposal persistence is unavailable.}
+  /internal/v2/business-proposals/{proposal_id}:
+    get:
+      operationId: BUSINESS.PROPOSAL.GET
+      tags: [Business Proposal]
+      security: [{serviceBearer: []}]
+      x-nex-required-scopes: [service:call]
+      parameters:
+        - {$ref: "#/components/parameters/BusinessProposalId"}
+        - {name: X-NeX-Tenant-Id, in: header, required: true, schema: {type: string}}
+        - {name: X-NeX-Subject-Id, in: header, required: true, schema: {type: string}}
+      responses:
+        "200": {description: Owner-scoped proposal projection, content: {application/json: {schema: {$ref: "#/components/schemas/BusinessProposalProjection"}}}}
+        "401": {description: Service token is missing or invalid.}
+        "404": {description: Proposal is absent from the owner scope.}
+        "503": {description: Proposal persistence is unavailable.}
+    patch:
+      operationId: BUSINESS.PROPOSAL.REVISE
+      tags: [Business Proposal]
+      security: [{serviceBearer: []}]
+      x-nex-required-scopes: [service:call]
+      parameters:
+        - {$ref: "#/components/parameters/BusinessProposalId"}
+        - {name: X-NeX-Tenant-Id, in: header, required: true, schema: {type: string}}
+        - {name: X-NeX-Subject-Id, in: header, required: true, schema: {type: string}}
+      requestBody:
+        required: true
+        content: {application/json: {schema: {$ref: "#/components/schemas/BusinessProposalRevisionCommand"}}}
+      responses:
+        "200": {description: Newly appended immutable proposal revision, content: {application/json: {schema: {$ref: "#/components/schemas/BusinessProposalProjection"}}}}
+        "401": {description: Service token is missing or invalid.}
+        "409": {description: "State, owner, version, or revision conflicts."}
+        "422": {description: Revision command is invalid.}
+        "503": {description: Proposal persistence is unavailable.}
+  /internal/v2/business-proposals/{proposal_id}:preview-approval:
+    post:
+      operationId: BUSINESS.PROPOSAL.PREVIEW_APPROVAL
+      tags: [Business Proposal]
+      security: [{serviceBearer: []}]
+      x-nex-required-scopes: [service:call]
+      parameters:
+        - {$ref: "#/components/parameters/BusinessProposalId"}
+        - {name: X-NeX-Tenant-Id, in: header, required: true, schema: {type: string}}
+        - {name: X-NeX-Subject-Id, in: header, required: true, schema: {type: string}}
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/BusinessProposalApprovalPreviewCommand"}}}}
+      responses:
+        "200": {description: Fresh amount-tiered policy and OA candidate preview, content: {application/json: {schema: {$ref: "#/components/schemas/BusinessProposalApprovalPreview"}}}}
+        "401": {description: Service token is missing or invalid.}
+        "409": {description: "Policy, FX, or proposal state is not admissible."}
+        "503": {description: EOS or OA authority is unavailable.}
+  /internal/v2/business-proposals/{proposal_id}:select-approval-line:
+    post:
+      operationId: BUSINESS.PROPOSAL.SELECT_APPROVAL_LINE
+      tags: [Business Proposal]
+      security: [{serviceBearer: []}]
+      x-nex-required-scopes: [service:call]
+      parameters:
+        - {$ref: "#/components/parameters/BusinessProposalId"}
+        - {name: X-NeX-Tenant-Id, in: header, required: true, schema: {type: string}}
+        - {name: X-NeX-Subject-Id, in: header, required: true, schema: {type: string}}
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/BusinessProposalApprovalLineCommand"}}}}
+      responses:
+        "200": {description: Hash-bound required approval line selection.}
+        "401": {description: Service token is missing or invalid.}
+        "409": {description: Preview or candidate evidence is stale.}
+        "503": {description: EOS or OA authority is unavailable.}
+  /internal/v2/business-proposals/{proposal_id}:submit:
+    post:
+      operationId: BUSINESS.PROPOSAL.SUBMIT
+      tags: [Business Proposal]
+      security: [{serviceBearer: []}]
+      x-nex-required-scopes: [service:call]
+      parameters:
+        - {$ref: "#/components/parameters/BusinessProposalId"}
+        - {name: X-NeX-Tenant-Id, in: header, required: true, schema: {type: string}}
+        - {name: X-NeX-Subject-Id, in: header, required: true, schema: {type: string}}
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/BusinessProposalSubmitCommand"}}}}
+      responses:
+        "200": {description: Exact proposal revision and approval line locked for submission, content: {application/json: {schema: {$ref: "#/components/schemas/BusinessProposalProjection"}}}}
+        "401": {description: Service token is missing or invalid.}
+        "409": {description: "Proposal, preview, authority, or revision is stale."}
+        "422": {description: Submit command is invalid.}
+        "503": {description: EOS or OA authority is unavailable.}
 components:
   securitySchemes:
     serviceBearer:
       type: http
       scheme: bearer
   parameters:
+    BusinessProposalId:
+      name: proposal_id
+      in: path
+      required: true
+      schema: {type: string, format: uuid}
     TenantCodeHeader:
       name: X-NeX-Tenant-Id
       in: header
@@ -2549,6 +2670,88 @@ components:
       required: true
       schema: {type: string, pattern: "^[A-Z0-9]{4}R[0-9]{6}$"}
   schemas:
+    BusinessProposalDraftCommand:
+      type: object
+      required: [proposal_id, revision_id, company_id, document_type, work_code, title, purpose, business_justification, transaction_type, requested_amount, original_currency, valid_from, scope_type, project_ids, project_codes]
+      properties:
+        proposal_id: {type: string, format: uuid}
+        revision_id: {type: string, format: uuid}
+        company_id: {type: string, format: uuid}
+        document_type: {type: string}
+        work_code: {type: string}
+        title: {type: string}
+        purpose: {type: string}
+        business_justification: {type: string}
+        transaction_type: {type: string}
+        requested_amount: {type: string}
+        original_currency: {type: string, pattern: "^[A-Z]{3}$"}
+        valid_from: {type: string, format: date-time}
+        valid_until: {type: [string, "null"], format: date-time}
+        scope_type: {type: string, enum: [COMPANY, PROJECT, PROJECT_SET]}
+        project_ids: {type: array, items: {type: string, format: uuid}}
+        project_codes: {type: array, items: {type: string}}
+        attachment_manifest: {type: array, items: {type: object}}
+    BusinessProposalRevisionCommand:
+      allOf:
+        - {$ref: "#/components/schemas/BusinessProposalDraftCommand"}
+        - type: object
+          required: [expected_version, expected_revision]
+          properties:
+            expected_version: {type: integer, minimum: 1}
+            expected_revision: {type: integer, minimum: 1}
+    BusinessProposalApprovalPreviewCommand:
+      type: object
+      required: [effective_at]
+      properties:
+        effective_at: {type: string, format: date-time}
+        risk_level: {type: [string, "null"]}
+    BusinessProposalApprovalLineCommand:
+      allOf:
+        - {$ref: "#/components/schemas/BusinessProposalApprovalPreviewCommand"}
+        - type: object
+          required: [preview_hash, revision_no, selected_approvers]
+          properties:
+            preview_hash: {type: string, pattern: "^sha256:[0-9a-f]{64}$"}
+            revision_no: {type: integer, minimum: 1}
+            selected_approvers: {type: array, minItems: 1, maxItems: 5, items: {type: object}}
+    BusinessProposalSubmitCommand:
+      allOf:
+        - {$ref: "#/components/schemas/BusinessProposalApprovalLineCommand"}
+        - type: object
+          required: [expected_version, expected_revision]
+          properties:
+            expected_version: {type: integer, minimum: 1}
+            expected_revision: {type: integer, minimum: 1}
+    BusinessProposalProjection:
+      type: object
+      required: [tenant_id, proposal_id, company_id, requester_subject_id, state, current_revision_no, version, current_revision]
+      properties:
+        tenant_id: {type: string}
+        proposal_id: {type: string, format: uuid}
+        company_id: {type: string, format: uuid}
+        requester_subject_id: {type: string}
+        state: {type: string, enum: [DRAFT, SUBMITTED, APPROVED, REJECTED, WITHDRAWN]}
+        current_revision_no: {type: integer, minimum: 1}
+        version: {type: integer, minimum: 1}
+        current_revision: {type: object}
+    BusinessProposalList:
+      type: object
+      required: [schema_version, items]
+      properties:
+        schema_version: {const: eos_business_proposal_list.v1}
+        items: {type: array, items: {$ref: "#/components/schemas/BusinessProposalProjection"}}
+    BusinessProposalApprovalPreview:
+      type: object
+      required: [preview_hash, proposal_id, revision_no, approval_policy_id, approval_policy_hash, required_stages, candidate_evidence_hash, normalized_amount_evidence]
+      properties:
+        preview_hash: {type: string, pattern: "^sha256:[0-9a-f]{64}$"}
+        proposal_id: {type: string, format: uuid}
+        revision_no: {type: integer, minimum: 1}
+        approval_policy_id: {type: string, format: uuid}
+        approval_policy_hash: {type: string, pattern: "^sha256:[0-9a-f]{64}$"}
+        required_stages: {type: array, minItems: 1, maxItems: 5, items: {type: object}}
+        candidate_evidence_hash: {type: string, pattern: "^sha256:[0-9a-f]{64}$"}
+        normalized_amount_evidence: {type: object}
     ProjectApplicationDraftCommand:
       type: object
       additionalProperties: false
