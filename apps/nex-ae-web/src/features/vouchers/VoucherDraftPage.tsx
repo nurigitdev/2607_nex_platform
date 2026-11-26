@@ -132,8 +132,12 @@ function CreateDraft({ client, proposals, onCancel, onCreated }: {
   readonly onCancel: () => void;
   readonly onCreated: (draft: BusinessVoucherDraft) => Promise<void>;
 }) {
-  const eligible = proposals.filter(item => item.approved_envelope_id && item.current_revision.project_codes.length > 0);
+  const eligible = useMemo(
+    () => proposals.filter(item => item.approved_envelope_id),
+    [proposals],
+  );
   const [proposalId, setProposalId] = useState(eligible[0]?.proposal_id ?? "");
+  const [projectCode, setProjectCode] = useState("");
   const [expenseAccount, setExpenseAccount] = useState("");
   const [offsetAccount, setOffsetAccount] = useState("");
   const [amount, setAmount] = useState("");
@@ -141,16 +145,33 @@ function CreateDraft({ client, proposals, onCancel, onCreated }: {
   const [sourceRef, setSourceRef] = useState("");
   const [pending, setPending] = useState(false);
   const proposal = eligible.find(item => item.proposal_id === proposalId);
+  const projectCodes = useMemo(
+    () => Array.from(new Set(proposal?.current_revision.project_codes.filter(Boolean) ?? [])),
+    [proposal],
+  );
+
+  useEffect(() => {
+    if (!eligible.length) {
+      setProposalId("");
+    } else if (!eligible.some(item => item.proposal_id === proposalId)) {
+      setProposalId(eligible[0].proposal_id);
+    }
+  }, [eligible, proposalId]);
+
+  useEffect(() => {
+    setProjectCode(projectCodes.length === 1 ? projectCodes[0] : "");
+  }, [projectCodes]);
+
   const attachmentHash = proposal?.current_revision.attachment_manifest.find(
     item => typeof item.content_hash === "string",
   )?.content_hash;
   async function create() {
-    if (!proposal?.approved_envelope_id || typeof attachmentHash !== "string") return;
+    if (!proposal?.approved_envelope_id || !projectCode || typeof attachmentHash !== "string") return;
     setPending(true);
     try {
       await onCreated(await client.create({
         envelopeId: proposal.approved_envelope_id,
-        projectCode: proposal.current_revision.project_codes[0],
+        projectCode,
         recognitionDate,
         sourceKind: "EXPENSE_CLAIM",
         sourceRecordRef: sourceRef,
@@ -163,10 +184,25 @@ function CreateDraft({ client, proposals, onCancel, onCreated }: {
   }
   return <article className={styles.create}>
     <h2>승인된 품의서에서 전표 생성</h2>
-    <Select label="승인 품의서" value={proposalId} onChange={event => setProposalId(event.target.value)}><option value="">선택</option>{eligible.map(item => <option key={item.proposal_id} value={item.proposal_id}>{item.current_revision.title} · {item.current_revision.project_codes[0]}</option>)}</Select>
+    <Select label="승인 품의서" value={proposalId} onChange={event => setProposalId(event.target.value)}><option value="">선택</option>{eligible.map(item => <option key={item.proposal_id} value={item.proposal_id}>{item.current_revision.title}</option>)}</Select>
+    {projectCodes.length === 1 ? <Input
+      label="Project Code"
+      value={projectCode}
+      readOnly
+      hint="승인된 품의서의 Project가 자동으로 연결됩니다."
+    /> : projectCodes.length > 1 ? <Select
+      label="Project Code"
+      value={projectCode}
+      required
+      hint="승인된 품의서 범위에서 전표를 귀속할 Project를 선택합니다."
+      onChange={event => setProjectCode(event.target.value)}
+    >
+      <option value="">Project 선택</option>
+      {projectCodes.map(code => <option key={code} value={code}>{code}</option>)}
+    </Select> : proposal ? <p className={styles.notice} role="alert">승인된 Project Code가 없는 품의서는 전표로 전환할 수 없습니다.</p> : null}
     <div className={styles.createGrid}><Input label="비용 계정코드" value={expenseAccount} onChange={event => setExpenseAccount(event.target.value.toUpperCase())} /><Input label="지급 계정코드" value={offsetAccount} onChange={event => setOffsetAccount(event.target.value.toUpperCase())} /><Input label="금액" inputMode="decimal" value={amount} onChange={event => setAmount(event.target.value)} /><Input label="회계 인식일" type="date" value={recognitionDate} onChange={event => setRecognitionDate(event.target.value)} /><Input label="증빙 참조" value={sourceRef} onChange={event => setSourceRef(event.target.value)} /></div>
     {proposal && typeof attachmentHash !== "string" ? <p className={styles.notice}>실제 지출 증빙이 있는 승인 품의서만 전표로 전환할 수 있습니다.</p> : null}
-    <div className={styles.actions}><Button variant="ghost" onClick={onCancel}>취소</Button><Button loading={pending} disabled={!proposal || typeof attachmentHash !== "string" || !expenseAccount || !offsetAccount || !amount || !sourceRef} onClick={() => void create()}>초안 생성</Button></div>
+    <div className={styles.actions}><Button variant="ghost" onClick={onCancel}>취소</Button><Button loading={pending} disabled={!proposal || !projectCode || typeof attachmentHash !== "string" || !expenseAccount || !offsetAccount || !amount || !sourceRef} onClick={() => void create()}>초안 생성</Button></div>
   </article>;
 }
 

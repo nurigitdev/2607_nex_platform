@@ -1,6 +1,6 @@
 # NeX MyBee W80-CA00H Proposal/Voucher Review Usability and Accounting Presentation Boundary v1.0
 
-**Status:** IMPLEMENTATION IN PROGRESS / W80-CA00H.1 COMPLETE
+**Status:** IMPLEMENTATION IN PROGRESS / W80-CA00H.1-.2 COMPLETE
 
 **Predecessor:** W80-CA00G
 
