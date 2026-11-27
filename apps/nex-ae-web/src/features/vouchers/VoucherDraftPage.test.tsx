@@ -3,6 +3,7 @@ import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import type { BusinessAccountCatalogClientPort } from "../../app/api/businessAccountCatalogClientPort";
 import type { BusinessProposal, BusinessProposalClientPort } from "../../app/api/businessProposalClientPort";
 import type { BusinessVoucherClientPort, BusinessVoucherDraft } from "../../app/api/businessVoucherClientPort";
 import { VoucherDraftPage } from "./VoucherDraftPage";
@@ -22,6 +23,7 @@ describe("voucher draft review workspace", () => {
       DRAFT.candidate_id,
     );
     expect(screen.getByLabelText("1번 계정과목")).toHaveValue("510100");
+    expect(screen.getByRole("option", { name: "외주비 (510100)" })).toBeInTheDocument();
     expect(screen.getByRole("navigation", { name: "업무 진행 단계" })).toHaveTextContent("전표 검토진행 중");
     await user.click(screen.getByRole("button", { name: "회계 상신" }));
     expect(screen.getByText("현재 revision을 잠그고 회계 결재를 요청합니다.")).toBeInTheDocument();
@@ -34,8 +36,8 @@ describe("voucher draft review workspace", () => {
     const revise = vi.fn(async () => DRAFT);
     renderPage(voucherClient({ revise }));
     const account = await screen.findByLabelText("1번 계정과목");
-    await user.clear(account);
-    await user.type(account, "510200");
+    await screen.findAllByRole("option", { name: "용역비 (510200)" });
+    await user.selectOptions(account, "510200");
     await user.click(screen.getByRole("button", { name: "revision 저장" }));
     await waitFor(() => expect(revise).toHaveBeenCalledTimes(1));
     expect(revise.mock.calls[0][1].lines[0].account_code).toBe("510200");
@@ -101,15 +103,31 @@ describe("voucher draft review workspace", () => {
 });
 
 async function completeCreationFields(user: ReturnType<typeof userEvent.setup>) {
-  await user.type(screen.getByLabelText("비용 계정코드"), "510100");
-  await user.type(screen.getByLabelText("지급 계정코드"), "110100");
+  await user.selectOptions(await screen.findByLabelText("비용 계정과목"), "510100");
+  await user.selectOptions(screen.getByLabelText("지급 계정과목"), "110100");
   await user.type(screen.getByLabelText("금액"), "1000");
   await user.type(screen.getByLabelText("증빙 참조"), "expense:51");
 }
 
 function renderPage(source: BusinessVoucherClientPort, proposals = proposalClient()) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
-  return render(<QueryClientProvider client={queryClient}><VoucherDraftPage client={source} proposalClient={proposals} /></QueryClientProvider>);
+  return render(<QueryClientProvider client={queryClient}><VoucherDraftPage accountCatalogClient={accountCatalogClient()} client={source} proposalClient={proposals} /></QueryClientProvider>);
+}
+
+function accountCatalogClient(): BusinessAccountCatalogClientPort {
+  return {
+    clientMode: "fetch",
+    get: async input => ({
+      company_id: input.companyId,
+      effective_on: input.effectiveOn,
+      transaction_currency: input.transactionCurrency,
+      accounts: [
+        { account_code: "510100", account_name: "외주비", category: "EXPENSE", account_type: "EXPENSE" },
+        { account_code: "510200", account_name: "용역비", category: "EXPENSE", account_type: "EXPENSE" },
+        { account_code: "110100", account_name: "현금", category: "ASSET", account_type: "ASSET" },
+      ],
+    }),
+  };
 }
 
 function voucherClient(overrides: Partial<BusinessVoucherClientPort> = {}): BusinessVoucherClientPort {
@@ -182,6 +200,7 @@ const DRAFT: BusinessVoucherDraft = {
   version: 2,
   current_revision_no: 2,
   candidate_hash: "sha256:" + "a".repeat(64),
+  company_id: "31000000-0000-4000-8000-000000000001",
   project_code: "VO00D260001",
   recognition_date: "2026-11-26",
   transaction_currency: "KRW",

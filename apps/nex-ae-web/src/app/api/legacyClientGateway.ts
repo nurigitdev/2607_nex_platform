@@ -9,6 +9,10 @@ import type {
 } from "../domain/runtime";
 import type { ApprovalClientPort } from "./approvalClientPort";
 import {
+  createBusinessAccountCatalogClient,
+  type BusinessAccountCatalogClientPort,
+} from "./businessAccountCatalogClientPort";
+import {
   createBusinessProposalClient,
   type BusinessProposalClientPort,
 } from "./businessProposalClientPort";
@@ -33,6 +37,7 @@ export interface LegacyClientGateway {
   readonly workspace: WorkspaceClientPort;
   readonly documentLibrary: DocumentLibraryClientPort;
   readonly approval: ApprovalClientPort;
+  readonly businessAccountCatalog: BusinessAccountCatalogClientPort;
   readonly businessProposal: BusinessProposalClientPort;
   readonly businessVoucher: BusinessVoucherClientPort;
   readonly operations: OperationsClientPort;
@@ -68,6 +73,7 @@ export function createLegacyClientGateway({
     workspace: createWorkspaceClient({ mode, baseUrl, fetchImpl }),
     documentLibrary: createDocumentLibraryClient({ mode, baseUrl, fetchImpl }),
     approval: registry.approvalClient as unknown as ApprovalClientPort,
+    businessAccountCatalog: createBusinessAccountCatalogClient({ mode, baseUrl, fetchImpl }),
     businessProposal: createBusinessProposalClient({ mode, baseUrl, fetchImpl }),
     businessVoucher: createBusinessVoucherClient({ mode, baseUrl, fetchImpl }),
     operations: createOperationsClient({ mode, baseUrl, fetchImpl }),

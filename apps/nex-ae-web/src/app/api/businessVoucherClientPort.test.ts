@@ -39,6 +39,7 @@ const DRAFT: BusinessVoucherDraft = {
   version: 2,
   current_revision_no: 2,
   candidate_hash: "sha256:" + "a".repeat(64),
+  company_id: "31000000-0000-4000-8000-000000000001",
   project_code: "VO00D260001",
   recognition_date: "2026-11-26",
   transaction_currency: "KRW",

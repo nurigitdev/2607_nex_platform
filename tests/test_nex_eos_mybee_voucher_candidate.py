@@ -1249,6 +1249,7 @@ def test_business_voucher_product_composes_existing_candidate_engine() -> None:
         caller=CALLER,
     )
     assert created["candidate_id"] == CANDIDATE_ID
+    assert created["company_id"] == COMPANY_ID
     assert created["lines"][0]["account_code"] == "TRAVEL"
     assert "account_id" not in created["lines"][0]
 

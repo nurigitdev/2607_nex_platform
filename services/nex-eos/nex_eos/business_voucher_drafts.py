@@ -547,6 +547,7 @@ class EosBusinessVoucherDraftService:
             "version": int(candidate["version"]),
             "current_revision_no": int(candidate["current_revision_no"]),
             "candidate_hash": str(candidate["revision"]["candidate_hash"]),
+            "company_id": str(candidate["company_id"]),
             "project_code": str(candidate["project_code"]),
             "recognition_date": candidate["recognition_date"].isoformat(),
             "transaction_currency": str(candidate["transaction_currency"]),

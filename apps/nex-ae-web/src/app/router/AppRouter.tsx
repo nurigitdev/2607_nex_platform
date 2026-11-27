@@ -64,6 +64,7 @@ function ProposalRoute() {
 function VoucherRoute() {
   const runtime = useOptionalInstalledRuntime();
   return <VoucherDraftPage
+    accountCatalogClient={runtime?.clients.businessAccountCatalog ?? null}
     client={runtime?.clients.businessVoucher ?? null}
     proposalClient={runtime?.clients.businessProposal ?? null}
   />;

@@ -25,6 +25,7 @@ export interface BusinessVoucherDraft {
   readonly version: number;
   readonly current_revision_no: number;
   readonly candidate_hash: string;
+  readonly company_id: string;
   readonly project_code: string;
   readonly recognition_date: string;
   readonly transaction_currency: string;
@@ -208,6 +209,7 @@ function projectDraft(value: unknown): BusinessVoucherDraft {
     version: integer(value.version),
     current_revision_no: integer(value.current_revision_no),
     candidate_hash: text(value.candidate_hash),
+    company_id: text(value.company_id),
     project_code: text(value.project_code),
     recognition_date: text(value.recognition_date),
     transaction_currency: text(value.transaction_currency),

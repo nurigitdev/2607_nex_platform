@@ -21,13 +21,14 @@ from nex_runtime import issue_mock_user_token
 class FakeEosClient:
     status_code: int = 200
     error: BusinessVoucherFacadeError | None = None
+    body: dict[str, Any] | None = None
     calls: list[dict[str, Any]] = field(default_factory=list)
 
     def request(self, method, path, **kwargs):
         self.calls.append({"method": method, "path": path, **kwargs})
         if self.error is not None:
             raise self.error
-        return {"schema_version": "test.v1", "items": []}, self.status_code
+        return self.body or {"schema_version": "test.v1", "items": []}, self.status_code
 
 
 @dataclass
@@ -104,6 +105,98 @@ def test_facade_rejects_unauthenticated_and_maps_eos_failure() -> None:
     assert failed.status_code == 409
     assert failed.json()["error_code"] == "EOS_BUSINESS_VOUCHER_DRAFT_CONFLICT"
     assert len(source.calls) == 1
+
+
+def test_account_catalog_facade_projects_only_postable_currency_accounts() -> None:
+    source = FakeEosClient(
+        body={
+            "company_id": "31000000-0000-4000-8000-000000000001",
+            "effective_on": "2026-11-27",
+            "accounts": [
+                {
+                    "account_code": "510100",
+                    "name": "외주비",
+                    "category": "EXPENSE",
+                    "account_type": "EXPENSE",
+                    "is_postable_leaf": True,
+                    "allowed_currencies": ["KRW"],
+                    "account_id": "internal-account-id",
+                },
+                {
+                    "account_code": "500000",
+                    "name": "비용",
+                    "category": "EXPENSE",
+                    "account_type": "EXPENSE",
+                    "is_postable_leaf": False,
+                    "allowed_currencies": ["KRW"],
+                },
+                {
+                    "account_code": "510200",
+                    "name": "해외용역비",
+                    "category": "EXPENSE",
+                    "account_type": "EXPENSE",
+                    "is_postable_leaf": True,
+                    "allowed_currencies": ["USD"],
+                },
+            ],
+        }
+    )
+    client, source = _client(source)
+
+    response = client.get(
+        "/api/v1/business-account-catalog",
+        headers=_headers(),
+        params={
+            "company_id": "31000000-0000-4000-8000-000000000001",
+            "effective_on": "2026-11-27",
+            "transaction_currency": "krw",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "schema_version": "ae_business_account_catalog.v1",
+        "company_id": "31000000-0000-4000-8000-000000000001",
+        "effective_on": "2026-11-27",
+        "transaction_currency": "KRW",
+        "accounts": [
+            {
+                "account_code": "510100",
+                "account_name": "외주비",
+                "category": "EXPENSE",
+                "account_type": "EXPENSE",
+            }
+        ],
+    }
+    assert source.calls[-1]["path"] == "/internal/v2/finance/account-catalog"
+    assert source.calls[-1]["params"] == [
+        ("company_id", "31000000-0000-4000-8000-000000000001"),
+        ("effective_on", "2026-11-27"),
+    ]
+    assert "internal-account-id" not in response.text
+
+
+def test_account_catalog_facade_fails_closed_for_authority_drift() -> None:
+    client, _source = _client(
+        FakeEosClient(
+            body={
+                "company_id": "other-company",
+                "effective_on": "2026-11-27",
+                "accounts": [],
+            }
+        )
+    )
+    response = client.get(
+        "/api/v1/business-account-catalog",
+        headers=_headers(),
+        params={
+            "company_id": "31000000-0000-4000-8000-000000000001",
+            "effective_on": "2026-11-27",
+            "transaction_currency": "KRW",
+        },
+    )
+    assert response.status_code == 502
+    assert response.json()["error_code"] == "ae.business_account_catalog_response_invalid"
 
 
 def test_accounting_submit_admits_owner_scoped_product_review_event() -> None:

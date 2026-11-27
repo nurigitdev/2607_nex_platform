@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import os
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
+from datetime import date
 from typing import Annotated, Any, Protocol
 
 import httpx
@@ -162,6 +163,34 @@ def register_business_voucher_facade_routes(
             session_mode=session_mode,
         )
 
+    @app.get("/api/v1/business-account-catalog", response_model=None)
+    def get_account_catalog(
+        request: Request,
+        company_id: str,
+        effective_on: date,
+        transaction_currency: str,
+        authorization: str | None = Header(default=None),
+    ):
+        return _forward(
+            request,
+            authorization,
+            client,
+            "GET",
+            "/internal/v2/finance/account-catalog",
+            params=[
+                ("company_id", company_id),
+                ("effective_on", effective_on.isoformat()),
+            ],
+            oa_session_client=oa_session_client,
+            session_mode=session_mode,
+            response_projector=lambda body: _project_account_catalog(
+                body,
+                company_id=company_id,
+                effective_on=effective_on,
+                transaction_currency=transaction_currency,
+            ),
+        )
+
     @app.get("/api/v1/business-voucher-drafts/{candidate_id}", response_model=None)
     def get_draft(
         candidate_id: str,
@@ -260,6 +289,7 @@ def _forward(
     session_mode: str | None,
     review_authority_kind: str | None = None,
     review_authority_ref: str | None = None,
+    response_projector: Callable[[Mapping[str, Any]], Mapping[str, Any]] | None = None,
 ):
     auth = authorize_ae_facade_route_request(
         request,
@@ -299,6 +329,18 @@ def _forward(
             detail=exc.detail,
             retryable=exc.retryable,
         )
+    if response_projector is not None:
+        try:
+            body = response_projector(body)
+        except BusinessVoucherFacadeError as exc:
+            return problem_response(
+                request,
+                status_code=exc.status_code,
+                error_code=exc.error_code,
+                title="AE business account catalog response failed",
+                detail=exc.detail,
+                retryable=exc.retryable,
+            )
     if review_authority_kind is not None and review_authority_ref is not None:
         admission = getattr(request.app.state, "ae_product_review_events", None)
         if admission is not None:
@@ -326,6 +368,82 @@ def _forward(
                     retryable=bool(getattr(exc, "retryable", False)),
                 )
     return JSONResponse(dict(body), status_code=status_code)
+
+
+def _project_account_catalog(
+    body: Mapping[str, Any],
+    *,
+    company_id: str,
+    effective_on: date,
+    transaction_currency: str,
+) -> Mapping[str, Any]:
+    currency = transaction_currency.strip().upper()
+    accounts = body.get("accounts")
+    if (
+        body.get("company_id") != company_id
+        or str(body.get("effective_on")) != effective_on.isoformat()
+        or len(currency) != 3
+        or not isinstance(accounts, list)
+    ):
+        raise BusinessVoucherFacadeError(
+            502,
+            "ae.business_account_catalog_response_invalid",
+            "Business account catalog response is invalid.",
+            True,
+        )
+    projected: list[dict[str, Any]] = []
+    for account in accounts:
+        if not isinstance(account, Mapping):
+            raise BusinessVoucherFacadeError(
+                502,
+                "ae.business_account_catalog_response_invalid",
+                "Business account catalog response is invalid.",
+                True,
+            )
+        allowed = account.get("allowed_currencies")
+        code = account.get("account_code")
+        name = account.get("name")
+        if not isinstance(allowed, list) or not all(
+            isinstance(item, str) for item in allowed
+        ):
+            raise BusinessVoucherFacadeError(
+                502,
+                "ae.business_account_catalog_response_invalid",
+                "Business account catalog response is invalid.",
+                True,
+            )
+        if account.get("is_postable_leaf") is not True or currency not in allowed:
+            continue
+        if (
+            not isinstance(code, str)
+            or not code
+            or not isinstance(name, str)
+            or not name
+        ):
+            raise BusinessVoucherFacadeError(
+                502,
+                "ae.business_account_catalog_response_invalid",
+                "Business account catalog response is invalid.",
+                True,
+            )
+        projected.append(
+            {
+                "account_code": code,
+                "account_name": name,
+                "category": str(account.get("category") or ""),
+                "account_type": str(account.get("account_type") or ""),
+            }
+        )
+    projected.sort(
+        key=lambda item: (item["account_name"].casefold(), item["account_code"])
+    )
+    return {
+        "schema_version": "ae_business_account_catalog.v1",
+        "company_id": company_id,
+        "effective_on": effective_on.isoformat(),
+        "transaction_currency": currency,
+        "accounts": projected,
+    }
 
 
 def _response_body(response: httpx.Response) -> Mapping[str, Any]:

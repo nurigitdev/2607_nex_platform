@@ -2,6 +2,10 @@ import { useQuery } from "@tanstack/react-query";
 import { CheckCircle2, Plus, RefreshCw, Save, Send } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
+import type {
+  BusinessAccountCatalogClientPort,
+  BusinessAccountOption,
+} from "../../app/api/businessAccountCatalogClientPort";
 import type { BusinessProposalClientPort } from "../../app/api/businessProposalClientPort";
 import type {
   BusinessVoucherClientPort,
@@ -13,9 +17,11 @@ import { BusinessJourney } from "../business/BusinessJourney";
 import styles from "./VoucherDraftPage.module.css";
 
 export function VoucherDraftPage({
+  accountCatalogClient,
   client,
   proposalClient,
 }: {
+  readonly accountCatalogClient: BusinessAccountCatalogClientPort | null;
   readonly client: BusinessVoucherClientPort | null;
   readonly proposalClient: BusinessProposalClientPort | null;
 }) {
@@ -50,6 +56,7 @@ export function VoucherDraftPage({
     </header>
     {!client ? <p className={styles.notice} role="alert">전표 서비스를 연결할 수 없습니다.</p>
       : creating ? <CreateDraft
+        accountCatalogClient={accountCatalogClient}
         client={client}
         proposals={approved.data ?? []}
         onCancel={() => setCreating(false)}
@@ -65,12 +72,13 @@ export function VoucherDraftPage({
             <strong>{item.project_code}</strong><span>{stateLabel(item.state)} · revision {item.current_revision_no}</span><small>{Number(item.balance.debit).toLocaleString("ko-KR")} {item.transaction_currency}</small>
           </button></li>)}
         </ul></aside>
-        {selectedId ? <DraftEditor key={selectedId} client={client} draft={items.find(item => item.candidate_id === selectedId)!} onChanged={async () => { await drafts.refetch(); }} /> : null}
+        {selectedId ? <DraftEditor key={selectedId} accountCatalogClient={accountCatalogClient} client={client} draft={items.find(item => item.candidate_id === selectedId)!} onChanged={async () => { await drafts.refetch(); }} /> : null}
       </div>}
   </section>;
 }
 
-function DraftEditor({ client, draft, onChanged }: {
+function DraftEditor({ accountCatalogClient, client, draft, onChanged }: {
+  readonly accountCatalogClient: BusinessAccountCatalogClientPort | null;
   readonly client: BusinessVoucherClientPort;
   readonly draft: BusinessVoucherDraft;
   readonly onChanged: () => Promise<void>;
@@ -81,6 +89,16 @@ function DraftEditor({ client, draft, onChanged }: {
   const [message, setMessage] = useState<string | null>(null);
   const [confirmed, setConfirmed] = useState(false);
   const editable = draft.state === "DRAFT" || draft.state === "RETURNED_FOR_CORRECTION";
+  const catalog = useQuery({
+    queryKey: ["business-account-catalog", draft.company_id, recognitionDate, draft.transaction_currency],
+    queryFn: () => accountCatalogClient!.get({
+      companyId: draft.company_id,
+      effectiveOn: recognitionDate,
+      transactionCurrency: draft.transaction_currency,
+    }),
+    enabled: accountCatalogClient !== null && Boolean(recognitionDate),
+  });
+  const accountOptions = catalog.data?.accounts ?? [];
   const balance = useMemo(() => lines.reduce((sum, line) => ({
     debit: sum.debit + Number(line.debit_original || 0),
     credit: sum.credit + Number(line.credit_original || 0),
@@ -109,12 +127,14 @@ function DraftEditor({ client, draft, onChanged }: {
     <div className={styles.lineTable} role="table" aria-label="전표 라인">
       <div className={styles.lineHeader} role="row"><span>계정과목</span><span>적요</span><span>차변</span><span>대변</span></div>
       {lines.map((line, index) => <div className={styles.line} role="row" key={line.line_no}>
-        <Input label={`${line.line_no}번 계정과목`} value={line.account_code} disabled={!editable} onChange={event => updateLine(index, "account_code", event.target.value.toUpperCase())} />
+        <AccountSelector label={`${line.line_no}번 계정과목`} value={line.account_code} currentName={line.account_name} accounts={accountOptions} disabled={!editable || catalog.isPending} onChange={value => updateLine(index, "account_code", value)} />
         <Input label={`${line.line_no}번 적요`} value={line.description ?? ""} disabled={!editable} onChange={event => updateLine(index, "description", event.target.value)} />
         <Input label={`${line.line_no}번 차변`} inputMode="decimal" value={line.debit_original} disabled={!editable} onChange={event => updateLine(index, "debit_original", event.target.value)} />
         <Input label={`${line.line_no}번 대변`} inputMode="decimal" value={line.credit_original} disabled={!editable} onChange={event => updateLine(index, "credit_original", event.target.value)} />
       </div>)}
     </div>
+    {editable && !accountCatalogClient ? <p className={styles.notice} role="alert">계정과목 서비스를 연결할 수 없습니다.</p> : null}
+    {editable && catalog.isError ? <p className={styles.notice} role="alert">유효한 계정과목을 불러오지 못했습니다.</p> : null}
     <div className={`${styles.balance} ${balanced ? styles.pass : styles.fail}`}><span>차변 {balance.debit.toLocaleString("ko-KR")}</span><span>대변 {balance.credit.toLocaleString("ko-KR")}</span><strong>{balanced ? "대차 일치" : "대차 불일치"}</strong></div>
     {editable ? <div className={styles.actions}>
       <Button variant="secondary" leadingIcon={<Save aria-hidden="true" size={16} />} loading={pending === "save"} onClick={() => void run("save")}>revision 저장</Button>
@@ -126,7 +146,8 @@ function DraftEditor({ client, draft, onChanged }: {
   </article>;
 }
 
-function CreateDraft({ client, proposals, onCancel, onCreated }: {
+function CreateDraft({ accountCatalogClient, client, proposals, onCancel, onCreated }: {
+  readonly accountCatalogClient: BusinessAccountCatalogClientPort | null;
   readonly client: BusinessVoucherClientPort;
   readonly proposals: Awaited<ReturnType<BusinessProposalClientPort["list"]>>;
   readonly onCancel: () => void;
@@ -165,6 +186,21 @@ function CreateDraft({ client, proposals, onCancel, onCreated }: {
   const attachmentHash = proposal?.current_revision.attachment_manifest.find(
     item => typeof item.content_hash === "string",
   )?.content_hash;
+  const catalog = useQuery({
+    queryKey: [
+      "business-account-catalog",
+      proposal?.company_id,
+      recognitionDate,
+      proposal?.current_revision.original_currency,
+    ],
+    queryFn: () => accountCatalogClient!.get({
+      companyId: proposal!.company_id,
+      effectiveOn: recognitionDate,
+      transactionCurrency: proposal!.current_revision.original_currency,
+    }),
+    enabled: accountCatalogClient !== null && Boolean(proposal && recognitionDate),
+  });
+  const accountOptions = catalog.data?.accounts ?? [];
   async function create() {
     if (!proposal?.approved_envelope_id || !projectCode || typeof attachmentHash !== "string") return;
     setPending(true);
@@ -200,10 +236,28 @@ function CreateDraft({ client, proposals, onCancel, onCreated }: {
       <option value="">Project 선택</option>
       {projectCodes.map(code => <option key={code} value={code}>{code}</option>)}
     </Select> : proposal ? <p className={styles.notice} role="alert">승인된 Project Code가 없는 품의서는 전표로 전환할 수 없습니다.</p> : null}
-    <div className={styles.createGrid}><Input label="비용 계정코드" value={expenseAccount} onChange={event => setExpenseAccount(event.target.value.toUpperCase())} /><Input label="지급 계정코드" value={offsetAccount} onChange={event => setOffsetAccount(event.target.value.toUpperCase())} /><Input label="금액" inputMode="decimal" value={amount} onChange={event => setAmount(event.target.value)} /><Input label="회계 인식일" type="date" value={recognitionDate} onChange={event => setRecognitionDate(event.target.value)} /><Input label="증빙 참조" value={sourceRef} onChange={event => setSourceRef(event.target.value)} /></div>
+    <div className={styles.createGrid}><AccountSelector label="비용 계정과목" value={expenseAccount} accounts={accountOptions} disabled={catalog.isPending} onChange={setExpenseAccount} /><AccountSelector label="지급 계정과목" value={offsetAccount} accounts={accountOptions} disabled={catalog.isPending} onChange={setOffsetAccount} /><Input label="금액" inputMode="decimal" value={amount} onChange={event => setAmount(event.target.value)} /><Input label="회계 인식일" type="date" value={recognitionDate} onChange={event => setRecognitionDate(event.target.value)} /><Input label="증빙 참조" value={sourceRef} onChange={event => setSourceRef(event.target.value)} /></div>
+    {!accountCatalogClient ? <p className={styles.notice} role="alert">계정과목 서비스를 연결할 수 없습니다.</p> : null}
+    {catalog.isError ? <p className={styles.notice} role="alert">유효한 계정과목을 불러오지 못했습니다.</p> : null}
     {proposal && typeof attachmentHash !== "string" ? <p className={styles.notice}>실제 지출 증빙이 있는 승인 품의서만 전표로 전환할 수 있습니다.</p> : null}
     <div className={styles.actions}><Button variant="ghost" onClick={onCancel}>취소</Button><Button loading={pending} disabled={!proposal || !projectCode || typeof attachmentHash !== "string" || !expenseAccount || !offsetAccount || !amount || !sourceRef} onClick={() => void create()}>초안 생성</Button></div>
   </article>;
+}
+
+function AccountSelector({ label, value, currentName, accounts, disabled, onChange }: {
+  readonly label: string;
+  readonly value: string;
+  readonly currentName?: string;
+  readonly accounts: readonly BusinessAccountOption[];
+  readonly disabled: boolean;
+  readonly onChange: (value: string) => void;
+}) {
+  const current = accounts.find(account => account.account_code === value);
+  return <Select label={label} value={value} disabled={disabled} onChange={event => onChange(event.target.value)}>
+    <option value="">계정과목 선택</option>
+    {value && !current ? <option value={value} disabled>{currentName ? `${currentName} (${value})` : `${value} · 현재 유효하지 않음`}</option> : null}
+    {accounts.map(account => <option key={account.account_code} value={account.account_code}>{account.account_name} ({account.account_code})</option>)}
+  </Select>;
 }
 
 function stateLabel(state: BusinessVoucherDraft["state"]) { return ({ DRAFT: "초안", READY_FOR_REVIEW: "회계 결재 중", RETURNED_FOR_CORRECTION: "수정 요청", APPROVED: "승인", POSTED: "전기 완료", INVALIDATED: "무효" } as const)[state]; }
