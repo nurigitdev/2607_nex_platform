@@ -5,12 +5,39 @@ import {
   isTransientBrowserFetch,
   parseProtectedScenarios,
   protectedMatrixChecks,
+  readPendingApprovalGatesOrNull,
   runProtectedMatrix
 } from "../scripts/runMyBeeW80Ca00G7ProtectedMatrix.mjs";
 
 test("only transient browser fetch failures are retryable", () => {
   assert.equal(isTransientBrowserFetch(new TypeError("Failed to fetch")), true);
   assert.equal(isTransientBrowserFetch(new Error("VoucherListUnavailable")), false);
+});
+
+test("transient approval reads wait once while hard failures remain terminal", async () => {
+  let waited = 0;
+  assert.equal(
+    await readPendingApprovalGatesOrNull(
+      async () => { throw new TypeError("Failed to fetch"); },
+      async () => { waited += 1; }
+    ),
+    null
+  );
+  assert.equal(waited, 1);
+  assert.deepEqual(
+    await readPendingApprovalGatesOrNull(
+      async () => [{ gate: { gate_id: "one" } }],
+      async () => {}
+    ),
+    [{ gate: { gate_id: "one" } }]
+  );
+  await assert.rejects(
+    () => readPendingApprovalGatesOrNull(
+      async () => { throw new Error("ApprovalAuthorizationDenied"); },
+      async () => {}
+    ),
+    /ApprovalAuthorizationDenied/
+  );
 });
 
 const scenarios = [

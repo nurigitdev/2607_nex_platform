@@ -618,7 +618,11 @@ async function decideNextGate({
   const deadline = Date.now() + actionTimeout * 6;
   let found = null;
   while (Date.now() < deadline && !found) {
-    const pending = await pendingApprovalGates([{ role, page }]);
+    const pending = await readPendingApprovalGatesOrNull(
+      () => pendingApprovalGates([{ role, page }]),
+      () => page.waitForTimeout(500)
+    );
+    if (pending === null) continue;
     if (pending.length > 1) throw new Error("ApprovalGateAmbiguous");
     found = pending[0] || null;
     if (!found) await page.waitForTimeout(500);
@@ -838,6 +842,16 @@ async function waitForTerminalResult(page, interactionId, timeout) {
 
 export function isTransientBrowserFetch(error) {
   return String(error?.message || error).includes("Failed to fetch");
+}
+
+export async function readPendingApprovalGatesOrNull(readPending, wait) {
+  try {
+    return await readPending();
+  } catch (error) {
+    if (!isTransientBrowserFetch(error)) throw error;
+    await wait();
+    return null;
+  }
 }
 
 async function gotoRoute(page, webUrl, route, timeout) {
