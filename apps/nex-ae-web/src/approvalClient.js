@@ -390,6 +390,9 @@ export function normalizeUserApprovalProjection(
     display_name: optionalText(item?.display_name)
   }));
   const risk = normalizeRiskProjection(payload.risk);
+  const accountingDocument = normalizeAccountingDocumentProjection(
+    payload.accounting_document
+  );
   const lineItems = normalizeProjectionCollection(payload.line_items, item => {
     if (!Number.isInteger(item?.line_no) || item.line_no < 1) {
       throw projectionInvalid();
@@ -430,6 +433,7 @@ export function normalizeUserApprovalProjection(
     accounts,
     risk,
     line_items: lineItems,
+    ...(accountingDocument ? { accounting_document: accountingDocument } : {}),
     metadata: {
       source_contract: WC_APPROVAL_GATE_DETAIL_SCHEMA_VERSION,
       browser_join_required: false,
@@ -925,8 +929,109 @@ function normalizeRiskProjection(value) {
   return { status: value.status, level, explanation };
 }
 
+function normalizeAccountingDocumentProjection(value) {
+  if (value == null) return undefined;
+  if (
+    !isObject(value) ||
+    value.schema_version !== "ae_accounting_document_projection.v1" ||
+    !["AVAILABLE", "UNAVAILABLE"].includes(value.status) ||
+    !Array.isArray(value.lines)
+  ) {
+    throw projectionInvalid();
+  }
+  if (value.status === "UNAVAILABLE") {
+    if (
+      optionalText(value.diagnostic_code) == null ||
+      value.header != null ||
+      value.lines.length !== 0 ||
+      value.totals != null ||
+      value.lineage != null
+    ) {
+      throw projectionInvalid();
+    }
+    return {
+      schema_version: value.schema_version,
+      status: "UNAVAILABLE",
+      diagnostic_code: requiredText(value.diagnostic_code, "diagnostic_code"),
+      header: null,
+      lines: [],
+      totals: null,
+      lineage: null
+    };
+  }
+  if (
+    value.diagnostic_code != null ||
+    !isObject(value.header) ||
+    value.lines.length === 0 ||
+    !isObject(value.totals) ||
+    !isObject(value.lineage) ||
+    typeof value.totals.balanced !== "boolean"
+  ) {
+    throw projectionInvalid();
+  }
+  const lines = value.lines.map(line => {
+    if (!isObject(line) || !Number.isInteger(line.line_no) || line.line_no < 1) {
+      throw projectionInvalid();
+    }
+    return {
+      line_no: line.line_no,
+      account_code: requiredText(line.account_code, "account_code"),
+      account_name: safeProjectionText(line.account_name, "account_name"),
+      description: optionalText(line.description),
+      debit: requiredAmount(line.debit),
+      credit: requiredAmount(line.credit),
+      currency: requiredCurrency(line.currency)
+    };
+  });
+  if (new Set(lines.map(line => line.line_no)).size !== lines.length) {
+    throw projectionInvalid();
+  }
+  return {
+    schema_version: value.schema_version,
+    status: "AVAILABLE",
+    diagnostic_code: null,
+    header: {
+      project_code: requiredText(value.header.project_code, "project_code"),
+      company_id: requiredText(value.header.company_id, "company_id"),
+      approved_document_ref: requiredText(
+        value.header.approved_document_ref,
+        "approved_document_ref"
+      ),
+      recognition_date: requiredDate(value.header.recognition_date),
+      currency: requiredCurrency(value.header.currency),
+      requester_subject_id: requiredText(
+        value.header.requester_subject_id,
+        "requester_subject_id"
+      )
+    },
+    lines,
+    totals: {
+      debit: requiredAmount(value.totals.debit),
+      credit: requiredAmount(value.totals.credit),
+      difference: requiredAmount(value.totals.difference),
+      balanced: value.totals.balanced
+    },
+    lineage: {
+      candidate_id: requiredText(value.lineage.candidate_id, "candidate_id"),
+      candidate_revision: positiveInteger(
+        value.lineage.candidate_revision,
+        "candidate_revision"
+      ),
+      candidate_hash: requiredHashRef(value.lineage.candidate_hash),
+      approval_case_id: optionalText(value.lineage.approval_case_id)
+    }
+  };
+}
+
 function requiredAmount(value) {
   if (typeof value !== "string" || !AMOUNT.test(value)) {
+    throw projectionInvalid();
+  }
+  return value;
+}
+
+function requiredHashRef(value) {
+  if (typeof value !== "string" || !HASH_REF.test(value)) {
     throw projectionInvalid();
   }
   return value;

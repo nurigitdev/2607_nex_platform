@@ -73,6 +73,55 @@ function userProjection(overrides = {}) {
   };
 }
 
+function accountingDocumentProjection(overrides = {}) {
+  return {
+    schema_version: "ae_accounting_document_projection.v1",
+    status: "AVAILABLE",
+    diagnostic_code: null,
+    header: {
+      project_code: "T001D260001",
+      company_id: "company-1",
+      approved_document_ref: "eos.approved-document-envelope:one",
+      recognition_date: "2026-11-27",
+      currency: "KRW",
+      requester_subject_id: "employee-1001"
+    },
+    lines: [
+      {
+        line_no: 1,
+        account_code: "520100",
+        account_name: "외주인건비",
+        description: "외주 인건비",
+        debit: "125000.0000",
+        credit: "0.0000",
+        currency: "KRW"
+      },
+      {
+        line_no: 2,
+        account_code: "210200",
+        account_name: "미지급금",
+        description: null,
+        debit: "0.0000",
+        credit: "125000.0000",
+        currency: "KRW"
+      }
+    ],
+    totals: {
+      debit: "125000.0000",
+      credit: "125000.0000",
+      difference: "0.0000",
+      balanced: true
+    },
+    lineage: {
+      candidate_id: "84000000-0000-4000-8000-000000000053",
+      candidate_revision: 3,
+      candidate_hash: `sha256:${"b".repeat(64)}`,
+      approval_case_id: "case-1"
+    },
+    ...overrides
+  };
+}
+
 describe("AE Web approval client", () => {
   it("builds bounded same-origin routes and exact decision requests", () => {
     const fetchClient = createFetchApprovalClient({
@@ -172,6 +221,57 @@ describe("AE Web approval client", () => {
         normalizeUserApprovalProjection(
           userProjection({
             requested_at: { status: "AVAILABLE", value: "2026-11-08T08:00:00" }
+          })
+        ),
+      error => error.status === "APPROVAL_PROJECTION_INVALID"
+    );
+  });
+
+  it("normalizes accounting documents and rejects malformed authority projections", () => {
+    const available = normalizeUserApprovalProjection(
+      userProjection({ accounting_document: accountingDocumentProjection() })
+    );
+    const unavailable = normalizeUserApprovalProjection(
+      userProjection({
+        accounting_document: accountingDocumentProjection({
+          status: "UNAVAILABLE",
+          diagnostic_code: "ae.eos_accounting_display_rejected",
+          header: null,
+          lines: [],
+          totals: null,
+          lineage: null
+        })
+      })
+    );
+
+    assert.equal(available.accounting_document.status, "AVAILABLE");
+    assert.equal(available.accounting_document.lines.length, 2);
+    assert.equal(unavailable.accounting_document.status, "UNAVAILABLE");
+    assert.equal(unavailable.accounting_document.header, null);
+    assert.throws(
+      () =>
+        normalizeUserApprovalProjection(
+          userProjection({
+            accounting_document: accountingDocumentProjection({
+              lines: [
+                accountingDocumentProjection().lines[0],
+                accountingDocumentProjection().lines[0]
+              ]
+            })
+          })
+        ),
+      error => error.status === "APPROVAL_PROJECTION_INVALID"
+    );
+    assert.throws(
+      () =>
+        normalizeUserApprovalProjection(
+          userProjection({
+            accounting_document: accountingDocumentProjection({
+              lineage: {
+                ...accountingDocumentProjection().lineage,
+                candidate_hash: "sha256:bad"
+              }
+            })
           })
         ),
       error => error.status === "APPROVAL_PROJECTION_INVALID"
@@ -317,7 +417,9 @@ describe("AE Web approval client", () => {
       authorization_checked_at: "2026-10-22T09:00:00Z",
       decided_at: "2026-10-22T09:00:00Z"
     };
-    const projection = userProjection();
+    const projection = userProjection({
+      accounting_document: accountingDocumentProjection()
+    });
     const responses = [inbox, detail, projection, decision];
     const client = createFetchApprovalClient({
       baseUrl: "/ae-api/",
@@ -329,7 +431,7 @@ describe("AE Web approval client", () => {
 
     await client.listApprovalGates();
     await client.getApprovalGate(GATE_ID);
-    await client.getApprovalProjection(GATE_ID);
+    const normalizedProjection = await client.getApprovalProjection(GATE_ID);
     await client.submitApprovalDecision(
       GATE_ID,
       buildApprovalDecisionRequest({ decision: "APPROVE" })
@@ -341,6 +443,11 @@ describe("AE Web approval client", () => {
       calls[2].url,
       `/ae-api/api/v1/approval-gates/${GATE_ID}/user-projection`
     );
+    assert.equal(
+      normalizedProjection.accounting_document.header.project_code,
+      "T001D260001"
+    );
+    assert.equal(normalizedProjection.accounting_document.lines[0].account_name, "외주인건비");
     assert.equal(calls[3].options.method, "POST");
     for (const call of calls) {
       assert.equal(call.options.headers.Authorization, undefined);
