@@ -30,6 +30,8 @@ ORCHESTRATOR_SCHEMA_VERSION = "nex.parallel_quality_owner_lanes.v1"
 SERIAL_INTEGRATION_LANE = "serial-integration"
 SERIAL_REPOSITORY_LANE = "serial-repository"
 INITIAL_OWNER_LANES = ("nex-ae-api", "nex-eos", "nex-wc", "nex-oa")
+CHECKPOINT_STATEMENT_MIN = "95"
+CHECKPOINT_BRANCH_MIN = "94"
 RUN_ID_PATTERN = re.compile(r"^[a-z0-9][a-z0-9._-]{0,95}$")
 LANE_PATTERN = re.compile(r"^[a-z0-9][a-z0-9-]{0,63}$")
 
@@ -106,7 +108,10 @@ def build_test_ownership_inventory(
         candidates = tuple(
             service for service, files in profile_files.items() if path in files
         )
-        if len(candidates) == 1:
+        if candidates == ("platform",):
+            lane = SERIAL_INTEGRATION_LANE
+            reason = "PLATFORM_CROSS_SERVICE"
+        elif len(candidates) == 1:
             lane = candidates[0]
             reason = "OWNER_SERVICE_PROFILE"
         elif len(candidates) > 1:
@@ -236,6 +241,24 @@ def build_owner_lane_plan(
     _validate_lane(lane)
     if lane in {SERIAL_INTEGRATION_LANE, SERIAL_REPOSITORY_LANE}:
         raise ValueError("owner lane plan cannot use a serial lane")
+    return build_test_lane_plan(
+        root=root,
+        inventory=inventory,
+        run_id=run_id,
+        lane=lane,
+        python_bin=python_bin,
+    )
+
+
+def build_test_lane_plan(
+    *,
+    root: Path,
+    inventory: Mapping[str, object],
+    run_id: str,
+    lane: str,
+    python_bin: str,
+) -> LaneExecutionPlan:
+    _validate_lane(lane)
     tests = tuple(
         str(item["path"])
         for item in inventory["assignments"]  # type: ignore[index,union-attr]
@@ -359,6 +382,270 @@ def execute_owner_service_lanes(
     }
     write_inventory(run_root / "owner-lanes.json", evidence)
     return evidence
+
+
+def execute_parallel_checkpoint_gate(
+    *,
+    root: Path,
+    run_id: str,
+    max_parallel: int = 4,
+    python_bin: str = "./.venv/bin/python",
+    revision: str | None = None,
+    environ: Mapping[str, str] | None = None,
+    runner: Callable[..., subprocess.CompletedProcess[str]] = subprocess.run,
+    clock: Callable[[], float] = time.monotonic,
+) -> dict[str, object]:
+    gate_started = clock()
+    revision_value = revision or _git_revision(root)
+    inventory = build_test_ownership_inventory(
+        root=root,
+        tier="checkpoint",
+        revision=revision_value,
+    )
+    lane_counts = inventory["lane_counts"]
+    owner_lanes = tuple(
+        lane
+        for lane in SERVICE_PROFILES
+        if lane != "platform" and lane_counts.get(lane, 0)  # type: ignore[union-attr]
+    )
+    owner_evidence = execute_owner_service_lanes(
+        root=root,
+        tier="checkpoint",
+        run_id=run_id,
+        lanes=owner_lanes,
+        max_parallel=max_parallel,
+        python_bin=python_bin,
+        revision=revision_value,
+        environ=environ,
+        runner=runner,
+        clock=clock,
+    )
+    run_root = root / "reports" / "quality" / "parallel" / run_id
+    if owner_evidence["status"] != "PASS":
+        return _write_checkpoint_result(
+            root=root,
+            run_root=run_root,
+            run_id=run_id,
+            revision=revision_value,
+            inventory=inventory,
+            owner_evidence=owner_evidence,
+            serial_results=[],
+            closure_results=[],
+            combined_coverage=None,
+            started=gate_started,
+            clock=clock,
+        )
+
+    serial_results: list[dict[str, object]] = []
+    serial_plans: list[LaneExecutionPlan] = []
+    for lane in (SERIAL_INTEGRATION_LANE, SERIAL_REPOSITORY_LANE):
+        if lane_counts.get(lane, 0):  # type: ignore[union-attr]
+            plan = build_test_lane_plan(
+                root=root,
+                inventory=inventory,
+                run_id=run_id,
+                lane=lane,
+                python_bin=python_bin,
+            )
+            prepare_lane_artifacts(plan.artifacts)
+            serial_plans.append(plan)
+            result = _execute_lane_plan(
+                plan,
+                root=root,
+                environ=dict(os.environ if environ is None else environ),
+                runner=runner,
+                clock=clock,
+                started_signal=None,
+            )
+            serial_results.append(result)
+            if result["status"] != "PASS":
+                return _write_checkpoint_result(
+                    root=root,
+                    run_root=run_root,
+                    run_id=run_id,
+                    revision=revision_value,
+                    inventory=inventory,
+                    owner_evidence=owner_evidence,
+                    serial_results=serial_results,
+                    closure_results=[],
+                    combined_coverage=None,
+                    started=gate_started,
+                    clock=clock,
+                )
+
+    raw_coverage_paths = [
+        root / str(item["artifacts"]["raw_coverage"])  # type: ignore[index]
+        for item in owner_evidence["lanes"]  # type: ignore[union-attr]
+    ] + [plan.artifacts.raw_coverage for plan in serial_plans]
+    closure_dir = run_root / "closure"
+    closure_dir.mkdir(exist_ok=False)
+    combined_raw = closure_dir / ".coverage"
+    combined_json = closure_dir / "coverage.json"
+    closure_results = _execute_logged_commands(
+        commands=_checkpoint_closure_commands(
+            python_bin=python_bin,
+            combined_raw=combined_raw,
+            combined_json=combined_json,
+            raw_coverage_paths=raw_coverage_paths,
+        ),
+        root=root,
+        environ=dict(os.environ if environ is None else environ),
+        stdout_path=closure_dir / "stdout.log",
+        stderr_path=closure_dir / "stderr.log",
+        runner=runner,
+        clock=clock,
+    )
+    closure_passed = all(item["exit_code"] == 0 for item in closure_results)
+    return _write_checkpoint_result(
+        root=root,
+        run_root=run_root,
+        run_id=run_id,
+        revision=revision_value,
+        inventory=inventory,
+        owner_evidence=owner_evidence,
+        serial_results=serial_results,
+        closure_results=closure_results,
+        combined_coverage=(
+            combined_json.relative_to(root).as_posix() if closure_passed else None
+        ),
+        started=gate_started,
+        clock=clock,
+    )
+
+
+def _checkpoint_closure_commands(
+    *,
+    python_bin: str,
+    combined_raw: Path,
+    combined_json: Path,
+    raw_coverage_paths: Sequence[Path],
+) -> tuple[tuple[str, ...], ...]:
+    return (
+        (
+            python_bin,
+            "-m",
+            "coverage",
+            "combine",
+            "--keep",
+            f"--data-file={combined_raw}",
+            *(str(path) for path in raw_coverage_paths),
+        ),
+        (
+            python_bin,
+            "-m",
+            "coverage",
+            "json",
+            f"--data-file={combined_raw}",
+            "-o",
+            str(combined_json),
+        ),
+        (
+            python_bin,
+            "scripts/quality/check_coverage_thresholds.py",
+            str(combined_json),
+            CHECKPOINT_STATEMENT_MIN,
+            CHECKPOINT_BRANCH_MIN,
+        ),
+        (python_bin, "scripts/quality/validate_contracts.py"),
+        (
+            python_bin,
+            "scripts/quality/run_golden_journey_transition_audit.py",
+            "--summary",
+        ),
+        (
+            python_bin,
+            "scripts/quality/run_demo_product_dependency_audit.py",
+            "--summary",
+        ),
+    )
+
+
+def _execute_logged_commands(
+    *,
+    commands: Sequence[Sequence[str]],
+    root: Path,
+    environ: Mapping[str, str],
+    stdout_path: Path,
+    stderr_path: Path,
+    runner: Callable[..., subprocess.CompletedProcess[str]],
+    clock: Callable[[], float],
+) -> list[dict[str, object]]:
+    results: list[dict[str, object]] = []
+    with stdout_path.open("w", encoding="utf-8") as stdout_file:
+        with stderr_path.open("w", encoding="utf-8") as stderr_file:
+            for index, command in enumerate(commands, start=1):
+                started = clock()
+                completed = runner(
+                    tuple(command),
+                    cwd=root,
+                    env=dict(environ),
+                    stdout=stdout_file,
+                    stderr=stderr_file,
+                    text=True,
+                    check=False,
+                )
+                results.append(
+                    {
+                        "index": index,
+                        "label": _command_label(command),
+                        "duration_seconds": round(max(0.0, clock() - started), 3),
+                        "exit_code": int(completed.returncode),
+                    }
+                )
+                if completed.returncode != 0:
+                    break
+    return results
+
+
+def _write_checkpoint_result(
+    *,
+    root: Path,
+    run_root: Path,
+    run_id: str,
+    revision: str,
+    inventory: Mapping[str, object],
+    owner_evidence: Mapping[str, object],
+    serial_results: Sequence[Mapping[str, object]],
+    closure_results: Sequence[Mapping[str, object]],
+    combined_coverage: str | None,
+    started: float,
+    clock: Callable[[], float],
+) -> dict[str, object]:
+    passed = (
+        owner_evidence["status"] == "PASS"
+        and all(item["status"] == "PASS" for item in serial_results)
+        and len(serial_results) == 2
+        and len(closure_results) == 6
+        and all(item["exit_code"] == 0 for item in closure_results)
+        and combined_coverage is not None
+    )
+    evidence: dict[str, object] = {
+        "schema_version": "nex.parallel_checkpoint_gate.v1",
+        "status": "PASS" if passed else "FAIL",
+        "tier": "checkpoint",
+        "run_id": run_id,
+        "revision": revision,
+        "inventory_digest": inventory["inventory_digest"],
+        "test_file_count": inventory["test_file_count"],
+        "owner_lanes": owner_evidence,
+        "serial_lanes": list(serial_results),
+        "closure_commands": list(closure_results),
+        "combined_coverage": combined_coverage,
+        "duration_seconds": round(max(0.0, clock() - started), 3),
+        "serial_fallback": "scripts/quality/run_checkpoint_gate.sh",
+    }
+    write_inventory(run_root / "checkpoint.json", evidence)
+    write_inventory(
+        root / "reports" / "quality" / "checkpoint-parallel-latest.json", evidence
+    )
+    return evidence
+
+
+def _command_label(command: Sequence[str]) -> str:
+    for item in command[1:]:
+        if item in {"combine", "json"} or item.endswith((".py", ".sh")):
+            return Path(item).name
+    return Path(command[0]).name
 
 
 def _execute_lane_plan(
@@ -498,6 +785,10 @@ def _parser() -> argparse.ArgumentParser:
     run.add_argument("--lane", action="append", default=[])
     run.add_argument("--max-parallel", type=int, default=4)
     run.add_argument("--summary", action="store_true")
+    checkpoint = subparsers.add_parser("checkpoint")
+    checkpoint.add_argument("--run-id")
+    checkpoint.add_argument("--max-parallel", type=int, default=4)
+    checkpoint.add_argument("--summary", action="store_true")
     return parser
 
 
@@ -512,7 +803,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 revision=_git_revision(ROOT),
             )
             write_inventory(output, evidence)
-        else:
+        elif args.command == "run-owner-lanes":
             evidence = execute_owner_service_lanes(
                 root=ROOT,
                 tier=args.tier,
@@ -520,6 +811,19 @@ def main(argv: Sequence[str] | None = None) -> int:
                 lanes=tuple(args.lane) or INITIAL_OWNER_LANES,
                 max_parallel=args.max_parallel,
                 python_bin=os.environ.get("PYTHON_BIN", "./.venv/bin/python"),
+            )
+        else:
+            revision = _git_revision(ROOT)
+            evidence = execute_parallel_checkpoint_gate(
+                root=ROOT,
+                run_id=(
+                    _validate_run_id(args.run_id)
+                    if args.run_id
+                    else _default_run_id("checkpoint", revision)
+                ),
+                max_parallel=args.max_parallel,
+                python_bin=os.environ.get("PYTHON_BIN", "./.venv/bin/python"),
+                revision=revision,
             )
     except (OSError, ValueError, subprocess.CalledProcessError) as exc:
         print(f"parallel_quality_gate=fail error={type(exc).__name__}")
@@ -534,16 +838,28 @@ def main(argv: Sequence[str] | None = None) -> int:
                 f"resolved_missing={evidence['resolved_missing_count']} "
                 f"resolved_duplicate={evidence['resolved_duplicate_count']}"
             )
-        else:
+        elif args.command == "run-owner-lanes":
             print(
                 "parallel_owner_lanes="
                 f"{str(evidence['status']).lower()} tier={args.tier} "
                 f"lanes={len(evidence['lanes'])} "
                 f"duration={evidence['duration_seconds']}s"
             )
+        else:
+            print(
+                "parallel_checkpoint_gate="
+                f"{str(evidence['status']).lower()} "
+                f"tests={evidence['test_file_count']} "
+                f"duration={evidence['duration_seconds']}s"
+            )
     else:
         print(json.dumps(evidence, indent=2, sort_keys=True))
     return 0 if evidence.get("status", "PASS") == "PASS" else 1
+
+
+def _default_run_id(prefix: str, revision: str) -> str:
+    timestamp = datetime.now(UTC).strftime("%Y%m%dt%H%M%Sz").lower()
+    return _validate_run_id(f"{prefix}-{timestamp}-{revision[:8].lower()}")
 
 
 if __name__ == "__main__":  # pragma: no cover

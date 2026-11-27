@@ -312,6 +312,26 @@ def test_owner_lane_order_places_ae_first_and_rejects_invalid() -> None:
         gate._ordered_owner_lanes((gate.SERIAL_INTEGRATION_LANE,))
 
 
+def test_platform_profile_is_classified_as_serial_integration(tmp_path: Path) -> None:
+    root = _root(tmp_path)
+    path = root / "tests/test_platform_alpha.py"
+    path.write_text("# platform fixture\n", encoding="utf-8")
+
+    evidence = gate.build_test_ownership_inventory(
+        root=root,
+        tier="checkpoint",
+        revision="1" * 40,
+    )
+    item = next(
+        item
+        for item in evidence["assignments"]
+        if item["path"] == "tests/test_platform_alpha.py"
+    )
+
+    assert item["lane"] == gate.SERIAL_INTEGRATION_LANE
+    assert item["reason"] == "PLATFORM_CROSS_SERVICE"
+
+
 def test_parallel_owner_orchestrator_starts_ae_first_and_collects_failures(
     tmp_path: Path,
 ) -> None:
@@ -418,3 +438,176 @@ def test_main_owner_lane_summary_and_failure(
         ]
     ) == 1
     assert "parallel_owner_lanes=fail" in capsys.readouterr().out
+
+
+def test_checkpoint_closure_commands_preserve_thresholds_and_audits(
+    tmp_path: Path,
+) -> None:
+    commands = gate._checkpoint_closure_commands(
+        python_bin="python-test",
+        combined_raw=tmp_path / "combined/.coverage",
+        combined_json=tmp_path / "combined/coverage.json",
+        raw_coverage_paths=(tmp_path / "ae/.coverage", tmp_path / "eos/.coverage"),
+    )
+
+    assert len(commands) == 6
+    assert commands[0][:5] == (
+        "python-test",
+        "-m",
+        "coverage",
+        "combine",
+        "--keep",
+    )
+    assert str(tmp_path / "ae/.coverage") in commands[0]
+    assert commands[2][-2:] == ("95", "94")
+    assert commands[3][-1] == "scripts/quality/validate_contracts.py"
+    assert commands[-1][-1] == "--summary"
+
+
+def test_logged_commands_stop_on_failure_and_record_timings(tmp_path: Path) -> None:
+    calls = []
+
+    def runner(command, **_kwargs):
+        calls.append(command)
+        return subprocess.CompletedProcess(command, 9 if command[0] == "bad" else 0)
+
+    times = iter((1.0, 1.2, 1.3, 1.8))
+    results = gate._execute_logged_commands(
+        commands=(("good",), ("bad",), ("never",)),
+        root=tmp_path,
+        environ={},
+        stdout_path=tmp_path / "stdout.log",
+        stderr_path=tmp_path / "stderr.log",
+        runner=runner,
+        clock=lambda: next(times),
+    )
+
+    assert calls == [("good",), ("bad",)]
+    assert results == [
+        {"index": 1, "label": "good", "duration_seconds": 0.2, "exit_code": 0},
+        {"index": 2, "label": "bad", "duration_seconds": 0.5, "exit_code": 9},
+    ]
+
+
+def test_parallel_checkpoint_executes_owner_then_serial_and_closure(
+    tmp_path: Path,
+) -> None:
+    root = _root(tmp_path)
+
+    def runner(command, **kwargs):
+        kwargs["stdout"].write(f"command={command[0]}\n")
+        return subprocess.CompletedProcess(command, 0)
+
+    evidence = gate.execute_parallel_checkpoint_gate(
+        root=root,
+        run_id="checkpoint-test",
+        max_parallel=2,
+        python_bin="python-test",
+        revision="2" * 40,
+        environ={"SAFE": "1"},
+        runner=runner,
+    )
+
+    assert evidence["status"] == "PASS"
+    assert evidence["test_file_count"] == 6
+    assert len(evidence["owner_lanes"]["lanes"]) == 3
+    assert [item["lane"] for item in evidence["serial_lanes"]] == [
+        gate.SERIAL_INTEGRATION_LANE,
+        gate.SERIAL_REPOSITORY_LANE,
+    ]
+    assert len(evidence["closure_commands"]) == 6
+    assert evidence["combined_coverage"].endswith("closure/coverage.json")
+    assert (root / "reports/quality/checkpoint-parallel-latest.json").is_file()
+
+
+def test_parallel_checkpoint_stops_before_serial_when_owner_fails(
+    monkeypatch, tmp_path: Path
+) -> None:
+    root = _root(tmp_path)
+    monkeypatch.setattr(
+        gate,
+        "execute_owner_service_lanes",
+        lambda **_kwargs: {"status": "FAIL", "lanes": []},
+    )
+
+    evidence = gate.execute_parallel_checkpoint_gate(
+        root=root,
+        run_id="owner-failure",
+        revision="4" * 40,
+    )
+
+    assert evidence["status"] == "FAIL"
+    assert evidence["serial_lanes"] == []
+    assert evidence["closure_commands"] == []
+
+
+def test_parallel_checkpoint_stops_on_serial_lane_failure(tmp_path: Path) -> None:
+    root = _root(tmp_path)
+
+    def runner(command, **kwargs):
+        lane = kwargs["env"].get("NEX_QUALITY_GATE_LANE")
+        code = 8 if lane == gate.SERIAL_INTEGRATION_LANE else 0
+        return subprocess.CompletedProcess(command, code)
+
+    evidence = gate.execute_parallel_checkpoint_gate(
+        root=root,
+        run_id="serial-failure",
+        max_parallel=2,
+        revision="5" * 40,
+        runner=runner,
+    )
+
+    assert evidence["status"] == "FAIL"
+    assert len(evidence["serial_lanes"]) == 1
+    assert evidence["serial_lanes"][0]["lane"] == gate.SERIAL_INTEGRATION_LANE
+    assert evidence["closure_commands"] == []
+
+
+def test_checkpoint_result_fails_without_complete_serial_closure(
+    tmp_path: Path,
+) -> None:
+    run_root = tmp_path / "reports/quality/parallel/incomplete"
+    run_root.mkdir(parents=True)
+    times = iter((5.0,))
+    evidence = gate._write_checkpoint_result(
+        root=tmp_path,
+        run_root=run_root,
+        run_id="incomplete",
+        revision="3" * 40,
+        inventory={"inventory_digest": "sha256:" + "0" * 64, "test_file_count": 1},
+        owner_evidence={"status": "FAIL"},
+        serial_results=[],
+        closure_results=[],
+        combined_coverage=None,
+        started=4.0,
+        clock=lambda: next(times),
+    )
+
+    assert evidence["status"] == "FAIL"
+    assert evidence["duration_seconds"] == 1.0
+
+
+def test_default_run_id_is_safe() -> None:
+    value = gate._default_run_id("checkpoint", "ABCDEF123456")
+    assert value.startswith("checkpoint-")
+    assert value.endswith("-abcdef12")
+    assert gate.RUN_ID_PATTERN.fullmatch(value)
+
+
+def test_main_parallel_checkpoint_summary(monkeypatch, capsys, tmp_path: Path) -> None:
+    monkeypatch.setattr(gate, "ROOT", _root(tmp_path))
+    monkeypatch.setattr(gate, "_git_revision", lambda _root: "6" * 40)
+    observed = {}
+
+    def execute(**kwargs):
+        observed.update(kwargs)
+        return {"status": "PASS", "test_file_count": 6, "duration_seconds": 2.5}
+
+    monkeypatch.setattr(gate, "execute_parallel_checkpoint_gate", execute)
+
+    assert gate.main(["checkpoint", "--summary"]) == 0
+    assert observed["run_id"].startswith("checkpoint-")
+    assert observed["revision"] == "6" * 40
+    assert "parallel_checkpoint_gate=pass tests=6 duration=2.5s" in (
+        capsys.readouterr().out
+    )

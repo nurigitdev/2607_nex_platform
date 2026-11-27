@@ -1,6 +1,6 @@
 # NeX MyBee W80-CA00I Parallel Owner-Service Quality Gate and Serial Protected Acceptance Boundary v1.0
 
-**Status:** IN PROGRESS / W80-CA00I.1-.3 COMPLETE
+**Status:** IN PROGRESS / W80-CA00I.1-.4 COMPLETE
 
 **Predecessor:** W80-CA00H
 
@@ -62,8 +62,16 @@ The first admitted lanes are:
 4. `nex-oa`.
 
 Additional owner-service lanes may be admitted after the first four prove
-stable. Initial maximum concurrency is four. The limit is configurable but
-must not default to an unbounded service count.
+stable. The admitted default maximum concurrency is four. The limit is
+configurable but must not default to an unbounded service count.
+
+The default of four is evidence-based. On the same repository revision, the
+complete four-lane owner phase finished in `1115.075s`. A controlled three-lane
+comparison finished the same owner inventory in `1237.235s`. Three lanes made
+individual pytest processes faster, but delayed the later runtime lane and
+increased the owner-phase critical path by `122.160s`. The serial integration
+and repository phases are independent of this setting, so four remains the
+faster repository Checkpoint default.
 
 ### 3.2 Serial boundary
 
@@ -238,6 +246,14 @@ pilot passed in `787.610s` with no artifact collision.
 - compare serial and parallel test inventory and results on the same revision;
 - combine coverage and apply unchanged thresholds;
 - admit parallel Checkpoint only after parity and timing evidence pass.
+
+**As-Built:** COMPLETE. The exact-once parallel Checkpoint executed `1761`
+test files and passed in `1988.144s`, compared with the latest canonical serial
+Checkpoint at `2305.328s`. Combined statement coverage was `98.09%` and branch
+coverage was `96.48%`, above the unchanged `95%` and `94%` Checkpoint
+thresholds. The serial fallback remains the default unless
+`NEX_QUALITY_GATE_EXECUTION=parallel` is selected. A same-revision three-lane
+comparison proved that four owner lanes are faster for the current inventory.
 
 ### W80-CA00I.5 - Repository Full Gate and Protected Serial Closure
 

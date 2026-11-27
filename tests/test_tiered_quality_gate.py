@@ -567,3 +567,5 @@ def test_original_full_gate_remains_the_independent_fallback() -> None:
     assert "run_tiered_quality_gate.py" not in full_gate
     assert "run_tiered_quality_gate.py slice" in slice_wrapper
     assert "run_tiered_quality_gate.py checkpoint" in checkpoint_wrapper
+    assert "run_parallel_quality_gate.py checkpoint" in checkpoint_wrapper
+    assert "NEX_QUALITY_GATE_EXECUTION" in checkpoint_wrapper
