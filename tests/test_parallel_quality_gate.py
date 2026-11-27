@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import subprocess
+from concurrent.futures import ThreadPoolExecutor
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -156,3 +158,90 @@ def test_main_fails_closed_for_unsafe_output(monkeypatch, capsys, tmp_path: Path
 def test_output_validation_rejects_absolute_path(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="repository-relative"):
         gate._validated_output(tmp_path, str(tmp_path / "inventory.json"))
+
+
+def test_lane_artifacts_are_run_and_service_scoped(tmp_path: Path) -> None:
+    paths = gate.build_lane_artifact_paths(
+        root=tmp_path, run_id="w80-ca00i2-test", lane="nex-ae-api"
+    )
+
+    assert paths.relative_payload(tmp_path) == {
+        "run_id": "w80-ca00i2-test",
+        "lane": "nex-ae-api",
+        "base_dir": (
+            "reports/quality/parallel/w80-ca00i2-test/nex-ae-api"
+        ),
+        "raw_coverage": (
+            "reports/quality/parallel/w80-ca00i2-test/nex-ae-api/.coverage"
+        ),
+        "coverage_json": (
+            "reports/quality/parallel/w80-ca00i2-test/nex-ae-api/coverage.json"
+        ),
+        "junit_xml": (
+            "reports/quality/parallel/w80-ca00i2-test/nex-ae-api/junit.xml"
+        ),
+        "stdout_log": (
+            "reports/quality/parallel/w80-ca00i2-test/nex-ae-api/stdout.log"
+        ),
+        "stderr_log": (
+            "reports/quality/parallel/w80-ca00i2-test/nex-ae-api/stderr.log"
+        ),
+        "evidence_json": (
+            "reports/quality/parallel/w80-ca00i2-test/nex-ae-api/evidence.json"
+        ),
+    }
+    env = gate.lane_environment(paths, {"SAFE": "1"})
+    assert env == {
+        "SAFE": "1",
+        "COVERAGE_FILE": str(paths.raw_coverage),
+        "NEX_QUALITY_GATE_RUN_ID": "w80-ca00i2-test",
+        "NEX_QUALITY_GATE_LANE": "nex-ae-api",
+    }
+
+
+def test_lane_artifact_layout_rejects_unsafe_or_unknown_identity(
+    tmp_path: Path,
+) -> None:
+    with pytest.raises(ValueError, match="safe lowercase"):
+        gate.build_lane_artifact_paths(
+            root=tmp_path, run_id="../unsafe", lane="nex-ae-api"
+        )
+    with pytest.raises(ValueError, match="unsupported quality gate lane"):
+        gate.build_lane_artifact_paths(
+            root=tmp_path, run_id="safe", lane="unknown-service"
+        )
+
+
+def test_artifact_isolation_rejects_duplicate_lane(tmp_path: Path) -> None:
+    ae = gate.build_lane_artifact_paths(
+        root=tmp_path, run_id="same-run", lane="nex-ae-api"
+    )
+    eos = gate.build_lane_artifact_paths(
+        root=tmp_path, run_id="same-run", lane="nex-eos"
+    )
+
+    gate.validate_artifact_isolation((ae, eos))
+    with pytest.raises(ValueError, match="duplicate run/lane"):
+        gate.validate_artifact_isolation((ae, ae))
+    colliding = replace(eos, coverage_json=ae.coverage_json)
+    with pytest.raises(ValueError, match="artifact path collision"):
+        gate.validate_artifact_isolation((ae, colliding))
+
+
+def test_concurrent_lane_workspace_claim_is_fail_closed(tmp_path: Path) -> None:
+    paths = gate.build_lane_artifact_paths(
+        root=tmp_path, run_id="concurrent-run", lane="nex-ae-api"
+    )
+
+    def claim() -> str:
+        try:
+            gate.prepare_lane_artifacts(paths)
+        except FileExistsError:
+            return "DENIED"
+        return "CLAIMED"
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        results = sorted(executor.map(lambda _index: claim(), range(2)))
+
+    assert results == ["CLAIMED", "DENIED"]
+    assert paths.base_dir.is_dir()

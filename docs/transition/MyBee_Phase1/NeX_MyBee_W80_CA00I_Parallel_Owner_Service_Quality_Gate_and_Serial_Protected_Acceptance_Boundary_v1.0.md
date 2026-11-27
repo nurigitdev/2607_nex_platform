@@ -1,6 +1,6 @@
 # NeX MyBee W80-CA00I Parallel Owner-Service Quality Gate and Serial Protected Acceptance Boundary v1.0
 
-**Status:** IN PROGRESS / W80-CA00I.1 COMPLETE
+**Status:** IN PROGRESS / W80-CA00I.1-.2 COMPLETE
 
 **Predecessor:** W80-CA00H
 
@@ -217,6 +217,10 @@ source signal, while resolved missing and duplicate counts are both zero.
 - isolate raw coverage, JSON coverage, JUnit, logs, and lane evidence;
 - add collision tests for concurrent writers;
 - preserve current service coverage ownership reports.
+
+**As-Built:** COMPLETE. Every lane now receives an isolated run-scoped raw
+coverage file, JSON report, JUnit report, stdout/stderr log, and evidence file.
+Duplicate lane claims and any artifact-path collision fail before test execution.
 
 ### W80-CA00I.3 - Bounded Parallel Owner-Service Orchestrator
 

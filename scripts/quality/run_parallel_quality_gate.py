@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
+import re
 import subprocess
 import sys
 from collections import Counter
@@ -22,6 +24,8 @@ from run_tiered_quality_gate import SERVICE_PROFILES  # noqa: E402
 INVENTORY_SCHEMA_VERSION = "nex.parallel_quality_test_inventory.v1"
 SERIAL_INTEGRATION_LANE = "serial-integration"
 SERIAL_REPOSITORY_LANE = "serial-repository"
+RUN_ID_PATTERN = re.compile(r"^[a-z0-9][a-z0-9._-]{0,95}$")
+LANE_PATTERN = re.compile(r"^[a-z0-9][a-z0-9-]{0,63}$")
 
 
 @dataclass(frozen=True)
@@ -30,6 +34,32 @@ class TestAssignment:
     lane: str
     reason: str
     candidate_owners: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class LaneArtifactPaths:
+    run_id: str
+    lane: str
+    base_dir: Path
+    raw_coverage: Path
+    coverage_json: Path
+    junit_xml: Path
+    stdout_log: Path
+    stderr_log: Path
+    evidence_json: Path
+
+    def relative_payload(self, root: Path) -> dict[str, str]:
+        return {
+            "run_id": self.run_id,
+            "lane": self.lane,
+            "base_dir": self.base_dir.relative_to(root).as_posix(),
+            "raw_coverage": self.raw_coverage.relative_to(root).as_posix(),
+            "coverage_json": self.coverage_json.relative_to(root).as_posix(),
+            "junit_xml": self.junit_xml.relative_to(root).as_posix(),
+            "stdout_log": self.stdout_log.relative_to(root).as_posix(),
+            "stderr_log": self.stderr_log.relative_to(root).as_posix(),
+            "evidence_json": self.evidence_json.relative_to(root).as_posix(),
+        }
 
 
 def discover_test_files(root: Path, *, tier: str) -> tuple[str, ...]:
@@ -119,6 +149,83 @@ def write_inventory(path: Path, evidence: dict[str, object]) -> None:
         json.dumps(evidence, ensure_ascii=True, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
     )
+
+
+def build_lane_artifact_paths(
+    *, root: Path, run_id: str, lane: str
+) -> LaneArtifactPaths:
+    _validate_run_id(run_id)
+    _validate_lane(lane)
+    base = root / "reports" / "quality" / "parallel" / run_id / lane
+    return LaneArtifactPaths(
+        run_id=run_id,
+        lane=lane,
+        base_dir=base,
+        raw_coverage=base / ".coverage",
+        coverage_json=base / "coverage.json",
+        junit_xml=base / "junit.xml",
+        stdout_log=base / "stdout.log",
+        stderr_log=base / "stderr.log",
+        evidence_json=base / "evidence.json",
+    )
+
+
+def prepare_lane_artifacts(paths: LaneArtifactPaths) -> None:
+    paths.base_dir.parent.mkdir(parents=True, exist_ok=True)
+    paths.base_dir.mkdir(exist_ok=False)
+
+
+def lane_environment(
+    paths: LaneArtifactPaths, environ: dict[str, str] | None = None
+) -> dict[str, str]:
+    result = dict(os.environ if environ is None else environ)
+    result.update(
+        {
+            "COVERAGE_FILE": str(paths.raw_coverage),
+            "NEX_QUALITY_GATE_RUN_ID": paths.run_id,
+            "NEX_QUALITY_GATE_LANE": paths.lane,
+        }
+    )
+    return result
+
+
+def validate_artifact_isolation(paths: Sequence[LaneArtifactPaths]) -> None:
+    seen_lanes: set[tuple[str, str]] = set()
+    seen_paths: set[Path] = set()
+    for item in paths:
+        lane_key = (item.run_id, item.lane)
+        if lane_key in seen_lanes:
+            raise ValueError(f"duplicate run/lane artifact assignment: {item.lane}")
+        seen_lanes.add(lane_key)
+        for path in (
+            item.raw_coverage,
+            item.coverage_json,
+            item.junit_xml,
+            item.stdout_log,
+            item.stderr_log,
+            item.evidence_json,
+        ):
+            resolved = path.resolve()
+            if resolved in seen_paths:
+                raise ValueError(f"artifact path collision: {path}")
+            seen_paths.add(resolved)
+
+
+def _validate_run_id(value: str) -> str:
+    if RUN_ID_PATTERN.fullmatch(value) is None:
+        raise ValueError("run_id must be a safe lowercase identifier")
+    return value
+
+
+def _validate_lane(value: str) -> str:
+    admitted = {
+        *SERVICE_PROFILES,
+        SERIAL_INTEGRATION_LANE,
+        SERIAL_REPOSITORY_LANE,
+    }
+    if LANE_PATTERN.fullmatch(value) is None or value not in admitted:
+        raise ValueError(f"unsupported quality gate lane: {value}")
+    return value
 
 
 def _profile_test_files(root: Path) -> dict[str, frozenset[str]]:
