@@ -103,6 +103,8 @@ def _source_admission(root: Path) -> dict[str, Any]:
         "MIDDLE_REJECTION",
         "FINAL_REJECTION",
         "decision_replay_statuses",
+        "ACCOUNTING_DOCUMENT_REVIEW",
+        "voucher_shaped_accounting_projection_visible",
     )
     missing = [marker for marker in required_markers if marker not in source]
     if missing:
@@ -519,7 +521,51 @@ def _database_checks(
         "append_only_product_checkpoints": database["product_checkpoint_count"]
         >= 24,
         "playwright_matrix_passed": browser.get("status") == "PASS",
+        "voucher_shaped_accounting_projection_visible": (
+            _browser_accounting_projection_ok(browser)
+        ),
     }
+
+
+def _browser_accounting_projection_ok(browser: Mapping[str, Any]) -> bool:
+    scenarios = browser.get("scenarios")
+    if not isinstance(scenarios, Sequence) or isinstance(scenarios, (str, bytes)):
+        return False
+    protected_outcomes = {"JOURNAL_SUCCESS", "ACCOUNTING_CORRECTION"}
+    observed = 0
+    for scenario in scenarios:
+        if not isinstance(scenario, Mapping):
+            return False
+        if scenario.get("outcome") not in protected_outcomes:
+            continue
+        documents = scenario.get("accounting_documents")
+        if not isinstance(documents, Sequence) or isinstance(
+            documents, (str, bytes)
+        ):
+            return False
+        admitted = [item for item in documents if isinstance(item, Mapping)]
+        if len(admitted) != len(documents) or len(admitted) < 2:
+            return False
+        final_pair = admitted[-2:]
+        if [item.get("approval_domain") for item in final_pair] != [
+            "BUSINESS_FORMAL",
+            "NSL_WRITE",
+        ]:
+            return False
+        if len({item.get("document_identity") for item in final_pair}) != 1:
+            return False
+        if any(
+            item.get("balanced") is not True
+            or not isinstance(item.get("line_count"), int)
+            or isinstance(item.get("line_count"), bool)
+            or item["line_count"] < 2
+            or not isinstance(item.get("project_code"), str)
+            or not item["project_code"].strip()
+            for item in admitted
+        ):
+            return False
+        observed += 1
+    return observed == 2
 
 
 def _expected_voucher_revision_count(browser: Mapping[str, Any]) -> int:

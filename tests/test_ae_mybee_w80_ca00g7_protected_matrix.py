@@ -61,10 +61,55 @@ def test_database_gate_requires_exact_matrix_cardinality() -> None:
         "scenarios": [
             {"outcome": "ENVELOPE_ONLY", "correction_cycle": 0},
             {"outcome": "ENVELOPE_ONLY", "correction_cycle": 0},
-            {"outcome": "JOURNAL_SUCCESS", "correction_cycle": 0},
+            {
+                "outcome": "JOURNAL_SUCCESS",
+                "correction_cycle": 0,
+                "accounting_documents": [
+                    {
+                        "approval_domain": "BUSINESS_FORMAL",
+                        "project_code": "T001D260001",
+                        "line_count": 2,
+                        "balanced": True,
+                        "document_identity": "T001D260001:Candidate rev. 3",
+                    },
+                    {
+                        "approval_domain": "NSL_WRITE",
+                        "project_code": "T001D260001",
+                        "line_count": 2,
+                        "balanced": True,
+                        "document_identity": "T001D260001:Candidate rev. 3",
+                    },
+                ],
+            },
             {"outcome": "MIDDLE_REJECTION", "correction_cycle": 0},
             {"outcome": "FINAL_REJECTION", "correction_cycle": 0},
-            {"outcome": "ACCOUNTING_CORRECTION", "correction_cycle": 1},
+            {
+                "outcome": "ACCOUNTING_CORRECTION",
+                "correction_cycle": 1,
+                "accounting_documents": [
+                    {
+                        "approval_domain": "BUSINESS_FORMAL",
+                        "project_code": "T001D260001",
+                        "line_count": 2,
+                        "balanced": True,
+                        "document_identity": "T001D260001:Candidate rev. 2",
+                    },
+                    {
+                        "approval_domain": "BUSINESS_FORMAL",
+                        "project_code": "T001D260001",
+                        "line_count": 2,
+                        "balanced": True,
+                        "document_identity": "T001D260001:Candidate rev. 3",
+                    },
+                    {
+                        "approval_domain": "NSL_WRITE",
+                        "project_code": "T001D260001",
+                        "line_count": 2,
+                        "balanced": True,
+                        "document_identity": "T001D260001:Candidate rev. 3",
+                    },
+                ],
+            },
         ],
     }
     checks = acceptance._database_checks(database, browser)
@@ -79,6 +124,112 @@ def test_database_gate_requires_exact_matrix_cardinality() -> None:
     assert acceptance._database_checks(revision_drift, browser)[
         "append_only_voucher_revisions"
     ] is False
+
+
+def test_browser_gate_requires_authoritative_voucher_projection_for_both_domains() -> None:
+    def documents(revision: int = 3):
+        identity = f"T001D260001:Candidate rev. {revision}"
+        return [
+            {
+                "approval_domain": "BUSINESS_FORMAL",
+                "project_code": "T001D260001",
+                "line_count": 2,
+                "balanced": True,
+                "document_identity": identity,
+            },
+            {
+                "approval_domain": "NSL_WRITE",
+                "project_code": "T001D260001",
+                "line_count": 2,
+                "balanced": True,
+                "document_identity": identity,
+            },
+        ]
+
+    results = [
+        {
+            "scenario_id": "one-stage",
+            "outcome": "ENVELOPE_ONLY",
+            "business_stage_count": 1,
+            "approved_envelope_present": True,
+            "voucher_created": True,
+            "rejected_stage": None,
+            "terminal_status": "WAITING_VOUCHER_REVIEW",
+            "correction_cycle": 0,
+            "decision_replay_statuses": [200],
+            "screen_capture_count": 1,
+            "accounting_documents": [],
+        },
+        {
+            "scenario_id": "two-stage",
+            "outcome": "ENVELOPE_ONLY",
+            "business_stage_count": 2,
+            "approved_envelope_present": True,
+            "voucher_created": True,
+            "rejected_stage": None,
+            "terminal_status": "WAITING_VOUCHER_REVIEW",
+            "correction_cycle": 0,
+            "decision_replay_statuses": [200],
+            "screen_capture_count": 1,
+            "accounting_documents": [],
+        },
+        {
+            "scenario_id": "journal",
+            "outcome": "JOURNAL_SUCCESS",
+            "business_stage_count": 3,
+            "approved_envelope_present": True,
+            "voucher_created": True,
+            "rejected_stage": None,
+            "terminal_status": "SUCCEEDED",
+            "correction_cycle": 0,
+            "decision_replay_statuses": [200],
+            "screen_capture_count": 1,
+            "accounting_documents": documents(),
+        },
+        {
+            "scenario_id": "middle-rejection",
+            "outcome": "MIDDLE_REJECTION",
+            "business_stage_count": 2,
+            "approved_envelope_present": False,
+            "voucher_created": False,
+            "rejected_stage": 2,
+            "terminal_status": "REJECTED",
+            "correction_cycle": 0,
+            "decision_replay_statuses": [200],
+            "screen_capture_count": 1,
+            "accounting_documents": [],
+        },
+        {
+            "scenario_id": "final-rejection",
+            "outcome": "FINAL_REJECTION",
+            "business_stage_count": 3,
+            "approved_envelope_present": False,
+            "voucher_created": False,
+            "rejected_stage": 3,
+            "terminal_status": "REJECTED",
+            "correction_cycle": 0,
+            "decision_replay_statuses": [200],
+            "screen_capture_count": 1,
+            "accounting_documents": [],
+        },
+        {
+            "scenario_id": "correction",
+            "outcome": "ACCOUNTING_CORRECTION",
+            "business_stage_count": 3,
+            "approved_envelope_present": True,
+            "voucher_created": True,
+            "rejected_stage": None,
+            "terminal_status": "SUCCEEDED",
+            "correction_cycle": 1,
+            "decision_replay_statuses": [200],
+            "screen_capture_count": 1,
+            "accounting_documents": [*documents(2)[:1], *documents(3)],
+        },
+    ]
+
+    assert acceptance._browser_accounting_projection_ok({"scenarios": results}) is True
+    results[2]["accounting_documents"][-1]["document_identity"] = "drift"
+    assert acceptance._browser_accounting_projection_ok({"scenarios": results}) is False
 
 
 def test_expected_voucher_revision_count_is_derived_from_journey_outcomes() -> None:

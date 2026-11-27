@@ -109,6 +109,22 @@ export function protectedMatrixChecks(results) {
       byOutcome.get("ACCOUNTING_CORRECTION")?.terminal_status === "SUCCEEDED",
     all_decision_replays_idempotent:
       results.every(item => item.decision_replay_statuses.every(status => status === 200)),
+    voucher_shaped_accounting_projection_visible:
+      successes
+        .filter(item => ["JOURNAL_SUCCESS", "ACCOUNTING_CORRECTION"].includes(item.outcome))
+        .every(item => {
+          const documents = item.accounting_documents || [];
+          const finalPair = documents.slice(-2);
+          return documents.length >= 2 &&
+            documents.every(document =>
+              document.balanced === true &&
+              document.line_count >= 2 &&
+              document.project_code.length > 0
+            ) &&
+            finalPair.map(document => document.approval_domain).join(",") ===
+              "BUSINESS_FORMAL,NSL_WRITE" &&
+            new Set(finalPair.map(document => document.document_identity)).size === 1;
+        }),
     all_screen_evidence_present:
       results.every(item => item.screen_capture_count > 0)
   };
@@ -302,6 +318,7 @@ async function executeScenario({
 
   const decisionReplayStatuses = [proposalReview.replay_status];
   const businessDecisions = [];
+  const accountingDecisions = [];
   const rejectAt = scenario.outcome === "MIDDLE_REJECTION"
     ? 2
     : scenario.outcome === "FINAL_REJECTION" ? 3 : null;
@@ -340,6 +357,7 @@ async function executeScenario({
       scenario,
       interactionId,
       businessDecisions,
+      accountingDecisions,
       decisionReplayStatuses,
       captures,
       approvedEnvelopePresent: false,
@@ -376,6 +394,7 @@ async function executeScenario({
       scenario,
       interactionId,
       businessDecisions,
+      accountingDecisions,
       decisionReplayStatuses,
       captures,
       approvedEnvelopePresent: Boolean(approved.approved_envelope_id),
@@ -409,6 +428,7 @@ async function executeScenario({
       expectedDomain: "BUSINESS_FORMAL"
     });
     decisionReplayStatuses.push(rejected.replay_status);
+    accountingDecisions.push(rejected);
     const returned = await waitForVoucherState(
       requester,
       voucher.candidate_id,
@@ -439,6 +459,7 @@ async function executeScenario({
     expectedDomain: "BUSINESS_FORMAL"
   });
   decisionReplayStatuses.push(accountingFormal.replay_status);
+  accountingDecisions.push(accountingFormal);
   const writeApproval = await decideNextGate({
     page: accounting,
     role: "ACCOUNTING_APPROVER",
@@ -450,6 +471,7 @@ async function executeScenario({
     expectedDomain: "NSL_WRITE"
   });
   decisionReplayStatuses.push(writeApproval.replay_status);
+  accountingDecisions.push(writeApproval);
   const result = await waitForTerminalResult(requester, interactionId, resultTimeout);
   await gotoRoute(requester, environ[ENV.webUrl], `/workspace?interaction_id=${encodeURIComponent(interactionId)}`, actionTimeout);
   await captures.capture(requester, "terminal-result", {
@@ -461,6 +483,7 @@ async function executeScenario({
     scenario,
     interactionId,
     businessDecisions,
+    accountingDecisions,
     decisionReplayStatuses,
     captures,
     approvedEnvelopePresent: Boolean(approved.approved_envelope_id),
@@ -618,6 +641,16 @@ async function decideNextGate({
     await gateButton.waitFor({ timeout: actionTimeout });
     await gateButton.click();
     await page.getByRole("heading", { name: found.gate.title, exact: true }).waitFor({ timeout: actionTimeout });
+    const accountingDocument = role === "ACCOUNTING_APPROVER"
+      ? await inspectAccountingDocument({
+        page,
+        captures,
+        label,
+        interactionId,
+        actionTimeout,
+        approvalDomain: found.gate.approval_domain
+      })
+      : null;
     if (decision === "REJECT") {
       await page.getByLabel(/^반려 사유/).fill(`Protected acceptance ${label}`);
       await page.getByRole("button", { name: "반려", exact: true }).click();
@@ -642,11 +675,61 @@ async function decideNextGate({
       gate_id: found.gate.gate_id,
       approval_domain: found.gate.approval_domain,
       decision,
-      replay_status: replay.status
+      replay_status: replay.status,
+      accounting_document: accountingDocument
     };
   } finally {
     page.off("request", observer);
   }
+}
+
+async function inspectAccountingDocument({
+  page,
+  captures,
+  label,
+  interactionId,
+  actionTimeout,
+  approvalDomain
+}) {
+  const section = page.locator('section[aria-labelledby="accounting-document-title"]');
+  await section.getByRole("heading", { name: "전표 검토", exact: true })
+    .waitFor({ timeout: actionTimeout });
+  if (await section.getByText(/권위 있는 전표 원문을 확인할 수 없습니다/).isVisible()) {
+    throw new Error("AccountingDocumentAuthorityUnavailable");
+  }
+  const revisionLabel = (await section.getByText(/Candidate rev\./).innerText()).trim();
+  if (!revisionLabel.includes("차대변 일치")) {
+    throw new Error("AccountingDocumentUnbalanced");
+  }
+  const projectCode = (await section.locator("dt", { hasText: "Project" })
+    .locator("xpath=following-sibling::dd").innerText()).trim();
+  if (!projectCode) throw new Error("AccountingDocumentProjectMissing");
+  const table = section.getByRole("table");
+  for (const heading of ["계정과목", "적요", "차변", "대변"]) {
+    await table.getByRole("columnheader", { name: heading, exact: true })
+      .waitFor({ timeout: actionTimeout });
+  }
+  const rows = table.locator("tbody tr");
+  const lineCount = await rows.count();
+  if (lineCount < 2) throw new Error("AccountingDocumentLinesMissing");
+  for (let index = 0; index < lineCount; index += 1) {
+    const accountName = (await rows.nth(index).locator("strong").innerText()).trim();
+    const accountCode = (await rows.nth(index).locator("small").innerText()).trim();
+    if (!accountName || !accountCode) throw new Error("AccountingDocumentAccountMissing");
+  }
+  await captures.capture(page, `${label}-accounting-document`, {
+    expectedState: "ACCOUNTING_DOCUMENT_REVIEW",
+    assertion: "voucher-shaped-authoritative-document-visible",
+    interactionId,
+    approvalDomain
+  });
+  return {
+    approval_domain: approvalDomain,
+    project_code: projectCode,
+    line_count: lineCount,
+    balanced: true,
+    document_identity: `${projectCode}:${revisionLabel.split("·")[0].trim()}`
+  };
 }
 
 async function clickAndCaptureRequest(page, action, predicate) {
@@ -781,6 +864,7 @@ function publicScenario({
   scenario,
   interactionId,
   businessDecisions,
+  accountingDecisions = [],
   decisionReplayStatuses,
   captures,
   approvedEnvelopePresent,
@@ -799,6 +883,9 @@ function publicScenario({
       approval_domain: item.approval_domain,
       decision: item.decision
     })),
+    accounting_documents: accountingDecisions
+      .filter(item => item.accounting_document)
+      .map(item => ({ ...item.accounting_document })),
     decision_replay_statuses: decisionReplayStatuses,
     approved_envelope_present: approvedEnvelopePresent,
     voucher_created: voucherCreated,

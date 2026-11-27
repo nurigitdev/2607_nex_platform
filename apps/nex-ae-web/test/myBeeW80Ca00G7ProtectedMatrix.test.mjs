@@ -54,7 +54,25 @@ test("matrix checks require tier routes, terminal rejections, correction, replay
       scenario.outcome === "ACCOUNTING_CORRECTION" ? "SUCCEEDED" : "WAITING",
     correction_cycle: scenario.outcome === "ACCOUNTING_CORRECTION" ? 1 : 0,
     decision_replay_statuses: [200, 200],
-    screen_capture_count: index + 1
+    screen_capture_count: index + 1,
+    accounting_documents: ["JOURNAL_SUCCESS", "ACCOUNTING_CORRECTION"].includes(scenario.outcome)
+      ? [
+        {
+          approval_domain: "BUSINESS_FORMAL",
+          project_code: "T001D260001",
+          line_count: 2,
+          balanced: true,
+          document_identity: "T001D260001:Candidate rev. 3"
+        },
+        {
+          approval_domain: "NSL_WRITE",
+          project_code: "T001D260001",
+          line_count: 2,
+          balanced: true,
+          document_identity: "T001D260001:Candidate rev. 3"
+        }
+      ]
+      : []
   }));
   const checks = protectedMatrixChecks(results);
   assert.equal(Object.values(checks).every(Boolean), true);
@@ -62,6 +80,18 @@ test("matrix checks require tier routes, terminal rejections, correction, replay
     protectedMatrixChecks(results.map((item, index) =>
       index === 5 ? { ...item, correction_cycle: 0 } : item
     )).correction_used_latest_revision,
+    false
+  );
+  const drifted = results.map((item, index) => index === 2
+    ? {
+      ...item,
+      accounting_documents: item.accounting_documents.map((document, documentIndex) =>
+        documentIndex === 1 ? { ...document, document_identity: "drift" } : document
+      )
+    }
+    : item);
+  assert.equal(
+    protectedMatrixChecks(drifted).voucher_shaped_accounting_projection_visible,
     false
   );
 });
