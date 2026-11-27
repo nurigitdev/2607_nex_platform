@@ -1,6 +1,6 @@
 # NeX MyBee W80-CA00I Parallel Owner-Service Quality Gate and Serial Protected Acceptance Boundary v1.0
 
-**Status:** IN PROGRESS / W80-CA00I.1-.2 COMPLETE
+**Status:** IN PROGRESS / W80-CA00I.1-.3 COMPLETE
 
 **Predecessor:** W80-CA00H
 
@@ -227,6 +227,11 @@ Duplicate lane claims and any artifact-path collision fail before test execution
 - start AE first and execute admitted owner lanes with bounded concurrency;
 - collect every lane result and duration;
 - retain an explicit serial fallback and fail-closed cancellation behavior.
+
+**As-Built:** COMPLETE. The orchestrator guarantees AE starts before the other
+submitted owner lanes, limits concurrency, records isolated lane results, and
+returns failure if any owner lane fails. The first actual four-lane Checkpoint
+pilot passed in `787.610s` with no artifact collision.
 
 ### W80-CA00I.4 - Checkpoint Gate Parallel Admission
 

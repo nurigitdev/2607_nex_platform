@@ -7,7 +7,11 @@ import os
 import re
 import subprocess
 import sys
+import threading
+import time
 from collections import Counter
+from collections.abc import Mapping
+from concurrent.futures import Future, ThreadPoolExecutor, as_completed
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -22,8 +26,10 @@ from nex_runtime.semantic_hashes import semantic_sha256_hash_ref  # noqa: E402
 from run_tiered_quality_gate import SERVICE_PROFILES  # noqa: E402
 
 INVENTORY_SCHEMA_VERSION = "nex.parallel_quality_test_inventory.v1"
+ORCHESTRATOR_SCHEMA_VERSION = "nex.parallel_quality_owner_lanes.v1"
 SERIAL_INTEGRATION_LANE = "serial-integration"
 SERIAL_REPOSITORY_LANE = "serial-repository"
+INITIAL_OWNER_LANES = ("nex-ae-api", "nex-eos", "nex-wc", "nex-oa")
 RUN_ID_PATTERN = re.compile(r"^[a-z0-9][a-z0-9._-]{0,95}$")
 LANE_PATTERN = re.compile(r"^[a-z0-9][a-z0-9-]{0,63}$")
 
@@ -60,6 +66,14 @@ class LaneArtifactPaths:
             "stderr_log": self.stderr_log.relative_to(root).as_posix(),
             "evidence_json": self.evidence_json.relative_to(root).as_posix(),
         }
+
+
+@dataclass(frozen=True)
+class LaneExecutionPlan:
+    lane: str
+    tests: tuple[str, ...]
+    command: tuple[str, ...]
+    artifacts: LaneArtifactPaths
 
 
 def discover_test_files(root: Path, *, tier: str) -> tuple[str, ...]:
@@ -211,6 +225,193 @@ def validate_artifact_isolation(paths: Sequence[LaneArtifactPaths]) -> None:
             seen_paths.add(resolved)
 
 
+def build_owner_lane_plan(
+    *,
+    root: Path,
+    inventory: Mapping[str, object],
+    run_id: str,
+    lane: str,
+    python_bin: str,
+) -> LaneExecutionPlan:
+    _validate_lane(lane)
+    if lane in {SERIAL_INTEGRATION_LANE, SERIAL_REPOSITORY_LANE}:
+        raise ValueError("owner lane plan cannot use a serial lane")
+    tests = tuple(
+        str(item["path"])
+        for item in inventory["assignments"]  # type: ignore[index,union-attr]
+        if item["lane"] == lane  # type: ignore[index]
+    )
+    if not tests:
+        raise ValueError(f"owner lane has no assigned tests: {lane}")
+    artifacts = build_lane_artifact_paths(root=root, run_id=run_id, lane=lane)
+    coverage_sources = (
+        ("services", "providers")
+        if inventory["tier"] == "checkpoint"
+        else ("services", "scripts", "providers")
+    )
+    command = [python_bin, "-m", "pytest", "-q", *tests]
+    command.extend(f"--cov={source}" for source in coverage_sources)
+    command.extend(
+        (
+            "--cov-branch",
+            "--cov-report=term-missing",
+            f"--cov-report=json:{artifacts.coverage_json}",
+            f"--junitxml={artifacts.junit_xml}",
+        )
+    )
+    return LaneExecutionPlan(
+        lane=lane,
+        tests=tests,
+        command=tuple(command),
+        artifacts=artifacts,
+    )
+
+
+def execute_owner_service_lanes(
+    *,
+    root: Path,
+    tier: str,
+    run_id: str,
+    lanes: Sequence[str] = INITIAL_OWNER_LANES,
+    max_parallel: int = 4,
+    python_bin: str = "./.venv/bin/python",
+    revision: str | None = None,
+    environ: Mapping[str, str] | None = None,
+    runner: Callable[..., subprocess.CompletedProcess[str]] = subprocess.run,
+    clock: Callable[[], float] = time.monotonic,
+) -> dict[str, object]:
+    if not 1 <= max_parallel <= 8:
+        raise ValueError("max_parallel must be between 1 and 8")
+    ordered_lanes = _ordered_owner_lanes(lanes)
+    inventory = build_test_ownership_inventory(
+        root=root,
+        tier=tier,
+        revision=revision or _git_revision(root),
+    )
+    run_root = root / "reports" / "quality" / "parallel" / run_id
+    write_inventory(run_root / "inventory.json", inventory)
+    plans = [
+        build_owner_lane_plan(
+            root=root,
+            inventory=inventory,
+            run_id=run_id,
+            lane=lane,
+            python_bin=python_bin,
+        )
+        for lane in ordered_lanes
+    ]
+    validate_artifact_isolation([plan.artifacts for plan in plans])
+    for plan in plans:
+        prepare_lane_artifacts(plan.artifacts)
+
+    started = clock()
+    base_env = dict(os.environ if environ is None else environ)
+    ae_started = threading.Event()
+    results: dict[str, dict[str, object]] = {}
+    with ThreadPoolExecutor(max_workers=min(max_parallel, len(plans))) as executor:
+        futures: dict[Future[dict[str, object]], str] = {}
+        first = plans[0]
+        first_signal = ae_started if first.lane == "nex-ae-api" else None
+        futures[
+            executor.submit(
+                _execute_lane_plan,
+                first,
+                root=root,
+                environ=base_env,
+                runner=runner,
+                clock=clock,
+                started_signal=first_signal,
+            )
+        ] = first.lane
+        if first_signal is not None and not first_signal.wait(timeout=10):  # pragma: no cover - thread startup failure
+            raise RuntimeError("AE owner lane did not start within 10 seconds")
+        for plan in plans[1:]:
+            futures[
+                executor.submit(
+                    _execute_lane_plan,
+                    plan,
+                    root=root,
+                    environ=base_env,
+                    runner=runner,
+                    clock=clock,
+                    started_signal=None,
+                )
+            ] = plan.lane
+        for future in as_completed(futures):
+            lane = futures[future]
+            results[lane] = future.result()
+
+    duration = max(0.0, clock() - started)
+    ordered_results = [results[lane] for lane in ordered_lanes]
+    evidence: dict[str, object] = {
+        "schema_version": ORCHESTRATOR_SCHEMA_VERSION,
+        "status": (
+            "PASS" if all(item["status"] == "PASS" for item in ordered_results) else "FAIL"
+        ),
+        "tier": tier,
+        "run_id": run_id,
+        "revision": inventory["revision"],
+        "inventory_digest": inventory["inventory_digest"],
+        "lane_start_order": list(ordered_lanes),
+        "max_parallel": max_parallel,
+        "duration_seconds": round(duration, 3),
+        "lanes": ordered_results,
+    }
+    write_inventory(run_root / "owner-lanes.json", evidence)
+    return evidence
+
+
+def _execute_lane_plan(
+    plan: LaneExecutionPlan,
+    *,
+    root: Path,
+    environ: Mapping[str, str],
+    runner: Callable[..., subprocess.CompletedProcess[str]],
+    clock: Callable[[], float],
+    started_signal: threading.Event | None,
+) -> dict[str, object]:
+    env = lane_environment(plan.artifacts, dict(environ))
+    started = clock()
+    with plan.artifacts.stdout_log.open("w", encoding="utf-8") as stdout_file:
+        with plan.artifacts.stderr_log.open("w", encoding="utf-8") as stderr_file:
+            if started_signal is not None:
+                started_signal.set()
+            completed = runner(
+                plan.command,
+                cwd=root,
+                env=env,
+                stdout=stdout_file,
+                stderr=stderr_file,
+                text=True,
+                check=False,
+            )
+    duration = max(0.0, clock() - started)
+    evidence: dict[str, object] = {
+        "status": "PASS" if completed.returncode == 0 else "FAIL",
+        "lane": plan.lane,
+        "test_file_count": len(plan.tests),
+        "exit_code": int(completed.returncode),
+        "duration_seconds": round(duration, 3),
+        "artifacts": plan.artifacts.relative_payload(root),
+        "command_digest": semantic_sha256_hash_ref(list(plan.command)),
+    }
+    write_inventory(plan.artifacts.evidence_json, evidence)
+    return evidence
+
+
+def _ordered_owner_lanes(lanes: Sequence[str]) -> tuple[str, ...]:
+    unique = tuple(dict.fromkeys(lanes))
+    if not unique:
+        raise ValueError("at least one owner lane is required")
+    for lane in unique:
+        _validate_lane(lane)
+        if lane in {SERIAL_INTEGRATION_LANE, SERIAL_REPOSITORY_LANE}:
+            raise ValueError("serial lanes are not owner-service lanes")
+    if "nex-ae-api" in unique:
+        return ("nex-ae-api", *(lane for lane in unique if lane != "nex-ae-api"))
+    return unique
+
+
 def _validate_run_id(value: str) -> str:
     if RUN_ID_PATTERN.fullmatch(value) is None:
         raise ValueError("run_id must be a safe lowercase identifier")
@@ -284,38 +485,65 @@ def _validated_output(root: Path, raw: str) -> Path:
 
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser()
-    parser.add_argument("inventory", choices=("inventory",))
-    parser.add_argument("--tier", choices=("checkpoint", "full"), required=True)
-    parser.add_argument("--output", required=True)
-    parser.add_argument("--summary", action="store_true")
+    subparsers = parser.add_subparsers(dest="command", required=True)
+    inventory = subparsers.add_parser("inventory")
+    inventory.add_argument(
+        "--tier", choices=("checkpoint", "full"), required=True
+    )
+    inventory.add_argument("--output", required=True)
+    inventory.add_argument("--summary", action="store_true")
+    run = subparsers.add_parser("run-owner-lanes")
+    run.add_argument("--tier", choices=("checkpoint", "full"), required=True)
+    run.add_argument("--run-id", required=True)
+    run.add_argument("--lane", action="append", default=[])
+    run.add_argument("--max-parallel", type=int, default=4)
+    run.add_argument("--summary", action="store_true")
     return parser
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     try:
-        output = _validated_output(ROOT, args.output)
-        evidence = build_test_ownership_inventory(
-            root=ROOT,
-            tier=args.tier,
-            revision=_git_revision(ROOT),
-        )
-        write_inventory(output, evidence)
+        if args.command == "inventory":
+            output = _validated_output(ROOT, args.output)
+            evidence = build_test_ownership_inventory(
+                root=ROOT,
+                tier=args.tier,
+                revision=_git_revision(ROOT),
+            )
+            write_inventory(output, evidence)
+        else:
+            evidence = execute_owner_service_lanes(
+                root=ROOT,
+                tier=args.tier,
+                run_id=_validate_run_id(args.run_id),
+                lanes=tuple(args.lane) or INITIAL_OWNER_LANES,
+                max_parallel=args.max_parallel,
+                python_bin=os.environ.get("PYTHON_BIN", "./.venv/bin/python"),
+            )
     except (OSError, ValueError, subprocess.CalledProcessError) as exc:
-        print(f"parallel_quality_inventory=fail error={type(exc).__name__}")
+        print(f"parallel_quality_gate=fail error={type(exc).__name__}")
         return 1
     if args.summary:
-        print(
-            "parallel_quality_inventory=pass "
-            f"tier={args.tier} tests={evidence['test_file_count']} "
-            f"source_unowned={evidence['source_unowned_count']} "
-            f"source_multi_owned={evidence['source_multi_owned_count']} "
-            f"resolved_missing={evidence['resolved_missing_count']} "
-            f"resolved_duplicate={evidence['resolved_duplicate_count']}"
-        )
+        if args.command == "inventory":
+            print(
+                "parallel_quality_inventory=pass "
+                f"tier={args.tier} tests={evidence['test_file_count']} "
+                f"source_unowned={evidence['source_unowned_count']} "
+                f"source_multi_owned={evidence['source_multi_owned_count']} "
+                f"resolved_missing={evidence['resolved_missing_count']} "
+                f"resolved_duplicate={evidence['resolved_duplicate_count']}"
+            )
+        else:
+            print(
+                "parallel_owner_lanes="
+                f"{str(evidence['status']).lower()} tier={args.tier} "
+                f"lanes={len(evidence['lanes'])} "
+                f"duration={evidence['duration_seconds']}s"
+            )
     else:
         print(json.dumps(evidence, indent=2, sort_keys=True))
-    return 0
+    return 0 if evidence.get("status", "PASS") == "PASS" else 1
 
 
 if __name__ == "__main__":  # pragma: no cover
