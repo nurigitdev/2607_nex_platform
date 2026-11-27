@@ -43,6 +43,7 @@ MyBee office-work AX Service Phase-1 program.
 36. `NeX_MyBee_W80_CA00F_5C_Installed_Journal_Business_Result_Summary_and_IA_Projection_Closure_v1.0.md`
 37. `NeX_MyBee_W80_CA00G_Business_Proposal_Draft_Review_Amount_Tiered_Approval_and_Voucher_Pre_Submission_Review_Boundary_v1.0.md`
 38. `NeX_MyBee_W80_CA00H_Proposal_Voucher_Review_Usability_and_Accounting_Presentation_Boundary_v1.0.md`
+39. `NeX_MyBee_W80_CA00I_Parallel_Owner_Service_Quality_Gate_and_Serial_Protected_Acceptance_Boundary_v1.0.md`
 
 The Markdown Slice Plan and its Execution Matrix JSON are one planning set.
 The JSON is machine-readable traceability input, not runtime configuration or
@@ -162,6 +163,15 @@ accounting-correction journeys with actual PostgreSQL, OpenBao, RustFS, the
 canonical generation provider, and authenticated Playwright; the Repository
 Full Gate also passed. The As-Built evidence index is
 [`mybee_phase1_w80_ca00h5_protected_acceptance_and_closure.md`](../../slices/mybee_phase1_w80_ca00h5_protected_acceptance_and_closure.md).
+
+W80-CA00I defines the quality-Gate execution boundary after W80-CA00H. It runs
+service-local unit, regression, and coverage work in bounded parallel lanes,
+starting AE first, while preserving cross-service PostgreSQL, Compose, browser,
+live-provider, and release acceptance as serial protected work. Every test file
+must have exactly one owner or serial integration classification, every lane
+uses run-scoped coverage and report paths, repository thresholds remain
+unchanged, and the current serial Gate remains an immediately available
+fallback until same-revision parity is proven.
 
 The W30-CA01 pair is the source-backed post-W20 delta. It takes precedence
 only for W30 entry ordering, current migration-number reservations, the
