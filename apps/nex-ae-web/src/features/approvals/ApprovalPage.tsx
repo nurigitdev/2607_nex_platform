@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Paperclip, RefreshCw } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
@@ -35,6 +35,7 @@ export function ApprovalPage({
   readonly client: ApprovalClientPort | null;
   readonly now?: () => Date;
 }) {
+  const queryClient = useQueryClient();
   const [selectedGateId, setSelectedGateId] = useState<string | null>(null);
   const inbox = useQuery({
     queryKey: ["approval-inbox", client?.clientMode],
@@ -52,6 +53,20 @@ export function ApprovalPage({
       setSelectedGateId(gates[0].gate_id);
     }
   }, [gates, selectedGateId]);
+
+  const selectGate = (gateId: string) => {
+    setSelectedGateId(gateId);
+    void Promise.all([
+      queryClient.invalidateQueries({
+        queryKey: ["approval-detail", client?.clientMode, gateId],
+        exact: true,
+      }),
+      queryClient.invalidateQueries({
+        queryKey: ["approval-projection", client?.clientMode, gateId],
+        exact: true,
+      }),
+    ]);
+  };
 
   return (
     <section className={styles.page} aria-labelledby="approval-page-title">
@@ -96,7 +111,7 @@ export function ApprovalPage({
                   client={client}
                   gates={gates}
                   selectedGateId={selectedGateId}
-                  onSelect={setSelectedGateId}
+                  onSelect={selectGate}
                   onDecisionComplete={() => inbox.refetch().then(() => undefined)}
                   now={now}
                 />

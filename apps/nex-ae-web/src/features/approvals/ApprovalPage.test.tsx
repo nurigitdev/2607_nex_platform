@@ -65,6 +65,23 @@ describe("Approval Inbox React surface", () => {
     expect(screen.getByText("요청 역할: TEAM_LEAD")).toBeInTheDocument();
   });
 
+  it("refetches authoritative detail when the selected request is opened again", async () => {
+    const user = userEvent.setup();
+    const base = mockClient();
+    const getApprovalGate = vi.fn(base.getApprovalGate);
+    const getApprovalProjection = vi.fn(base.getApprovalProjection);
+    renderPage({ ...base, getApprovalGate, getApprovalProjection });
+
+    expect(await screen.findByRole("heading", { name: "보호된 WRITE 승인" })).toBeInTheDocument();
+    expect(getApprovalProjection).toHaveBeenCalledTimes(1);
+
+    await user.click(screen.getByRole("button", { name: /보호된 WRITE 승인/ }));
+    await waitFor(() => {
+      expect(getApprovalProjection.mock.calls.length).toBeGreaterThanOrEqual(2);
+      expect(getApprovalGate.mock.calls.length).toBeGreaterThanOrEqual(2);
+    });
+  });
+
   it("shows attachment evidence counts and keeps technical details collapsed", async () => {
     renderPage(mockClient());
 

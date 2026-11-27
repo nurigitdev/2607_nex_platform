@@ -518,6 +518,7 @@ async function reviewAndSubmitProposal({
   await page.getByRole("button", { name: "결재선 미리보기", exact: true }).click();
   await page.getByRole("heading", { name: "결재선", exact: true }).waitFor({ timeout: actionTimeout });
   const selects = page.getByRole("combobox", { name: /단계/ });
+  await selects.nth(scenario.expectedStages - 1).waitFor({ timeout: actionTimeout });
   if (await selects.count() !== scenario.expectedStages) throw new Error("ApprovalStageCountMismatch");
   for (let index = 0; index < scenario.expectedStages; index += 1) {
     await selects.nth(index).selectOption(businessSubjectId);
@@ -644,6 +645,7 @@ async function decideNextGate({
     const accountingDocument = role === "ACCOUNTING_APPROVER"
       ? await inspectAccountingDocument({
         page,
+        gate: found.gate,
         captures,
         label,
         interactionId,
@@ -685,12 +687,37 @@ async function decideNextGate({
 
 async function inspectAccountingDocument({
   page,
+  gate,
   captures,
   label,
   interactionId,
   actionTimeout,
   approvalDomain
 }) {
+  const projection = await browserJson(
+    page,
+    `/ae-api/api/v1/approval-gates/${encodeURIComponent(gate.gate_id)}/user-projection`
+  );
+  if (projection.status !== 200) {
+    throw new Error(`AccountingDocumentProjectionStatus${projection.status}`);
+  }
+  const projectedDocument = projection.payload?.accounting_document;
+  if (!projectedDocument) {
+    const provider = String(gate.approval_provider_type || "UNKNOWN")
+      .replace(/[^A-Za-z0-9_.-]/g, "_");
+    const targetKind = String(gate.approval_target_ref || "UNKNOWN")
+      .split(":", 2)
+      .join("_")
+      .replace(/[^A-Za-z0-9_.-]/g, "_");
+    throw new Error(
+      `AccountingDocumentProjectionMissing.${approvalDomain}.${provider}.${targetKind}`
+    );
+  }
+  if (projectedDocument.status !== "AVAILABLE") {
+    const diagnostic = String(projectedDocument.diagnostic_code || "UNKNOWN")
+      .replace(/[^A-Za-z0-9_.-]/g, "_");
+    throw new Error(`AccountingDocumentProjectionUnavailable.${diagnostic}`);
+  }
   const section = page.locator('section[aria-labelledby="accounting-document-title"]');
   await section.getByRole("heading", { name: "전표 검토", exact: true })
     .waitFor({ timeout: actionTimeout });
