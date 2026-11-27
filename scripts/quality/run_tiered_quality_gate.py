@@ -317,9 +317,20 @@ def execute_plan(
     completed_commands = 0
     failed_command: int | None = None
     exit_code = 0
+    command_timings: list[dict[str, object]] = []
 
     for index, command in enumerate(plan.commands, start=1):
+        command_started = clock()
         exit_code = command_runner(command, root, env)
+        command_duration = max(0.0, clock() - command_started)
+        command_timings.append(
+            {
+                "index": index,
+                "label": _command_label(command),
+                "duration_seconds": round(command_duration, 3),
+                "exit_code": exit_code,
+            }
+        )
         if exit_code != 0:
             failed_command = index
             break
@@ -337,11 +348,21 @@ def execute_plan(
         "failed_command": failed_command,
         "exit_code": exit_code,
         "duration_seconds": round(duration, 3),
+        "command_timings": command_timings,
         "coverage_report": plan.report_path,
         "full_gate_fallback": plan.full_gate_fallback,
     }
     _write_evidence(root, plan.tier, evidence)
     return evidence
+
+
+def _command_label(command: Sequence[str]) -> str:
+    if not command:
+        return "empty"
+    for item in command[1:]:
+        if item == "pytest" or item.endswith((".py", ".sh")):
+            return Path(item).name
+    return Path(command[0]).name
 
 
 def _common_post_pytest_commands(

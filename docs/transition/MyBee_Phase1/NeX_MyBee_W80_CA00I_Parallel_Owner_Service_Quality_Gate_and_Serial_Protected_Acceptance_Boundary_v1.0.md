@@ -1,6 +1,6 @@
 # NeX MyBee W80-CA00I Parallel Owner-Service Quality Gate and Serial Protected Acceptance Boundary v1.0
 
-**Status:** APPROVED FOR IMPLEMENTATION
+**Status:** IN PROGRESS / W80-CA00I.1 COMPLETE
 
 **Predecessor:** W80-CA00H
 
@@ -207,6 +207,10 @@ the serial result as authority.
 - add per-command and per-phase timing evidence;
 - reconcile all test files to one owner or the serial integration lane;
 - add missing, duplicate, and inventory-drift guards.
+
+**As-Built:** COMPLETE. Checkpoint and Full inventories assign every discovered
+test exactly once. The entry profile ambiguity is retained as an observable
+source signal, while resolved missing and duplicate counts are both zero.
 
 ### W80-CA00I.2 - Run-Scoped Coverage and Report Isolation
 

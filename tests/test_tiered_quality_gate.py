@@ -383,7 +383,7 @@ def test_execute_plan_stops_on_failure_and_writes_safe_evidence(
         commands=(("first",), ("second",), ("never",)),
     )
     calls: list[tuple[str, ...]] = []
-    times = iter((10.0, 12.5))
+    times = iter((10.0, 10.1, 10.6, 10.7, 12.0, 12.5))
 
     def runner(command, _root, _env):
         calls.append(tuple(command))
@@ -403,6 +403,20 @@ def test_execute_plan_stops_on_failure_and_writes_safe_evidence(
     assert result["completed_command_count"] == 1
     assert result["exit_code"] == 7
     assert result["duration_seconds"] == 2.5
+    assert result["command_timings"] == [
+        {
+            "index": 1,
+            "label": "first",
+            "duration_seconds": 0.5,
+            "exit_code": 0,
+        },
+        {
+            "index": 2,
+            "label": "second",
+            "duration_seconds": 1.3,
+            "exit_code": 7,
+        },
+    ]
     persisted = json.loads(
         (tmp_path / "reports/quality/slice-latest.json").read_text(encoding="utf-8")
     )
@@ -420,7 +434,7 @@ def test_execute_plan_success_and_helpers(tmp_path: Path) -> None:
         full_gate_fallback=gate.FULL_GATE_PATH,
         commands=(("first",), ("second",)),
     )
-    times = iter((1.0, 1.25))
+    times = iter((1.0, 1.01, 1.06, 1.07, 1.17, 1.25))
 
     result = gate.execute_plan(
         plan,
@@ -433,6 +447,12 @@ def test_execute_plan_success_and_helpers(tmp_path: Path) -> None:
     assert result["status"] == "PASS"
     assert result["completed_command_count"] == 2
     assert result["failed_command"] is None
+    assert [item["label"] for item in result["command_timings"]] == [
+        "first",
+        "second",
+    ]
+    assert gate._command_label(("python", "-m", "pytest")) == "pytest"
+    assert gate._command_label(("python", "scripts/quality/check.py")) == "check.py"
     assert gate._deduplicated(("a", "b", "a")) == ["a", "b"]
     assert gate._format_threshold(95.0) == "95"
     assert gate._format_threshold(94.5) == "94.5"
