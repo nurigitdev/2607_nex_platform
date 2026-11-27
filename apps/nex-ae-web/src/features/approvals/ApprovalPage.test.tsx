@@ -261,6 +261,51 @@ describe("Approval Inbox React surface", () => {
     );
     expect(screen.queryByText("ae.eos_accounting_display_rejected")).toBeNull();
   });
+
+  it("refreshes a pending accounting projection until authority data is available", async () => {
+    const base = mockClient();
+    const getApprovalProjection = vi
+      .fn<ApprovalClientPort["getApprovalProjection"]>()
+      .mockImplementationOnce(async gateId => ({
+        ...(await base.getApprovalProjection(gateId)),
+        accounting_document: {
+          schema_version: "ae_accounting_document_projection.v1" as const,
+          status: "UNAVAILABLE" as const,
+          diagnostic_code: "ae.eos_accounting_display_rejected",
+          header: null,
+          lines: [],
+          totals: null,
+          lineage: null,
+        },
+      }))
+      .mockImplementation(async gateId => ({
+        ...(await base.getApprovalProjection(gateId)),
+        accounting_document: {
+          schema_version: "ae_accounting_document_projection.v1" as const,
+          status: "AVAILABLE" as const,
+          diagnostic_code: null,
+          header: {
+            project_code: "T001D260001",
+            company_id: "company-1",
+            approved_document_ref: "eos.approved-document-envelope:one",
+            recognition_date: "2026-11-27",
+            currency: "KRW",
+            requester_subject_id: "employee-1001",
+          },
+          lines: [
+            { line_no: 1, account_code: "520100", account_name: "외주인건비", description: "외주 인건비", debit: "125000.0000", credit: "0.0000", currency: "KRW" },
+            { line_no: 2, account_code: "210200", account_name: "미지급금", description: null, debit: "0.0000", credit: "125000.0000", currency: "KRW" },
+          ],
+          totals: { debit: "125000.0000", credit: "125000.0000", difference: "0.0000", balanced: true },
+          lineage: { candidate_id: "84000000-0000-4000-8000-000000000053", candidate_revision: 3, candidate_hash: `sha256:${"b".repeat(64)}`, approval_case_id: "case-1" },
+        },
+      }));
+    renderPage({ ...base, getApprovalProjection });
+
+    expect(await screen.findByText(/권위 있는 전표 원문/)).toBeInTheDocument();
+    expect(await screen.findByRole("table", {}, { timeout: 2_500 })).toHaveTextContent("외주인건비");
+    expect(getApprovalProjection.mock.calls.length).toBeGreaterThanOrEqual(2);
+  });
 });
 
 function renderPage(client: ApprovalClientPort) {

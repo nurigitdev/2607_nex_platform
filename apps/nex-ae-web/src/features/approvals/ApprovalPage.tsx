@@ -243,6 +243,10 @@ function ApprovalDetail({
   const projection = useQuery({
     queryKey: ["approval-projection", client.clientMode, gateId],
     queryFn: () => client.getApprovalProjection(gateId),
+    refetchInterval: query => {
+      const document = query.state.data?.accounting_document;
+      return document && document.status !== "AVAILABLE" ? 1_000 : false;
+    },
   });
 
   if (detail.isPending || projection.isPending) {
