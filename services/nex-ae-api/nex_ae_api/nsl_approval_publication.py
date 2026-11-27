@@ -6,11 +6,11 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any, Protocol
-from uuid import NAMESPACE_URL, uuid5
+from uuid import NAMESPACE_URL, UUID, uuid5
 
 import httpx
 from nex_runtime import SERVICE_SPECS
-from nex_runtime.semantic_hashes import canonical_json
+from nex_runtime.semantic_hashes import canonical_json, validate_hash_ref
 
 from nex_ae_api.delegated_work import (
     DelegatedWorkError,
@@ -238,6 +238,9 @@ def _binding(
         result[field] = None if value is None else _required(field, value, 128)
     if not any(result[field] is not None for field in targets):
         raise _invalid("NSL approval publication requires a decision target.")
+    accounting_ref = result.get("accounting_document_ref")
+    if accounting_ref is not None:
+        result["accounting_document_ref"] = _accounting_document_ref(accounting_ref)
     return result
 
 
@@ -249,7 +252,11 @@ def _work_item(
     wait: Mapping[str, Any],
     created_at: str,
 ) -> dict[str, Any]:
-    summary = canonical_json(approval_request["display_safe_summary"])
+    display_summary = dict(approval_request["display_safe_summary"])
+    accounting_ref = binding.get("accounting_document_ref")
+    if accounting_ref is not None:
+        display_summary["accounting_document_ref"] = dict(accounting_ref)
+    summary = canonical_json(display_summary)
     if len(summary) > 2000:
         raise _invalid("Approval display-safe summary exceeds the WC boundary.")
     approval_id = _required("approval_id", approval_request["approval_id"], 256)
@@ -341,6 +348,33 @@ def _required(field: str, value: object, maximum: int) -> str:
     if not isinstance(value, str) or not value.strip() or len(value.strip()) > maximum:
         raise _invalid(f"{field} must be a bounded non-empty string.")
     return value.strip()
+
+
+def _accounting_document_ref(value: object) -> dict[str, Any]:
+    fields = {
+        "schema_version",
+        "candidate_id",
+        "candidate_revision",
+        "candidate_hash",
+    }
+    if not isinstance(value, Mapping) or set(value) != fields:
+        raise _invalid("Accounting document reference fields are invalid.")
+    if value.get("schema_version") != "ae_accounting_candidate_ref.v1":
+        raise _invalid("Accounting document reference schema is invalid.")
+    try:
+        candidate_id = str(UUID(str(value.get("candidate_id"))))
+        candidate_hash = validate_hash_ref(value.get("candidate_hash"))
+    except (ValueError, TypeError, AttributeError) as exc:
+        raise _invalid("Accounting document reference identity is invalid.") from exc
+    revision = value.get("candidate_revision")
+    if isinstance(revision, bool) or not isinstance(revision, int) or revision < 1:
+        raise _invalid("Accounting document reference revision is invalid.")
+    return {
+        "schema_version": "ae_accounting_candidate_ref.v1",
+        "candidate_id": candidate_id,
+        "candidate_revision": revision,
+        "candidate_hash": candidate_hash,
+    }
 
 
 def _time(value: datetime) -> str:

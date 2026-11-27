@@ -15,6 +15,7 @@ from .accounting_approval import (
     EosAccountingApprovalService,
     SqlAlchemyAccountingReviewContextRepository,
 )
+from .accounting_display import EosAccountingDisplayService
 from .accounting_periods import (
     EosAccountingPeriodService,
     SqlAlchemyEosAccountingPeriodRepository,
@@ -201,6 +202,7 @@ class EosDependencies:
     coa_release_admin_service: EosCoaReleaseAdminService | None
     accounting_period_service: EosAccountingPeriodService | None
     accounting_approval_service: EosAccountingApprovalService | None
+    accounting_display_service: EosAccountingDisplayService | None
     accounting_posting_admission_service: EosAccountingPostingAdmissionService | None
     journals: SqlAlchemyEosJournalRepository | None
     journal_query_service: EosJournalQueryService | None
@@ -510,6 +512,22 @@ def build_eos_dependencies(
         and business_transactions is not None
         and authorization_source is not None
         and wc_token
+        else None
+    )
+    accounting_display_service = (
+        EosAccountingDisplayService(
+            scoped_approvals=SqlAlchemyEosScopedApprovalRepository(
+                database_runtime.session_factory
+            ),
+            accounting_reviews=SqlAlchemyAccountingReviewContextRepository(
+                database_runtime.session_factory
+            ),
+            candidates=voucher_candidates,
+            accounts=accounts,
+        )
+        if database_runtime is not None
+        and voucher_candidates is not None
+        and accounts is not None
         else None
     )
     business_proposal_lifecycle = (
@@ -1014,6 +1032,7 @@ def build_eos_dependencies(
         coa_release_admin_service=coa_release_admin_service,
         accounting_period_service=accounting_period_service,
         accounting_approval_service=accounting_approval_service,
+        accounting_display_service=accounting_display_service,
         accounting_posting_admission_service=accounting_posting_admission_service,
         journals=journals,
         journal_query_service=journal_query_service,

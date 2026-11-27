@@ -141,6 +141,134 @@
       ]
     },
     "line_items": {"$ref": "#/$defs/lineItemCollection"},
+    "accounting_document": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "status",
+        "diagnostic_code",
+        "header",
+        "lines",
+        "totals",
+        "lineage"
+      ],
+      "properties": {
+        "schema_version": {"const": "ae_accounting_document_projection.v1"},
+        "status": {"enum": ["AVAILABLE", "UNAVAILABLE"]},
+        "diagnostic_code": {"$ref": "#/$defs/nullableText"},
+        "header": {
+          "oneOf": [
+            {"type": "null"},
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "project_code",
+                "company_id",
+                "approved_document_ref",
+                "recognition_date",
+                "currency",
+                "requester_subject_id"
+              ],
+              "properties": {
+                "project_code": {"$ref": "#/$defs/text"},
+                "company_id": {"$ref": "#/$defs/text"},
+                "approved_document_ref": {"$ref": "#/$defs/text"},
+                "recognition_date": {"type": "string", "format": "date"},
+                "currency": {"$ref": "#/$defs/currency"},
+                "requester_subject_id": {"$ref": "#/$defs/text"}
+              }
+            }
+          ]
+        },
+        "lines": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "line_no",
+              "account_code",
+              "account_name",
+              "description",
+              "debit",
+              "credit",
+              "currency"
+            ],
+            "properties": {
+              "line_no": {"type": "integer", "minimum": 1},
+              "account_code": {"$ref": "#/$defs/text"},
+              "account_name": {"$ref": "#/$defs/text"},
+              "description": {"$ref": "#/$defs/nullableText"},
+              "debit": {"$ref": "#/$defs/amount"},
+              "credit": {"$ref": "#/$defs/amount"},
+              "currency": {"$ref": "#/$defs/currency"}
+            }
+          }
+        },
+        "totals": {
+          "oneOf": [
+            {"type": "null"},
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["debit", "credit", "difference", "balanced"],
+              "properties": {
+                "debit": {"$ref": "#/$defs/amount"},
+                "credit": {"$ref": "#/$defs/amount"},
+                "difference": {"$ref": "#/$defs/amount"},
+                "balanced": {"type": "boolean"}
+              }
+            }
+          ]
+        },
+        "lineage": {
+          "oneOf": [
+            {"type": "null"},
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "candidate_id",
+                "candidate_revision",
+                "candidate_hash",
+                "approval_case_id"
+              ],
+              "properties": {
+                "candidate_id": {"type": "string", "format": "uuid"},
+                "candidate_revision": {"type": "integer", "minimum": 1},
+                "candidate_hash": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+                "approval_case_id": {"$ref": "#/$defs/nullableText"}
+              }
+            }
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"status": {"const": "AVAILABLE"}}},
+          "then": {
+            "properties": {
+              "diagnostic_code": {"type": "null"},
+              "header": {"type": "object"},
+              "lines": {"minItems": 1},
+              "totals": {"type": "object"},
+              "lineage": {"type": "object"}
+            }
+          },
+          "else": {
+            "properties": {
+              "diagnostic_code": {"$ref": "#/$defs/text"},
+              "header": {"type": "null"},
+              "lines": {"maxItems": 0},
+              "totals": {"type": "null"},
+              "lineage": {"type": "null"}
+            }
+          }
+        }
+      ]
+    },
     "metadata": {
       "type": "object",
       "additionalProperties": false,

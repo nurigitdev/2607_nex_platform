@@ -32,6 +32,24 @@
 .sectionHeading h3 { font: var(--nex-text-body); font-weight: var(--nex-weight-semibold); margin: 0; }
 .sectionHeading span { color: var(--nex-text-secondary); font: var(--nex-text-caption); }
 .riskExplanation { color: var(--nex-text-secondary); font: var(--nex-text-body); margin: 0; }
+.accountingUnavailable { background: var(--nex-warning-bg); border: 1px solid var(--nex-warning-border); border-radius: var(--nex-radius-sm); color: var(--nex-text-secondary); font: var(--nex-text-body); margin: 0; padding: var(--nex-space-3); }
+.accountingHeader { display: grid; gap: var(--nex-space-3); grid-template-columns: repeat(4, minmax(0, 1fr)); margin: 0; }
+.accountingHeader div { display: grid; gap: var(--nex-space-1); min-width: 0; }
+.accountingHeader dt { color: var(--nex-text-secondary); font: var(--nex-text-caption); }
+.accountingHeader dd { font: var(--nex-text-body); margin: 0; overflow-wrap: anywhere; }
+.accountingTableWrap { overflow-x: auto; }
+.accountingTable { border-collapse: collapse; min-width: 680px; width: 100%; }
+.accountingTable th, .accountingTable td { border-bottom: 1px solid var(--nex-border-default); font: var(--nex-text-body); padding: var(--nex-space-2) var(--nex-space-3); text-align: left; vertical-align: top; }
+.accountingTable th { color: var(--nex-text-secondary); font: var(--nex-text-label); }
+.accountingTable td:nth-child(4), .accountingTable td:nth-child(5), .accountingTable tfoot td { font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
+.accountingTable td strong, .accountingTable td small { display: block; }
+.accountingTable td small { color: var(--nex-text-secondary); font: var(--nex-text-caption); margin-top: var(--nex-space-1); }
+.accountingTable tfoot th, .accountingTable tfoot td { border-bottom: 0; font-weight: var(--nex-weight-semibold); }
+.documentLineage summary { color: var(--nex-text-secondary); cursor: pointer; font: var(--nex-text-label); }
+.documentLineage dl { display: grid; gap: var(--nex-space-2); grid-template-columns: repeat(2, minmax(0, 1fr)); margin: var(--nex-space-3) 0 0; }
+.documentLineage dl div { min-width: 0; }
+.documentLineage dt { color: var(--nex-text-secondary); font: var(--nex-text-caption); }
+.documentLineage dd { font: var(--nex-text-body); margin: var(--nex-space-1) 0 0; overflow-wrap: anywhere; }
 .evidenceList { display: grid; gap: var(--nex-space-2); list-style: none; margin: 0; padding: 0; }
 .evidenceList li { align-items: center; border: 1px solid var(--nex-border-default); border-radius: var(--nex-radius-sm); display: flex; gap: var(--nex-space-3); justify-content: space-between; min-height: 52px; padding: var(--nex-space-2) var(--nex-space-3); }
 .evidenceIdentity { align-items: center; display: flex; gap: var(--nex-space-2); min-width: 0; }
@@ -56,12 +74,13 @@
   .workspace { grid-template-columns: 1fr; }
   .listPane { border-bottom: 1px solid var(--nex-border-default); border-right: 0; }
   .facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .accountingHeader { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 @media (max-width: 560px) {
   .pageHeader { align-items: flex-start; }
   .detailPane { padding: var(--nex-space-4); }
-  .facts, .technicalDetails dl { grid-template-columns: 1fr; }
+  .facts, .accountingHeader, .documentLineage dl, .technicalDetails dl { grid-template-columns: 1fr; }
   .evidenceList li, .decisionResult { align-items: stretch; flex-direction: column; }
   .evidenceActions { justify-content: flex-end; }
 }

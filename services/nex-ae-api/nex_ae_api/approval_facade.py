@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import json
 import os
 from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any, Protocol
+from uuid import UUID
 
 import httpx
 from fastapi import FastAPI, Header, Query, Request
@@ -15,6 +17,7 @@ from nex_runtime import (
     request_id_from_headers,
     trace_id_from_headers,
 )
+from nex_runtime.semantic_hashes import validate_hash_ref
 
 from nex_ae_api.approval_projection import (
     ApprovalProjectionError,
@@ -32,6 +35,9 @@ from nex_ae_api.service_auth import (
 
 DEFAULT_WC_APPROVAL_BASE_URL = (
     f"http://127.0.0.1:{SERVICE_SPECS['nex-wc'].default_port}"
+)
+DEFAULT_EOS_ACCOUNTING_BASE_URL = (
+    f"http://127.0.0.1:{SERVICE_SPECS['nex-eos'].default_port}"
 )
 
 
@@ -66,6 +72,28 @@ class WcApprovalClient(Protocol):
         request_id: str,
         trace_id: str,
     ) -> tuple[Mapping[str, Any], int]: ...
+
+
+class EosAccountingDisplayClient(Protocol):
+    def get_case_display(
+        self,
+        case_id: str,
+        *,
+        tenant_id: str,
+        request_id: str,
+        trace_id: str,
+    ) -> Mapping[str, Any]: ...
+
+    def get_candidate_display(
+        self,
+        candidate_id: str,
+        *,
+        expected_revision: int,
+        expected_hash: str,
+        tenant_id: str,
+        request_id: str,
+        trace_id: str,
+    ) -> Mapping[str, Any]: ...
 
 
 @dataclass(frozen=True)
@@ -215,14 +243,110 @@ def build_default_wc_approval_client() -> HttpWcApprovalClient:
     )
 
 
+@dataclass(frozen=True)
+class HttpEosAccountingDisplayClient:
+    base_url: str = DEFAULT_EOS_ACCOUNTING_BASE_URL
+    service_token: str | None = None
+    timeout_seconds: float = 15.0
+
+    def get_case_display(self, case_id: str, **context) -> Mapping[str, Any]:
+        return self._request(
+            f"/internal/v2/finance/accounting-approval-cases/{case_id}/display",
+            **context,
+        )
+
+    def get_candidate_display(
+        self,
+        candidate_id: str,
+        *,
+        expected_revision: int,
+        expected_hash: str,
+        **context,
+    ) -> Mapping[str, Any]:
+        return self._request(
+            f"/internal/v2/finance/voucher-candidates/{candidate_id}/accounting-display",
+            params={
+                "expected_revision": expected_revision,
+                "expected_hash": expected_hash,
+            },
+            **context,
+        )
+
+    def _request(
+        self,
+        path: str,
+        *,
+        tenant_id: str,
+        request_id: str,
+        trace_id: str,
+        params: Mapping[str, Any] | None = None,
+    ) -> Mapping[str, Any]:
+        try:
+            token = resolve_ae_outbound_service_token(
+                self.service_token,
+                audience="nex-eos",
+            )
+            response = httpx.get(
+                f"{self.base_url.rstrip('/')}{path}",
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Accept": "application/json",
+                    "X-NeX-Tenant-Id": tenant_id,
+                    "X-Request-ID": request_id,
+                    "traceparent": f"00-{trace_id}-00f067aa0ba902b7-01",
+                    "X-Service-ID": "nex-ae-api",
+                },
+                params=params,
+                timeout=self.timeout_seconds,
+            )
+        except (httpx.HTTPError, AeOutboundServiceTokenError) as exc:
+            raise ApprovalFacadeError(
+                503,
+                "ae.eos_accounting_display_unavailable",
+                "EOS accounting display service is unavailable.",
+                True,
+            ) from exc
+        body = _safe_response_json(response)
+        if response.status_code >= 400:
+            raise ApprovalFacadeError(
+                response.status_code,
+                "ae.eos_accounting_display_rejected",
+                "EOS accounting display request was rejected.",
+                response.status_code >= 500,
+            )
+        if body is None:
+            raise ApprovalFacadeError(
+                502,
+                "ae.eos_accounting_display_invalid",
+                "EOS accounting display response is invalid.",
+                True,
+            )
+        _require_safe_accounting_document(body)
+        return dict(body)
+
+
+def build_default_eos_accounting_display_client() -> HttpEosAccountingDisplayClient:
+    return HttpEosAccountingDisplayClient(
+        base_url=os.getenv(
+            "NEX_EOS_BASE_URL",
+            DEFAULT_EOS_ACCOUNTING_BASE_URL,
+        ),
+        service_token=os.getenv("NEX_AE_TO_EOS_SERVICE_TOKEN"),
+    )
+
+
 def register_approval_facade_routes(
     app: FastAPI,
     *,
     wc_client: WcApprovalClient | None = None,
+    eos_accounting_client: EosAccountingDisplayClient | None = None,
     oa_session_client: OaUserSessionClient | None = None,
     session_mode: str | None = None,
 ) -> None:
     client = wc_client or build_default_wc_approval_client()
+    accounting_client = (
+        eos_accounting_client or build_default_eos_accounting_display_client()
+    )
 
     @app.get("/api/v1/approval-gates", response_model=None)
     def list_approval_gates(
@@ -302,9 +426,38 @@ def register_approval_facade_routes(
                 request_id=request_id_from_headers(request),
                 trace_id=trace_id_from_headers(request),
             )
+            accounting_ref = _accounting_reference(detail)
+            accounting_document = None
+            diagnostic_code = None
+            if accounting_ref is not None:
+                if accounting_ref["kind"] == "INVALID":
+                    diagnostic_code = "ae.accounting_reference_invalid"
+                else:
+                    try:
+                        context = {
+                            "tenant_id": auth.browser_context.tenant_id,
+                            "request_id": request_id_from_headers(request),
+                            "trace_id": trace_id_from_headers(request),
+                        }
+                        if accounting_ref["kind"] == "CASE":
+                            accounting_document = accounting_client.get_case_display(
+                                accounting_ref["case_id"],
+                                **context,
+                            )
+                        else:
+                            accounting_document = accounting_client.get_candidate_display(
+                                accounting_ref["candidate_id"],
+                                expected_revision=accounting_ref["candidate_revision"],
+                                expected_hash=accounting_ref["candidate_hash"],
+                                **context,
+                            )
+                    except ApprovalFacadeError as exc:
+                        diagnostic_code = exc.error_code
             return build_user_approval_projection(
                 tenant_id=auth.browser_context.tenant_id,
                 detail=detail,
+                accounting_document=accounting_document,
+                accounting_diagnostic_code=diagnostic_code,
             )
         except ApprovalProjectionError as exc:
             return _approval_problem(
@@ -443,6 +596,96 @@ def _safe_response_json(response: httpx.Response) -> Mapping[str, Any] | None:
     except ValueError:
         return None
     return body if isinstance(body, Mapping) else None
+
+
+def _accounting_reference(detail: Mapping[str, Any]) -> dict[str, Any] | None:
+    gate = detail.get("gate")
+    if not isinstance(gate, Mapping):
+        return None
+    target = gate.get("approval_target_ref")
+    if (
+        gate.get("approval_domain") == "BUSINESS_FORMAL"
+        and gate.get("approval_provider_type") == "EOS"
+        and isinstance(target, str)
+        and target.startswith("eos.scoped-approval-case:")
+    ):
+        case_id = target.removeprefix("eos.scoped-approval-case:")
+        try:
+            case_id = str(UUID(case_id))
+        except ValueError:
+            return {"kind": "INVALID"}
+        return {
+            "kind": "CASE",
+            "case_id": case_id,
+        }
+    if gate.get("approval_domain") != "NSL_WRITE":
+        return None
+    try:
+        summary = json.loads(str(gate.get("summary") or ""))
+    except (TypeError, ValueError):
+        return None
+    if not isinstance(summary, Mapping):
+        return None
+    reference = summary.get("accounting_document_ref")
+    if (
+        not isinstance(reference, Mapping)
+        or set(reference)
+        != {
+            "schema_version",
+            "candidate_id",
+            "candidate_revision",
+            "candidate_hash",
+        }
+        or reference.get("schema_version") != "ae_accounting_candidate_ref.v1"
+    ):
+        return None
+    try:
+        candidate_id = str(UUID(str(reference.get("candidate_id"))))
+        candidate_hash = validate_hash_ref(reference.get("candidate_hash"))
+    except (ValueError, TypeError, AttributeError):
+        return {"kind": "INVALID"}
+    candidate_revision = reference.get("candidate_revision")
+    if (
+        isinstance(candidate_revision, bool)
+        or not isinstance(candidate_revision, int)
+        or candidate_revision < 1
+    ):
+        return {"kind": "INVALID"}
+    return {
+        "kind": "CANDIDATE",
+        "candidate_id": candidate_id,
+        "candidate_revision": candidate_revision,
+        "candidate_hash": candidate_hash,
+    }
+
+
+def _require_safe_accounting_document(value: Mapping[str, Any]) -> None:
+    required = {
+        "schema_version",
+        "tenant_id",
+        "candidate_id",
+        "candidate_revision",
+        "candidate_hash",
+        "company_id",
+        "project_code",
+        "approved_document_ref",
+        "recognition_date",
+        "currency",
+        "requester_subject_id",
+        "approval_case_id",
+        "approval_state",
+        "lines",
+        "totals",
+    }
+    if set(value) != required or value.get("schema_version") != (
+        "eos_accounting_document_projection.v1"
+    ):
+        raise ApprovalFacadeError(
+            502,
+            "ae.eos_accounting_display_unsafe",
+            "EOS accounting display response contains unsupported fields.",
+            True,
+        )
 
 
 _HUMAN_GATE_FIELDS = {

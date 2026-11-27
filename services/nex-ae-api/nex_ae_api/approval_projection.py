@@ -38,6 +38,8 @@ def build_user_approval_projection(
     *,
     tenant_id: str,
     detail: Mapping[str, Any],
+    accounting_document: Mapping[str, Any] | None = None,
+    accounting_diagnostic_code: str | None = None,
 ) -> dict[str, Any]:
     """Build a display-safe projection without inferring absent business data."""
 
@@ -55,7 +57,7 @@ def build_user_approval_projection(
 
     project_id = _formal_project_id(gate, approval_domain)
     requested_at = _required_datetime(detail.get("created_at"), "created_at")
-    return {
+    projection = {
         "schema_version": APPROVAL_PROJECTION_SCHEMA_VERSION,
         "tenant_id": admitted_tenant_id,
         "gate_id": _required_uuid(gate.get("gate_id"), "gate_id"),
@@ -111,6 +113,98 @@ def build_user_approval_projection(
             "source_contract": _SOURCE_SCHEMA_VERSION,
             "browser_join_required": False,
             "protected_fields_included": False,
+        },
+    }
+    if accounting_document is not None:
+        projection["accounting_document"] = _accounting_document_projection(
+            accounting_document
+        )
+    elif accounting_diagnostic_code is not None:
+        projection["accounting_document"] = {
+            "schema_version": "ae_accounting_document_projection.v1",
+            "status": "UNAVAILABLE",
+            "diagnostic_code": _required_text(
+                accounting_diagnostic_code,
+                "accounting_diagnostic_code",
+            ),
+            "header": None,
+            "lines": [],
+            "totals": None,
+            "lineage": None,
+        }
+    return projection
+
+
+def _accounting_document_projection(value: Mapping[str, Any]) -> dict[str, Any]:
+    if value.get("schema_version") != "eos_accounting_document_projection.v1":
+        raise ApprovalProjectionError("Accounting document schema is invalid.")
+    lines = value.get("lines")
+    totals = value.get("totals")
+    if not isinstance(lines, list) or not lines or not isinstance(totals, Mapping):
+        raise ApprovalProjectionError("Accounting document content is invalid.")
+    admitted_lines = []
+    for line in lines:
+        if not isinstance(line, Mapping):
+            raise ApprovalProjectionError("Accounting document line is invalid.")
+        line_no = line.get("line_no")
+        if isinstance(line_no, bool) or not isinstance(line_no, int) or line_no < 1:
+            raise ApprovalProjectionError("Accounting document line number is invalid.")
+        admitted_lines.append(
+            {
+                "line_no": line_no,
+                "account_code": _required_text(
+                    line.get("account_code"), "account_code"
+                ),
+                "account_name": _safe_display_text(
+                    line.get("account_name"), "account_name"
+                ),
+                "description": (
+                    None
+                    if line.get("description") is None
+                    else _safe_display_text(line.get("description"), "description")
+                ),
+                "debit": _required_text(line.get("debit"), "debit"),
+                "credit": _required_text(line.get("credit"), "credit"),
+                "currency": _required_text(line.get("currency"), "currency"),
+            }
+        )
+    balanced = totals.get("balanced")
+    if not isinstance(balanced, bool):
+        raise ApprovalProjectionError("Accounting document balance is invalid.")
+    return {
+        "schema_version": "ae_accounting_document_projection.v1",
+        "status": "AVAILABLE",
+        "diagnostic_code": None,
+        "header": {
+            "project_code": _required_text(value.get("project_code"), "project_code"),
+            "company_id": _required_text(value.get("company_id"), "company_id"),
+            "approved_document_ref": _required_text(
+                value.get("approved_document_ref"), "approved_document_ref"
+            ),
+            "recognition_date": _required_text(
+                value.get("recognition_date"), "recognition_date"
+            ),
+            "currency": _required_text(value.get("currency"), "currency"),
+            "requester_subject_id": _required_text(
+                value.get("requester_subject_id"), "requester_subject_id"
+            ),
+        },
+        "lines": admitted_lines,
+        "totals": {
+            "debit": _required_text(totals.get("debit"), "debit_total"),
+            "credit": _required_text(totals.get("credit"), "credit_total"),
+            "difference": _required_text(totals.get("difference"), "difference"),
+            "balanced": balanced,
+        },
+        "lineage": {
+            "candidate_id": _required_uuid(value.get("candidate_id"), "candidate_id"),
+            "candidate_revision": _positive_int(
+                value.get("candidate_revision"), "candidate_revision"
+            ),
+            "candidate_hash": _required_text(
+                value.get("candidate_hash"), "candidate_hash"
+            ),
+            "approval_case_id": _optional_text(value.get("approval_case_id")),
         },
     }
 
@@ -172,3 +266,9 @@ def _optional_text(value: object) -> str | None:
         return None
     normalized = value.strip()
     return normalized or None
+
+
+def _positive_int(value: object, field: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+        raise ApprovalProjectionError(f"Approval {field} is invalid.")
+    return value

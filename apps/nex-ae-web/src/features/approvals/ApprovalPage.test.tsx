@@ -189,6 +189,61 @@ describe("Approval Inbox React surface", () => {
     expect(download).toHaveAttribute("href", expect.stringContaining("download=true"));
     expect(download).toHaveAttribute("download");
   });
+
+  it("renders an authoritative voucher-shaped accounting document", async () => {
+    const base = mockClient();
+    const getApprovalProjection = vi.fn(async (gateId: string) => ({
+      ...(await base.getApprovalProjection(gateId)),
+      accounting_document: {
+        schema_version: "ae_accounting_document_projection.v1" as const,
+        status: "AVAILABLE" as const,
+        diagnostic_code: null,
+        header: {
+          project_code: "T001D260001",
+          company_id: "company-1",
+          approved_document_ref: "eos.approved-document-envelope:one",
+          recognition_date: "2026-11-27",
+          currency: "KRW",
+          requester_subject_id: "employee-1001",
+        },
+        lines: [
+          { line_no: 1, account_code: "520100", account_name: "외주인건비", description: "외주 인건비", debit: "125000.0000", credit: "0.0000", currency: "KRW" },
+          { line_no: 2, account_code: "210200", account_name: "미지급금", description: null, debit: "0.0000", credit: "125000.0000", currency: "KRW" },
+        ],
+        totals: { debit: "125000.0000", credit: "125000.0000", difference: "0.0000", balanced: true },
+        lineage: { candidate_id: "84000000-0000-4000-8000-000000000053", candidate_revision: 3, candidate_hash: `sha256:${"b".repeat(64)}`, approval_case_id: "case-1" },
+      },
+    }));
+    renderPage({ ...base, getApprovalProjection });
+
+    expect(await screen.findByRole("heading", { name: "전표 검토" })).toBeInTheDocument();
+    expect(screen.getByRole("table")).toHaveTextContent("외주인건비");
+    expect(screen.getByRole("table")).toHaveTextContent("미지급금");
+    expect(screen.getByText(/Candidate rev\. 3/)).toHaveTextContent("차대변 일치");
+    expect(screen.getByText("T001D260001")).toBeInTheDocument();
+  });
+
+  it("shows a bounded diagnostic when the accounting join is unavailable", async () => {
+    const base = mockClient();
+    const getApprovalProjection = vi.fn(async (gateId: string) => ({
+      ...(await base.getApprovalProjection(gateId)),
+      accounting_document: {
+        schema_version: "ae_accounting_document_projection.v1" as const,
+        status: "UNAVAILABLE" as const,
+        diagnostic_code: "ae.eos_accounting_display_rejected",
+        header: null,
+        lines: [],
+        totals: null,
+        lineage: null,
+      },
+    }));
+    renderPage({ ...base, getApprovalProjection });
+
+    expect(await screen.findByText(/권위 있는 전표 원문/)).toHaveTextContent(
+      "권위 있는 전표 원문을 확인할 수 없습니다.",
+    );
+    expect(screen.queryByText("ae.eos_accounting_display_rejected")).toBeNull();
+  });
 });
 
 function renderPage(client: ApprovalClientPort) {

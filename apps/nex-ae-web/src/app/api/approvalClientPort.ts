@@ -108,6 +108,42 @@ export interface UserApprovalProjection {
       readonly currency: string;
     }[];
   };
+  readonly accounting_document?: AccountingDocumentProjection;
+}
+
+export interface AccountingDocumentProjection {
+  readonly schema_version: "ae_accounting_document_projection.v1";
+  readonly status: "AVAILABLE" | "UNAVAILABLE";
+  readonly diagnostic_code: string | null;
+  readonly header: {
+    readonly project_code: string;
+    readonly company_id: string;
+    readonly approved_document_ref: string;
+    readonly recognition_date: string;
+    readonly currency: string;
+    readonly requester_subject_id: string;
+  } | null;
+  readonly lines: readonly {
+    readonly line_no: number;
+    readonly account_code: string;
+    readonly account_name: string;
+    readonly description: string | null;
+    readonly debit: string;
+    readonly credit: string;
+    readonly currency: string;
+  }[];
+  readonly totals: {
+    readonly debit: string;
+    readonly credit: string;
+    readonly difference: string;
+    readonly balanced: boolean;
+  } | null;
+  readonly lineage: {
+    readonly candidate_id: string;
+    readonly candidate_revision: number;
+    readonly candidate_hash: string;
+    readonly approval_case_id: string | null;
+  } | null;
 }
 
 export interface ApprovalDecisionRequest {

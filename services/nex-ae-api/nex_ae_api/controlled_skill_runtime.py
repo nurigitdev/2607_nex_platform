@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 from urllib.parse import quote
+from uuid import UUID
 
 import httpx
 from nex_runtime.nsl_runtime_adapter import (
@@ -138,6 +139,7 @@ class ControlledSkillRuntime:
                         context=context,
                         execution=execution,
                         approver_role=self._config.approver_role,
+                        canonical_write_payload=authority.canonical_write_payload,
                     ),
                     request_store=self._request_store,
                     wait_repository=SqlAlchemyWaitRegistrationRepository(
@@ -412,13 +414,17 @@ class _ApprovalBindingSource:
         context: Any,
         execution: InstalledNslExecution,
         approver_role: str,
+        canonical_write_payload: Mapping[str, Any],
     ) -> None:
         self.context = context
         self.execution = execution
         self.approver_role = approver_role
+        self.accounting_document_ref = _accounting_document_ref_from_payload(
+            canonical_write_payload
+        )
 
     def resolve(self, _request: Mapping[str, Any]) -> Mapping[str, Any]:
-        return {
+        binding = {
             "tenant_id": self.execution.tenant_id,
             "agent_execution_id": self.context.step["agent_execution_id"],
             "executable_step_id": self.context.step["executable_step_id"],
@@ -430,6 +436,40 @@ class _ApprovalBindingSource:
             "target_org_scope_ref": None,
             "target_project_scope_ref": None,
         }
+        if self.accounting_document_ref is not None:
+            binding["accounting_document_ref"] = self.accounting_document_ref
+        return binding
+
+
+def _accounting_document_ref_from_payload(
+    value: Mapping[str, Any],
+) -> dict[str, Any] | None:
+    candidate_id = value.get("candidate_id")
+    candidate_revision = value.get("expected_candidate_revision")
+    candidate_hash = value.get("expected_candidate_hash")
+    if candidate_id is None and candidate_revision is None and candidate_hash is None:
+        return None
+    try:
+        admitted_id = str(UUID(str(candidate_id)))
+        admitted_hash = validate_hash_ref(candidate_hash)
+    except (ValueError, TypeError, AttributeError) as exc:
+        raise ControlledSkillRuntimeError(
+            "Canonical write payload has an invalid accounting Candidate reference."
+        ) from exc
+    if (
+        isinstance(candidate_revision, bool)
+        or not isinstance(candidate_revision, int)
+        or candidate_revision < 1
+    ):
+        raise ControlledSkillRuntimeError(
+            "Canonical write payload has an invalid accounting Candidate reference."
+        )
+    return {
+        "schema_version": "ae_accounting_candidate_ref.v1",
+        "candidate_id": admitted_id,
+        "candidate_revision": candidate_revision,
+        "candidate_hash": admitted_hash,
+    }
 
 
 @dataclass(frozen=True)

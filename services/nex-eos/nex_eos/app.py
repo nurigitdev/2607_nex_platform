@@ -9,6 +9,7 @@ from nex_runtime import SERVICE_SPECS, build_service_app
 from .account_api import register_account_routes
 from .account_policy_api import register_account_policy_routes
 from .accounting_period_api import register_accounting_period_routes
+from .accounting_display_api import register_accounting_display_routes
 from .allocation_plan_api import register_allocation_plan_routes
 from .approval_decision_api import register_approval_decision_routes
 from .approved_document_api import register_approved_document_routes
@@ -78,6 +79,7 @@ def create_eos_app(
     )
     app.state.eos_settings = resolved
     app.state.eos_dependencies = dependencies
+    app.state.eos_accounting_display_service = dependencies.accounting_display_service
     app.state.eos_database_runtime = dependencies.database_runtime
     app.state.eos_business_transactions = dependencies.business_transactions
     app.state.eos_organization = dependencies.organization
@@ -196,6 +198,7 @@ def create_eos_app(
     register_approved_document_routes(app)
     register_business_proposal_routes(app)
     register_business_voucher_routes(app)
+    register_accounting_display_routes(app)
     register_scoped_approval_routes(app)
     register_organization_routes(app)
     register_project_application_routes(app)

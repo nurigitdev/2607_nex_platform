@@ -3,6 +3,7 @@ import { Paperclip, RefreshCw } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import type {
+  AccountingDocumentProjection,
   ApprovalClientPort,
   ApprovalGate,
   ApprovalGateDetail,
@@ -300,6 +301,9 @@ function ApprovalDetailContent({
         <div><dt>위험도</dt><dd>{approvalRiskLabel(projection.risk)}</dd></div>
       </dl>
 
+      {projection.accounting_document ? (
+        <AccountingDocument document={projection.accounting_document} />
+      ) : null}
       {gate.formal_approval ? <FormalProgress progress={gate.formal_approval} /> : null}
       <ApprovalEvidence
         risk={projection.risk}
@@ -323,6 +327,84 @@ function ApprovalDetailContent({
         </dl>
       </details>
     </article>
+  );
+}
+
+function AccountingDocument({
+  document,
+}: {
+  readonly document: AccountingDocumentProjection;
+}) {
+  if (
+    document.status !== "AVAILABLE" ||
+    document.header === null ||
+    document.totals === null ||
+    document.lineage === null
+  ) {
+    return (
+      <section className={styles.section} aria-labelledby="accounting-document-title">
+        <div className={styles.sectionHeading}>
+          <h3 id="accounting-document-title">전표 검토</h3>
+        </div>
+        <p className={styles.accountingUnavailable} role="status">
+          권위 있는 전표 원문을 확인할 수 없습니다. 새로고침 후 다시 시도해 주세요.
+        </p>
+      </section>
+    );
+  }
+  return (
+    <section className={styles.section} aria-labelledby="accounting-document-title">
+      <div className={styles.sectionHeading}>
+        <h3 id="accounting-document-title">전표 검토</h3>
+        <span>
+          Candidate rev. {document.lineage.candidate_revision} · {document.totals.balanced ? "차대변 일치" : "차대변 불일치"}
+        </span>
+      </div>
+      <dl className={styles.accountingHeader}>
+        <div><dt>Project</dt><dd>{document.header.project_code}</dd></div>
+        <div><dt>인식일</dt><dd>{document.header.recognition_date}</dd></div>
+        <div><dt>통화</dt><dd>{document.header.currency}</dd></div>
+        <div><dt>작성자</dt><dd>{document.header.requester_subject_id}</dd></div>
+      </dl>
+      <div className={styles.accountingTableWrap}>
+        <table className={styles.accountingTable}>
+          <thead>
+            <tr>
+              <th scope="col">번호</th>
+              <th scope="col">계정과목</th>
+              <th scope="col">적요</th>
+              <th scope="col">차변</th>
+              <th scope="col">대변</th>
+            </tr>
+          </thead>
+          <tbody>
+            {document.lines.map(line => (
+              <tr key={line.line_no}>
+                <td>{line.line_no}</td>
+                <td><strong>{line.account_name}</strong><small>{line.account_code}</small></td>
+                <td>{line.description ?? "-"}</td>
+                <td>{formatMoney(line.debit, line.currency)}</td>
+                <td>{formatMoney(line.credit, line.currency)}</td>
+              </tr>
+            ))}
+          </tbody>
+          <tfoot>
+            <tr>
+              <th colSpan={3} scope="row">합계</th>
+              <td>{formatMoney(document.totals.debit, document.header.currency)}</td>
+              <td>{formatMoney(document.totals.credit, document.header.currency)}</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+      <details className={styles.documentLineage}>
+        <summary>전표 계보</summary>
+        <dl>
+          <div><dt>승인 근거</dt><dd>{document.header.approved_document_ref}</dd></div>
+          <div><dt>Candidate</dt><dd>{document.lineage.candidate_id}</dd></div>
+        </dl>
+      </details>
+    </section>
   );
 }
 
@@ -363,4 +445,14 @@ function formatDateTime(value: string) {
   return Number.isNaN(date.valueOf())
     ? "정보 미제공"
     : new Intl.DateTimeFormat("ko-KR", { dateStyle: "medium", timeStyle: "short" }).format(date);
+}
+
+function formatMoney(value: string, currency: string) {
+  const amount = Number(value);
+  if (!Number.isFinite(amount)) return `${value} ${currency}`;
+  return new Intl.NumberFormat("ko-KR", {
+    style: "currency",
+    currency,
+    maximumFractionDigits: 4,
+  }).format(amount);
 }
