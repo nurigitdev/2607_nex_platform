@@ -157,6 +157,11 @@ code while preserving code-only canonical writes. Accounting BUSINESS_FORMAL
 and related NSL WRITE reviews render a versioned, voucher-shaped projection
 from the exact authoritative Candidate revision; raw NSL payloads, browser-side
 account truth, first-Project fallback, and new business tables are forbidden.
+W80-CA00H is now closed. Its protected installed matrix passed six approval and
+accounting-correction journeys with actual PostgreSQL, OpenBao, RustFS, the
+canonical generation provider, and authenticated Playwright; the Repository
+Full Gate also passed. The As-Built evidence index is
+[`mybee_phase1_w80_ca00h5_protected_acceptance_and_closure.md`](../../slices/mybee_phase1_w80_ca00h5_protected_acceptance_and_closure.md).
 
 The W30-CA01 pair is the source-backed post-W20 delta. It takes precedence
 only for W30 entry ordering, current migration-number reservations, the

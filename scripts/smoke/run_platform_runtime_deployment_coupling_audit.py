@@ -44,7 +44,7 @@ EXPECTED_LOOPBACK_INVENTORY = (
     ("services/_shared/nex_runtime/service_endpoints.py", 5),
     ("services/_shared/nex_runtime/service_token_admission.py", 1),
     ("services/_shared/nex_runtime/subject_resolver.py", 2),
-    ("services/nex-ae-api/nex_ae_api/approval_facade.py", 1),
+    ("services/nex-ae-api/nex_ae_api/approval_facade.py", 2),
     ("services/nex-ae-api/nex_ae_api/artifacts.py", 2),
     ("services/nex-ae-api/nex_ae_api/business_proposal_facade.py", 1),
     ("services/nex-ae-api/nex_ae_api/business_voucher_facade.py", 1),

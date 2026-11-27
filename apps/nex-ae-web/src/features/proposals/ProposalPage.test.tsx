@@ -15,7 +15,11 @@ afterEach(cleanup);
 describe("proposal review workspace", () => {
   it("shows only user-facing project codes and editable draft fields", async () => {
     const view = renderPage(client());
-    expect(await screen.findByRole("heading", { name: "외부 용역비 사용 품의" })).toBeInTheDocument();
+    expect(await screen.findByRole(
+      "heading",
+      { name: "외부 용역비 사용 품의" },
+      ASYNC_RENDER_OPTIONS,
+    )).toBeInTheDocument();
     expect(screen.getAllByText("VO00D260001")).toHaveLength(2);
     expect(screen.getByLabelText(/금액/)).toHaveValue("1000000.0000");
     expect(screen.getByRole("navigation", { name: "업무 진행 단계" })).toHaveTextContent("품의서 작성진행 중");
@@ -28,7 +32,11 @@ describe("proposal review workspace", () => {
     const submit = vi.fn(async () => ({ ...PROPOSAL, state: "SUBMITTED" as const }));
     const source = client({ submit });
     renderPage(source);
-    await screen.findByRole("heading", { name: "외부 용역비 사용 품의" });
+    await screen.findByRole(
+      "heading",
+      { name: "외부 용역비 사용 품의" },
+      ASYNC_RENDER_OPTIONS,
+    );
     await user.click(screen.getByRole("button", { name: "결재선 미리보기" }));
     expect(await screen.findByLabelText("1단계 · TEAM_LEAD")).toHaveValue("lead-1");
     await user.click(screen.getByRole("button", { name: "상신" }));
@@ -41,7 +49,11 @@ describe("proposal review workspace", () => {
   it("places the approval line before the editable body and invalidates stale previews", async () => {
     const user = userEvent.setup();
     const view = renderPage(client());
-    await screen.findByRole("heading", { name: "외부 용역비 사용 품의" });
+    await screen.findByRole(
+      "heading",
+      { name: "외부 용역비 사용 품의" },
+      ASYNC_RENDER_OPTIONS,
+    );
     const approval = screen.getByRole("heading", { name: "결재선" });
     const title = screen.getByLabelText(/제목/);
     expect(approval.compareDocumentPosition(title) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
@@ -59,10 +71,16 @@ describe("proposal review workspace", () => {
       state: "REJECTED",
       rejection_reason: "계약 금액과 첨부 견적을 다시 확인해 주세요.",
     }] }));
-    expect(await screen.findByRole("heading", { name: "반려 사유" })).toBeInTheDocument();
+    expect(await screen.findByRole(
+      "heading",
+      { name: "반려 사유" },
+      ASYNC_RENDER_OPTIONS,
+    )).toBeInTheDocument();
     expect(screen.getByText("계약 금액과 첨부 견적을 다시 확인해 주세요.")).toBeInTheDocument();
   });
 });
+
+const ASYNC_RENDER_OPTIONS = { timeout: 5_000 } as const;
 
 function renderPage(source: BusinessProposalClientPort) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });

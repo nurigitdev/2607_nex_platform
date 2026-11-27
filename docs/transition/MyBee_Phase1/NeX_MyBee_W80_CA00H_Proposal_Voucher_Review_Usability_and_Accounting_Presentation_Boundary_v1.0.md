@@ -1,6 +1,6 @@
 # NeX MyBee W80-CA00H Proposal/Voucher Review Usability and Accounting Presentation Boundary v1.0
 
-**Status:** IMPLEMENTATION IN PROGRESS / W80-CA00H.1-.4 COMPLETE / CHECKPOINT PASSED / W80-CA00H.5 PENDING
+**Status:** COMPLETE / W80-CA00H.1-.5 COMPLETE / CHECKPOINT PASSED / PROTECTED MATRIX PASSED / REPOSITORY FULL GATE PASSED
 
 **Predecessor:** W80-CA00G
 
@@ -317,6 +317,24 @@ available, but it is not the source of account, Project, or approval truth.
 | Projection join is ambiguous or unavailable | No inferred voucher is rendered |
 | Cross-tenant/owner/company request | Access denied with no data disclosure |
 | Replay/restart/ACK loss | No duplicate decision, Candidate revision, or mutable history |
+
+## 12. As-Built Closure
+
+All five implementation Slices are complete. The final installed acceptance
+used actual Docker Compose, eight PostgreSQL test databases, OpenBao, RustFS,
+the canonical Qwen3.8-Flash-Next provider, and authenticated Playwright. Six
+journeys covered one-, two-, and three-stage approval, middle/final rejection,
+and accounting correction with latest-revision resubmission.
+
+The run produced 39 PNG captures and 6 screen manifests, verified balanced
+voucher-shaped BUSINESS_FORMAL and NSL_WRITE projections, survived restart and
+replay, drained all runtime/outbox/delivery queues, and completed zero-residue
+cleanup. The Repository Full Gate passed with `24,313` Python tests, `409` Node
+tests, and `166` React tests; repository coverage was `96.10%` statement and
+`94.91%` branch.
+
+The canonical implementation and evidence record is
+[`mybee_phase1_w80_ca00h5_protected_acceptance_and_closure.md`](../../slices/mybee_phase1_w80_ca00h5_protected_acceptance_and_closure.md).
 
 ## 12. Non-Goals
 
