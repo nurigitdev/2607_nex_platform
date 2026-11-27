@@ -8,20 +8,33 @@ PYTHON_BIN="${PYTHON_BIN:-./.venv/bin/python}"
 STATEMENT_COVERAGE_MIN="${STATEMENT_COVERAGE_MIN:-96}"
 BRANCH_COVERAGE_MIN="${BRANCH_COVERAGE_MIN:-94}"
 REPORT_DIR="${REPORT_DIR:-reports/coverage}"
+EXECUTION_MODE="${NEX_QUALITY_GATE_EXECUTION:-serial}"
 
 export PYTHONPATH="services/_shared:services/nex-oa:services/nex-ag:services/nex-ae-api:services/nex-cx:services/nex-mo:services/nex-wc:services/nex-eos:services/nex-wa:providers/nex-compatible-provider:scripts/db:scripts/dev:scripts/smoke:scripts/quality${PYTHONPATH:+:$PYTHONPATH}"
 
 mkdir -p "$REPORT_DIR"
 
-"$PYTHON_BIN" -m pytest \
-  --cov=services \
-  --cov=scripts \
-  --cov=providers \
-  --cov-branch \
-  --cov-report=term-missing \
-  --cov-report="json:$REPORT_DIR/coverage.json" \
-  --junitxml="$REPORT_DIR/junit.xml" \
-  "$@"
+case "$EXECUTION_MODE" in
+  serial)
+    "$PYTHON_BIN" -m pytest \
+      --cov=services \
+      --cov=scripts \
+      --cov=providers \
+      --cov-branch \
+      --cov-report=term-missing \
+      --cov-report="json:$REPORT_DIR/coverage.json" \
+      --junitxml="$REPORT_DIR/junit.xml" \
+      "$@"
+    ;;
+  parallel)
+    echo "full gate configuration error: parallel Full Gate is not admitted; use serial" >&2
+    exit 2
+    ;;
+  *)
+    echo "full gate configuration error: NEX_QUALITY_GATE_EXECUTION must be serial or parallel" >&2
+    exit 2
+    ;;
+esac
 
 "$PYTHON_BIN" scripts/quality/check_coverage_thresholds.py \
   "$REPORT_DIR/coverage.json" \

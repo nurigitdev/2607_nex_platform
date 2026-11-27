@@ -4,6 +4,7 @@ import json
 import subprocess
 import threading
 import time
+import xml.etree.ElementTree as ET
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from pathlib import Path
@@ -161,6 +162,17 @@ def test_main_fails_closed_for_unsafe_output(monkeypatch, capsys, tmp_path: Path
 def test_output_validation_rejects_absolute_path(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="repository-relative"):
         gate._validated_output(tmp_path, str(tmp_path / "inventory.json"))
+
+
+def test_report_dir_validation_is_repository_scoped(tmp_path: Path) -> None:
+    expected = tmp_path / "reports/coverage"
+
+    assert gate._validated_report_dir(tmp_path, "reports/coverage") == expected
+    assert gate._validated_report_dir(tmp_path, str(expected)) == expected
+    with pytest.raises(ValueError, match="below reports"):
+        gate._validated_report_dir(tmp_path, "coverage")
+    with pytest.raises(ValueError, match="inside the repository"):
+        gate._validated_report_dir(tmp_path, str(tmp_path.parent / "reports"))
 
 
 def test_lane_artifacts_are_run_and_service_scoped(tmp_path: Path) -> None:
@@ -563,6 +575,108 @@ def test_parallel_checkpoint_stops_on_serial_lane_failure(tmp_path: Path) -> Non
     assert evidence["closure_commands"] == []
 
 
+def test_full_test_closure_combines_coverage_without_threshold_duplication(
+    tmp_path: Path,
+) -> None:
+    commands = gate._full_test_phase_closure_commands(
+        python_bin="python-test",
+        combined_raw=tmp_path / "closure/.coverage",
+        combined_json=tmp_path / "reports/coverage.json",
+        raw_coverage_paths=(tmp_path / "ae/.coverage", tmp_path / "wc/.coverage"),
+    )
+
+    assert len(commands) == 2
+    assert commands[0][1:5] == ("-m", "coverage", "combine", "--keep")
+    assert str(tmp_path / "ae/.coverage") in commands[0]
+    assert commands[1][1:4] == ("-m", "coverage", "json")
+    assert not any("check_coverage_thresholds" in item for command in commands for item in command)
+
+
+def test_junit_merge_preserves_suites_and_totals(tmp_path: Path) -> None:
+    first = tmp_path / "first.xml"
+    first.write_text(
+        '<testsuites><testsuite name="ae" tests="2" failures="1" '
+        'errors="0" skipped="0" time="1.25"/></testsuites>',
+        encoding="utf-8",
+    )
+    second = tmp_path / "second.xml"
+    second.write_text(
+        '<testsuite name="eos" tests="3" failures="0" errors="0" '
+        'skipped="1" time="2.5"/>',
+        encoding="utf-8",
+    )
+    output = tmp_path / "combined/junit.xml"
+
+    assert gate.merge_junit_reports((first, second), output) == 5
+    root = ET.parse(output).getroot()
+    assert root.attrib == {
+        "tests": "5",
+        "errors": "0",
+        "failures": "1",
+        "skipped": "1",
+        "time": "3.750000",
+    }
+    assert [suite.attrib["name"] for suite in root.findall("testsuite")] == [
+        "ae",
+        "eos",
+    ]
+
+    with pytest.raises(ValueError, match="at least one"):
+        gate.merge_junit_reports((), output)
+    malformed = tmp_path / "malformed.xml"
+    malformed.write_text("<testsuite>", encoding="utf-8")
+    with pytest.raises(ValueError, match="malformed"):
+        gate.merge_junit_reports((malformed,), output)
+
+
+def test_parallel_full_test_phase_publishes_canonical_reports(tmp_path: Path) -> None:
+    root = _root(tmp_path)
+
+    def runner(command, **kwargs):
+        stdout = kwargs.get("stdout")
+        if stdout is not None:
+            stdout.write(f"command={command[0]}\n")
+        junit_arg = next(
+            (item for item in command if item.startswith("--junitxml=")), None
+        )
+        if junit_arg is not None:
+            test_count = sum(
+                1 for item in command if item.startswith("tests/") and item.endswith(".py")
+            )
+            Path(junit_arg.split("=", 1)[1]).write_text(
+                '<testsuites><testsuite name="lane" '
+                f'tests="{test_count}" failures="0" errors="0" '
+                'skipped="0" time="0.1"/></testsuites>',
+                encoding="utf-8",
+            )
+        if "coverage" in command and "json" in command:
+            output = Path(command[command.index("-o") + 1])
+            output.parent.mkdir(parents=True, exist_ok=True)
+            output.write_text('{"totals": {}}\n', encoding="utf-8")
+        return subprocess.CompletedProcess(command, 0)
+
+    evidence = gate.execute_parallel_full_test_phase(
+        root=root,
+        run_id="full-test",
+        report_dir=root / "reports/coverage",
+        max_parallel=2,
+        python_bin="python-test",
+        revision="7" * 40,
+        environ={"SAFE": "1"},
+        runner=runner,
+    )
+
+    assert evidence["status"] == "PASS"
+    assert evidence["test_file_count"] == 7
+    assert len(evidence["owner_lanes"]["lanes"]) == 3
+    assert len(evidence["serial_lanes"]) == 2
+    assert evidence["combined_coverage"] == "reports/coverage/coverage.json"
+    assert evidence["combined_junit"] == "reports/coverage/junit.xml"
+    junit = ET.parse(root / "reports/coverage/junit.xml").getroot()
+    assert junit.attrib["tests"] == "7"
+    assert (root / "reports/quality/full-test-phase-parallel-latest.json").is_file()
+
+
 def test_checkpoint_result_fails_without_complete_serial_closure(
     tmp_path: Path,
 ) -> None:
@@ -609,5 +723,37 @@ def test_main_parallel_checkpoint_summary(monkeypatch, capsys, tmp_path: Path) -
     assert observed["run_id"].startswith("checkpoint-")
     assert observed["revision"] == "6" * 40
     assert "parallel_checkpoint_gate=pass tests=6 duration=2.5s" in (
+        capsys.readouterr().out
+    )
+
+
+def test_main_parallel_full_test_phase_summary(
+    monkeypatch, capsys, tmp_path: Path
+) -> None:
+    root = _root(tmp_path)
+    monkeypatch.setattr(gate, "ROOT", root)
+    monkeypatch.setattr(gate, "_git_revision", lambda _root: "8" * 40)
+    observed = {}
+
+    def execute(**kwargs):
+        observed.update(kwargs)
+        return {"status": "PASS", "test_file_count": 7, "duration_seconds": 3.5}
+
+    monkeypatch.setattr(gate, "execute_parallel_full_test_phase", execute)
+
+    assert gate.main(
+        [
+            "full-test-phase",
+            "--run-id",
+            "full-cli",
+            "--report-dir",
+            "reports/custom",
+            "--summary",
+        ]
+    ) == 0
+    assert observed["run_id"] == "full-cli"
+    assert observed["report_dir"] == root / "reports/custom"
+    assert observed["revision"] == "8" * 40
+    assert "parallel_full_test_phase=pass tests=7 duration=3.5s" in (
         capsys.readouterr().out
     )

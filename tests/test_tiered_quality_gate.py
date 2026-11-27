@@ -565,6 +565,9 @@ def test_original_full_gate_remains_the_independent_fallback() -> None:
     assert "scripts/quality/validate_contracts.py" in full_gate
     assert "run_s97_cx_grounded_generation_runtime_closure.py" in full_gate
     assert "run_tiered_quality_gate.py" not in full_gate
+    assert "run_parallel_quality_gate.py full-test-phase" not in full_gate
+    assert "NEX_QUALITY_GATE_EXECUTION" in full_gate
+    assert "parallel Full Gate is not admitted" in full_gate
     assert "run_tiered_quality_gate.py slice" in slice_wrapper
     assert "run_tiered_quality_gate.py checkpoint" in checkpoint_wrapper
     assert "run_parallel_quality_gate.py checkpoint" in checkpoint_wrapper

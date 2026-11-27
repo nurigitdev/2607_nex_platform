@@ -9,6 +9,7 @@ import subprocess
 import sys
 import threading
 import time
+import xml.etree.ElementTree as ET
 from collections import Counter
 from collections.abc import Mapping
 from concurrent.futures import Future, ThreadPoolExecutor, as_completed
@@ -641,6 +642,275 @@ def _write_checkpoint_result(
     return evidence
 
 
+def execute_parallel_full_test_phase(
+    *,
+    root: Path,
+    run_id: str,
+    report_dir: Path,
+    max_parallel: int = 4,
+    python_bin: str = "./.venv/bin/python",
+    revision: str | None = None,
+    environ: Mapping[str, str] | None = None,
+    runner: Callable[..., subprocess.CompletedProcess[str]] = subprocess.run,
+    clock: Callable[[], float] = time.monotonic,
+) -> dict[str, object]:
+    phase_started = clock()
+    revision_value = revision or _git_revision(root)
+    inventory = build_test_ownership_inventory(
+        root=root,
+        tier="full",
+        revision=revision_value,
+    )
+    lane_counts = inventory["lane_counts"]
+    owner_lanes = tuple(
+        lane
+        for lane in SERVICE_PROFILES
+        if lane != "platform" and lane_counts.get(lane, 0)  # type: ignore[union-attr]
+    )
+    owner_evidence = execute_owner_service_lanes(
+        root=root,
+        tier="full",
+        run_id=run_id,
+        lanes=owner_lanes,
+        max_parallel=max_parallel,
+        python_bin=python_bin,
+        revision=revision_value,
+        environ=environ,
+        runner=runner,
+        clock=clock,
+    )
+    run_root = root / "reports" / "quality" / "parallel" / run_id
+    if owner_evidence["status"] != "PASS":
+        return _write_full_test_phase_result(
+            root=root,
+            run_root=run_root,
+            run_id=run_id,
+            revision=revision_value,
+            inventory=inventory,
+            owner_evidence=owner_evidence,
+            serial_results=[],
+            closure_results=[],
+            combined_coverage=None,
+            combined_junit=None,
+            started=phase_started,
+            clock=clock,
+        )
+
+    serial_results: list[dict[str, object]] = []
+    serial_plans: list[LaneExecutionPlan] = []
+    for lane in (SERIAL_INTEGRATION_LANE, SERIAL_REPOSITORY_LANE):
+        if not lane_counts.get(lane, 0):  # type: ignore[union-attr]
+            continue
+        plan = build_test_lane_plan(
+            root=root,
+            inventory=inventory,
+            run_id=run_id,
+            lane=lane,
+            python_bin=python_bin,
+        )
+        prepare_lane_artifacts(plan.artifacts)
+        serial_plans.append(plan)
+        result = _execute_lane_plan(
+            plan,
+            root=root,
+            environ=dict(os.environ if environ is None else environ),
+            runner=runner,
+            clock=clock,
+            started_signal=None,
+        )
+        serial_results.append(result)
+        if result["status"] != "PASS":
+            return _write_full_test_phase_result(
+                root=root,
+                run_root=run_root,
+                run_id=run_id,
+                revision=revision_value,
+                inventory=inventory,
+                owner_evidence=owner_evidence,
+                serial_results=serial_results,
+                closure_results=[],
+                combined_coverage=None,
+                combined_junit=None,
+                started=phase_started,
+                clock=clock,
+            )
+
+    report_dir.mkdir(parents=True, exist_ok=True)
+    coverage_json = report_dir / "coverage.json"
+    junit_xml = report_dir / "junit.xml"
+    for stale in (coverage_json, junit_xml):
+        stale.unlink(missing_ok=True)
+
+    raw_coverage_paths = [
+        root / str(item["artifacts"]["raw_coverage"])  # type: ignore[index]
+        for item in owner_evidence["lanes"]  # type: ignore[union-attr]
+    ] + [plan.artifacts.raw_coverage for plan in serial_plans]
+    junit_paths = [
+        root / str(item["artifacts"]["junit_xml"])  # type: ignore[index]
+        for item in owner_evidence["lanes"]  # type: ignore[union-attr]
+    ] + [plan.artifacts.junit_xml for plan in serial_plans]
+    closure_dir = run_root / "full-test-closure"
+    closure_dir.mkdir(exist_ok=False)
+    combined_raw = closure_dir / ".coverage"
+    closure_results = _execute_logged_commands(
+        commands=_full_test_phase_closure_commands(
+            python_bin=python_bin,
+            combined_raw=combined_raw,
+            combined_json=coverage_json,
+            raw_coverage_paths=raw_coverage_paths,
+        ),
+        root=root,
+        environ=dict(os.environ if environ is None else environ),
+        stdout_path=closure_dir / "stdout.log",
+        stderr_path=closure_dir / "stderr.log",
+        runner=runner,
+        clock=clock,
+    )
+    closure_passed = (
+        len(closure_results) == 2
+        and all(item["exit_code"] == 0 for item in closure_results)
+    )
+    if closure_passed:
+        merge_junit_reports(junit_paths, junit_xml)
+    return _write_full_test_phase_result(
+        root=root,
+        run_root=run_root,
+        run_id=run_id,
+        revision=revision_value,
+        inventory=inventory,
+        owner_evidence=owner_evidence,
+        serial_results=serial_results,
+        closure_results=closure_results,
+        combined_coverage=(
+            coverage_json.relative_to(root).as_posix() if closure_passed else None
+        ),
+        combined_junit=(
+            junit_xml.relative_to(root).as_posix() if closure_passed else None
+        ),
+        started=phase_started,
+        clock=clock,
+    )
+
+
+def _full_test_phase_closure_commands(
+    *,
+    python_bin: str,
+    combined_raw: Path,
+    combined_json: Path,
+    raw_coverage_paths: Sequence[Path],
+) -> tuple[tuple[str, ...], ...]:
+    return (
+        (
+            python_bin,
+            "-m",
+            "coverage",
+            "combine",
+            "--keep",
+            f"--data-file={combined_raw}",
+            *(str(path) for path in raw_coverage_paths),
+        ),
+        (
+            python_bin,
+            "-m",
+            "coverage",
+            "json",
+            f"--data-file={combined_raw}",
+            "-o",
+            str(combined_json),
+        ),
+    )
+
+
+def merge_junit_reports(sources: Sequence[Path], destination: Path) -> int:
+    if not sources:
+        raise ValueError("at least one JUnit source is required")
+    output = ET.Element("testsuites")
+    totals: dict[str, float] = {
+        "tests": 0,
+        "errors": 0,
+        "failures": 0,
+        "skipped": 0,
+        "time": 0.0,
+    }
+    for source in sources:
+        if not source.is_file():
+            raise ValueError(f"JUnit source is missing: {source}")
+        try:
+            source_root = ET.parse(source).getroot()
+        except ET.ParseError as exc:
+            raise ValueError(f"JUnit source is malformed: {source}") from exc
+        suites = (
+            [source_root]
+            if source_root.tag == "testsuite"
+            else list(source_root.findall("testsuite"))
+        )
+        if not suites:
+            raise ValueError(f"JUnit source has no test suites: {source}")
+        for suite in suites:
+            output.append(suite)
+            for key in ("tests", "errors", "failures", "skipped"):
+                totals[key] += int(suite.attrib.get(key, "0"))
+            totals["time"] += float(suite.attrib.get("time", "0"))
+    for key in ("tests", "errors", "failures", "skipped"):
+        output.set(key, str(int(totals[key])))
+    output.set("time", f"{totals['time']:.6f}")
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    ET.ElementTree(output).write(
+        destination,
+        encoding="utf-8",
+        xml_declaration=True,
+    )
+    return int(totals["tests"])
+
+
+def _write_full_test_phase_result(
+    *,
+    root: Path,
+    run_root: Path,
+    run_id: str,
+    revision: str,
+    inventory: Mapping[str, object],
+    owner_evidence: Mapping[str, object],
+    serial_results: Sequence[Mapping[str, object]],
+    closure_results: Sequence[Mapping[str, object]],
+    combined_coverage: str | None,
+    combined_junit: str | None,
+    started: float,
+    clock: Callable[[], float],
+) -> dict[str, object]:
+    passed = (
+        owner_evidence["status"] == "PASS"
+        and all(item["status"] == "PASS" for item in serial_results)
+        and len(serial_results) == 2
+        and len(closure_results) == 2
+        and all(item["exit_code"] == 0 for item in closure_results)
+        and combined_coverage is not None
+        and combined_junit is not None
+    )
+    evidence: dict[str, object] = {
+        "schema_version": "nex.parallel_full_test_phase.v1",
+        "status": "PASS" if passed else "FAIL",
+        "tier": "full",
+        "run_id": run_id,
+        "revision": revision,
+        "inventory_digest": inventory["inventory_digest"],
+        "test_file_count": inventory["test_file_count"],
+        "owner_lanes": owner_evidence,
+        "serial_lanes": list(serial_results),
+        "closure_commands": list(closure_results),
+        "combined_coverage": combined_coverage,
+        "combined_junit": combined_junit,
+        "duration_seconds": round(max(0.0, clock() - started), 3),
+        "serial_fallback": "scripts/quality/run_quality_gate.sh",
+    }
+    write_inventory(run_root / "full-test-phase.json", evidence)
+    write_inventory(
+        root / "reports" / "quality" / "full-test-phase-parallel-latest.json",
+        evidence,
+    )
+    return evidence
+
+
 def _command_label(command: Sequence[str]) -> str:
     for item in command[1:]:
         if item in {"combine", "json"} or item.endswith((".py", ".sh")):
@@ -770,6 +1040,22 @@ def _validated_output(root: Path, raw: str) -> Path:
     return root / relative
 
 
+def _validated_report_dir(root: Path, raw: str) -> Path:
+    candidate = Path(raw)
+    resolved = (
+        candidate.resolve()
+        if candidate.is_absolute()
+        else (root / candidate).resolve()
+    )
+    try:
+        relative = resolved.relative_to(root.resolve())
+    except ValueError as exc:
+        raise ValueError("report directory must be inside the repository") from exc
+    if not relative.parts or relative.parts[0] != "reports":
+        raise ValueError("report directory must be below reports/")
+    return resolved
+
+
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser()
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -789,6 +1075,11 @@ def _parser() -> argparse.ArgumentParser:
     checkpoint.add_argument("--run-id")
     checkpoint.add_argument("--max-parallel", type=int, default=4)
     checkpoint.add_argument("--summary", action="store_true")
+    full_test = subparsers.add_parser("full-test-phase")
+    full_test.add_argument("--run-id")
+    full_test.add_argument("--max-parallel", type=int, default=4)
+    full_test.add_argument("--report-dir", default="reports/coverage")
+    full_test.add_argument("--summary", action="store_true")
     return parser
 
 
@@ -812,7 +1103,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 max_parallel=args.max_parallel,
                 python_bin=os.environ.get("PYTHON_BIN", "./.venv/bin/python"),
             )
-        else:
+        elif args.command == "checkpoint":
             revision = _git_revision(ROOT)
             evidence = execute_parallel_checkpoint_gate(
                 root=ROOT,
@@ -821,6 +1112,20 @@ def main(argv: Sequence[str] | None = None) -> int:
                     if args.run_id
                     else _default_run_id("checkpoint", revision)
                 ),
+                max_parallel=args.max_parallel,
+                python_bin=os.environ.get("PYTHON_BIN", "./.venv/bin/python"),
+                revision=revision,
+            )
+        else:
+            revision = _git_revision(ROOT)
+            evidence = execute_parallel_full_test_phase(
+                root=ROOT,
+                run_id=(
+                    _validate_run_id(args.run_id)
+                    if args.run_id
+                    else _default_run_id("full", revision)
+                ),
+                report_dir=_validated_report_dir(ROOT, args.report_dir),
                 max_parallel=args.max_parallel,
                 python_bin=os.environ.get("PYTHON_BIN", "./.venv/bin/python"),
                 revision=revision,
@@ -845,9 +1150,16 @@ def main(argv: Sequence[str] | None = None) -> int:
                 f"lanes={len(evidence['lanes'])} "
                 f"duration={evidence['duration_seconds']}s"
             )
-        else:
+        elif args.command == "checkpoint":
             print(
                 "parallel_checkpoint_gate="
+                f"{str(evidence['status']).lower()} "
+                f"tests={evidence['test_file_count']} "
+                f"duration={evidence['duration_seconds']}s"
+            )
+        else:
+            print(
+                "parallel_full_test_phase="
                 f"{str(evidence['status']).lower()} "
                 f"tests={evidence['test_file_count']} "
                 f"duration={evidence['duration_seconds']}s"

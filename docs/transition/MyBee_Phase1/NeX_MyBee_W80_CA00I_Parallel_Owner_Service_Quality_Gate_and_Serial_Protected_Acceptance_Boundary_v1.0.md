@@ -1,6 +1,6 @@
 # NeX MyBee W80-CA00I Parallel Owner-Service Quality Gate and Serial Protected Acceptance Boundary v1.0
 
-**Status:** IN PROGRESS / W80-CA00I.1-.4 COMPLETE
+**Status:** COMPLETE / W80-CA00I.1-.5 COMPLETE
 
 **Predecessor:** W80-CA00H
 
@@ -203,10 +203,15 @@ NEX_QUALITY_GATE_EXECUTION=serial|parallel
 NEX_QUALITY_GATE_MAX_PARALLEL=4
 ```
 
-`serial` must preserve the current behavior. Until parity is proven, CI and
-release evidence may run both modes and compare collected tests, result status,
-coverage totals, and protected evidence. A mismatch fails closed and retains
-the serial result as authority.
+`parallel` is admitted for the Checkpoint Gate. The Repository Full Gate rejects
+that mode because the measured parallel test phase was slower than the canonical
+serial test phase. The standalone `full-test-phase` command remains available
+only to reproduce diagnostics; it is not a release evidence entrypoint.
+
+`serial` preserves the current Full Gate behavior and remains authoritative.
+Any future Full Gate parallel admission must repeat same-revision inventory,
+coverage, protected-evidence, and wall-clock comparison. A mismatch or runtime
+regression fails closed and retains the serial result as authority.
 
 ## 8. Implementation Slices
 
@@ -263,6 +268,25 @@ comparison proved that four owner lanes are faster for the current inventory.
   rollback;
 - record before/after duration and final As-Built evidence.
 
+**As-Built:** COMPLETE. A same-revision four-lane Full test-phase experiment
+executed all `1877` files with statement coverage `96.11%` and branch coverage
+`94.91%`, but required `3676.517s`. The canonical serial Full test phase then
+executed `24344` tests with `199` protected skips in `3318.71s`, preserving the
+same coverage totals and finishing `357.807s` faster. The complete canonical
+Full Gate passed in `4200s`; product coverage was `98.09%` statement and
+`96.48%` branch, while harness coverage was `93.59%` and `91.64%`.
+
+The Full Gate therefore remains serial and explicitly rejects parallel mode.
+Cross-service protected acceptance, frontend tests/builds, contract audits, and
+repository closure remain unchanged. The diagnostic parallel runner retains
+isolated reports and exact-once inventory evidence, but cannot be used as the
+canonical release gate.
+
+Further Full Gate optimization requires classifying the `322` repository and
+historical closure files that currently run after owner lanes, and avoiding the
+per-lane cost of measuring the complete source tree. Increasing or decreasing
+lane count alone is not an admitted optimization.
+
 ## 9. Acceptance Criteria
 
 | Case | Required result |
@@ -278,9 +302,9 @@ comparison proved that four owner lanes are faster for the current inventory.
 | Parallel/serial parity | Same canonical inventory and equivalent PASS/FAIL result |
 | Parallel execution disabled | Existing serial Gate remains runnable without source rollback |
 
-The target is to reduce Checkpoint wall time from approximately 38 to 40 minutes
-to an initial 22 to 28 minutes, and Repository Full Gate wall time from
-approximately 40 to 50 minutes to an initial 28 to 35 minutes. These are
+The Checkpoint target was partially achieved: four-lane execution reduced the
+measured wall time by `317.184s` (`13.76%`). The Repository Full Gate target was
+not achieved and its experimental parallel path was rejected. These remain
 engineering targets, not pass criteria; regression completeness and evidence
 integrity take precedence over elapsed time.
 
@@ -318,6 +342,8 @@ Implementation stops for a decision if:
 OWNER-SERVICE UNIT/REGRESSION/COVERAGE       = PARALLEL
 CROSS-SERVICE PROTECTED ACCEPTANCE           = SERIAL
 INITIAL MAXIMUM PARALLEL LANES                = 4
+CHECKPOINT GATE EXECUTION                     = PARALLEL ADMITTED
+REPOSITORY FULL GATE EXECUTION                = SERIAL ONLY
 AE LANE START ORDER                           = FIRST
 TEST FILE OWNERSHIP                           = EXACTLY ONCE
 MISSING OR AMBIGUOUS OWNERSHIP                = FAIL CLOSED
@@ -328,7 +354,8 @@ SERIAL FALLBACK                               = REQUIRED
 PRODUCT DATABASE/API/MIGRATION CHANGE         = NONE
 ```
 
-W80-CA00I closes only after parallel Checkpoint and Repository Full Gate runs
-prove complete test inventory, isolated artifacts, unchanged coverage and
-protected acceptance, deterministic results, a working serial fallback, and a
+W80-CA00I is closed with a parallel Checkpoint admission and a serial Repository
+Full Gate decision. Both paths proved complete test inventory, isolated
+artifacts, unchanged coverage, deterministic results, and a working serial
+authority. The Full Gate experiment was rejected because it did not produce a
 measured wall-time reduction on the same repository revision.
